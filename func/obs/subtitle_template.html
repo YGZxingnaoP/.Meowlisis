@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI 实时字幕 · 蓝蝶白框</title>
+    <style>
+        /* 全局重置：背景完全透明，只保留文本框填充白色 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: transparent;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Segoe UI', 'Quicksand', 'Poppins', 'Microsoft YaHei', 'PingFang SC', 'Helvetica Neue', sans-serif;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ---------- 字幕容器：白色填充，扁长造型 ---------- */
+        .subtitle-box {
+            position: relative;
+            background: #ffffff; /* 纯白填充 */
+            backdrop-filter: none;
+            border-radius: 60px; /* 圆角加大，更可爱 */
+            padding: 10px 48px; /* 上下变窄，左右变宽 → 扁长效果 */
+            border: 2px solid #FFB7C5;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(255, 105, 180, 0.15);
+            transition: all 0.2s ease;
+            max-width: 92vw; /* 更宽 */
+            min-width: 360px; /* 最小宽度变大，避免过窄 */
+            width: fit-content; /* 根据内容自然伸缩 */
+            text-align: center;
+        }
+
+        /* 蝴蝶装饰（左上角） */
+        .butterfly-deco {
+            position: absolute;
+            left: -56px;
+            top: -56px;
+            width: 128px;
+            height: 128px;
+            object-fit: contain;
+            pointer-events: none;
+            filter: drop-shadow(0 6px 12px rgba(255, 140, 200, 0.35));
+            transition: transform 0.25s ease;
+            z-index: 10;
+        }
+
+        .subtitle-box:hover .butterfly-deco {
+            transform: rotate(5deg) scale(1.03);
+        }
+
+        /* 右下角小花装饰 */
+        .subtitle-box::after {
+            content: "🌸";
+            position: absolute;
+            font-size: 30px;
+            right: -22px;
+            bottom: -22px;
+            opacity: 0.8;
+            pointer-events: none;
+            filter: drop-shadow(0 2px 6px rgba(0,0,0,0.08));
+            transition: transform 0.2s;
+        }
+
+        .subtitle-box:hover::after {
+            transform: rotate(6deg);
+        }
+
+        /* 字幕文字：保持清晰可爱 */
+        .subtitle-text {
+            font-size: 44px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FF85A1, #FFA07A, #FBC8B5);
+            background-clip: text;
+            -webkit-background-clip: text;
+            color: transparent;
+            text-shadow: 2px 2px 12px rgba(255, 160, 122, 0.2);
+            letter-spacing: 1px;
+            word-break: break-word;
+            line-height: 1.2; /* 行高略缩，让整体更扁 */
+            animation: bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+        }
+
+        /* 弹跳动画 */
+        @keyframes bounceGlow {
+            0% {
+                opacity: 0;
+                transform: translateY(18px) scale(0.96);
+            }
+
+            60% {
+                opacity: 0.9;
+                transform: translateY(-3px) scale(1.01);
+            }
+
+            100% {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        /* 移动端适配：保持扁长比例 */
+        @media (max-width: 768px) {
+            .subtitle-text {
+                font-size: 32px;
+            }
+
+            .subtitle-box {
+                padding: 8px 32px; /* 更扁 */
+                min-width: 280px;
+                max-width: 90vw;
+            }
+
+            .butterfly-deco {
+                width: 60px;
+                height: 60px;
+                left: -26px;
+                top: -26px;
+            }
+
+            .subtitle-box::after {
+                font-size: 24px;
+                right: -16px;
+                bottom: -16px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .subtitle-text {
+                font-size: 26px;
+            }
+
+            .subtitle-box {
+                padding: 6px 24px;
+                min-width: 240px;
+            }
+
+            .butterfly-deco {
+                width: 52px;
+                height: 52px;
+                left: -22px;
+                top: -22px;
+            }
+
+            .subtitle-box::after {
+                font-size: 20px;
+                right: -14px;
+                bottom: -14px;
+            }
+        }
+
+        /* 断开连接时的颤动 */
+        .error-shake {
+            animation: gentleShake 0.4s ease-in-out;
+        }
+
+        @keyframes gentleShake {
+            0% {
+                transform: translateX(0);
+            }
+
+            25% {
+                transform: translateX(3px);
+            }
+
+            75% {
+                transform: translateX(-3px);
+            }
+
+            100% {
+                transform: translateX(0);
+            }
+        }
+
+        /* 保证文字区域不额外加背景 */
+        .subtitle-text {
+            background-color: transparent;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="subtitle-box">
+        <img src="bluebutterfly.png" alt="蓝蝶" class="butterfly-deco" onerror="this.onerror=null; this.style.opacity='0.7'; this.title='请确保 bluebutterfly.png 在同一目录'">
+        <div class="subtitle-text" id="subtitle">✨ ฅ^•ﻌ•^ฅ ✨<br>✨ AI 待机中 ✨</div>
+    </div>
+
+    <script>
+        const subtitleEl = document.getElementById('subtitle');
+        let ws = null;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT = 5;
+
+        function connectWebSocket() {
+        if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        try { ws.close(); } catch(e) {}
+        }
+        try {
+        ws = new WebSocket('ws://localhost:8765');
+        ws.onopen = () => {
+        console.log('✅ 字幕服务已连接');
+        reconnectAttempts = 0;
+        const currentText = subtitleEl.innerText;
+        if (currentText.includes('断开') || currentText.includes('💔') || currentText.includes('无法连接')) {
+        subtitleEl.innerText = '🌸 连接恢复啦 🌸';
+        triggerAnimation();
+        }
+        };
+        ws.onmessage = (event) => {
+        if (event.data && typeof event.data === 'string') {
+        let newText = event.data.trim();
+        if (newText === "") newText = "🐾 ฅ(ﾐ・ﻌ・ﾐ)ฅ 🐾";
+        subtitleEl.innerText = newText;
+        triggerAnimation();
+        }
+        };
+        ws.onerror = (error) => {
+        console.warn('WebSocket 错误:', error);
+        setTimeout(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+        if (!subtitleEl.innerText.includes('连接断开')) {
+        subtitleEl.innerText = '💔 字幕连接断开 重试中 💔';
+        triggerAnimation();
+        }
+        }
+        }, 500);
+        };
+        ws.onclose = (event) => {
+        console.log(`WebSocket 关闭, code: ${event.code}`);
+        subtitleEl.innerText = '🦋 字幕连接断开 · 正在重连 🦋';
+        triggerAnimation();
+        if (reconnectAttempts < MAX_RECONNECT) {
+        const delay = Math.min(2000 * (reconnectAttempts + 1), 10000);
+        reconnectAttempts++;
+        setTimeout(() => { connectWebSocket(); }, delay);
+        } else {
+        subtitleEl.innerText = '💧 无法连接 AI 服务端 请检查程序 💧';
+        triggerAnimation();
+        }
+        };
+        } catch (err) {
+        console.error("创建WebSocket失败", err);
+        subtitleEl.innerText = '⚠️ 初始化连接失败 ⚠️\n请确认后端服务运行中';
+        triggerAnimation();
+        }
+        }
+
+        function triggerAnimation() {
+        const textDiv = subtitleEl;
+        if (!textDiv) return;
+        textDiv.style.animation = 'none';
+        void textDiv.offsetHeight;
+        textDiv.style.animation = 'bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1)';
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+        connectWebSocket();
+        const butterflyImg = document.querySelector('.butterfly-deco');
+        if (butterflyImg) {
+        butterflyImg.style.pointerEvents = 'auto';
+        butterflyImg.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const tempMsg = '🦋 蓝蝶扑翅 · 好运来袭 ✨ 喵～ ✨';
+        subtitleEl.innerText = tempMsg;
+        triggerAnimation();
+        setTimeout(() => {
+        if (subtitleEl.innerText === tempMsg) {
+        subtitleEl.innerText = '✨ AI 待机中 ✨';
+        triggerAnimation();
+        }
+        }, 1800);
+        });
+        }
+        });
+
+        window.addEventListener('beforeunload', () => {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN)) {
+        if (reconnectAttempts < MAX_RECONNECT || !ws || ws.readyState === WebSocket.CLOSED) {
+        connectWebSocket();
+        }
+        }
+        });
+    </script>
+</body>
+</html>
