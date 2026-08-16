@@ -25,14 +25,14 @@ class ObsWebSocket:
           self.port = port
           self.password = password
           self.switch = switch
+          self.ws = None
           if switch == True:
               self.ws = obsws(self.host, self.port, self.password)
-              self.log.info(f"OBS直播链接成功")
           else:
-              self.log.warning(f"OBS直播开关已关闭")
+              self.log.debug(f"OBS直播控制未启用")
       
       def connect(self):
-          if self.switch == True:
+          if self.switch == True and self.ws is not None:
               try:
                   self.ws.connect()
                   self.log.info("OBS WebSocket 连接成功")

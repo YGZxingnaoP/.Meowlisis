@@ -11,10 +11,7 @@ config = defaultConfig().get_config()
 @singleton
 class LLmData:
     Ai_Name: str = config["AiName"]  # Ai名称
-    relations = config["llm"]["relations"] # 用户关系
     local_llm_type: str = config["llm"]["local_llm_type"] # 模型加载方式
-    cmd = config["llm"]["cmd"]  # 触发指令
-    public_sentiment_key: str = config["llm"]["public_sentiment_key"] # 舆情判断
 
     # ============= LLM参数 =====================
     QuestionList = queue.Queue()  # LLM回复问题
@@ -28,15 +25,6 @@ class LLmData:
     split_limit = config["llm"]["split_limit"]  # 分割的最小字符数量
     # ============================================
 
-    # ============= 欢迎列表 =====================
-    WelcomeList = []  # welcome欢迎列表
-    # ========================================
-
-    # ============= 进入房间的欢迎语 =====================
-    is_llm_welcome = config["welcome"]["is_llm_welcome"]
-    welcome_not_allow = config["welcome"]["welcome_not_allow"]
-    # ============================================
-
 @singleton
 class TTsData:
     SayCount = 0
@@ -44,9 +32,7 @@ class TTsData:
     ReplyTextList = queue.Queue()  # Ai回复框文本队列
     is_tts_ready = True  # 定义语音是否生成完成标志
     # 选择语音
-    select_vists = config["speech"]["select"]
-    # 语音合成线程池
-    speech_max_threads = config["speech"]["speech_max_threads"]
+    select_sovits = config["speech"]["select"]
 
 @singleton
 class VtuberData:
@@ -63,52 +49,7 @@ class VtuberData:
     now_clothes = "便衣"
     # ========================================
 
-    # ============= 摇摆 =====================
-    swing_motion = 2  # 1.摇摆中 2.停止摇摆
-    auto_swing_lock = threading.Lock()
-    # ========================================
-
     mood_num = 0  # 感情值
-
-@singleton
-class SingData:
-    create_song_lock = threading.Lock()
-    play_song_lock = threading.Lock()
-
-    # ============= 唱歌参数 =====================
-    sing_cfg = config.get('sing', {})   # 安全获取 sing 节点，默认空字典
-    singUrl = sing_cfg.get('singUrl', '')   # 默认空字符串
-    song_not_convert = sing_cfg.get('song_not_convert', [])
-    create_song_timout = sing_cfg.get('create_song_timout', 60)
-
-    SongQueueList = queue.Queue()
-    SongMenuList = queue.Queue()
-    SongNowName = {}
-    is_singing = 2
-    is_creating_song = 2
-    sing_play_flag = 0    
-    # ============================================
-
-@singleton
-class ImageData:
-    # ============= 搜图参数 =====================
-    SearchImgList = queue.Queue()
-    is_SearchImg = 2  # 1.搜图中 2.搜图完成
-    # ============================================
-    httpProxies = config["searchImg"]["HttpProxies"]
-    imageNum = config["searchImg"]["imageNum"]
-    physical_save_folder = config["searchImg"]["physical_save_folder"]  # 绘画保存图片物理路径
-    width = config["searchImg"]["width"]  # 图片宽度
-    height = config["searchImg"]["height"]  # 图片高度
-
-@singleton
-class SearchData:
-    httpProxies = config["searchWeb"]["HttpProxies"]
-    searchNum = config["searchWeb"]["searchNum"]
-    # ============= 搜文参数 =====================
-    SearchTextList = queue.Queue()
-    is_SearchText = 2  # 1.搜文中 2.搜文完成
-    # ============================================
 
 @singleton
 class BiliDanmakuData:

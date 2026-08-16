@@ -1,9 +1,8 @@
 # B站弹幕
 from threading import Thread
 import datetime
-import uuid
 from func.log.default_log import DefaultLog
-from func.entrance.entrance_core import EntranceCore
+from func.pipeline.danmuku_llm import DanmukuLLMBridge
 from func.obs.obs_init import ObsInit
 from func.tools.singleton_mode import singleton
 from func.gobal.data import CommonData
@@ -32,7 +31,7 @@ class BlivedmCore:
     llmData = LLmData()  # llm数据
     ttsCore = TTsCore()  # 语音核心
 
-    entranceCore = EntranceCore()  #入口操作
+    danmuku_llm = DanmukuLLMBridge()  # 弹幕→LLM 桥接
 
     def __init__(self):
         self.obs = ObsInit().get_ws()
@@ -109,23 +108,8 @@ class BlivedmCore:
         def __init__(self,BlivedmCore):
             self.BlivedmCore = BlivedmCore
 
-        # 入场消息回调
-        def __interact_word_callback(self, client: blivedm.BLiveClient, command: dict):
-            self.BlivedmCore.log.info(f"[{client.room_id}] INTERACT_WORD: self_type={type(self).__name__}, room_id={client.room_id},"
-                     f" uname={command['data']['uname']}")
-            user_name = command["data"]["uname"]  # 获取用户昵称
-            user_id = command["data"]["uid"]  # 获取用户uid
-            time1 = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self.BlivedmCore.log.info(f"{time1}:粉丝[{user_name}]进入了直播间")
-            
-            if all([user_id != not_allow_userid for not_allow_userid in self.BlivedmCore.llmData.welcome_not_allow]):
-                # 加入欢迎列表
-                self.BlivedmCore.llmData.WelcomeList.append(user_name)
-
-        _CMD_CALLBACK_DICT['INTERACT_WORD'] = __interact_word_callback  # noqa
-
         def _on_heartbeat(self, client: blivedm.BLiveClient, message: web_models.HeartbeatMessage):
-            self.BlivedmCore.log.info(f'[{client.room_id}] 心跳2')
+            self.BlivedmCore.log.debug(f'[{client.room_id}] 心跳2')
 
     class MyHandler(blivedm.BaseHandler):
 
@@ -134,13 +118,12 @@ class BlivedmCore:
 
         # 心跳
         def _on_heartbeat(self, client: blivedm.BLiveClient, message: web_models.HeartbeatMessage):
-            self.BlivedmCore.log.info(f'[{client.room_id}] 心跳1')
+            self.BlivedmCore.log.debug(f'[{client.room_id}] 心跳1')
 
         # 弹幕获取
         def _on_open_live_danmaku(self, client: blivedm.OpenLiveClient, message: open_models.DanmakuMessage):
             self.BlivedmCore.log.info(f'{message.uname}：{message.msg}')
-            traceid = str(uuid.uuid4())
-            self.BlivedmCore.entranceCore.msg_deal(traceid, message.msg, message.open_id, message.uname)
+            self.BlivedmCore.danmuku_llm.send_to_llm(message.msg, message.open_id, message.uname)
 
         # 赠送礼物
         def _on_open_live_gift(self, client: blivedm.OpenLiveClient, message: open_models.GiftMessage):
@@ -154,15 +137,6 @@ class BlivedmCore:
             text = f"谢谢‘{username}’赠送的{num}个{giftname}"
             self.BlivedmCore.log.info(text)
             tts_say_thread = Thread(target=self.BlivedmCore.ttsCore.tts_say, args=(text,))
-            tts_say_thread.start()
-
-        def _on_open_live_buy_guard(self, client: blivedm.OpenLiveClient, message: open_models.GuardBuyMessage):
-            self.BlivedmCore.log.info(f'[{message.room_id}] {message.user_info.uname} 购买 大航海等级={message.guard_level}')
-            username = message.user_info.uname
-            level = message.guard_level
-            text = f"喵喵喵！谢谢‘{username}’购买 大航海等级{level},小{self.commonData.Ai_Name}会继续努力的"
-            self.BlivedmCore.log.info(text)
-            tts_say_thread = Thread(target=self.BlivedmCore.BlivedmCore.ttsCore.tts_say, args=(text,))
             tts_say_thread.start()
 
         def _on_open_live_super_chat(

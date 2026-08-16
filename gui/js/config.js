@@ -53,15 +53,16 @@ const Config = {
             ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
     },
 
+    _list(label, path, def, help) {
+        const v = this._val(path, def) || [];
+        const text = Array.isArray(v) ? v.join(', ') : v;
+        return `<div class="form-group"><label>${label}</label>
+            <input type="text" data-path="${path}" data-list="1" value="${text}">
+            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+    },
+
     basic() {
         return this._text('AI名称', 'AiName', '喵呜') +
-            this._check('启用翻译', 'translate.switch', false) +
-            `<div class="form-group"><label>弹幕源</label>
-            <select data-path="danmaku.source">
-                <option value="blivedm" ${this._val('danmaku.source', 'blivedm') === 'blivedm' ? 'selected' : ''}>blivedm</option>
-                <option value="biive" ${this._val('danmaku.source') === 'biive' ? 'selected' : ''}>biive</option>
-                <option value="api" ${this._val('danmaku.source') === 'api' ? 'selected' : ''}>api</option>
-            </select></div>` +
             this._text('直播间号', 'danmaku.blivedm.room_id', '', 'B站直播间房间号') +
             this._text('SESSDATA', 'danmaku.blivedm.sessdata', '') +
             this._text('ACCESS_KEY_ID', 'danmaku.blivedm.ACCESS_KEY_ID', '') +
@@ -71,47 +72,19 @@ const Config = {
     },
 
     llm() {
-        const type = this._val('llm.local_llm_type', 'ollama');
+        const type = this._val('llm.local_llm_type', 'deepseek');
         let h = `<div class="form-group"><label>LLM类型</label>
             <select data-path="llm.local_llm_type">
-                <option value="ollama" ${type === 'ollama' ? 'selected' : ''}>Ollama</option>
-                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
-                <option value="bigmodel" ${type === 'bigmodel' ? 'selected' : ''}>智谱</option>
                 <option value="deepseek" ${type === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
+                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
             </select></div>`;
 
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="ollama">Ollama</button>
+            <button class="modal-tab active" data-tab="deepseek">DeepSeek</button>
             <button class="modal-tab" data-tab="aliyun">阿里云</button>
-            <button class="modal-tab" data-tab="bigmodel">智谱</button>
-            <button class="modal-tab" data-tab="deepseek">DeepSeek</button>
         </div>`;
 
-        h += `<div class="tab-content active" data-tab-content="ollama">` +
-            this._text('Ollama URL', 'llm.ollama.ollama_url', 'http://localhost:11434') +
-            this._text('本地模型', 'llm.ollama.model_local', 'cydonia') +
-            this._text('云端模型', 'llm.ollama.model_cloud', 'deepseek-v3.1:671b-cloud') +
-            this._num('温度', 'llm.ollama.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.ollama.max_tokens', 256, 1, 4096, 16) +
-            this._check('使用云端模型', 'llm.ollama.use_cloud', false) +
-            `</div>`;
-
-        h += `<div class="tab-content" data-tab-content="aliyun">` +
-            this._password('API Key', 'llm.aliyun.api_key', '') +
-            this._text('模型', 'llm.aliyun.model', 'qwen3-max') +
-            this._num('温度', 'llm.aliyun.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.aliyun.max_tokens', 1024, 1, 8192, 16) +
-            this._check('启用思考模式', 'llm.aliyun.enable_thinking', true) +
-            `</div>`;
-
-        h += `<div class="tab-content" data-tab-content="bigmodel">` +
-            this._password('API Key', 'llm.bigmodel.api_key', '') +
-            this._text('模型', 'llm.bigmodel.model', 'glm-4.7-flash') +
-            this._num('温度', 'llm.bigmodel.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.bigmodel.max_tokens', 1024, 1, 8192, 16) +
-            `</div>`;
-
-        h += `<div class="tab-content" data-tab-content="deepseek">` +
+        h += `<div class="tab-content active" data-tab-content="deepseek">` +
             this._password('API Key', 'llm.deepseek.api_key', '') +
             this._text('Base URL', 'llm.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'llm.deepseek.model', 'deepseek-chat') +
@@ -119,77 +92,24 @@ const Config = {
             this._num('最大输出 tokens', 'llm.deepseek.max_tokens', 1024, 1, 8192, 16) +
             this._num('Top P', 'llm.deepseek.top_p', 0.9, 0, 1, 0.05) +
             this._check('启用流式输出', 'llm.deepseek.stream', true) +
+            this._check('启用思考模式', 'llm.deepseek.enable_thinking', false) +
             `</div>`;
 
-        h += this._text('分割符', 'llm.split_flag', ',|，|。|!|！|?|？|\n') +
+        h += `<div class="tab-content" data-tab-content="aliyun">` +
+            this._password('API Key', 'llm.aliyun.api_key', '') +
+            this._text('Base URL', 'llm.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'llm.aliyun.model', 'qwen-plus') +
+            this._num('温度', 'llm.aliyun.temperature', 0.7, 0, 2, 0.1) +
+            this._num('最大输出 tokens', 'llm.aliyun.max_tokens', 1024, 1, 8192, 16) +
+            this._num('Top P', 'llm.aliyun.top_p', 0.9, 0, 1, 0.05) +
+            this._check('启用流式输出', 'llm.aliyun.stream', true) +
+            this._check('启用思考模式', 'llm.aliyun.enable_thinking', false) +
+            `</div>`;
+
+        h += this._num('短期记忆轮数', 'llm.short_term_rounds', 5, 1, 60, 1) +
+            this._text('分割符', 'llm.split_flag', ',|，|。|!|！|?|？') +
             this._num('最小分段长度', 'llm.split_limit', 6, 1, 100, 1);
         return h;
-    },
-
-    memory() {
-        return this._check('共享记忆', 'llm.memory.shared', false) +
-            this._check('启用摘要存储', 'llm.memory.enable_summary', true) +
-            this._num('短期记忆轮数', 'llm.memory.short_term_rounds', 3, 1, 20, 1) +
-            this._num('触发存储轮数', 'llm.memory.max_pending_rounds', 10, 1, 50, 1) +
-            this._select('嵌入模型级别', 'llm.memory.model_level', [{value:'small',label:'small'},{value:'large',label:'large'}], 'small') +
-            this._text('长期记忆目录', 'llm.memory.long_term_dir', './chatrecords') +
-            this._check('启用个性记忆 (mem0)', 'llm.memory.enable_mem0', true) +
-            this._check('启用聊天记录检索', 'llm.memory.enable_chat_record_retrieval', true) +
-            this._num('聊天记录检索天数', 'llm.memory.chat_record_days', 7, 1, 30, 1) +
-            this._num('聊天记录检索数量', 'llm.memory.chat_record_top_k', 3, 1, 10, 1);
-    },
-
-    vision() {
-        const enabled = this._val('vision.qwen.enabled', true);
-        return this._check('启用 Qwen 视觉', 'vision.qwen.enabled', true) +
-            this._password('API Key', 'vision.qwen.api_key', '') +
-            this._text('Base URL', 'vision.qwen.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
-            this._text('模型', 'vision.qwen.model', 'qwen-vl-max') +
-            this._text('提示词', 'vision.qwen.prompt', '描述一下图片内容，简洁精准') +
-            this._num('触发冷却(秒)', 'vision.qwen.cooldown', 10, 0, 60, 1) +
-            this._num('最大输出 tokens', 'vision.qwen.max_tokens', 200, 50, 500, 10) +
-            this._num('温度', 'vision.qwen.temperature', 0.6, 0, 2, 0.1) +
-            this._check('启用定时自动截图', 'vision.qwen.timer_enabled', false) +
-            this._num('定时间隔(秒)', 'vision.qwen.timer_interval', 300, 10, 3600, 10);
-    },
-
-    search() {
-        return `<h4>图片搜索</h4>` +
-            this._num('图片数量', 'searchImg.imageNum', 10, 1, 50, 1) +
-            this._num('图片宽度', 'searchImg.width', 600, 100, 4096, 10) +
-            this._num('图片高度', 'searchImg.height', 800, 100, 4096, 10) +
-            this._text('图片保存路径', 'searchImg.physical_save_folder', '') +
-            `<h4>网页搜索</h4>` +
-            this._num('搜索结果数量', 'searchWeb.searchNum', 8, 1, 20, 1) +
-            this._num('最大结果数', 'searchWeb.max_results', 5, 1, 20, 1) +
-            this._text('缓存目录', 'searchWeb.cache_dir', 'searchresult') +
-            this._check('使用关键词提取', 'searchWeb.use_keyword_extract', true) +
-            this._check('启用语义搜索', 'searchWeb.semantic_search.enabled', true);
-    },
-
-    response() {
-        return this._num('超时秒数', 'response.timeout_seconds', 5, 1, 30, 1) +
-            this._num('空闲分钟数', 'response.idle_minutes', 10, 1, 60, 1) +
-            this._text('空闲消息', 'response.idle_message', '主人10分钟没跟你说话了');
-    },
-
-    obs() {
-        return this._check('启用OBS控制', 'obs.switch', true) +
-            this._text('WebSocket地址', 'obs.url', '127.0.0.1') +
-            this._num('端口', 'obs.port', 4455, 1, 65535, 1) +
-            this._password('密码', 'obs.password', '') +
-            this._text('唱歌背景', 'obs.song_background', '') +
-            this._text('跳舞视频目录', 'obs.dance_path', '') +
-            this._text('表情视频目录', 'obs.emote_path', '') +
-            this._text('表情字幕字体', 'obs.emote_font', '');
-    },
-
-    vtuber() {
-        return this._check('启用 VTuber 控制', 'emote.switch', false) +
-            this._text('WebSocket 地址', 'emote.vtuber_websocket', '127.0.0.1:8001') +
-            this._text('插件名称', 'emote.vtuber_pluginName', '') +
-            this._text('插件开发者', 'emote.vtuber_pluginDeveloper', '') +
-            this._text('认证令牌', 'emote.vtuber_authenticationToken', '');
     },
 
     sensevoice() {
@@ -202,59 +122,58 @@ const Config = {
             this._select('语言', 'sensevoice.language', [{value:'auto',label:'auto'},{value:'zh',label:'zh'},{value:'en',label:'en'},{value:'yue',label:'yue'},{value:'ja',label:'ja'},{value:'ko',label:'ko'}], 'auto') +
             this._check('启用标点与逆文本正则化', 'sensevoice.itn', true) +
             this._num('说话人判定阈值', 'sensevoice.speaker_threshold', 0.2, 0, 1, 0.05) +
-            this._num('句子合并延迟(秒)', 'sensevoice.merge_delay', 1.5, 0, 5, 0.1) +
-            this._num('静音阈值(秒)', 'sensevoice.silence_threshold', 2.0, 0, 5, 0.1);
+            this._list('目标说话人（逗号分隔）', 'sensevoice.target_speakers', []) +
+            this._list('热词（逗号分隔，每项: 词 权重...）', 'sensevoice.hotwords', []) +
+            this._num('VAD 能量阈值', 'sensevoice.vad_energy_threshold', 400, 0, 5000, 50) +
+            this._num('打断能量阈值', 'sensevoice.interrupt_energy_threshold', 600, 0, 5000, 50) +
+            this._check('启用语音打断', 'sensevoice.interrupt_enabled', false) +
+            this._num('打断冷却(秒)', 'sensevoice.interrupt_cooldown', 1.0, 0, 10, 0.1) +
+            this._num('句子合并延迟(秒)', 'sensevoice.merge_delay', 1.0, 0, 5, 0.1) +
+            this._num('静音阈值(秒)', 'sensevoice.silence_threshold', 2.0, 0, 5, 0.1) +
+            this._num('心跳间隔(秒)', 'sensevoice.ping_interval', 20, 1, 120, 1) +
+            this._num('心跳超时(秒)', 'sensevoice.ping_timeout', 60, 1, 300, 1) +
+            this._num('最大重连次数', 'sensevoice.max_reconnect_attempts', 5, 0, 50, 1);
     },
 
-    agent() {
-        return this._check('启用 Agent 模式', 'agent.enabled', false) +
-            this._num('主动发言间隔(秒)', 'agent.interval_seconds', 600, 30, 3600, 30) +
-            this._num('冷却时间(秒)', 'agent.cooldown_seconds', 120, 10, 600, 10) +
-            this._text('目标用户 UID', 'agent.target_uid', 'littleYGZ') +
-            this._text('角色卡路径', 'agent.character_path', './character/[cute]MiaoWu.yaml');
+    obs() {
+        return this._check('启用OBS控制', 'obs.switch', true) +
+            this._text('WebSocket地址', 'obs.url', '127.0.0.1') +
+            this._num('端口', 'obs.port', 4455, 1, 65535, 1) +
+            this._password('密码', 'obs.password', '') +
+            this._text('唱歌背景（场景名=音乐路径，JSON格式）', 'obs.song_background', '');
+    },
+
+    vtuber() {
+        return this._check('启用 VTuber 控制', 'emote.switch', false) +
+            this._text('WebSocket 地址', 'emote.vtuber_websocket', '127.0.0.1:8001') +
+            this._text('插件名称', 'emote.vtuber_pluginName', '') +
+            this._text('插件开发者', 'emote.vtuber_pluginDeveloper', '') +
+            this._text('认证令牌', 'emote.vtuber_authenticationToken', '');
     },
 
     minecraft() {
         return this._check('启用 Minecraft 日志读取', 'minecraft.enabled', false) +
             this._text('日志文件路径', 'minecraft.log_path', '') +
             this._text('编码', 'minecraft.encoding', 'utf-8') +
-            this._num('检查间隔（秒）', 'minecraft.check_interval', 5, 1, 30, 1) +
-            this._check('使用玩家名作为 UID', 'minecraft.use_player_uid', false);
-    },
-
-    character() {
-        const cards = this._val('character_cards', []);
-        let h = '<p style="color:#888;font-size:13px;margin-bottom:12px;">角色卡文件存放在 ./character 目录下</p>';
-        cards.forEach((card, i) => {
-            h += `<div style="border:1px solid var(--pink-soft);border-radius:12px;padding:12px;margin-bottom:12px;">
-                <strong>${card.file || '未知'}</strong>
-                <div class="form-group" style="margin-top:8px;">
-                    <label>触发关键词（逗号分隔）</label>
-                    <input type="text" data-path="character_cards.${i}.keywords" value="${(card.keywords || []).join(', ')}">
-                </div>
-                <div class="form-group">
-                    <label>权重</label>
-                    <input type="number" data-path="character_cards.${i}.weight" value="${card.weight || 1}" min="0.1" max="10" step="0.1">
-                </div>
-                <div class="form-group">
-                    <label>Token策略</label>
-                    <select data-path="character_cards.${i}.token_strategy">
-                        <option value="chat" ${card.token_strategy === 'chat' ? 'selected' : ''}>chat</option>
-                        <option value="smart" ${card.token_strategy === 'smart' ? 'selected' : ''}>smart</option>
-                        <option value="normal" ${card.token_strategy === 'normal' ? 'selected' : ''}>normal</option>
-                    </select>
-                </div>
-            </div>`;
-        });
-        return h;
-    },
-
-    sing() {
-        return `<p style="color:#888;font-size:13px;margin-bottom:12px;">配置唱歌模块的触发关键词</p>`;
+            this._num('检查间隔（秒）', 'minecraft.check_interval', 5, 1, 60, 1) +
+            this._check('使用玩家名作为 UID', 'minecraft.use_player_uid', false) +
+            this._text('固定 UID', 'minecraft.uid_fixed', 'littleYGZ') +
+            this._text('固定用户名', 'minecraft.username_fixed', 'YGZ醒脑片') +
+            this._check('在提示词中包含玩家名', 'minecraft.include_player_name_in_prompt', true) +
+            this._list('玩家白名单（逗号分隔，空=不过滤）', 'minecraft.filter_players', []) +
+            this._check('忽略自己发送的消息', 'minecraft.ignore_self_messages', false);
     },
 
     tts() {
-        return Sovits.renderPanel();
+        return this._select('语音合成引擎', 'speech.select', [{value:'gpt-sovits',label:'GPT-SoVITS'}], 'gpt-sovits') +
+            this._text('GPT-SoVITS 服务地址', 'speech.gpt-sovits.gpt_sovits_url', 'http://127.0.0.1:9880') +
+            this._text('输出目录', 'speech.output_dir', './output') +
+            this._num('音量', 'speech.volume', 1.0, 0, 2, 0.1) +
+            this._num('合成线程数', 'speech.synth_workers', 2, 1, 8, 1) +
+            this._select('打断模式', 'speech.interrupt.mode', [{value:'pipeline',label:'pipeline'},{value:'keyboard',label:'keyboard'},{value:'off',label:'off'}], 'pipeline') +
+            this._text('打断按键', 'speech.interrupt.key', 'f8') +
+            this._num('打断轮询间隔(秒)', 'speech.interrupt.poll_interval', 0.1, 0.01, 1, 0.01) +
+            Sovits.renderPanel();
     },
 
     collectValues() {
@@ -271,7 +190,7 @@ const Config = {
         return updates;
     },
 
-   applyUpdates(updates, target) {
+    applyUpdates(updates, target) {
         for (const { path, value } of updates) {
             const parts = path.split('.');
             let current = target;
@@ -284,8 +203,13 @@ const Config = {
                 current = current[p];
             }
             const last = parts[parts.length - 1];
-            if (path.startsWith('character_cards.') && last === 'keywords' && typeof value === 'string') {
-                current[last] = value.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+            // 列表类型字段：逗号/换行分隔后存为数组
+            if (typeof value === 'string' && (
+                path === 'sensevoice.target_speakers' ||
+                path === 'sensevoice.hotwords' ||
+                path === 'minecraft.filter_players'
+            )) {
+                current[last] = value.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
             } else {
                 current[last] = value;
             }

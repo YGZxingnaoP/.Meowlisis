@@ -16,13 +16,7 @@ from func.obs.obs_init import ObsInit
 from func.vtuber.emote_oper import EmoteOper
 from func.tts.tts_core import TTsCore
 from func.llm.llm_core import LLmCore
-from func.sing.sing_core import SingCore
 from func.vtuber.action_oper import ActionOper
-from func.image.image_core import ImageCore
-from func.search.search_core import SearchCore
-from func.cmd.cmd_core import CmdCore
-from func.entrance.entrance_core import EntranceCore
-from func.vision.qwen_vision_core import QwenVisionCore
 from func.config.default_config import defaultConfig
 from func.sensevoice.sensevoice_core import SenseVoiceCore
 
@@ -63,9 +57,6 @@ sched1 = AsyncIOScheduler(timezone="Asia/Shanghai")
 # 1.b站直播间 2.api web
 mode = commonData.mode
 
-cmdCore = CmdCore()  #命令操作
-entranceCore = EntranceCore()  #入口操作
-
 # ============= B站直播间 =====================
 blivedmCore = BlivedmCore()
 # ============================================
@@ -86,18 +77,6 @@ llmCore = LLmCore()  # llm核心
 get_subtitle_server()
 # ============================================
 
-# ============= 搜图参数 =====================
-imageCore = ImageCore()
-# ============================================
-
-# ============= 搜文参数 =====================
-searchCore = SearchCore()
-# ============================================
-
-# ============= 唱歌参数 =====================
-singCore = SingCore()  # 唱歌核心
-# ============================================
-
 # ============= 语音合成 =====================
 ttsCore = TTsCore() # 语音核心
 # ============================================
@@ -108,28 +87,10 @@ actionOper = ActionOper()  # 动作核心
 emoteOper = EmoteOper() # 表情初始化
 # ========================================
 
-# ============= qwen_vision操作 =====================
-qwen_vision_core = None
-# ========================================
-
-# ============= Minecraft 日志读取 =====================
-mc_reader = MinecraftLogReader()
-mc_reader.load_config()
-mc_reader.start()
-# =====================================================
-
 log.info("--------------------")
 log.info("AI虚拟主播-启动成功！")
 log.info("--------------------")
 log.info("======================================")
-
-# 执行指令
-@app.route("/cmd", methods=["GET"])
-def http_cmd():
-    cmdstr = request.args["cmd"]
-    log.info(f'执行指令："{cmdstr}"')
-    cmdCore.cmd("all",cmdstr,"0", "http_cmd")
-    return jsonify({"status": "成功"})
 
 # http说话复读【postman调用】
 @app.route("/say", methods=["POST"])
@@ -148,14 +109,6 @@ def http_emote():
     emote_thread1.start()
     return jsonify({"status": "成功"})
 
-# http唱歌接口处理【fastgpt调用】
-@app.route("/http_sing", methods=["GET"])
-def http_sing():
-    songname = request.args["songname"]
-    username = "所有人"
-    singCore.http_sing(songname,username)
-    return jsonify({"status": "成功"})
-
 # http更换场景
 @app.route("/http_scene", methods=["GET"])
 def http_scene():
@@ -172,7 +125,7 @@ def input_msg():
     uid = data["uid"]  # 获取用户昵称
     user_name = data["username"]  # 获取用户昵称
     traceid = str(uuid.uuid4())
-    entranceCore.msg_deal(traceid, query, uid, user_name)
+    llmCore.msg_deal(traceid, query, uid, user_name)
     return jsonify({"status": "成功"})
 
 
@@ -199,23 +152,12 @@ def chat():
         jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"值为空\",\"content\": \"" + text + "\"})"
         return jsonStr
     # 消息处理
-    entranceCore.msg_deal(traceid, text, uid, username)
+    llmCore.msg_deal(traceid, text, uid, username)
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
     # =========end========
     if CallBackForTest is not None:
         jsonStr = CallBackForTest + jsonStr
     return jsonStr
-
-
-# 点播歌曲列表
-@app.route("/songlist", methods=["GET"])
-def songlist():
-    CallBackForTest = request.args.get("CallBack")
-    jsonstr = singCore.http_songlist(CallBackForTest)
-    if CallBackForTest is not None:
-        jsonstr = CallBackForTest + jsonstr
-    return jsonstr
-
 
 
 def main():
@@ -248,18 +190,13 @@ def main():
     # 获取全局配置
     config = defaultConfig().get_config()
 
-    # Qwen Vision 启动
-    qwen_vision_config = config.get('qwen_vision', {})
-    qwen_vision_enabled = qwen_vision_config.get('enabled', False)
-    if qwen_vision_enabled:
-        qwen_vision_core = QwenVisionCore()
-        log.info("已启用Qwen视觉独立后台线程")
-
     sensevoice_config = config.get('sensevoice', {})
 
     # 优先使用 SenseVoice（如果启用）
     if sensevoice_config.get('enabled', False):
-        asr_core = SenseVoiceCore()   # 构造函数会自动读取配置
+        from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
+        sensevoice_bridge = SenseVoiceLLMBridge()
+        asr_core = SenseVoiceCore(callback=sensevoice_bridge.send_to_llm)
         asr_core.start()
         log.info("已启用 SenseVoice 语音识别后台线程（高精度流式+声纹）")
 
@@ -281,20 +218,8 @@ def main():
         sched1.add_job(func=llmCore.check_answer, trigger="interval", seconds=1, id="answer", max_instances=100)
         # tts语音合成
         sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=1, id="tts", max_instances=1000)
-        # 搜索资料
-        sched1.add_job(func=searchCore.check_text_search, trigger="interval", seconds=1, id="text_search", max_instances=50)
-        # 搜图
-        sched1.add_job(func=imageCore.check_img_search, trigger="interval", seconds=1, id="img_search", max_instances=50)
-        # 唱歌转换
-        sched1.add_job(func=singCore.check_sing, trigger="interval", seconds=1, id="sing", max_instances=50)
-        # 歌曲清单播放
-        sched1.add_job(func=singCore.check_playSongMenuList, trigger="interval", seconds=1, id="playSongMenuList", max_instances=50)
         # 时间判断场景[白天黑夜切换]
         sched1.add_job(func=actionOper.check_scene_time, trigger="cron", hour="6,17,18", id="scene_time")
-        # 欢迎语
-        sched1.add_job(func=llmCore.check_welcome_room, trigger="interval", seconds=20, id="welcome_room", max_instances=50)
-        #语音缓冲
-        sched1.add_job(func=entranceCore.check_idle, trigger="interval", seconds=1, id="check_idle", max_instances=1)
         sched1.start()
 
         # 开启web

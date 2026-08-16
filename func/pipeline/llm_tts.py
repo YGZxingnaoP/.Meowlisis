@@ -14,8 +14,8 @@ class LLMTtsBridge:
     def send_to_answer_queue(self, llm_data, text: str, traceid: str,
                              seg_index: int = 0, total_segments: int = 1,
                              chat_status: str = "end", question: str = ""):
-        """将文本片段推送到 TTS 回答队列"""
-        if not text:
+        """将文本片段推送到 TTS 回答队列（空文本 + end 作为结束标记仍发送）"""
+        if not text and chat_status != "end":
             return
         json_msg = {
             "voiceType": "chat",

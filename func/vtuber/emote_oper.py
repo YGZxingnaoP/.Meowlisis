@@ -14,7 +14,7 @@ class EmoteOper:
     vtuberData = VtuberData()
 
     def __init__(self):
-        self.ws = VtuberInit().get_ws()
+        self.vtuber = VtuberInit()
 
     # 文本识别表情内容
     # "content":语音情感,"key":按键名称,"num":执行,第几个字符开始执行表情,
@@ -130,23 +130,16 @@ class EmoteOper:
         if num > 0:
             start = round(num * interval, 2)
             time.sleep(start)
-            jstr = {
-                "apiName": "VTubeStudioPublicAPI",
-                "apiVersion": "1.0",
-                "requestID": "SomeID11",
-                "messageType": "HotkeyTriggerRequest",
-                "data": {"hotkeyID": key},
-            }
-            data = json.dumps(jstr)
-            # vtuber执行表情展示
-            try:
-                self.ws.send(data)
-            except Exception as e:
-                error = f"【表情发送】发生了异常：{e}"
-                self.log.exception(error)
-                if "Connection is already closed" in error:
-                    VtuberInit.delInstance()
-                    self.ws = VtuberInit().get_ws()
+        jstr = {
+            "apiName": "VTubeStudioPublicAPI",
+            "apiVersion": "1.0",
+            "requestID": "SomeID11",
+            "messageType": "HotkeyTriggerRequest",
+            "data": {"hotkeyID": key},
+        }
+        data = json.dumps(jstr)
+        # vtuber执行表情展示（send 内部处理连接等待与异常）
+        self.vtuber.send(data)
 
     # 感情值判断
     def mood(self, emotion):

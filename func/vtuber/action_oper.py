@@ -10,7 +10,6 @@ from func.tools.string_util import StringUtil
 from func.tools.singleton_mode import singleton
 from func.gobal.data import VtuberData
 from func.gobal.data import LLmData
-from func.gobal.data import SingData
 from func.gobal.data import TTsData
 
 @singleton
@@ -20,7 +19,6 @@ class ActionOper:
 
     vtuberData = VtuberData()  # vtuber数据
     llmData = LLmData()  # llm数据
-    singData = SingData()  # 唱歌数据
     ttsData = TTsData()  # 语音数据
 
     # 表情
@@ -28,71 +26,6 @@ class ActionOper:
 
     def __init__(self):
         self.obs = ObsInit().get_ws()
-
-    def auto_swing(self):
-        self.vtuberData.auto_swing_lock.acquire()
-        # 触发器-设置开始摇摆: 停止摇摆+（唱歌中 或者 聊天中）= 可以设置摇摆动作
-        if self.vtuberData.swing_motion == 2 and (self.singData.is_singing == 1 or self.ttsData.is_tts_ready == False):
-            self.log.info(f"进入摇摆状态:{self.vtuberData.swing_motion},{self.singData.is_singing},{self.ttsData.is_tts_ready}")
-            self.vtuberData.swing_motion = 1
-        else:
-            self.vtuberData.auto_swing_lock.release()
-            return
-        # 监听停止摇摆线程
-        stop_emote_thread = Thread(target=self.stop_motion)
-        stop_emote_thread.start()
-        self.vtuberData.auto_swing_lock.release()
-
-        # 可用的摇摆表情 ID（根据你的表情列表设置）
-        swing_keys = ["ON", "stareyes", "shy"]
-        # 为每个表情设置不同的停留时间（秒），使摇摆看起来自然
-        swing_durations = {
-            "ON": 24,
-            "stareyes": 21,
-            "shy": 30
-        }
-
-        # 执行器-循环摇摆：唱歌中 或者 说话中 都会摇摆
-        while self.vtuberData.swing_motion == 1 and (self.singData.is_singing == 1 or self.ttsData.is_tts_ready == False):
-            # 随机选择一个表情
-            key = random.choice(swing_keys)
-            endwait = swing_durations.get(key, 25)
-
-            # 构造表情数据
-            emote_show_json = [{
-                "content": "happy",
-                "key": key,
-                "num": 1,
-                "timesleep": 0,
-                "donum": 0,
-                "endwait": endwait
-            }]
-
-            self.log.info(f"执行摇摆：{emote_show_json}")
-            emote_show_thread = Thread(target=self.emoteOper.emote_show, args=(emote_show_json,))
-            emote_show_thread.start()
-
-            # 等待表情播放完成，期间检查是否需要停止
-            while endwait > 0:
-                time.sleep(1)
-                endwait -= 1
-                # 唱歌完毕并且聊天完毕：停止摇摆动作
-                if self.singData.is_singing == 2 and self.ttsData.is_tts_ready == True:
-                    self.vtuberData.swing_motion = 2
-                    self.log.info(f"强制停止摇摆：{self.vtuberData.swing_motion}")
-                    break
-
-        self.vtuberData.swing_motion = 2
-        self.log.info(f"结束摇摆")
-
-    # 停止动作
-    def stop_motion(self):
-        while self.vtuberData.swing_motion == 1:
-            time.sleep(1)
-        self.log.info(f"静止：{self.vtuberData.swing_motion}")
-        # 发送一个空表情或直接触发静止动作（如果没有静止热键，可以注释掉）
-        # 这里假设 "ON" 可以当作中性表情，或者你可以自己定义
-        self.emoteOper.emote_ws(1, 0, "ON")
 
     # 场景切换
     def changeScene(self, sceneName):
@@ -109,8 +42,6 @@ class ActionOper:
                 else:
                     self.obs.play_video("背景音乐", song)
                 return True
-            else:
-                self.llmData.AnswerList.put(f"晚上{self.llmData.Ai_Name}不敢过去{sceneName}哦")
         return False
 
     # 判断每一种时间段允许移动的场景

@@ -46,17 +46,10 @@ const App = {
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic() },
             'llm': { title: 'LLM 设置', fn: () => Config.llm() },
-            'memory': { title: '记忆设置', fn: () => Config.memory() },
-            'visionSetting': { title: '视觉设置', fn: () => Config.vision() },
-            'search': { title: '搜索设置', fn: () => Config.search() },
-            'response': { title: '响应设置', fn: () => Config.response() },
+            'sensevoice': { title: 'SenseVoice 设置', fn: () => Config.sensevoice() },
             'obs': { title: 'OBS 设置', fn: () => Config.obs() },
             'vtuber': { title: 'VTuber 设置', fn: () => Config.vtuber() },
-            'sensevoice': { title: 'SenseVoice 设置', fn: () => Config.sensevoice() },
-            'agent': { title: 'Agent 设置', fn: () => Config.agent() },
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
-            'character': { title: '角色卡管理', fn: () => Config.character() },
-            'sing': { title: '唱歌模块', fn: () => Config.sing() },
             'tts': { title: 'TTS 设置', fn: () => Config.tts() }
         };
 

@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # func/pipeline/pipeline_core.py
-# Pipeline 集成文件，汇总所有模块间传递桥接
+# Pipeline 集成入口，汇总所有模块间传递桥接
 
-from func.pipeline.llm_memory import LLMMemoryBridge
-from func.pipeline.llm_tts import LLMTtsBridge
 from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
-from func.pipeline.memory_llm import MemoryLLMBridge
+from func.pipeline.llm_tts import LLMTtsBridge
+from func.pipeline.system_prompt import SystemPromptBridge
+from func.pipeline.llm_emotion import LLMEmotionBridge
+from func.pipeline.danmuku_llm import DanmukuLLMBridge
+from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
 __all__ = ['PipelineCore']
 
@@ -14,7 +16,9 @@ class PipelineCore:
     """Pipeline 集成入口，汇总所有模块间传递桥接"""
 
     def __init__(self):
-        self.llm_memory = LLMMemoryBridge()
-        self.llm_tts = LLMTtsBridge()
         self.sensevoice_llm = SenseVoiceLLMBridge()
-        self.memory_llm = MemoryLLMBridge()
+        self.llm_tts = LLMTtsBridge()
+        self.system_prompt = SystemPromptBridge()
+        self.llm_emotion = LLMEmotionBridge()
+        self.danmuku_llm = DanmukuLLMBridge()
+        self.sensevoice_tts = SenseVoiceTtsBridge()

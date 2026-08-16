@@ -11,16 +11,9 @@ const Orbit = {
 
     outerPlanets: [
         { id: 'basic', label: '基本', tooltip: '基本设置', type: 'outer' },
-        { id: 'memory', label: '记忆', tooltip: '记忆设置', type: 'outer' },
-        { id: 'vision', label: '视觉', tooltip: '视觉设置', type: 'outer' },
-        { id: 'search', label: '搜索', tooltip: '搜索设置', type: 'outer' },
-        { id: 'response', label: '响应', tooltip: '响应设置', type: 'outer' },
         { id: 'obs', label: 'OBS', tooltip: 'OBS 服务设置', type: 'outer' },
         { id: 'vtuber', label: 'VTuber', tooltip: 'VTuber 设置', type: 'outer' },
-        { id: 'agent', label: 'Agent', tooltip: 'Agent 设置', type: 'outer' },
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 设置', type: 'outer' },
-        { id: 'character', label: '角色卡', tooltip: '角色卡管理', type: 'outer' },
-        { id: 'sing', label: '唱歌', tooltip: '唱歌模块', type: 'outer' },
         { id: 'tts', label: 'TTS', tooltip: 'TTS 设置', type: 'outer' }
     ],
 
