@@ -3,7 +3,6 @@ from func.config.default_config import defaultConfig
 import queue
 import threading
 from func.tools.singleton_mode import singleton
-from func.tools.file_util import FileUtil
 
 # 加载配置
 config = defaultConfig().get_config()

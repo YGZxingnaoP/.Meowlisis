@@ -1,4 +1,4 @@
-from func.tools.string_util import StringUtil
+from func.vtuber.string_util import StringUtil
 import random
 import time
 import json

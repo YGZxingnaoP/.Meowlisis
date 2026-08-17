@@ -1,12 +1,10 @@
 # 吟美Api web
 import time
 import uuid
-import asyncio, aiohttp
+import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from threading import Thread
 from flask import Flask, jsonify, request
-from flask import render_template
-from flask import send_from_directory
 from flask_apscheduler import APScheduler
 
 from func.obs.obs_websocket import VideoControl
@@ -16,6 +14,8 @@ from func.obs.obs_init import ObsInit
 from func.vtuber.emote_oper import EmoteOper
 from func.tts.tts_core import TTsCore
 from func.llm.llm_core import LLmCore
+from func.catbrain.prompt_builder import MeowPromptBuilder
+from func.pipeline.system_prompt import SystemPromptBridge
 from func.vtuber.action_oper import ActionOper
 from func.config.default_config import defaultConfig
 from func.sensevoice.sensevoice_core import SenseVoiceCore
@@ -23,7 +23,6 @@ from func.sensevoice.sensevoice_core import SenseVoiceCore
 from func.danmaku.blivedm.blivedm_core import BlivedmCore
 from func.gobal.data import VtuberData
 from func.gobal.data import CommonData
-from func.gobal.data import BiliDanmakuData
 from func.minecraft.logreader import MinecraftLogReader
 
 # 设置控制台日志
@@ -77,6 +76,14 @@ llmCore = LLmCore()  # llm核心
 get_subtitle_server()
 # ============================================
 
+# ============= CatBrain 角色灵魂 =====================
+catbrain_builder = MeowPromptBuilder()
+SystemPromptBridge().register_builder(catbrain_builder)
+# 价值观 12 小时累计计时器（中断后从 .temp 恢复继续累计）
+from func.catbrain.CatValues.values_timer import MeowValuesTimer
+MeowValuesTimer().start()
+# ============================================
+
 # ============= 语音合成 =====================
 ttsCore = TTsCore() # 语音核心
 # ============================================
@@ -122,10 +129,9 @@ def http_scene():
 def input_msg():
     data = request.json
     query = data["msg"]  # 获取弹幕内容
-    uid = data["uid"]  # 获取用户昵称
     user_name = data["username"]  # 获取用户昵称
     traceid = str(uuid.uuid4())
-    llmCore.msg_deal(traceid, query, uid, user_name)
+    llmCore.msg_deal(traceid, query, user_name)
     return jsonify({"status": "成功"})
 
 
@@ -142,7 +148,6 @@ def chatreply():
 @app.route("/chat", methods=["POST", "GET"])
 def chat():
     CallBackForTest = request.args.get("CallBack")
-    uid = request.args.get("uid")
     username = request.args.get("username")
     text = request.args.get("text")
     # =========处理消息开始========
@@ -152,7 +157,7 @@ def chat():
         jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"值为空\",\"content\": \"" + text + "\"})"
         return jsonStr
     # 消息处理
-    llmCore.msg_deal(traceid, text, uid, username)
+    llmCore.msg_deal(traceid, text, username)
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
     # =========end========
     if CallBackForTest is not None:

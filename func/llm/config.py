@@ -12,7 +12,8 @@ class LLMConfig:
 
     def __init__(self):
         # 读取 llm 配置节点，缺失时回退到空字典
-        cfg = defaultConfig().get_config().get('llm', {})
+        root = defaultConfig().get_config()
+        cfg = root.get('llm', {})
 
         # ========== 模型类型 ==========
         # 当前仅支持 deepseek / aliyun 两种流式后端

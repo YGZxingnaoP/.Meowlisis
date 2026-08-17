@@ -19,7 +19,6 @@ class TTSConfig:
         # ===== GPT-SoVITS =====
         gpt = speech.get("gpt-sovits", {})
         self.gpt_sovits_url = gpt.get("gpt_sovits_url", "http://127.0.0.1:9880")
-        self.character_refs = gpt.get("character_refs", [])
 
         # ===== 输出与播放 =====
         self.output_dir = speech.get("output_dir", "./output")

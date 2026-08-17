@@ -148,7 +148,7 @@ class SenseVoiceManager:
             await asyncio.sleep(self.config.merge_delay)
             full_text = self.pending_texts.pop(key, "").strip()
             if full_text:
-                await self._send_to_llm(full_text, key, self.config.uid)
+                await self._send_to_llm(full_text, key)
         except asyncio.CancelledError:
             pass
         finally:
@@ -156,15 +156,15 @@ class SenseVoiceManager:
             if self.pending_tasks.get(key) is asyncio.current_task():
                 self.pending_tasks.pop(key, None)
 
-    async def _send_to_llm(self, text: str, username: str, uid: str):
+    async def _send_to_llm(self, text: str, username: str):
         """发送识别文本到 LLM"""
         if self.callback:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.callback, text, uid, username)
+            await loop.run_in_executor(None, self.callback, text, username)
             return
 
         url = f"{self.api_base}/msg"
-        payload = {"msg": text, "uid": uid, "username": username}
+        payload = {"msg": text, "username": username}
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as resp:

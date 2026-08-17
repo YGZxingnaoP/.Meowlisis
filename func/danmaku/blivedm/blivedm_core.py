@@ -123,7 +123,7 @@ class BlivedmCore:
         # 弹幕获取
         def _on_open_live_danmaku(self, client: blivedm.OpenLiveClient, message: open_models.DanmakuMessage):
             self.BlivedmCore.log.info(f'{message.uname}：{message.msg}')
-            self.BlivedmCore.danmuku_llm.send_to_llm(message.msg, message.open_id, message.uname)
+            self.BlivedmCore.danmuku_llm.send_to_llm(message.msg, message.uname)
 
         # 赠送礼物
         def _on_open_live_gift(self, client: blivedm.OpenLiveClient, message: open_models.GiftMessage):

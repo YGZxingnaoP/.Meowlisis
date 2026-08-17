@@ -1,0 +1,12 @@
+{
+  "喵呜-活泼": {
+    "audio": "character/ref_audio/cute.wav",
+    "text": "哈喽大家好，我是你们的汤圆妹妹。这次不是替身，也没有翻版。",
+    "lang": "zh"
+  },
+  "喵呜-温柔": {
+    "audio": "character/ref_audio/smart.wav",
+    "text": "小黑的移动到底是通过瞬移，还是通过传送实现的呢？",
+    "lang": "zh"
+  }
+}

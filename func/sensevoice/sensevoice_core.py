@@ -19,7 +19,7 @@ from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 class SenseVoiceCore:
     """SenseVoice 客户端核心，编排各子组件完成识别链路"""
 
-    def __init__(self, callback: Optional[Callable[[str, str, str], None]] = None):
+    def __init__(self, callback: Optional[Callable[[str, str], None]] = None):
         self.log = DefaultLog().getLogger()
         self.config = SenseVoiceConfig()
         self.enabled = self.config.enabled

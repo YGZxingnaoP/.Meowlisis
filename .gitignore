@@ -29,14 +29,17 @@ config.yml
 *.png
 必读文件/
 
-#mem0模型
-mem0model-large/
-mem0model-small/
-mem0_data/
-
 #内置Sovits
 .Sovits/FFmpeg
 .Sovits/GPT_SoVITS
 .Sovits/GPT_weights_v2Pro
 .Sovits/SoVITS_weights_v2Pro
 .Sovits/tools
+
+#CatBrain 运行时数据
+.temp/
+character/memory/
+character/abstract_memory/
+
+#CatBrain 角色数据（含身份证号、用户隐私，不入库）
+character/info/

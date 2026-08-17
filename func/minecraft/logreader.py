@@ -29,8 +29,7 @@ class MinecraftLogReader:
         self.log_path = mc_cfg.get('log_path', '')
         self.encoding = mc_cfg.get('encoding', 'utf-8')
         self.check_interval = mc_cfg.get('check_interval', 5.0)
-        self.use_player_uid = mc_cfg.get('use_player_uid', False)
-        self.uid_fixed = mc_cfg.get('uid_fixed', 'MinecraftSever')
+        self.use_player_name = mc_cfg.get('use_player_name', False)
         self.username_fixed = mc_cfg.get('username_fixed', 'MinecraftSever')
         self.include_player_name_in_prompt = mc_cfg.get('include_player_name_in_prompt', True)
         self.filter_players = mc_cfg.get('filter_players', [])
@@ -135,13 +134,8 @@ class MinecraftLogReader:
             return
         self.last_sent_msg = msg
 
-        # 根据配置决定 uid 和 username
-        if self.use_player_uid:
-            uid = player_name
-            username = player_name
-        else:
-            uid = self.uid_fixed
-            username = self.username_fixed
+        # 根据配置决定 username（使用玩家名或固定用户名）
+        username = player_name if self.use_player_name else self.username_fixed
 
         # 构造 prompt
         if self.include_player_name_in_prompt:
@@ -153,7 +147,6 @@ class MinecraftLogReader:
         llm_json = {
             "traceid": traceid,
             "prompt": full_msg,
-            "uid": uid,
             "username": username
         }
         self.llm_data.QuestionList.put(llm_json)

@@ -6,7 +6,7 @@ from func.log.default_log import DefaultLog
 from func.vtuber.emote_oper import EmoteOper
 from func.obs.obs_init import ObsInit
 from func.obs.obs_websocket import ObsWebSocket, VideoStatus, VideoControl
-from func.tools.string_util import StringUtil
+from func.vtuber.string_util import StringUtil
 from func.tools.singleton_mode import singleton
 from func.gobal.data import VtuberData
 from func.gobal.data import LLmData
@@ -93,7 +93,7 @@ class ActionOper:
             self.obs.control_video("背景音乐", VideoControl.RESTART.value)
 
     # 切换场景入口处理
-    def msg_deal_scene(self, traceid, query, uid, user_name):
+    def msg_deal_scene(self, traceid, query, user_name):
         # 切换场景
         text = ["切换", "进入"]
         num = StringUtil.is_index_contain_string(text, query)
@@ -107,7 +107,7 @@ class ActionOper:
         return False
 
     # 换装入口处理
-    def msg_deal_clothes(self, traceid, query, uid, user_name):
+    def msg_deal_clothes(self, traceid, query, user_name):
         text = ["换装", "换衣服", "穿衣服"]
         num = StringUtil.is_index_contain_string(text, query)
         if num > 0:

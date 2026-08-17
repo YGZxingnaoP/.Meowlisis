@@ -36,7 +36,7 @@ class AliyunLLM:
             self.client = None
 
     def _build_params(self, messages: List[Dict[str, str]], tools: Optional[List[Dict]] = None,
-                      options: Optional[Dict] = None) -> Dict:
+                      options: Optional[Dict] = None, tool_choice=None) -> Dict:
         """构建请求参数"""
         params = {
             "model": options.get("model", self.model) if options else self.model,
@@ -49,19 +49,22 @@ class AliyunLLM:
         # 附加 tools（function calling）
         if tools:
             params["tools"] = tools
+        # 强制指定工具（function calling）
+        if tool_choice:
+            params["tool_choice"] = tool_choice
         # 默认关闭思考模式（qwen3 系列通过 enable_thinking 控制）
         if not self.enable_thinking:
             params["extra_body"] = {"parameters": {"enable_thinking": False}}
         return params
 
     def chat_stream(self, messages: List[Dict[str, str]], tools: Optional[List[Dict]] = None,
-                    options: Optional[Dict] = None):
+                    options: Optional[Dict] = None, tool_choice=None):
         """流式对话，返回 OpenAI 流式响应迭代器（支持 tools 触发 function calling）"""
         if not self.client:
             self.log.error("阿里云百炼客户端不可用")
             return iter([])
 
-        params = self._build_params(messages, tools=tools, options=options)
+        params = self._build_params(messages, tools=tools, options=options, tool_choice=tool_choice)
         try:
             return self.client.chat.completions.create(**params)
         except Exception as e:

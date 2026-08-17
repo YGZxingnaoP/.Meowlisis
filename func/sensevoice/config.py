@@ -26,7 +26,6 @@ class SenseVoiceConfig:
         self.itn = cfg.get('itn', True)
 
         # 用户身份与声纹
-        self.uid = cfg.get('uid', 'sensevoice_user')
         self.username = cfg.get('username', '访客')
         self.target_speakers = cfg.get('target_speakers', [])
         self.speaker_threshold = cfg.get('speaker_threshold', 0.2)

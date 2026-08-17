@@ -69,9 +69,6 @@ class TTsCore:
         self.paused = False
         self.pause_lock = Lock()
 
-        # 当前角色卡
-        self.current_character = None
-
         # 合成线程池
         self.tts_chat_say_pool = ThreadPoolExecutor(
             max_workers=self.config.synth_workers,
@@ -88,12 +85,6 @@ class TTsCore:
         """线程安全地读取暂停状态"""
         with self.pause_lock:
             return self.paused
-
-    def set_current_character(self, char_name: str):
-        """设置当前激活的角色卡名称"""
-        self.current_character = char_name
-        if hasattr(self.sovits, 'set_character'):
-            self.sovits.set_character(char_name)
 
     def pause(self):
         """暂停：停止播放并清空队列，阻止新任务"""
@@ -228,9 +219,10 @@ class TTsCore:
         while tracker["next"] in tracker["buffer"]:
             idx = tracker["next"]
             file_path, reply_json, is_end = tracker["buffer"].pop(idx)
-            self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}/{tracker['total']}")
             self.subtitle.put(reply_json)
-            self.play_queue.put((file_path, reply_json, is_end))
+            if file_path is not None:
+                self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}/{tracker['total']}")
+                self.play_queue.put((file_path, reply_json, is_end))
             tracker["next"] += 1
 
             # total 未知且当前段为结束段时清理
@@ -285,8 +277,12 @@ class TTsCore:
         # 空文本 + end 作为结束标记
         if text == "" and chat_status == "end":
             reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": ""}
-            self.subtitle.put(reply_json)
-            self.log.info(reply_json)
+            if is_segmented:
+                # 分段场景：空结束段仅用于清理顺序缓冲，不入播放队列
+                self._add_segment(traceid, seg_index, total_segments, None, reply_json, is_end=True)
+            else:
+                self.subtitle.put(reply_json)
+                self.log.info(reply_json)
             return
 
         # 识别表情并累计感情值
@@ -300,11 +296,11 @@ class TTsCore:
         # 过滤影响合成的特殊字符
         text = re.sub(r"(《|》|（|）)", "", text)
 
-        # 解析参考音频角色
-        character = self._resolve_character()
+        # 获取当前角色卡绑定的参考音频配置
+        ref_audio = self._resolve_ref_audio()
 
         # 合成语音
-        status = self.sovits.get_sovits(filename, text, character)
+        status = self.sovits.get_sovits(filename, text, ref_audio)
         if status == 0:
             return
         if question != "":
@@ -326,25 +322,13 @@ class TTsCore:
             self.subtitle.put(reply_json)
             self.play_queue.put((audio_file, reply_json, is_last))
 
-    def _resolve_character(self):
-        """从角色提示词/当前角色卡解析参考音频角色名"""
-        # 1. 从 system_prompt 获取角色提示词（未实现，先保留接口）
-        prompt = ""
+    def _resolve_ref_audio(self) -> dict:
+        """从 system_prompt 获取当前角色卡绑定的参考音频配置"""
         try:
-            prompt = self.system_prompt.get_system_prompt() or ""
+            return self.system_prompt.get_ref_audio() or {}
         except Exception:
-            pass
-        character = self.sovits.resolve_character(prompt)
-        if character:
-            return character
-        # 2. 使用当前角色卡
-        if self.current_character:
-            return self.current_character
-        # 3. 随机角色
-        character = self.sovits.get_random_character()
-        if character:
-            return character
-        return None
+            self.log.exception("获取参考音频配置失败")
+            return {}
 
     def check_tts(self):
         """定时轮询回答队列，提交语音合成任务"""
