@@ -56,10 +56,10 @@ class MeowUpdateAbstractMemory:
         return math.ceil(raw / 100.0) * 100
 
     def _get_character_prompt(self) -> str:
-        """延迟获取角色提示词（方法内导入，避免模块导入期循环依赖）"""
+        """延迟获取角色卡+价值观提示词（方法内导入，避免模块导入期循环依赖）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            return SystemPromptBridge().get_character_prompt() or ""
+            return SystemPromptBridge().get_persona_prompt() or ""
         except Exception:
             return ""
 

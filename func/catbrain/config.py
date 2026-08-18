@@ -31,6 +31,8 @@ class MeowCatBrainConfig:
         self.summary_rounds = am.get('summary_rounds', 30)
         # 摘要提示词检索时加载的摘要条数上限
         self.summary_top_limit = am.get('summary_top_limit', 20)
+        # 当前话题更新间隔（秒）
+        self.topic_update_interval = am.get('topic_update_interval', 60)
         # 摘要独立后端类型：deepseek / aliyun
         self.abstract_llm_type = am.get('llm_type', 'deepseek')
 

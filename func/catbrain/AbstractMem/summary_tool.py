@@ -60,6 +60,27 @@ class MeowSummaryTool:
         """构建强制使用摘要工具的 tool_choice"""
         return "required"
 
+    def build_topic_tool(self) -> List[Dict]:
+        """构建话题决策工具定义"""
+        return [{
+            "type": "function",
+            "function": {
+                "name": "decide_topic",
+                "description": "根据最近对话内容判断当前话题，从枚举中选择一个",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string", "enum": self.TOPICS, "description": "当前话题"}
+                    },
+                    "required": ["topic"]
+                }
+            }
+        }]
+
+    def force_topic_tool_choice(self) -> Dict:
+        """构建强制使用话题决策工具的 tool_choice"""
+        return {"type": "function", "function": {"name": "decide_topic"}}
+
     def build_tags_attachment(self) -> str:
         """构建已有 tags 附件文本（随消息注入，供 AI 优先选择打标）"""
         tags = self.tag_store.load()

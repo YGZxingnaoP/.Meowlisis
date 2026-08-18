@@ -132,8 +132,7 @@ class MeowUpdateUserInfo:
         ]
         result = self._call_tool(messages)
         if not result:
-            self.log.error(f"用户信息分析更新失败，写回缓存: {username}")
-            self.userrecord.restore_content(username, content, count)
+            self.log.info(f"用户信息未更新（未调用工具或调用失败）: {username}")
             return
         result["name"] = username
         # AI 决策不改动时跳过写入
@@ -144,13 +143,12 @@ class MeowUpdateUserInfo:
             self._save(username, result)
 
     def _call_tool(self, messages) -> Optional[Dict]:
-        """调用 LLM 强制工具并解析 save_user_info 结果"""
+        """调用 LLM 自由工具并解析 save_user_info 结果"""
         llm = self._ensure_llm()
         if llm is None or not llm.client:
             self.log.error("用户记忆 LLM 不可用，跳过更新")
             return None
-        resp = llm.chat(messages, tools=self.tool.build_tools(),
-                        tool_choice=self.tool.force_tool_choice())
+        resp = llm.chat(messages, tools=self.tool.build_tools())
         if not resp or not resp.choices:
             self.log.error("用户记忆 LLM 无响应")
             return None

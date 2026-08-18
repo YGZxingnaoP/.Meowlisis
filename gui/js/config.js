@@ -202,7 +202,8 @@ const Config = {
         let h = this._section('记忆摘要 (abstract_mem)');
         h += this._num('摘要触发条数', 'catbrain.abstract_mem.summary_rounds', 30, 1, 500, 1,
             '这里指单条消息数（user/assistant 各算一条），与短期记忆的"轮数"不同：短期记忆一轮 = 用户 + AI 两条') +
-            this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 20, 1, 200, 1);
+            this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 20, 1, 200, 1) +
+            this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);
         h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="abstract_ds">DeepSeek</button>

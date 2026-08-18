@@ -32,6 +32,8 @@ class MeowUpdateValues:
         self.values_dir = os.path.join("character", "info", "values")
         self.latest_path = os.path.join(self.values_dir, "latest.json")
         self.unchecked_path = os.path.join(self.values_dir, "unchecked.json")
+        # 审查是否因未调用工具而需直接中止
+        self._review_abort = False
 
     def _ensure_llm(self):
         """懒加载价值观独立 LLM 客户端"""
@@ -43,10 +45,10 @@ class MeowUpdateValues:
         return self.llm
 
     def _get_persona_prompt(self) -> str:
-        """延迟获取完整角色身份提示词（角色卡+价值观，方法内导入避免循环依赖）"""
+        """延迟获取角色卡提示词（方法名沿用 persona，实际仅取角色卡，不含价值观）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            return SystemPromptBridge().get_persona_prompt() or ""
+            return SystemPromptBridge().get_character_prompt() or ""
         except Exception:
             return ""
 
@@ -134,7 +136,7 @@ class MeowUpdateValues:
         result[self.update_tool.LOCK_FIELD] = lock_value
 
     def _review(self, result: Dict, llm, current: Dict) -> Tuple[bool, str]:
-        """审查环节：调用审查 LLM 判断新价值观是否合理，返回(是否通过, 意见)"""
+        """审查环节：自由工具调用判断新价值观是否合理，返回(是否通过, 意见)"""
         instruction = self._load_prompt(
             "review_prompt.txt",
             "你是审查员，请审查价值观更新结果，调用 review_values 工具输出结论。")
@@ -148,8 +150,7 @@ class MeowUpdateValues:
             {"role": "user", "content": f"角色当前价值观：\n{json.dumps(current, ensure_ascii=False, indent=2)}"},
             {"role": "user", "content": f"待审查的新价值观：\n{json.dumps(result, ensure_ascii=False, indent=2)}"}
         ]
-        resp = llm.chat(messages, tools=self.review_tool.build_tools(),
-                        tool_choice=self.review_tool.force_tool_choice())
+        resp = llm.chat(messages, tools=self.review_tool.build_tools())
         if not resp or not resp.choices:
             self.log.error("审查 LLM 无响应，默认不通过")
             return False, "审查 LLM 无响应"
@@ -161,7 +162,10 @@ class MeowUpdateValues:
                     return bool(args.get("pass")), str(args.get("feedback", ""))
         except Exception:
             self.log.exception("解析审查工具调用失败")
-        return False, "审查结果解析失败"
+            return False, "审查结果解析失败"
+        # 未调用审查工具：算不通过且直接中止
+        self._review_abort = True
+        return False, ""
 
     def _revise(self, messages: List[Dict], feedback: str) -> Optional[Dict]:
         """将审查意见反馈给分析 LLM 进行修改并重新输出"""
@@ -202,7 +206,11 @@ class MeowUpdateValues:
         # ===== 一次审查（最多3次） =====
         review_messages = list(messages)
         for attempt in range(3):
+            self._review_abort = False
             passed, feedback = self._review(result, self._ensure_llm(), current)
+            if self._review_abort:
+                self.log.error("审查未调用工具，直接结束")
+                return False
             if passed:
                 break
             self.log.warning(f"一次审查不通过(第{attempt + 1}次): {feedback}")
@@ -225,7 +233,11 @@ class MeowUpdateValues:
             review_llm = MeowValuesReviewLLM()
             if review_llm.client:
                 for attempt in range(3):
+                    self._review_abort = False
                     passed, feedback = self._review(result, review_llm, current)
+                    if self._review_abort:
+                        self.log.error("审查未调用工具，直接结束")
+                        return False
                     if passed:
                         break
                     self.log.warning(f"二次审查不通过(第{attempt + 1}次): {feedback}")

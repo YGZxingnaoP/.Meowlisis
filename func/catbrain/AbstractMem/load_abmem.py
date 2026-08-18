@@ -4,12 +4,15 @@
 
 import os
 import json
+import time
 from typing import List, Dict
 
 from func.log.default_log import DefaultLog
 from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
+from func.catbrain.AbstractMem.summary_tool import MeowSummaryTool
 from func.toolbox.txt_reader.jieba_segment import MeowJiebaSegmentTool
+from func.pipeline.short_memory import ShortMemory
 
 
 class MeowLoadAbstractMemory:
@@ -19,7 +22,24 @@ class MeowLoadAbstractMemory:
         self.log = DefaultLog().getLogger()
         self.config = MeowCatBrainConfig()
         self.jieba_tool = MeowJiebaSegmentTool()
+        self.summary_tool = MeowSummaryTool()
+        self.short_memory = ShortMemory()
         self.meow_path = os.path.join("character", "abstract_memory", "meow.json")
+        # 当前话题缓存（内存单例，重启后从最新摘要回退）
+        self._topic_cache = ""
+        self._topic_cache_time = 0.0
+        self._llm = None
+
+    def _ensure_llm(self):
+        """懒加载摘要独立 LLM 客户端（话题决策复用）"""
+        if self._llm is None:
+            if self.config.abstract_llm_type == "aliyun":
+                from func.catbrain.AbstractMem.port.aliyun import MeowAbstractAliyunLLM
+                self._llm = MeowAbstractAliyunLLM()
+            else:
+                from func.catbrain.AbstractMem.port.deepseek import MeowAbstractDeepSeekLLM
+                self._llm = MeowAbstractDeepSeekLLM()
+        return self._llm
 
     def load(self) -> List[Dict]:
         """读取 meow.json 全部摘要记忆（缺失或损坏时返回空列表）"""
@@ -34,10 +54,51 @@ class MeowLoadAbstractMemory:
             return []
 
     def _current_topic(self, data: List[Dict]) -> str:
-        """取最新一条摘要的 topic 作为当前话题（保证单 topic 检索）"""
+        """当前话题：优先用缓存，过期后用短期记忆决策，失败回退到最新摘要"""
+        now = time.time()
+        if self._topic_cache and (now - self._topic_cache_time) < self.config.topic_update_interval:
+            return self._topic_cache
+        topic = self._decide_topic()
+        if topic:
+            self._topic_cache = topic
+            self._topic_cache_time = now
+            return topic
         if not data:
             return ""
         return str(data[-1].get("topic", "") or "")
+
+    def _decide_topic(self) -> str:
+        """用短期记忆强制工具调用决策当前话题（失败返回空）"""
+        llm = self._ensure_llm()
+        if llm is None or not llm.client:
+            return ""
+        records = self.short_memory.load()
+        if not records:
+            return ""
+        lines = []
+        for m in records[-20:]:
+            role = "用户" if m.get("role") == "user" else "AI"
+            lines.append(f"{role}：{m.get('content', '')}")
+        content = "\n".join(lines)
+        messages = [
+            {"role": "system", "content": "根据以下最近对话内容，判断当前对话的话题。"},
+            {"role": "user", "content": content},
+        ]
+        resp = llm.chat(messages, tools=self.summary_tool.build_topic_tool(),
+                        tool_choice=self.summary_tool.force_topic_tool_choice())
+        if not resp or not resp.choices:
+            return ""
+        try:
+            msg = resp.choices[0].message
+            for tc in (msg.tool_calls or []):
+                if tc.function.name == "decide_topic":
+                    args = json.loads(tc.function.arguments)
+                    topic = str(args.get("topic", "") or "").strip()
+                    if topic in self.summary_tool.TOPICS:
+                        return topic
+        except Exception:
+            self.log.exception("话题决策失败")
+        return ""
 
     def _tags_similarity(self, item: Dict, msg_words: set) -> float:
         """计算该条摘要前3个 tags 与当前消息的 jieba 关键词相似度"""
