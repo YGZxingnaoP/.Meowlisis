@@ -2,11 +2,8 @@
 # func/catbrain/prompt_builder.py
 # 完整系统提示词构建：仅按顺序拼接各模块 load 产出的 markdown 提示词
 
-import os
-import json
-
 from func.log.default_log import DefaultLog
-from func.gobal.data import LLmData
+from func.config.app_config import AppConfig
 from func.catbrain.CharacterCard.character_prompt import MeowCharacterPrompt
 from func.catbrain.CharacterCard.load_refaudio import MeowLoadRefAudio
 from func.catbrain.CatValues.load_values import MeowLoadValues
@@ -24,24 +21,15 @@ class MeowPromptBuilder:
         self.usrmem = MeowLoadUserMemory()
         self.abmem = MeowLoadAbstractMemory()
         self.ref_audio = MeowLoadRefAudio()
-        self.latest_emotion_path = os.path.join(".temp", "latest_emotion.json")
 
     def _current_emotion(self) -> str:
-        """读取当前情绪（来自 .temp/latest_emotion.json，缺失回退默认 happy）"""
-        try:
-            if os.path.exists(self.latest_emotion_path):
-                with open(self.latest_emotion_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    emotion = data.get("emotion")
-                    if emotion:
-                        return str(emotion)
-        except Exception:
-            pass
-        return "happy"
+        """读取当前情绪（来自 pipeline 情绪桥接）"""
+        from func.pipeline.llm_emotion import LLMEmotionBridge
+        return LLMEmotionBridge().get_emotion()
 
     def build_emotion(self) -> str:
         """构建当前情绪提示词（仅次于角色卡放置）"""
-        return f"现在{LLmData().Ai_Name}的情绪：{self._current_emotion()}"
+        return f"现在{AppConfig().ai_name}的情绪：{self._current_emotion()}"
 
     def build(self, username=None, current_message: str = "") -> str:
         """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→记忆摘要）"""
@@ -53,8 +41,7 @@ class MeowPromptBuilder:
             except Exception:
                 username = None
         parts = [
-            self.character_prompt.build(),
-            self.build_emotion(),
+            self.character_prompt.build(),  # 角色卡（已含当前情绪）
             self.values.build(),
             self.usrmem.build(username),
             self.abmem.build_prompt(current_message, username),

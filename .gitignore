@@ -32,9 +32,12 @@ config.yml
 #内置Sovits
 .Sovits/FFmpeg
 .Sovits/GPT_SoVITS
-.Sovits/GPT_weights_v2Pro
-.Sovits/SoVITS_weights_v2Pro
-.Sovits/tools
+.Sovits/GPT_weights_v2Pro/*.ckpt
+.Sovits/SoVITS_weights_v2Pro/*.pth
+
+#内置SenseVoice
+.SenseVoice/localmodels
+.SenseVoice/env
 
 #CatBrain 运行时数据
 .temp/

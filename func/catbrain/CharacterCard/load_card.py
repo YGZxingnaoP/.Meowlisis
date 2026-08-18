@@ -15,8 +15,8 @@ class MeowLoadCard:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = MeowCatBrainConfig()
-        # 文件名可配置，默认 prompt，兼容缺省 .json 后缀
-        filename = self.config.character_prompt_file or "prompt"
+        # 文件名可配置（character_card.card_file），默认 prompt，兼容缺省 .json 后缀
+        filename = self.config.character_card_file or "prompt"
         if not filename.endswith(".json"):
             filename += ".json"
         self.card_path = os.path.join("character", "info", "character_prompt", filename)

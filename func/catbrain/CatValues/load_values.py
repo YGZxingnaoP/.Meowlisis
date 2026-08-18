@@ -6,6 +6,7 @@ import os
 import json
 
 from func.log.default_log import DefaultLog
+from func.config.app_config import AppConfig
 
 
 class MeowLoadValues:
@@ -38,11 +39,11 @@ class MeowLoadValues:
             return {}
 
     def build(self) -> str:
-        """构建价值观 markdown 提示词（跳过空值，中文标签）"""
+        """构建价值观 markdown 提示词（跳过空值，中文标签，标题为「ai_name铭记在心」）"""
         data = self.load()
         if not data:
             return ""
-        lines = ["# 价值观"]
+        lines = [f"# {AppConfig().ai_name}铭记在心"]
         for key, label in self.FIELD_LABELS.items():
             value = str(data.get(key, "") or "").strip()
             if not value:

@@ -32,6 +32,9 @@ class GptSovits:
             print("缺少参考音频对应的参考文本，无法合成")
             return 0
 
+        # SoVITS 服务进程的 cwd 与主程序不同，转为绝对路径避免找不到文件
+        ref_audio_path = os.path.abspath(ref_audio_path)
+
         # 构造 GPT-SoVITS v2 API 请求体
         payload = {
             "text": text,

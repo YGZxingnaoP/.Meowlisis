@@ -12,7 +12,7 @@ import threading
 from typing import List, Dict, Optional
 
 from func.log.default_log import DefaultLog
-from func.gobal.data import LLmData
+from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.AbstractMem.port.deepseek import MeowAbstractDeepSeekLLM
 from func.catbrain.AbstractMem.port.aliyun import MeowAbstractAliyunLLM
@@ -27,7 +27,6 @@ class MeowUpdateAbstractMemory:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = MeowCatBrainConfig()
-        self.llm_data = LLmData()
         self.summary_tool = MeowSummaryTool()
         self.tag_store = MeowTagStore()
         self.llm = None
@@ -66,7 +65,7 @@ class MeowUpdateAbstractMemory:
 
     def _extract_joint(self, content: str) -> List[str]:
         """从对话内容中提取参与用户名（排除 AI 自己，按出现顺序去重）"""
-        ai_name = self.llm_data.Ai_Name or "喵呜"
+        ai_name = AppConfig().ai_name or "喵呜"
         names = re.findall(r'\]\[([^\]]+)\]:', content)
         joint = []
         for n in names:
@@ -79,7 +78,7 @@ class MeowUpdateAbstractMemory:
         """构建概括消息：摘要指令(含字数) + 角色提示词 + tags附件 + 待概括内容"""
         word_limit = self._word_limit(rounds)
         instruction = self._load_instruction().format(
-            ai_name=self.llm_data.Ai_Name, word_limit=word_limit)
+            ai_name=AppConfig().ai_name, word_limit=word_limit)
         system_text = instruction
         character_prompt = self._get_character_prompt()
         if character_prompt:
@@ -174,7 +173,7 @@ class MeowUpdateAbstractMemory:
         """清洗摘要文本：去除开头多余的口头语、自称等前缀"""
         if not text:
             return ""
-        ai = self.llm_data.Ai_Name or "喵呜"
+        ai = AppConfig().ai_name or "喵呜"
         patterns = [
             r'^(好的|好|嗯+|哈哈+|嘿嘿+)[，。！？、,.!?\s]*',
             rf'^(我是|我是{re.escape(ai)}|{re.escape(ai)})[，。！？、,.!?\s]*',

@@ -54,6 +54,8 @@ class SenseVoiceCore:
 
     def stop(self):
         """停止识别后台线程"""
+        if not self.enabled:
+            return
         self.running = False
         for task in self.manager.pending_tasks.values():
             task.cancel()

@@ -2,7 +2,7 @@
 # func/sensevoice/config.py
 # SenseVoice 配置项统一管理
 
-from func.config.default_config import defaultConfig
+from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
 
@@ -11,8 +11,8 @@ class SenseVoiceConfig:
     """集中管理 sensevoice 节点的全部配置项与默认值"""
 
     def __init__(self):
-        # 读取 sensevoice 配置节点，缺失时回退到空字典
-        cfg = defaultConfig().get_config().get('sensevoice', {})
+        # 从配置总线读取 sensevoice 配置节点，缺失时回退到空字典
+        cfg = ConfigReader().get('sensevoice', {})
 
         # 功能开关
         self.enabled = cfg.get('enabled', False)

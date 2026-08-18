@@ -46,6 +46,9 @@ class MeowAbstractDeepSeekLLM:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
+        # DeepSeek thinking 模式不支持强制工具调用，需禁用
+        if tool_choice:
+            params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             return self.client.chat.completions.create(**params)
         except Exception as e:

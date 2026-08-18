@@ -8,16 +8,14 @@
     justify-content: center;
 }
 
-/* ========== 内层平面轨道（固定）========== */
-.orbit-inner {
+/* ========== 中心启动球簇 ========== */
+.launcher-cluster {
     position: absolute;
-    width: 500px;
-    height: 500px;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
-    z-index: 5;
-    pointer-events: none;
+    width: 0;
+    height: 0;
+    z-index: 10;
 }
 
 /* ========== 外层倾斜轨道（仅视觉倾斜，无动画）========== */
@@ -29,7 +27,118 @@
     left: 50%;
     transform: translate(-50%, -50%) scaleY(0.5);
     z-index: 5;
+    pointer-events: auto;
+    cursor: grab;
+}
+
+.orbit-outer:active {
+    cursor: grabbing;
+}
+
+/* 轨道环视觉 */
+.orbit-ring {
+    position: absolute;
+    border-radius: 50%;
     pointer-events: none;
+}
+
+.ring-outer {
+    width: 1200px;
+    height: 1200px;
+    top: 0;
+    left: 0;
+    border: 1px solid rgba(255, 182, 193, 0.4);
+    box-shadow: 0 0 40px rgba(255, 182, 193, 0.2), inset 0 0 40px rgba(255, 182, 193, 0.1);
+}
+
+/* ========== 服务启动球 ========== */
+.launch-planet {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.2;
+    color: white;
+    background: rgba(255, 154, 158, 0.3);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    box-shadow: 0 4px 20px rgba(255, 105, 180, 0.35), inset 0 0 20px rgba(255, 255, 255, 0.25);
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+    user-select: none;
+    z-index: 9;
+}
+
+.launch-planet:hover {
+    box-shadow: 0 8px 32px rgba(255, 105, 180, 0.55), inset 0 0 24px rgba(255, 255, 255, 0.35);
+}
+
+.launch-label {
+    pointer-events: none;
+    padding: 2px 6px;
+}
+
+/* ========== CatBrain 子球 ========== */
+.catbrain-sub {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 9px;
+    text-align: center;
+    line-height: 1.2;
+    color: white;
+    background: rgba(161, 140, 209, 0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 4px 18px rgba(161, 140, 209, 0.45), inset 0 0 16px rgba(255, 255, 255, 0.25);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+    user-select: none;
+    z-index: 25;
+}
+
+.catbrain-sub:hover {
+    box-shadow: 0 8px 28px rgba(161, 140, 209, 0.65), inset 0 0 20px rgba(255, 255, 255, 0.35);
+}
+
+.catbrain-sub::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%) scale(0);
+    padding: 5px 12px;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-main);
+    font-size: 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transition: all 0.2s ease;
+    pointer-events: none;
+}
+
+.catbrain-sub:hover::after {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
 }
 
 /* ========== 行星基础样式 ========== */
@@ -49,37 +158,11 @@
     z-index: 10;
 }
 
-/* 内层行星 - 平面固定（黑字） */
-.planet-inner {
-    width: 120px;
-    height: 120px;
-    font-size: 18px;
-    color: var(--text-main);
-    background: rgba(255, 154, 158, 0.25);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 4px 20px rgba(255, 105, 180, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.2);
-}
-
-/* SoVITS 行星 - 内层（黑字） */
-.planet-sovits {
-    width: 120px;
-    height: 120px;
-    font-size: 18px;
-    color: var(--text-main);
-    background: rgba(132, 250, 176, 0.25);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 4px 20px rgba(132, 250, 176, 0.3), inset 0 0 20px rgba(255, 255, 255, 0.2);
-}
-
 /* 外层行星 - 毛玻璃质感（白字） */
 .planet-outer {
     width: 100px;
     height: 100px;
-    font-size: 16px;
+    font-size: 15px;
     color: white;
     background: rgba(161, 140, 209, 0.25);
     backdrop-filter: blur(12px);
@@ -89,13 +172,6 @@
 }
 
 /* 行星悬停效果 */
-.planet-inner:hover,
-.planet-sovits:hover {
-    transform: scale(1.15);
-    z-index: 20;
-    box-shadow: 0 8px 32px var(--shadow-deep);
-}
-
 .planet-outer:hover {
     z-index: 20;
     box-shadow: 0 8px 32px var(--shadow-deep);
@@ -108,24 +184,27 @@
 }
 
 /* Tooltip */
-.planet::after {
+.planet::after,
+.launch-planet::after {
     content: attr(data-tooltip);
     position: absolute;
     bottom: calc(100% + 10px);
     left: 50%;
     transform: translateX(-50%) scale(0);
     padding: 6px 14px;
-    background: var(--text-main);
-    color: white;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-main);
     font-size: 13px;
     border-radius: 8px;
     white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
     opacity: 0;
     transition: all 0.2s ease;
     pointer-events: none;
 }
 
-.planet:hover::after {
+.planet:hover::after,
+.launch-planet:hover::after {
     transform: translateX(-50%) scale(1);
     opacity: 1;
 }

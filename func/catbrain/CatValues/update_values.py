@@ -8,7 +8,7 @@ import datetime
 from typing import Dict, List, Optional, Tuple
 
 from func.log.default_log import DefaultLog
-from func.gobal.data import LLmData
+from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.CatValues.port.deepseek import MeowValuesDeepSeekLLM
 from func.catbrain.CatValues.port.aliyun import MeowValuesAliyunLLM
@@ -70,7 +70,7 @@ class MeowUpdateValues:
         persona = self._get_persona_prompt()
         if persona:
             return (
-                f"你现在就是{LLmData().Ai_Name}。请全程以{LLmData().Ai_Name}的第一人称视角，"
+                f"你现在就是{AppConfig().ai_name}。请全程以{AppConfig().ai_name}的第一人称视角，"
                 f"基于你自己的角色设定与价值观去回忆、思考和表达，不要跳出角色，"
                 f"不要用第三人称称呼自己。\n\n"
                 f"【你的角色设定与价值观】\n{persona}\n\n"
@@ -138,7 +138,7 @@ class MeowUpdateValues:
         instruction = self._load_prompt(
             "review_prompt.txt",
             "你是审查员，请审查价值观更新结果，调用 review_values 工具输出结论。")
-        instruction = instruction.format(ai_name=LLmData().Ai_Name)
+        instruction = instruction.format(ai_name=AppConfig().ai_name)
         system_text = instruction
         persona = self._get_persona_prompt()
         if persona:

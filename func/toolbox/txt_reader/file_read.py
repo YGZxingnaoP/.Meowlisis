@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/file_read.py
 # 企业级文件分析工具：文件读取（支持行范围）
 
 import os

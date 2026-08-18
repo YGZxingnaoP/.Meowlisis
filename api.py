@@ -2,38 +2,33 @@
 import time
 import uuid
 import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from threading import Thread
 from flask import Flask, jsonify, request
 from flask_apscheduler import APScheduler
 
-from func.obs.obs_websocket import VideoControl
-from func.obs.browser_subtitle_server import get_subtitle_server
+from func.toolbox.obs.obs_websocket import VideoControl
+from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
 from func.log.default_log import DefaultLog
-from func.obs.obs_init import ObsInit
-from func.vtuber.emote_oper import EmoteOper
+from func.toolbox.obs.obs_init import ObsInit
+from func.toolbox.vtuber.emote_oper import EmoteOper
 from func.tts.tts_core import TTsCore
 from func.llm.llm_core import LLmCore
 from func.catbrain.prompt_builder import MeowPromptBuilder
 from func.pipeline.system_prompt import SystemPromptBridge
-from func.vtuber.action_oper import ActionOper
-from func.config.default_config import defaultConfig
+from func.toolbox.vtuber.action_oper import ActionOper
+from func.pipeline.config_reader import ConfigReader
 from func.sensevoice.sensevoice_core import SenseVoiceCore
 
-from func.danmaku.blivedm.blivedm_core import BlivedmCore
-from func.gobal.data import VtuberData
-from func.gobal.data import CommonData
-from func.minecraft.logreader import MinecraftLogReader
+from func.toolbox.danmaku.blivedm.blivedm_core import BlivedmCore
+from func.config.app_config import AppConfig
+from func.toolbox.vtuber.state import VtuberState
+from func.toolbox.minecraft.logreader import MinecraftLogReader
 
-# 设置控制台日志
 log = DefaultLog().getLogger()
-# 重定向print输出到日志文件
-def print(*args, **kwargs):
-    log.info(*args, **kwargs)
 
 
-commonData = CommonData()  #基础数据
-Ai_Name = commonData.Ai_Name  # Ai名称
+appConfig = AppConfig()  #基础数据
+Ai_Name = appConfig.ai_name  # Ai名称
 
 
 log.info("======================================")
@@ -46,15 +41,10 @@ log.warning(
 """
 )
 log.info(f"开始启动人工智能【{Ai_Name}】！")
-log.info("感谢“程序猿的退休生活”大佬，源码地址：https://github.com/worm128/ai-yinmei")
-log.info("整合包地址：https://www.bilibili.com/video/BV1zD421H76q/")
 
-
-# 定时器
-sched1 = AsyncIOScheduler(timezone="Asia/Shanghai")
 
 # 1.b站直播间 2.api web
-mode = commonData.mode
+mode = appConfig.mode
 
 # ============= B站直播间 =====================
 blivedmCore = BlivedmCore()
@@ -89,7 +79,7 @@ ttsCore = TTsCore() # 语音核心
 # ============================================
 
 # ============= vtuber操作 =====================
-vtuberData = VtuberData()  # vtuber数据
+vtuberState = VtuberState()  # vtuber运行态
 actionOper = ActionOper()  # 动作核心
 emoteOper = EmoteOper() # 表情初始化
 # ========================================
@@ -169,14 +159,7 @@ def main():
     # 初始化衣服
     emoteOper.emote_ws(1, 0.2, "初始化")  # 解除当前衣服
     emoteOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
-    vtuberData.now_clothes = "便衣"
-
-    # 跳舞表情
-    # content = ""
-    # for str in emote_list:
-    #     content= content + str + ","
-    # if content!="":
-    #     obs.show_text("表情列表",content)
+    vtuberState.now_clothes = "便衣"
 
     # 停止所有视频播放
     obs.play_video("唱歌视频", "")
@@ -193,7 +176,7 @@ def main():
     actionOper.check_scene_time()
 
     # 获取全局配置
-    config = defaultConfig().get_config()
+    config = ConfigReader().get()
 
     sensevoice_config = config.get('sensevoice', {})
 
@@ -214,9 +197,6 @@ def main():
     # 注册退出清理
     import atexit
     atexit.register(mc_reader.stop)
-
-    # 吟美状态提示:初始化清空
-    obs.show_text("状态提示", "")
 
     if "blivedm" in mode or "api" in mode:
         # LLM回复
@@ -245,7 +225,7 @@ def apprun():
     # 禁止输出日志
     app.logger.disabled = True
     # 启动web应用
-    app.run(host="0.0.0.0", port=commonData.port)
+    app.run(host="0.0.0.0", port=appConfig.port)
 
 if __name__ == "__main__":
     main()

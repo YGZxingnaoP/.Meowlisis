@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
 # func/catbrain/CharacterCard/character_prompt.py
-# 角色卡提示词构建：读取角色卡字段并以 markdown 语法输出
+# 角色卡提示词构建：读取角色卡字段并以 markdown 语法输出（共用字段 + 多设定 + 当前性格 + 情绪）
+
+import os
+import json
 
 from func.log.default_log import DefaultLog
+from func.config.app_config import AppConfig
+from func.catbrain.config import MeowCatBrainConfig
 from func.catbrain.CharacterCard.load_card import MeowLoadCard
 
 
@@ -11,10 +16,12 @@ class MeowCharacterPrompt:
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
+        self.config = MeowCatBrainConfig()
         self.load_card = MeowLoadCard()
+        self.latest_emotion_path = os.path.join(".temp", "latest_emotion.json")
 
     def _pick_card(self, card: dict) -> dict:
-        """从角色卡列表中选择当前角色卡（当前取第一张，性格与情绪不再参与选择）"""
+        """从角色卡列表中取当前角色卡（单角色文件取第一个元素）"""
         chars = card.get("characters") or []
         if not chars:
             return card
@@ -26,17 +33,86 @@ class MeowCharacterPrompt:
         info = self._pick_card(card)
         return str(info.get("name", "") or "")
 
+    def _read_latest_emotion(self) -> dict:
+        """读取 .temp/latest_emotion.json（缺失返回空 dict）"""
+        try:
+            if os.path.exists(self.latest_emotion_path):
+                with open(self.latest_emotion_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    return data if isinstance(data, dict) else {}
+        except Exception:
+            pass
+        return {}
+
+    def _current_personality_name(self) -> str:
+        """读取当前选中的性格名（来自 .temp/latest_emotion.json，缺失返回空）"""
+        data = self._read_latest_emotion()
+        name = data.get("personality")
+        return str(name) if name else ""
+
+    def _current_emotion(self) -> str:
+        """读取当前情绪（来自 pipeline 情绪桥接）"""
+        from func.pipeline.llm_emotion import LLMEmotionBridge
+        return LLMEmotionBridge().get_emotion()
+
+    def _current_personality_prompt(self, info: dict) -> str:
+        """返回当前性格对应的提示词（无匹配时回退第一个性格）"""
+        personalities = info.get("personality") or {}
+        if not isinstance(personalities, dict):
+            return str(personalities) if personalities else ""
+        name = self._current_personality_name()
+        if name and name in personalities:
+            return str(personalities[name] or "")
+        if personalities:
+            return str(list(personalities.values())[0] or "")
+        return ""
+
     def build(self) -> str:
-        """构建角色卡提示词（markdown 语法，不含参考音频路径）"""
+        """构建角色卡提示词（markdown，标题为角色名，性格/设定/情绪紧接昵称之后）"""
         card = self.load_card.load()
         if not card:
             return ""
         info = self._pick_card(card)
+
+        # 标题使用角色名（ai_name）
+        ai_name = str(info.get("name", "") or AppConfig().ai_name)
+        lines = [f"# {ai_name}"]
+
+        # 角色名称与昵称
+        name = info.get("name", "")
+        if name:
+            lines.append(f"- 角色名称：{name}")
+        nickname = info.get("nickname", "")
+        if nickname:
+            lines.append(f"- 昵称：{nickname}")
+
+        # 角色性格（紧接昵称）
+        personality_prompt = self._current_personality_prompt(info)
+        if personality_prompt:
+            lines.append(f"- 角色性格：{personality_prompt}")
+
+        # 设定（紧接性格，字典多条；兼容旧字符串格式）
+        setting = info.get("setting") or {}
+        if isinstance(setting, dict):
+            for key, value in setting.items():
+                if value:
+                    lines.append(f"- 设定（{key}）：{value}")
+        elif setting:
+            lines.append(f"- 角色设定：{setting}")
+
+        # 现在的情绪（紧接设定）
+        lines.append(f"- 现在的情绪：{self._current_emotion()}")
+
+        # 角色外貌（位于个人信息提示之前）
+        appearance = info.get("appearance", "")
+        if appearance:
+            lines.append(f"- 角色外貌：{appearance}")
+
+        # 硬编码提示：以下仅为个人信息，禁止主动强调
+        lines.append("## 以下只是个人信息喵，禁止主动强调，只有话题强相关才提及哦")
+
+        # 其余共用字段（生日开始）
         fields = [
-            ("性格名称", info.get("name", "")),
-            ("角色性格", info.get("personality", "")),
-            ("角色设定", info.get("setting", "")),
-            ("角色外貌", info.get("appearance", "")),
             ("角色生日", info.get("birthday", "")),
             ("角色身份证号", info.get("id_card", "")),
             ("QQ号", info.get("qq", "")),
@@ -47,10 +123,10 @@ class MeowCharacterPrompt:
             ("讨厌的东西", info.get("dislikes", "")),
             ("人际关系", info.get("relationships", "")),
         ]
-        lines = ["# 角色卡"]
         for label, value in fields:
             if value:
                 lines.append(f"- {label}：{value}")
+
         return self._ensure_markdown("\n".join(lines))
 
     @staticmethod

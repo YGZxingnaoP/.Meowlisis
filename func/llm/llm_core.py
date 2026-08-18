@@ -7,7 +7,8 @@ from threading import Thread
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
-from func.gobal.data import LLmData
+from func.llm.state import LLmState
+from func.config.app_config import AppConfig
 
 from func.llm.config import LLMConfig
 from func.llm.port.deepseek import DeepSeekLLM
@@ -28,7 +29,7 @@ class LLmCore:
         self.log = DefaultLog().getLogger()
         self.config = LLMConfig()
         self.local_llm_type = self.config.local_llm_type
-        self.llmData = LLmData()
+        self.llmData = LLmState()
 
         # 选择流式 LLM 客户端
         self.llm = self._create_llm()
@@ -81,7 +82,7 @@ class LLmCore:
             self.llmData.is_ai_ready = True
 
     def _ai_response(self):
-        """核心处理流程：取消息 → 记录长期记忆 → 强制工具调用 → 回填二次生成 → 输出"""
+        """核心处理流程：取消息 → 记录长期记忆 → 流式生成正文 → 后置情绪/性格工具更新 → 输出"""
         question_data = self.llmData.QuestionList.get()
         traceid = question_data["traceid"]
         prompt = question_data["prompt"]
@@ -101,53 +102,56 @@ class LLmCore:
 
         # 每次对话新建带流式状态的处理器
         output = Output(self.config, self.llmData)
-        emotion_controller = EmotionController()
-        # 单一工具：情绪 + 是否需要价值观思考（强制调用）
-        tools = emotion_controller.build_tools()
-        tool_choice = emotion_controller.build_tool_choice()
 
-        # 第一阶段：强制情绪工具调用
-        first_content = ""
-        stream = self.llm.chat_stream(messages, tools=tools, tool_choice=tool_choice)
+        # 第一阶段：直接流式生成正文（不再前置强制工具调用，降低首字延迟）
+        stream = self.llm.chat_stream(messages)
         for chunk in stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
             if delta.content:
-                first_content += delta.content
-            if delta.tool_calls:
-                emotion_controller.handle_stream_tool_calls(delta.tool_calls)
+                output.process_chunk(delta.content, traceid)
 
-        has_tool_call = bool(emotion_controller.tool_calls)
-        # 情绪工具 payload 统一构建回填消息
-        emotion_payload = emotion_controller.finalize()
-        tool_messages = EmotionController.build_tool_messages(emotion_payload)
+        # 结束流式，获取清理后的完整回复
+        final_text = output.finalize(traceid)
 
-        if has_tool_call:
-            # 第二阶段：回填工具结果后二次生成正文
-            if tool_messages:
-                messages.extend(tool_messages)
-            stream = self.llm.chat_stream(messages)
+        # 后置：异步调用工具更新情绪与性格（供下一轮 system prompt 使用，性格滞后一轮生效）
+        if final_text:
+            Thread(target=self._update_emotion_async, args=(prompt, final_text), daemon=True).start()
+
+        # 记录助手回复到短期记忆
+        if final_text:
+            self.message_builder.add_assistant_message(username, final_text, AppConfig().ai_name)
+
+        # 记录 AI 回复到长期记忆
+        if final_text:
+            self.ltmem.record_ai_message(username, AppConfig().ai_name, final_text)
+
+        self.log.info(f"[{traceid}][AI回复]{final_text}")
+        self.llmData.is_ai_ready = True
+
+    def _update_emotion_async(self, prompt: str, reply_text: str):
+        """后置情绪/性格更新：正文生成后单独调用工具，更新 latest_emotion.json"""
+        try:
+            emotion_controller = EmotionController()
+            tools = emotion_controller.build_tools()
+            tool_choice = emotion_controller.build_tool_choice()
+
+            # 简短更新消息：仅本轮用户输入 + 角色回复
+            update_messages = [
+                {"role": "system", "content": "根据本轮对话，判断角色当前情绪、强度与性格。"},
+                {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
+            ]
+
+            stream = self.llm.chat_stream(update_messages, tools=tools, tool_choice=tool_choice)
             for chunk in stream:
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
-                if delta.content:
-                    output.process_chunk(delta.content, traceid, prompt)
-        elif first_content.strip():
-            # 未触发工具时直接使用第一阶段正文
-            output.process_chunk(first_content, traceid, prompt)
+                if delta.tool_calls:
+                    emotion_controller.handle_stream_tool_calls(delta.tool_calls)
 
-        # 结束流式，获取清理后的完整回复
-        final_text = output.finalize(traceid, prompt)
-
-        # 记录助手回复到短期记忆
-        if final_text:
-            self.message_builder.add_assistant_message(username, final_text)
-
-        # 记录 AI 回复到长期记忆
-        if final_text:
-            self.ltmem.record_ai_message(username, self.llmData.Ai_Name, final_text)
-
-        self.log.info(f"[{traceid}][AI回复]{final_text}")
-        self.llmData.is_ai_ready = True
+            if emotion_controller.tool_calls:
+                emotion_controller.finalize()
+        except Exception:
+            self.log.exception("后置情绪更新异常")

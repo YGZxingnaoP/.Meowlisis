@@ -12,19 +12,16 @@
     <div class="bg-stars"></div>
     <div class="container">
         <div class="orbit-system" id="orbitSystem">
-            <!-- 中心启动按钮 -->
-            <div class="center-launcher" id="centerLauncher">
-                <div class="launcher-glow"></div>
-                <img src="MiaoWuFace.png" alt="启动" class="launcher-face">
-                <div class="launcher-label">启动</div>
+            <!-- 中心启动球簇（含分裂出的服务启动球） -->
+            <div class="launcher-cluster" id="launcherCluster">
+                <div class="center-launcher" id="centerLauncher">
+                    <div class="launcher-glow"></div>
+                    <img src="MiaoWuFace.png" alt="启动" class="launcher-face">
+                    <div class="launcher-label">启动</div>
+                </div>
             </div>
             
-            <!-- 内层轨道 -->
-            <div class="orbit orbit-inner" id="orbitInner">
-                <div class="orbit-ring ring-inner"></div>
-            </div>
-            
-            <!-- 外层轨道 -->
+            <!-- 外层配置轨道 -->
             <div class="orbit orbit-outer" id="orbitOuter">
                 <div class="orbit-ring ring-outer"></div>
             </div>
@@ -55,7 +52,6 @@
     <script src="js/config.js"></script>
     <script src="js/orbit.js"></script>
     <script src="js/modal.js"></script>
-    <script src="js/sovits.js"></script>
     <script src="js/app.js"></script>
 </body>
 </html>

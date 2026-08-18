@@ -1,115 +1,130 @@
 /**
- * Orbit animation and planet positioning
- * 外层行星：位置随滚轮绕圈，但自身保持正立不旋转
+ * Orbit system
+ * - 中心启动球：点击展开/收起 3 个服务启动球
+ * - 外层配置环：鼠标左键拖动旋转，球自身保持正立
  */
 const Orbit = {
-    innerPlanets: [
-        { id: 'llm', label: 'LLM', tooltip: '大语言模型配置', type: 'inner' },
-        { id: 'sovits', label: 'SoVITS', tooltip: 'SoVITS 语音合成', type: 'sovits' },
-        { id: 'sensevoice', label: 'SenseVoice', tooltip: '语音识别配置', type: 'inner' }
+    // 中心球分裂出的服务启动球
+    launcherPlanets: [
+        { id: 'main', label: '主程序', tooltip: '启动主程序', endpoint: 'http://127.0.0.1:1800' },
+        { id: 'sovits', label: 'SoVITS', tooltip: '启动 SoVITS 服务', endpoint: 'http://127.0.0.1:9880' },
+        { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' }
     ],
 
+    // 外层配置节点（与 config.yml 节点对应）
     outerPlanets: [
-        { id: 'basic', label: '基本', tooltip: '基本设置', type: 'outer' },
-        { id: 'obs', label: 'OBS', tooltip: 'OBS 服务设置', type: 'outer' },
-        { id: 'vtuber', label: 'VTuber', tooltip: 'VTuber 设置', type: 'outer' },
-        { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 设置', type: 'outer' },
-        { id: 'tts', label: 'TTS', tooltip: 'TTS 设置', type: 'outer' }
+        { id: 'basic', label: '基本', tooltip: '基础与 app 设置' },
+        { id: 'character', label: '角色卡', tooltip: '角色卡配置' },
+        { id: 'sensevoice', label: 'SenseVoice', tooltip: '语音识别配置' },
+        { id: 'llm', label: 'LLM', tooltip: '大语言模型配置' },
+        { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
+        { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
+        { id: 'danmaku', label: '弹幕', tooltip: 'B站弹幕配置' },
+        { id: 'vtuber', label: 'VTuber', tooltip: 'VTuber / VTS 配置' },
+        { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
+        { id: 'obs', label: 'OBS', tooltip: 'OBS 直播控制配置' }
     ],
 
     rotation: 0,
     outerPlanetEls: [],
-    innerPlanetEls: [],
-    innerRotation: 0,
-    innerRafId: null,
+    launcherPlanetEls: [],
+    launcherOpen: false,
+    catbrainSubEls: [],
+    catbrainOpen: false,
+    catbrainEl: null,
+    dragging: false,
+    suppressClick: false,
 
     init() {
-        const orbitInner = document.getElementById('orbitInner');
         const orbitOuter = document.getElementById('orbitOuter');
-        
-        if (!orbitInner || !orbitOuter) {
+        const cluster = document.getElementById('launcherCluster');
+
+        if (!orbitOuter || !cluster) {
             console.error('Orbit elements not found');
             return;
         }
 
-        console.log('Initializing orbit system...');
-        
-        // 创建内层行星（缓慢自动旋转）
-        this.innerPlanets.forEach((p, i) => {
-            const el = this.createInnerPlanet(p, i, this.innerPlanets.length);
-            orbitInner.appendChild(el);
-            this.innerPlanetEls.push(el);
-        });
-
-        // 创建外层行星（滚轮控制绕圈，但自身不旋转）
+        // 创建外层配置环
         this.outerPlanets.forEach((p, i) => {
             const el = this.createOuterPlanet(p, i, this.outerPlanets.length);
             orbitOuter.appendChild(el);
             this.outerPlanetEls.push(el);
         });
 
-        // 绑定滚轮旋转
-        this.bindWheelRotation();
+        // 创建启动球
+        this.launcherPlanets.forEach((p, i) => {
+            const el = this.createLauncherPlanet(p, i);
+            cluster.appendChild(el);
+            this.launcherPlanetEls.push(el);
+        });
 
-        // 启动内层缓慢旋转
-        this.startInnerRotation();
+        // 中心球点击切换展开
+        const center = document.getElementById('centerLauncher');
+        center.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleLauncher();
+        });
 
-        console.log(`Created ${this.innerPlanets.length + this.outerPlanets.length} planets`);
+        // 外层拖动
+        this.bindDragRotation();
+
+        console.log(`Created ${this.outerPlanets.length} config planets + ${this.launcherPlanets.length} launcher planets`);
     },
 
-    createInnerPlanet(p, index, total) {
+    // ============ 启动球 ============
+    createLauncherPlanet(p, index) {
         const el = document.createElement('div');
-        const cls = p.type === 'sovits' ? 'planet-sovits' : 'planet-inner';
-        el.className = `planet ${cls}`;
-        el.innerHTML = `<span class="planet-label">${p.label}</span>`;
-        el.dataset.tooltip = p.tooltip;
-        el.dataset.id = p.id;
+        el.className = 'launch-planet';
+        el.innerHTML = `<span class="launch-label">${p.label}</span>`;
+        el.dataset.tooltip = `${p.tooltip}：${p.endpoint}`;
+        el.dataset.launchId = p.id;
 
-        // 保存基础角度用于旋转
-        const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
-        el.dataset.baseAngle = baseAngle;
-        
-        // 初始位置
-        this.updateInnerPlanetPosition(el, 0);
+        // 目标偏移（相对中心，沿主球右侧弧线排列，稍远）
+        const offsets = [
+            { x: 185, y: 92 },     // main 右上
+            { x: 215, y: 0 },      // sovits 正右
+            { x: 185, y: -92 }     // sensevoice 右下
+        ];
+        el.dataset.offsetX = offsets[index].x;
+        el.dataset.offsetY = offsets[index].y;
+
+        this._applyLauncherPosition(el, false);
 
         el.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (window.App && typeof window.App.onPlanetClick === 'function') {
-                window.App.onPlanetClick(p.id);
+            if (this.suppressClick) return;
+            if (window.App && typeof window.App.onLaunchClick === 'function') {
+                window.App.onLaunchClick(p.id);
             }
         });
 
         return el;
     },
 
-    updateInnerPlanetPosition(el, rotationDeg) {
-        const baseAngle = parseFloat(el.dataset.baseAngle);
-        const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
-        
-        const radius = 250; // 500px / 2
-        const planetSize = 60; // 120px / 2
-        
-        const x = radius + radius * Math.sin(currentAngle) - planetSize;
-        const y = radius + radius * Math.cos(currentAngle) - planetSize;
-        
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
+    _applyLauncherPosition(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            // 展开：从中心滑出到弧线位置并放大（带回弹）
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            // 收回：从弧线位置滑回中心并缩小
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
     },
 
-    startInnerRotation() {
-        const rotate = () => {
-            this.innerRotation += 0.08; // 缓慢旋转速度
-            
-            this.innerPlanetEls.forEach(el => {
-                this.updateInnerPlanetPosition(el, this.innerRotation);
-            });
-            
-            requestAnimationFrame(rotate);
-        };
-        
-        requestAnimationFrame(rotate);
+    toggleLauncher() {
+        this.launcherOpen = !this.launcherOpen;
+        const center = document.getElementById('centerLauncher');
+        center.classList.toggle('active', this.launcherOpen);
+        this.launcherPlanetEls.forEach(el => this._applyLauncherPosition(el, this.launcherOpen));
     },
 
+    // ============ 外层配置环 ============
     createOuterPlanet(p, index, total) {
         const el = document.createElement('div');
         el.className = `planet planet-outer`;
@@ -117,86 +132,188 @@ const Orbit = {
         el.dataset.tooltip = p.tooltip;
         el.dataset.id = p.id;
 
-        // 计算初始角度
         const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
-        
-        // 保存数据用于滚轮旋转
         el.dataset.baseAngle = baseAngle;
 
-        // 初始位置
         this.updateOuterPlanetPosition(el, 0);
 
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (window.App && typeof window.App.onPlanetClick === 'function') {
-                window.App.onPlanetClick(p.id);
-            }
-        });
+        if (p.id === 'catbrain') {
+            // CatBrain 球：点击分裂出 4 个子配置球
+            this.catbrainEl = el;
+            this.createCatbrainSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleCatbrainSubs();
+            });
+        } else {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(p.id);
+                }
+            });
+        }
 
         return el;
     },
 
+    // CatBrain 子球（长期记忆/记忆摘要/价值观/用户记忆）
+    createCatbrainSubs(parent) {
+        const subs = [
+            { id: 'ltmem', label: '长期记忆', tooltip: '长期记忆配置' },
+            { id: 'abstract', label: '记忆摘要', tooltip: '记忆摘要配置' },
+            { id: 'values', label: '价值观', tooltip: '价值观配置' },
+            { id: 'usermem', label: '用户记忆', tooltip: '用户记忆配置' }
+        ];
+        // 目标偏移：4 个子球沿 CatBrain 球右侧弧线排列
+        const offsets = [
+            { x: 82, y: -82 },    // ltmem 右上
+            { x: 115, y: -27 },   // abstract 右中上
+            { x: 115, y: 27 },    // values 右中下
+            { x: 82, y: 82 }      // usermem 右下
+        ];
+        this.catbrainSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyCatbrainSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.catbrainSubEls.push(el);
+        });
+    },
+
+    _applyCatbrainSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleCatbrainSubs() {
+        this.catbrainOpen = !this.catbrainOpen;
+        if (this.catbrainEl) {
+            this.catbrainEl.classList.toggle('active', this.catbrainOpen);
+        }
+        this.catbrainSubEls.forEach(el => this._applyCatbrainSub(el, this.catbrainOpen));
+    },
+
+
     updateOuterPlanetPosition(el, rotationDeg) {
         const baseAngle = parseFloat(el.dataset.baseAngle);
         const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
-        
-        const radius = 600; // 1200px / 2
-        const planetSize = 50; // 100px / 2
-        
+
+        const radius = 600;
+        const planetSize = 50;
+
         const x = radius + radius * Math.sin(currentAngle) - planetSize;
         const y = radius + radius * Math.cos(currentAngle) - planetSize;
-        
+
         el.style.left = `${x}px`;
         el.style.top = `${y}px`;
-        
-        // 近大远小：根据球在轨道前后位置计算缩放
-        const depth = Math.cos(currentAngle); // -1 ~ 1
-        const scale = 0.65 + (depth + 1) / 2 * 0.55; // 0.65 ~ 1.2
-        
-        // 球自身固定不动，不旋转，只改变位置和大小
+
+        const depth = Math.cos(currentAngle);
+        const scale = 0.65 + (depth + 1) / 2 * 0.55;
         el.style.transform = `scale(${scale}, ${scale * 2})`;
-        
-        // 前方在上，后方在下
         el.style.zIndex = Math.round((depth + 1) * 50 + 5);
     },
 
-    bindWheelRotation() {
-        let rotation = 0;
+    // ============ 鼠标左键拖动（带轻微惯性） ============
+    bindDragRotation() {
+        const outer = document.getElementById('orbitOuter');
+        let dragging = false;
+        let lastX = 0;
         let velocity = 0;
         let rafId = null;
 
-        const animate = () => {
-            // 应用惯性
-            rotation += velocity;
-            velocity *= 0.90; // 摩擦衰减更快，惯性更小
-
-            // 当速度足够小时停止动画
-            if (Math.abs(velocity) < 0.01) {
-                rafId = null;
-                this.rotation = rotation;
-                return;
-            }
-
-            this.rotation = rotation;
-
-            // 更新所有外层行星位置
+        const applyRotation = (rot) => {
+            this.rotation = rot;
             this.outerPlanetEls.forEach(el => {
-                this.updateOuterPlanetPosition(el, rotation);
+                this.updateOuterPlanetPosition(el, rot);
             });
-
-            rafId = requestAnimationFrame(animate);
         };
 
-        document.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            
-            // 滚轮增加速度（惯性脉冲）
-            const delta = e.deltaY > 0 ? 3 : -3;
-            velocity += delta;
+        const inertia = () => {
+            this.rotation += velocity;
+            velocity *= 0.92; // 惯性衰减（较快，惯性不大）
+            applyRotation(this.rotation);
 
-            if (rafId === null) {
-                rafId = requestAnimationFrame(animate);
+            if (Math.abs(velocity) < 0.05) {
+                rafId = null;
+                return;
             }
-        }, { passive: false });
+            rafId = requestAnimationFrame(inertia);
+        };
+
+        const onMove = (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - lastX;
+            velocity = dx * 0.35; // 记录即时速度，作为惯性初速度
+            lastX = e.clientX;
+
+            this.rotation += dx * 0.3;
+            applyRotation(this.rotation);
+
+            if (Math.abs(dx) > 5) {
+                this.suppressClick = true;
+            }
+        };
+
+        const onUp = () => {
+            dragging = false;
+            this.dragging = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+
+            // 延迟清除抑制，避免拖动结束的 click 被误触
+            setTimeout(() => { this.suppressClick = false; }, 50);
+
+            // 松手后按惯性继续滚动
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+            if (Math.abs(velocity) > 0.05) {
+                rafId = requestAnimationFrame(inertia);
+            } else {
+                rafId = null;
+            }
+        };
+
+        outer.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return; // 仅左键
+            dragging = true;
+            this.dragging = true;
+            lastX = e.clientX;
+            velocity = 0;
+            this.suppressClick = false;
+
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
     }
 };

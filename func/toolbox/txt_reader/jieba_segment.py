@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/jieba_segment.py
 # 企业级文件分析工具：jieba 中文分词
 
 from typing import Dict, List

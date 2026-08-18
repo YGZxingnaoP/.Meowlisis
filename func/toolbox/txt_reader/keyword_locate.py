@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/keyword_locate.py
 # 企业级文件分析工具：关键词定位（返回行号与上下文）
 
 import os

@@ -65,8 +65,8 @@ class MeowGetMemory:
             with self._lock:
                 try:
                     lines = self._read_lines()
-                    count, body_start = self._parse_count(lines)
-                    restored = count + content.count("\n")
+                    _, body_start = self._parse_count(lines)
+                    restored = max(0, content.count("\n"))
                     with open(self.path, "w", encoding="utf-8") as f:
                         f.write(self.COUNT_PREFIX + str(restored) + "\n")
                         f.writelines(lines[body_start:])

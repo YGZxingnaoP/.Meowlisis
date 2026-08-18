@@ -71,16 +71,4 @@ class DeepSeekLLM:
             self.log.error(f"DeepSeek 流式调用异常: {e}")
             return iter([])
 
-    def generate_stream(self, messages: List[Dict[str, str]], options: Optional[Dict] = None):
-        """流式生成文本，返回生成器（兼容旧接口）"""
-        stream = self.chat_stream(messages, options=options)
-        for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield chunk.choices[0].delta.content
 
-    def generate(self, messages: List[Dict[str, str]], options: Optional[Dict] = None) -> str:
-        """非流式生成，返回完整文本（兼容旧接口）"""
-        full = ""
-        for chunk in self.generate_stream(messages, options=options):
-            full += chunk
-        return full.strip()

@@ -2,7 +2,7 @@
 # func/catbrain/config.py
 # CatBrain 全部配置项统一管理（新增配置均带默认值，config.yml 可后续覆盖）
 
-from func.config.default_config import defaultConfig
+from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
 
@@ -11,12 +11,14 @@ class MeowCatBrainConfig:
     """集中管理 catbrain 节点的全部配置项与默认值"""
 
     def __init__(self):
-        root = defaultConfig().get_config()
+        root = ConfigReader().get()
         cfg = root.get('catbrain', {})
 
-        # ========== 角色卡 ==========
-        # 角色卡提示词文件名（不含 .json 后缀，默认为 prompt）
-        self.character_prompt_file = cfg.get('character_prompt_file', 'prompt')
+        # ========== 角色卡选择 ==========
+        # character_card 节点：卡片文件名（不含 .json 后缀）与当前选中角色
+        card = root.get('character_card', {})
+        self.character_card_file = card.get('card_file', 'prompt')
+        self.character_card_select = card.get('select', '')
 
         # ========== 长期记忆 ==========
         lt = cfg.get('long_term_mem', {})

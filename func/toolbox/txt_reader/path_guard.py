@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/path_guard.py
 # 企业级文件分析工具的路径安全守卫
 
 import os

@@ -2,7 +2,7 @@
 # func/llm/config.py
 # LLM 配置项统一管理
 
-from func.config.default_config import defaultConfig
+from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
 
@@ -11,9 +11,8 @@ class LLMConfig:
     """集中管理 llm 节点的全部配置项与默认值（仿 SenseVoiceConfig）"""
 
     def __init__(self):
-        # 读取 llm 配置节点，缺失时回退到空字典
-        root = defaultConfig().get_config()
-        cfg = root.get('llm', {})
+        # 从配置总线读取 llm 配置节点，缺失时回退到空字典
+        cfg = ConfigReader().get('llm', {})
 
         # ========== 模型类型 ==========
         # 当前仅支持 deepseek / aliyun 两种流式后端

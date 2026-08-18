@@ -7,6 +7,7 @@ import json
 from typing import List, Dict
 
 from func.log.default_log import DefaultLog
+from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.toolbox.txt_reader.jieba_segment import MeowJiebaSegmentTool
 
@@ -76,13 +77,13 @@ class MeowLoadAbstractMemory:
         return [item for _, item in scored]
 
     def build_prompt(self, current_message: str = "", username: str = "", limit: int = None) -> str:
-        """按优先级检索构建记忆摘要 markdown 提示词（limit 默认取配置）"""
+        """按优先级检索构建记忆摘要 markdown 提示词（标题为「ai_name的记忆」，limit 默认取配置）"""
         data = self.load()
         if not data:
             return ""
         limit = limit if limit is not None else self.config.summary_top_limit
         ranked = self._rank(data, current_message, username)
-        lines = ["# 记忆摘要"]
+        lines = [f"# {AppConfig().ai_name}的记忆"]
         for item in ranked[:limit]:
             topic = item.get("topic", "")
             tags = "、".join(item.get("tags") or [])

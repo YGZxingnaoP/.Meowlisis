@@ -21,6 +21,10 @@ class MeowLoadUserMemory:
         "preference": "喜欢的事情",
         "relation": "与角色的关系",
         "birthday": "生日",
+        "favorite_songs": "喜欢的歌曲",
+        "favorite_shows": "喜欢的影视作品",
+        "favorite_foods": "喜欢的食物",
+        "affinity": "好感度",
     }
 
     def __init__(self):
@@ -57,13 +61,20 @@ class MeowLoadUserMemory:
             return {}
 
     def build(self, username: str) -> str:
-        """按用户名构建用户记忆 markdown 提示词（跳过 unknown 字段）"""
+        """按用户名构建用户记忆 markdown 提示词（标题直接为用户名，跳过 unknown，好感度 0 保留）"""
         data = self.load(username)
         if not data:
             return ""
-        lines = [f"# 用户记忆：{username or '默认'}"]
+        lines = [f"# {username or '默认'}"]
         for key, label in self.FIELD_LABELS.items():
-            value = str(data.get(key, "") or "").strip()
+            raw = data.get(key, "")
+            # 好感度为数值，0 是有效值需保留
+            if key == "affinity":
+                if raw in (None, ""):
+                    continue
+                lines.append(f"- {label}：{raw}")
+                continue
+            value = str(raw or "").strip()
             if not value or value.lower() == "unknown":
                 continue
             lines.append(f"- {label}：{value}")

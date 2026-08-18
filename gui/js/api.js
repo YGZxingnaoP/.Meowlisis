@@ -48,6 +48,112 @@ const API = {
         return res.json();
     },
 
+    async startSensevoice() {
+        const res = await fetch('/api/start_sensevoice', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start SenseVoice');
+        return res.json();
+    },
+
+    async getCharacterCard(file) {
+        const res = await fetch('/api/character_card?file=' + encodeURIComponent(file || 'prompt'));
+        if (!res.ok) throw new Error('Failed to load character card');
+        return res.json();
+    },
+
+    async getCharacterCards() {
+        const res = await fetch('/api/character_cards');
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async saveCharacterCard(file, data) {
+        const res = await fetch('/api/character_card', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file, data })
+        });
+        if (!res.ok) throw new Error('Failed to save character card');
+        return res.json();
+    },
+
+    async getRefAudio() {
+        const res = await fetch('/api/ref_audio');
+        if (!res.ok) return {};
+        return res.json();
+    },
+
+    async saveRefAudio(data) {
+        const res = await fetch('/api/ref_audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed to save ref audio');
+        return res.json();
+    },
+
+    async getSovitsModels() {
+        const res = await fetch('/api/sovits_models');
+        if (!res.ok) return { ckpt: [], pth: [] };
+        return res.json();
+    },
+
+    async getFrontPrompt() {
+        const res = await fetch('/api/front_prompt');
+        if (!res.ok) return {};
+        return res.json();
+    },
+
+    async saveFrontPrompt(data) {
+        const res = await fetch('/api/front_prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed to save front prompt');
+        return res.json();
+    },
+
+    async getSpeakers() {
+        const res = await fetch('/api/speakers');
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async toggleSpeaker(name, enabled) {
+        const res = await fetch('/api/speakers/toggle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, enabled })
+        });
+        if (!res.ok) throw new Error('Failed to toggle speaker');
+        return res.json();
+    },
+
+    async buildAllSpeakers() {
+        const res = await fetch('/api/speakers/build_all', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start build');
+        return res.json();
+    },
+
+    async getBuildStatus() {
+        const res = await fetch('/api/speakers/build_status');
+        if (!res.ok) return { running: false, progress: '' };
+        return res.json();
+    },
+
+    async createSpeaker(name, wavFile) {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('wav', wavFile);
+        const res = await fetch('/api/speakers/create', {
+            method: 'POST',
+            body: formData
+        });
+        if (!res.ok) throw new Error('Failed to create speaker');
+        return res.json();
+    },
+
     async getPrompt() {
         try {
             const res = await fetch('/api/prompt');

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/file_slice.py
 # 企业级文件分析工具：文件截取（按字符区间）
 
 import os

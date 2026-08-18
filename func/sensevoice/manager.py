@@ -19,8 +19,8 @@ class SenseVoiceManager:
         self.log = log
         self.callback = callback
 
-        from func.gobal.data import CommonData
-        self.api_base = f"http://127.0.0.1:{CommonData().port}"
+        from func.config.app_config import AppConfig
+        self.api_base = f"http://127.0.0.1:{AppConfig().port}"
 
         self._speaking = False
         self.streaming_text = ""

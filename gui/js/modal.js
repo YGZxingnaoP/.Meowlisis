@@ -29,9 +29,25 @@ const Modal = {
             if (this.onSave) this.onSave();
         });
 
+        this.body.addEventListener('input', (e) => {
+            if (e.target && e.target.classList && e.target.classList.contains('auto-grow')) {
+                this.autoGrow(e.target);
+            }
+        });
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') this.hide();
         });
+    },
+
+    autoGrow(el) {
+        if (!el) return;
+        el.style.height = 'auto';
+        el.style.height = (el.scrollHeight + 2) + 'px';
+    },
+
+    initAutoGrow(scope) {
+        (scope || this.body).querySelectorAll('.auto-grow').forEach(el => this.autoGrow(el));
     },
 
     show(title, contentHtml, onSaveCallback) {
@@ -40,6 +56,7 @@ const Modal = {
         this.onSave = onSaveCallback;
         this.overlay.classList.add('show');
         document.body.style.overflow = 'hidden';
+        this.initAutoGrow();
     },
 
     hide() {

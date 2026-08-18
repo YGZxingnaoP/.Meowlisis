@@ -1,5 +1,6 @@
 # ================== tts_core.py ==================
 # TTS 核心调度：合成 + 顺序播放，组合 config/interrupt/subtitle/action 子模块
+import json
 import os
 import queue
 import re
@@ -10,16 +11,18 @@ from threading import Lock, Thread
 from concurrent.futures import ThreadPoolExecutor
 
 from func.log.default_log import DefaultLog
-from func.vtuber.emote_oper import EmoteOper
+from func.toolbox.vtuber.emote_oper import EmoteOper
 from func.tts.config import TTSConfig
 from func.tts.gpt_sovits import GptSovits
 from func.tts.player import AudioPlayer
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
-from func.obs.obs_init import ObsInit
-from func.obs.browser_subtitle_server import get_subtitle_server
+from func.toolbox.obs.obs_init import ObsInit
+from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
 from func.tools.singleton_mode import singleton
-from func.gobal.data import TTsData, LLmData
+from func.tts.state import TTsState
+from func.llm.state import LLmState
+from func.config.app_config import AppConfig
 from func.pipeline.system_prompt import SystemPromptBridge
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
@@ -30,8 +33,8 @@ class TTsCore:
 
     def __init__(self):
         # 数据实体与集中配置
-        self.ttsData = TTsData()
-        self.llmData = LLmData()
+        self.ttsData = TTsState()
+        self.llmData = LLmState()
         self.config = TTSConfig()
 
         # 桥接依赖：角色提示词（未实现）与说话状态（打断）
@@ -139,7 +142,6 @@ class TTsCore:
                         except Exception:
                             pass
             self.paused = True
-            self.llmData.is_stream_out = False
             self.ttsData.is_tts_ready = True
         self.log.info("TTS 彻底清除完成")
 
@@ -197,13 +199,12 @@ class TTsCore:
                 pass
         self.subtitle.clear()
 
-    def _add_segment(self, traceid, seg_index, total, file_path, reply_json, is_end=False):
+    def _add_segment(self, traceid, seg_index, file_path, reply_json, is_end=False):
         """将分段放入顺序缓冲，按序进入播放队列"""
         with self.pending_lock:
             if traceid not in self.pending_segments:
                 self.pending_segments[traceid] = {
                     "next": 0,
-                    "total": total,
                     "buffer": {},
                     "lock": Lock(),
                     "traceid": traceid,
@@ -221,28 +222,21 @@ class TTsCore:
             file_path, reply_json, is_end = tracker["buffer"].pop(idx)
             self.subtitle.put(reply_json)
             if file_path is not None:
-                self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}/{tracker['total']}")
+                self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}")
                 self.play_queue.put((file_path, reply_json, is_end))
             tracker["next"] += 1
 
-            # total 未知且当前段为结束段时清理
-            if tracker["total"] == -1 and is_end:
+            if is_end:
                 with self.pending_lock:
                     if tracker["traceid"] in self.pending_segments:
                         del self.pending_segments[tracker["traceid"]]
                 return
 
-        # total 已知且所有分段已入队时清理
-        if tracker["total"] != -1 and tracker["next"] >= tracker["total"]:
-            with self.pending_lock:
-                if tracker["traceid"] in self.pending_segments:
-                    del self.pending_segments[tracker["traceid"]]
-
     def tts_say(self, text):
         """直接合成并播放一段语音（复读/欢迎语）"""
         try:
             traceid = str(uuid.uuid4())
-            json = {"voiceType": "other", "traceid": traceid, "chatStatus": "end", "question": "", "text": text, "lanuage": ""}
+            json = {"voiceType": "other", "traceid": traceid, "chatStatus": "end", "text": text, "lanuage": ""}
             self.tts_say_do(json)
         except Exception:
             self.log.exception("【tts_say】发生异常：")
@@ -261,14 +255,12 @@ class TTsCore:
             return
 
         seg_index = json.get("seg_index", 0)
-        total_segments = json.get("total_segments", 1)
         is_segmented = "seg_index" in json
 
         with self.count_lock:
             self.ttsData.SayCount += 1
             filename = f"say{self.ttsData.SayCount}"
 
-        question = json.get("question", "")
         text = json.get("text", "")
         reply_text = text
         traceid = json.get("traceid", "")
@@ -279,7 +271,7 @@ class TTsCore:
             reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": ""}
             if is_segmented:
                 # 分段场景：空结束段仅用于清理顺序缓冲，不入播放队列
-                self._add_segment(traceid, seg_index, total_segments, None, reply_json, is_end=True)
+                self._add_segment(traceid, seg_index, None, reply_json, is_end=True)
             else:
                 self.subtitle.put(reply_json)
                 self.log.info(reply_json)
@@ -303,8 +295,6 @@ class TTsCore:
         status = self.sovits.get_sovits(filename, text, ref_audio)
         if status == 0:
             return
-        if question != "":
-            self.obs.show_text("状态提示", f'{self.llmData.Ai_Name}语音合成"{question}"完成')
 
         # 异步输出表情
         emote_thread = Thread(target=self.emoteOper.emote_show, args=(emote_json,))
@@ -315,7 +305,7 @@ class TTsCore:
 
         if is_segmented:
             # 分段任务交给顺序缓冲，保证按序播放
-            self._add_segment(traceid, seg_index, total_segments, audio_file, reply_json, is_end=(chat_status == "end"))
+            self._add_segment(traceid, seg_index, audio_file, reply_json, is_end=(chat_status == "end"))
         else:
             # 非分段任务直接入队
             is_last = (chat_status == "end")
@@ -345,9 +335,11 @@ class TTsCore:
         """返回聊天回复 JSON（供前端轮询）"""
         if self.ttsData.ReplyTextList.empty():
             return "({})"
-        json_str = self.ttsData.ReplyTextList.get()
-        text = json_str["text"]
-        traceid = json_str["traceid"]
-        chat_status = json_str["chatStatus"]
-        content = text.replace("\"", "'").replace("\r", " ").replace("\n", "<br/>")
-        return "({\"traceid\": \"" + traceid + "\",\"chatStatus\": \"" + chat_status + "\",\"status\": \"成功\",\"content\": \"" + content + "\"})"
+        item = self.ttsData.ReplyTextList.get()
+        payload = {
+            "traceid": item.get("traceid", ""),
+            "chatStatus": item.get("chatStatus", ""),
+            "status": "成功",
+            "content": item.get("text", "").replace("\r", " ").replace("\n", "<br/>"),
+        }
+        return "(" + json.dumps(payload, ensure_ascii=False) + ")"

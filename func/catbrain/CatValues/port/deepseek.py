@@ -48,7 +48,9 @@ class MeowValuesDeepSeekLLM:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        # 思考强度最高：不附加 disabled，使用模型默认的深度思考行为
+        # DeepSeek thinking 模式不支持强制工具调用，需禁用
+        if tool_choice:
+            params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             return self.client.chat.completions.create(**params)
         except Exception as e:

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/file_list.py
 # 企业级文件分析工具：目录文件列表（支持按修改时间排序）
 
 import os

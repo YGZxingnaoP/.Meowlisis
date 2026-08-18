@@ -12,8 +12,7 @@ class LLMTtsBridge:
         self.log = DefaultLog().getLogger()
 
     def send_to_answer_queue(self, llm_data, text: str, traceid: str,
-                             seg_index: int = 0, total_segments: int = 1,
-                             chat_status: str = "end", question: str = ""):
+                             seg_index: int = 0, chat_status: str = "end"):
         """将文本片段推送到 TTS 回答队列（空文本 + end 作为结束标记仍发送）"""
         if not text and chat_status != "end":
             return
@@ -21,10 +20,8 @@ class LLMTtsBridge:
             "voiceType": "chat",
             "traceid": traceid,
             "chatStatus": chat_status,
-            "question": question,
             "text": text,
-            "lanuage": "AutoChange",
+            "language": "AutoChange",
             "seg_index": seg_index,
-            "total_segments": total_segments
         }
         llm_data.AnswerList.put(json_msg)

@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/tools/analysis/file_analysis.py
 # 企业级文件分析工具集合：统一注册与分发（供价值观更新等模块的 LLM 工具调用）
 
 import json

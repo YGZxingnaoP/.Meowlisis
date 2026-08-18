@@ -9,6 +9,7 @@ from threading import Thread, Lock
 from typing import Dict, Optional
 
 from func.log.default_log import DefaultLog
+from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.UserMemory.port.deepseek import MeowUserMemoryDeepSeekLLM
 from func.catbrain.UserMemory.port.aliyun import MeowUserMemoryAliyunLLM
@@ -78,7 +79,6 @@ class MeowUpdateUserInfo:
 
     def _guess_new_user(self, username: str, line: str):
         """新用户猜测建档：以角色视角根据首条消息猜测信息并写入档案"""
-        from func.gobal.data import LLmData
         instruction = self._load_prompt(
             "guess_prompt.txt",
             "请以角色视角根据这条消息猜测该用户的基本信息，未知填 unknown，必须调用 save_user_info 工具。")
@@ -86,7 +86,7 @@ class MeowUpdateUserInfo:
         persona = self._get_persona_prompt()
         if persona:
             system_text = (
-                f"你现在就是{LLmData().Ai_Name}。请全程以{LLmData().Ai_Name}的第一人称视角，"
+                f"你现在就是{AppConfig().ai_name}。请全程以{AppConfig().ai_name}的第一人称视角，"
                 f"基于你自己的角色设定与价值观去看待这位用户，不要跳出角色，"
                 f"不要用第三人称称呼自己。\n\n"
                 f"【你的角色设定与价值观】\n{persona}\n\n"
@@ -110,7 +110,6 @@ class MeowUpdateUserInfo:
         content, count = self.userrecord.take_content(username)
         if not content.strip():
             return
-        from func.gobal.data import LLmData
         instruction = self._load_prompt(
             "analyze_prompt.txt",
             "请以角色视角分析以下对话更新该用户信息档案，无变化时 changed 设为 false，必须调用 save_user_info 工具。")
@@ -118,7 +117,7 @@ class MeowUpdateUserInfo:
         persona = self._get_persona_prompt()
         if persona:
             system_text = (
-                f"你现在就是{LLmData().Ai_Name}。请全程以{LLmData().Ai_Name}的第一人称视角，"
+                f"你现在就是{AppConfig().ai_name}。请全程以{AppConfig().ai_name}的第一人称视角，"
                 f"基于你自己的角色设定与价值观去看待这位用户，不要跳出角色，"
                 f"不要用第三人称称呼自己。\n\n"
                 f"【你的角色设定与价值观】\n{persona}\n\n"
@@ -165,19 +164,26 @@ class MeowUpdateUserInfo:
         return None
 
     def _check_format(self, result: Dict) -> bool:
-        """检查格式：7 个字段齐全且值为字符串（仅格式校验，不做审查）"""
+        """校验格式：affinity 需为整数，其余字段需为非空字符串"""
         for field in self.tool.FIELDS:
-            if field not in result or not isinstance(result[field], str):
+            if field not in result:
                 self.log.error(f"用户信息格式不合法，缺少字段: {field}")
+                return False
+            if field == "affinity":
+                if not isinstance(result[field], int):
+                    self.log.error("用户信息格式不合法，affinity 非整数")
+                    return False
+            elif not isinstance(result[field], str):
+                self.log.error(f"用户信息格式不合法，字段非字符串: {field}")
                 return False
         return True
 
     def _is_placeholder(self, data: Dict) -> bool:
-        """判断档案是否为占位档（除 name 外全部为 unknown）"""
+        """判断档案是否为占位档（除 name 与 affinity 外全部为 unknown）"""
         if not isinstance(data, dict):
             return False
         for field in self.tool.FIELDS:
-            if field == "name":
+            if field in ("name", "affinity"):
                 continue
             if str(data.get(field, "") or "").strip().lower() != "unknown":
                 return False
@@ -193,6 +199,7 @@ class MeowUpdateUserInfo:
         latest_path = os.path.join(self.info_dir, f"{safe}_latest.json")
         data = {field: "unknown" for field in self.tool.FIELDS}
         data["name"] = username
+        data["affinity"] = 0
         try:
             with open(latest_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -215,8 +222,13 @@ class MeowUpdateUserInfo:
                     os.replace(latest_path, backup_path)
                 except Exception:
                     self.log.exception(f"用户档案备份失败: {latest_path}")
-        # 只保留 7 个标准字段
+        # 只保留标准字段（affinity 为数值，缺失默认 0）
         data = {k: result.get(k, "unknown") for k in self.tool.FIELDS}
+        if not isinstance(data.get("affinity"), int):
+            try:
+                data["affinity"] = int(data["affinity"]) if data.get("affinity") not in (None, "") else 0
+            except (TypeError, ValueError):
+                data["affinity"] = 0
         try:
             with open(latest_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
