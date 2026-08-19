@@ -49,6 +49,19 @@ class SystemPromptBridge:
             return front + "\n\n" + body
         return front or body
 
+    def get_napcat_prompt(self, username=None, current_message: str = "") -> str:
+        """获取 NapCat 专用系统提示词：前置词末尾追加「你在QQ里回复」优化，使用在线情绪/性格"""
+        body = ""
+        if self._builder:
+            body = self._builder.build(username, current_message, online=True)
+        front = self.get_front_prompt()
+        if front:
+            name = username or "用户"
+            front = f"{front}\n你现在在和{name}说话\n你在QQ里回复TA的消息，必须使用网络用语"
+        if front and body:
+            return front + "\n\n" + body
+        return front or body
+
     def get_active_prompt(self, cold_time, current_message: str = "") -> str:
         """获取主动回复系统提示词：前置词末尾追加空闲提示 + catbrain 主动回复内容（不含用户档案）"""
         body = ""

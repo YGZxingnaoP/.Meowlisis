@@ -87,6 +87,12 @@ class MeowLoadUserMemory:
             if not value or value.lower() == "unknown":
                 continue
             lines.append(f"- {label}：{value}")
+        # 生活动态：近期事件概括，leisure/空 展示为“很空闲”
+        recent = str(data.get("recent_events", "") or "").strip()
+        if not recent or recent.lower() == "leisure":
+            recent = "很空闲"
+        lines.append(f"## {name}的生活动态")
+        lines.append(f"- {recent}")
         return self._ensure_markdown("\n".join(lines))
 
     @staticmethod

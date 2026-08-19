@@ -34,7 +34,8 @@ const App = {
         const map = {
             sensevoice: { fn: () => API.startSensevoice(), name: 'SenseVoice' },
             sovits: { fn: () => API.startSovits(), name: 'SoVITS' },
-            main: { fn: () => API.startMain(), name: '主程序' }
+            main: { fn: () => API.startMain(), name: '主程序' },
+            napcat: { fn: () => API.startNapcat(), name: 'NapCat' }
         };
         const item = map[id];
         if (!item) return;
@@ -99,7 +100,8 @@ const App = {
             'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
             'obs': { title: 'OBS 设置', fn: () => Config.obs() },
-            'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() }
+            'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() },
+            'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() }
         };
         const panel = map[id];
         if (!panel) {

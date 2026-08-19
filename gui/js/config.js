@@ -440,6 +440,30 @@ const Config = {
             this._text('认证令牌', 'emote.vtuber_authenticationToken', '');
     },
 
+    // ============ NapCat（QQ 机器人） ============
+    napcat() {
+        return this._section('NapCat QQ 机器人') +
+            this._check('启用 NapCat', 'napcat.enabled', false) +
+            this._text('WebSocket 地址', 'napcat.ws_url', 'ws://127.0.0.1:3001') +
+            this._password('Access Token（可空）', 'napcat.access_token', '') +
+            this._num('拉取历史条数', 'napcat.history_limit', 30, 1, 200, 1,
+                '向上获取的聊天记录条数，作为 napcat 回复的短期记忆') +
+            this._num('短期记忆轮数', 'napcat.short_mem_rounds', 30, 1, 200, 1,
+                'qq_response 类型短期记忆保留轮数（1 轮 = 用户 + AI）') +
+            this._check('启用短期记忆', 'napcat.short_mem_enabled', true) +
+            this._check('启用长期记忆', 'napcat.ltmem_enabled', false) +
+            this._select('深度思考级别', 'napcat.thinking_level', [
+                { value: 'off', label: '关闭' },
+                { value: 'low', label: '低' },
+                { value: 'medium', label: '中' },
+                { value: 'high', label: '高' }
+            ], 'medium', 'DeepSeek/Aliyun 当前仅支持开/关，medium 及以上均开启思考') +
+            this._check('启用表情发送', 'napcat.emote_enabled', true) +
+            this._num('表情触发概率(%)', 'napcat.emote_probability', 30, 0, 100, 1,
+                '最终概率 = 配置概率 + 用户好感度') +
+            this._text('表情文件目录', 'napcat.emote_dir', '.NapCat/EmoteLab');
+    },
+
     // ============ Minecraft ============
     minecraft() {
         return this._section('Minecraft 日志读取') +

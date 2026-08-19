@@ -39,6 +39,12 @@ config.yml
 .SenseVoice/localmodels
 .SenseVoice/env
 
+#NapCat 运行时（QQ 本体 + Shell + 登录数据，不入库）
+#注意：.NapCat 目录本身保留，仅忽略运行时，EmoteLab 表情与 emote_scenes.json 仍需入库
+.NapCat/NapCat.Shell/
+.NapCat/EmoteLab
+.NapCat/*.exe
+
 #CatBrain 运行时数据
 .temp/
 character/memory/

@@ -53,3 +53,56 @@
 - 1、逐字分析我的需求，有任何疑问提出，确保没有歧义
 - 2、llm_active下的所有类名都需要Auto前缀
 有问题提出，先分析项目
+
+# ToolBox\napcat的功能实现
+## 功能概述
+- 1、该功能允许角色通过napcat，用自己的qq账号给指定用户，多为用户，群聊发送消息，文件，链接，表情包等
+- 2、该功能基于项目核心的拓展，使用项目的catbrain记忆功能，使用项目的llm回复，以及可以使用其它工具
+- 3、toolbox里有接口型工具，触发型工具，和兼顾二者的混合型工具，NapCat控制模块属于混合型工具
+- 4、各种接口较为复杂，可以参考```D:\QQbot\AstrBotLauncher-0.3.0```的astrbot，必要时直接复用功能或者plugins下的插件
+## 具体模块功能需求
+### 项目根目录的napcat
+- 1、检查```D:\QQbot\NapCat```下的完整性
+- 2、告诉我需要复制什么文件到项目根目录进行整合，整合位置在将在项目根目录```.NapcCat\```
+- 3、在前端主界面主球附带的三个启动球，新增第四个球，“NapCat”启动球
+### napcat核心文件
+- 1、napcat_core.py，负责和napcat的连接，负责得到napcat数据请求和传递
+- 2、config.py，所有配置项都集中于此，比如napcat是否启用，查找聊天数，端口数值
+- 3、在toolbox里注册触发模块，接口类模块自己配置开关
+### napcat\message模块（接口模块，自发进行，不受toolcalls控制，仅使用于单人聊天）
+- 1、新建get_message.py获取当前用户发送的消息，用户昵称
+- 2、新建get_record.py获取当前用户聊天记录，整合为短期记忆，从当前条数向上获取30（默认30，可以配置）条信息，整合为openai的json格式，直接作为短期记忆，用户消息对应user，角色消息对应assistant
+- 2.1、没有名称的动画表情跳过，有名称的动画表情保留
+- 3、得到用户消息后，内容传递至pipeline\toolbox_llm.py
+- 3.1、获得用户消息，以昵称为用户名，当前消息为用户消息，发送至toolbox_core，然后传递至pipline\toolbox_llm，短期记忆也传递
+- 3.2、llm接收后，回复过程和获取构建提示词逻辑不变
+- 3.3、llm接收后，不再访问public_short_memory.json，而是使用napcat传递的短期记忆，所以需要在pipeline和llm合适地方新建方法
+- 3.4、llm流式正则处理后（和发送给tts的一样）传递给tool_llm.py,在发还给tool_core，在给napcat，作为消息发送
+- 4、用户消息也需要记录到长期记忆，内容传递至toolbox_ltmem.py
+- 4.1、当前用户消息和对话消息，需要传递至pipeline\short_memory.py，存储到短期记忆public_short_memory
+- 4.2、从napcat来的消息type为“qq_response”
+- 4.3、qq_response类型消息为有对应关系的user+assistant为一轮
+- 4.4、清除逻辑，当存储的qq_response类型消息达到30轮（默认，可以配置，由napcat内的config传递至pipeline\short_memory.py），则从最旧的一条开始删除
+- 4.5、从napcat来的消息记录到短期记忆的时候，需要增加“【来自QQ的消息】”前缀
+- 4.6、存储到长期记忆也一样，保证时间和用户名的格式，同时之后也加上“【来自QQ的消息】”
+- 4.7、存储到短期记忆和长期记忆可以配置开关，默认长期记忆不开启，短期记忆开启
+- 5、新建emote_sender.py，用于发送表情包gif
+- 5.1、所有表情包位于项目根目录的.NapcCat\EmoteLab内部，仅发送这些动态gif（写一个脚本清理一下文件名，仅保留"MiaoWu_"后面的表情名称）
+- 5.2、表情包的调用是受到一个用户消息后，有概率触发（默认30%，可以配置）
+- 5.3、新增emote_choose.py，开启深度思考，选择表情发送
+- 5.4、需要从system_prompt.py获得角色提示词，以及获取聊天记录（不是短期记忆，是用户聊天记录）
+- 5.5、好感度越高越有概率发送表情，所以概率的公式是```（配置的概率 + 好感度）%```
+- 5.6、新增一个json，把所有表情的使用场景列出来告诉ai，这个json先随便填写，表情极多且复杂，之后我手动填写，仅新建文件
+- 6、在napcat下也新建port文件，内容完全复用llm下的，且api单独配置
+- 6.1、补充，该port仅用于发送表情的工具调用，和llm回复完全没有关系
+### napcat\groupchat模块（接口模块，自发进行，不受toolcalls控制，仅使用于群聊）
+- 1、暂时先新建空文件，暂时不实现
+### napcat\active_sender模块（触发模块，需要toolcalls控制，用于主动发送信息或者文件）
+- 1、先在analysis.py注册tool，说明这个工具是给用户发送文件
+- 2、新建get_friendlist.py获取用户列表获取
+- 3、新建get_grouplist.py获取群聊列表
+- 4、新建sender.py，用于实现发送内容，暂时仅先实现基础框架，保留
+# 原则
+- 1、逐字分析我的需求，有任何疑问提出，确保没有歧义
+- 2、napcat下的所有类名都需要TB前缀
+有问题提出，先分析项目，暂时实现我需要的功能

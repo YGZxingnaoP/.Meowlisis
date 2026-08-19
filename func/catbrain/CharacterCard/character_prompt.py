@@ -33,42 +33,49 @@ class MeowCharacterPrompt:
         info = self._pick_card(card)
         return str(info.get("name", "") or "")
 
-    def _read_latest_emotion(self) -> dict:
-        """读取 .temp/latest_emotion.json（缺失返回空 dict）"""
+    def _read_latest_emotion(self, online: bool = False) -> dict:
+        """读取情绪文件（online 时读 latest_emotion_online.json，否则读主情绪文件）"""
+        path = os.path.join(".temp", "latest_emotion_online.json") if online else self.latest_emotion_path
         try:
-            if os.path.exists(self.latest_emotion_path):
-                with open(self.latest_emotion_path, "r", encoding="utf-8") as f:
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     return data if isinstance(data, dict) else {}
         except Exception:
             pass
         return {}
 
-    def _current_personality_name(self) -> str:
-        """读取当前选中的性格名（来自 .temp/latest_emotion.json，缺失返回空）"""
-        data = self._read_latest_emotion()
+    def _current_personality_name(self, online: bool = False) -> str:
+        """读取当前选中的性格名（online 时读在线情绪文件，否则读主情绪文件）"""
+        data = self._read_latest_emotion(online)
         name = data.get("personality")
         return str(name) if name else ""
 
-    def _current_emotion(self) -> str:
-        """读取当前情绪（来自 pipeline 情绪桥接）"""
+    def _current_emotion(self, online: bool = False) -> str:
+        """读取当前情绪（online 时读 napcat 在线情绪桥接，否则读主情绪桥接）"""
+        if online:
+            from func.toolbox.napcat.emotion_bridge import TBNapCatEmotionBridge
+            return TBNapCatEmotionBridge().get_emotion()
         from func.pipeline.llm_emotion import LLMEmotionBridge
         return LLMEmotionBridge().get_emotion()
 
-    def _current_personality_prompt(self, info: dict) -> str:
+    def _current_personality_prompt(self, info: dict, online: bool = False) -> str:
         """返回当前性格对应的提示词（无匹配时回退第一个性格）"""
         personalities = info.get("personality") or {}
         if not isinstance(personalities, dict):
             return str(personalities) if personalities else ""
-        name = self._current_personality_name()
+        name = self._current_personality_name(online)
         if name and name in personalities:
             return str(personalities[name] or "")
         if personalities:
             return str(list(personalities.values())[0] or "")
         return ""
 
-    def build(self) -> str:
-        """构建角色卡提示词（markdown，标题为角色名，性格/设定/情绪紧接昵称之后）"""
+    def build(self, online: bool = False) -> str:
+        """构建角色卡提示词（markdown，标题为角色名，性格/设定/情绪紧接昵称之后）
+
+        online=True 时，性格与情绪读取 napcat 在线数据源。
+        """
         card = self.load_card.load()
         if not card:
             return ""
@@ -87,7 +94,7 @@ class MeowCharacterPrompt:
             lines.append(f"- 昵称：{nickname}")
 
         # 角色性格（紧接昵称）
-        personality_prompt = self._current_personality_prompt(info)
+        personality_prompt = self._current_personality_prompt(info, online)
         if personality_prompt:
             lines.append(f"- 角色性格：{personality_prompt}")
 
@@ -101,7 +108,7 @@ class MeowCharacterPrompt:
             lines.append(f"- 角色设定：{setting}")
 
         # 现在的情绪（紧接设定）
-        lines.append(f"- 现在的情绪：{self._current_emotion()}")
+        lines.append(f"- 现在的情绪：{self._current_emotion(online)}")
 
         # 角色外貌（位于个人信息提示之前）
         appearance = info.get("appearance", "")

@@ -1,7 +1,10 @@
 # 吟美Api web
+import os
+import sys
 import time
 import uuid
 import asyncio
+import subprocess
 from threading import Thread
 from flask import Flask, jsonify, request
 from flask_apscheduler import APScheduler
@@ -102,6 +105,24 @@ def http_emote():
     emote_thread1.start()
     return jsonify({"status": "成功"})
 
+
+# http启动 NapCat（GUI 启动球调用）
+@app.route("/api/start_napcat", methods=["POST"])
+def start_napcat():
+    try:
+        napcat_dir = os.path.join(".NapCat", "NapCat.Shell")
+        start_bat = os.path.join(napcat_dir, "napcat.quick.bat")
+        if os.path.exists(start_bat):
+            if sys.platform == "win32":
+                subprocess.Popen([start_bat], cwd=napcat_dir, creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([start_bat], cwd=napcat_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            return jsonify({'status': 'error', 'message': 'napcat.quick.bat not found'}), 400
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 # http接口处理【postman接口调用】
 @app.route("/msg", methods=["POST"])
 def input_msg():
@@ -168,9 +189,15 @@ def main():
     mc_reader.start()
     log.info("已启用 Minecraft 日志读取")
 
+    # NapCat 客户端（正向 WS 连接 QQ）
+    from func.toolbox.napcat.napcat_core import TBNapCatCore
+    napcat_core = TBNapCatCore()
+    napcat_core.start()
+
     # 注册退出清理
     import atexit
     atexit.register(mc_reader.stop)
+    atexit.register(napcat_core.stop)
 
     if "blivedm" in mode or "api" in mode:
         # LLM回复

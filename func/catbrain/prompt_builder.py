@@ -33,8 +33,11 @@ class MeowPromptBuilder:
         """构建当前情绪提示词（仅次于角色卡放置）"""
         return f"现在{AppConfig().ai_name}的情绪：{self._current_emotion()}"
 
-    def build(self, username=None, current_message: str = "") -> str:
-        """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→日期→记忆摘要）"""
+    def build(self, username=None, current_message: str = "", online: bool = False) -> str:
+        """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→日期→记忆摘要）
+
+        online=True 时，角色卡使用 napcat 在线情绪/性格数据源。
+        """
         # 当前用户优先取传入参数，缺失时从 llm_ltmem 桥接获取最近用户
         if not username:
             try:
@@ -43,7 +46,7 @@ class MeowPromptBuilder:
             except Exception:
                 username = None
         parts = [
-            self.character_prompt.build(),  # 角色卡（已含当前情绪）
+            self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
             self.usrmem.build(username),
             self.calendar.build(username),  # 日期块（节日/节气/生日）

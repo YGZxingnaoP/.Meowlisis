@@ -163,6 +163,23 @@ def start_sensevoice():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/start_napcat', methods=['POST'])
+def start_napcat():
+    try:
+        napcat_dir = BASE_DIR / ".NapCat" / "NapCat.Shell"
+        start_bat = napcat_dir / "napcat.quick.bat"
+        if start_bat.exists():
+            if sys.platform == "win32":
+                subprocess.Popen([str(start_bat)], cwd=str(napcat_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+            else:
+                subprocess.Popen([str(start_bat)], cwd=str(napcat_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            return jsonify({'status': 'error', 'message': 'napcat.quick.bat not found'}), 400
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/character_card', methods=['GET'])
 def get_character_card():
     cfg = load_config()

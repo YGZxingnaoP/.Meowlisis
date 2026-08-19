@@ -8,7 +8,8 @@ const Orbit = {
     launcherPlanets: [
         { id: 'main', label: '主程序', tooltip: '启动主程序', endpoint: 'http://127.0.0.1:1800' },
         { id: 'sovits', label: 'SoVITS', tooltip: '启动 SoVITS 服务', endpoint: 'http://127.0.0.1:9880' },
-        { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' }
+        { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' },
+        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat 快速启动', endpoint: 'ws://127.0.0.1:3001' }
     ],
 
     // 外层配置节点（与 config.yml 节点对应）
@@ -24,11 +25,12 @@ const Orbit = {
         { id: 'toolbox', label: 'Toolbox', tooltip: '工具箱（Minecraft/OBS/VTS）' }
     ],
 
-    // Toolbox 子视图外围行星球（父级模型中心球 + 三个工具球）
+    // Toolbox 子视图外围行星球（父级模型中心球 + 四个工具球）
     toolboxPlanets: [
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
         { id: 'obs', label: 'OBS', tooltip: 'OBS 字幕模块（占位）' },
-        { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' }
+        { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
+        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' }
     ],
 
     rotation: 0,
@@ -214,14 +216,17 @@ const Orbit = {
         el.dataset.tooltip = `${p.tooltip}：${p.endpoint}`;
         el.dataset.launchId = p.id;
 
-        // 目标偏移（相对中心，沿主球右侧弧线排列，稍远）
-        const offsets = [
-            { x: 185, y: 92 },     // main 右上
-            { x: 215, y: 0 },      // sovits 正右
-            { x: 185, y: -92 }     // sensevoice 右下
-        ];
-        el.dataset.offsetX = offsets[index].x;
-        el.dataset.offsetY = offsets[index].y;
+        // 目标偏移：按角度均匀分布在主球右侧弧线上（从右下到右上）
+        const total = this.launcherPlanets.length;
+        const radius = 210;
+        const startAngle = 45;   // 最下方（右下）角度
+        const endAngle = -45;    // 最上方（右上）角度
+        const angle = total <= 1
+            ? 0
+            : startAngle + (endAngle - startAngle) * index / (total - 1);
+        const rad = angle * Math.PI / 180;
+        el.dataset.offsetX = Math.round(radius * Math.cos(rad));
+        el.dataset.offsetY = Math.round(radius * Math.sin(rad));
 
         this._applyLauncherPosition(el, false);
 

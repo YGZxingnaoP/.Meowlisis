@@ -19,6 +19,19 @@ class TBoxAnalysis:
         self.config = TBoxConfig()
         self.llm = None
         self._tools = {}
+        self._register_napcat_sender()
+
+    def _register_napcat_sender(self):
+        """注册 NapCat 主动发送触发模块（发送消息 / 发送文件）"""
+        try:
+            from func.toolbox.napcat.active_sender.sender import TBSender
+            sender = TBSender()
+            for tool_schema in sender.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, sender)
+        except Exception:
+            self.log.exception("注册 NapCat 主动发送工具失败")
 
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
@@ -36,13 +49,13 @@ class TBoxAnalysis:
         self._tools[name] = tool
 
     def build_tools(self) -> List[Dict]:
-        """构建父级 toolcalls 工具定义（列出已注册工具供 AI 选择开启）"""
+        """构建父级 toolcalls 工具定义（use_tool + 各注册工具的具体 schema）"""
         names = list(self._tools.keys())
         if names:
             tool_name_schema = {"type": "string", "enum": names}
         else:
             tool_name_schema = {"type": "string"}
-        return [{
+        schemas = [{
             "type": "function",
             "function": {
                 "name": self.TOOL_NAME,
@@ -67,6 +80,15 @@ class TBoxAnalysis:
                 },
             },
         }]
+        # 合并各注册工具的具体 schema（同一工具对象只展开一次）
+        seen_tools = set()
+        for tool in self._tools.values():
+            if id(tool) in seen_tools:
+                continue
+            seen_tools.add(id(tool))
+            if hasattr(tool, "build_tools"):
+                schemas.extend(tool.build_tools())
+        return schemas
 
     def force_tool_choice(self) -> str:
         """构建强制使用父级工具的 tool_choice"""
@@ -81,4 +103,6 @@ class TBoxAnalysis:
         tool = self._tools.get(tool_name)
         if not tool:
             return f"错误：未知工具 {tool_name}"
+        if hasattr(tool, "dispatch"):
+            return tool.dispatch(tool_name, arguments or {})
         return None

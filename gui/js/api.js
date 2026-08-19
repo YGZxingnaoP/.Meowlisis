@@ -54,6 +54,12 @@ const API = {
         return res.json();
     },
 
+    async startNapcat() {
+        const res = await fetch('/api/start_napcat', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start NapCat');
+        return res.json();
+    },
+
     async getCharacterCard(file) {
         const res = await fetch('/api/character_card?file=' + encodeURIComponent(file || 'prompt'));
         if (!res.ok) throw new Error('Failed to load character card');

@@ -4,4 +4,5 @@
 2. 无法确认的信息保留 unknown 或原值；
 3. tags_preference 仅从已有tags附件中选择，禁止新建，没有把握时保留原值或空数组；
 4. 如果对话内容不足以改变任何字段，可以将 changed 设为 false 表示不改动；
-5. 如需更新请调用 save_user_info 工具输出结果。
+5. 请调用 save_user_info 工具更新用户档案；
+6. 请再调用 save_user_event 工具，用两三句话概括该用户最近在忙什么、在研究什么，概括不出或没有明确信息就填写 leisure。

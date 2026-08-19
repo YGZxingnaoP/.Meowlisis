@@ -31,7 +31,7 @@ class MeowUserInfoTool:
                     "properties": {
                         "name": {"type": "string", "description": "用户名称"},
                         "gender": {"type": "string", "description": "用户性别，不知道则填写 unknown"},
-                        "character": {"type": "string", "description": "用户性格"},
+                        "character": {"type": "string", "description": "几句话简单描述用户性格"},
                         "likes": {"type": "string", "description": "用户喜欢的东西（物品）"},
                         "preference": {"type": "string", "description": "用户喜欢的事情（区别于喜欢的东西）"},
                         "relation": {"type": "string", "description": "用户和角色的关系"},
