@@ -9,6 +9,8 @@ import time
 
 import aiohttp
 
+from func.sensevoice.optimizer import SenseVoiceTextOptimizer
+
 
 class SenseVoiceManager:
     """统一收发：发音频帧、发控制信号、收识别结果并送 LLM"""
@@ -18,6 +20,7 @@ class SenseVoiceManager:
         self.port = port
         self.log = log
         self.callback = callback
+        self.optimizer = SenseVoiceTextOptimizer(config)
 
         from func.config.app_config import AppConfig
         self.api_base = f"http://127.0.0.1:{AppConfig().port}"
@@ -143,11 +146,12 @@ class SenseVoiceManager:
         self.pending_tasks[key] = task
 
     async def _delayed_send(self, key: str):
-        """延迟合并断句后发送到 LLM"""
+        """延迟合并断句后优化文本并发送到 LLM"""
         try:
             await asyncio.sleep(self.config.merge_delay)
             full_text = self.pending_texts.pop(key, "").strip()
             if full_text:
+                full_text = self.optimizer.optimize(full_text)
                 await self._send_to_llm(full_text, key)
         except asyncio.CancelledError:
             pass

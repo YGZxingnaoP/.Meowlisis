@@ -11,7 +11,7 @@ from func.log.default_log import DefaultLog
 from func.config.app_config import AppConfig
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.AbstractMem.summary_tool import MeowSummaryTool
-from func.toolbox.txt_reader.jieba_segment import MeowJiebaSegmentTool
+from func.catbrain.txt_reader.jieba_segment import MeowJiebaSegmentTool
 from func.pipeline.short_memory import ShortMemory
 
 
@@ -25,6 +25,9 @@ class MeowLoadAbstractMemory:
         self.summary_tool = MeowSummaryTool()
         self.short_memory = ShortMemory()
         self.meow_path = os.path.join("character", "abstract_memory", "meow.json")
+        # 当前话题落盘路径（供主动回复模块读取）
+        self.topic_path = os.path.join(".temp", "current_topic.json")
+        self._saved_topic = None
         # 当前话题缓存（内存单例，重启后从最新摘要回退）
         self._topic_cache = ""
         self._topic_cache_time = 0.0
@@ -57,15 +60,31 @@ class MeowLoadAbstractMemory:
         """当前话题：优先用缓存，过期后用短期记忆决策，失败回退到最新摘要"""
         now = time.time()
         if self._topic_cache and (now - self._topic_cache_time) < self.config.topic_update_interval:
+            self._save_topic(self._topic_cache)
             return self._topic_cache
         topic = self._decide_topic()
         if topic:
             self._topic_cache = topic
             self._topic_cache_time = now
+            self._save_topic(topic)
             return topic
         if not data:
             return ""
-        return str(data[-1].get("topic", "") or "")
+        fallback = str(data[-1].get("topic", "") or "")
+        self._save_topic(fallback)
+        return fallback
+
+    def _save_topic(self, topic: str):
+        """话题更新后实时落盘到 .temp/current_topic.json"""
+        if not topic or topic == self._saved_topic:
+            return
+        try:
+            os.makedirs(os.path.dirname(self.topic_path), exist_ok=True)
+            with open(self.topic_path, "w", encoding="utf-8") as f:
+                json.dump({"topic": topic}, f, ensure_ascii=False)
+            self._saved_topic = topic
+        except Exception:
+            self.log.exception("保存当前话题失败")
 
     def _decide_topic(self) -> str:
         """用短期记忆强制工具调用决策当前话题（失败返回空）"""

@@ -6,7 +6,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 1700;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.3s ease;
@@ -220,6 +220,15 @@
 
 /* 字典行（设定/性格） */
 .dict-row {
+    border: 1px dashed var(--pink-soft);
+    border-radius: 12px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+/* 易错词替换规则行 */
+.replace-rule-row {
     border: 1px dashed var(--pink-soft);
     border-radius: 12px;
     padding: 10px;

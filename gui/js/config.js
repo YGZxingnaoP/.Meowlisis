@@ -90,7 +90,6 @@ const Config = {
                 {value:'2pass',label:'2pass'},{value:'offline',label:'offline'},{value:'online',label:'online'}
             ], '2pass') +
             this._num('分块大小(ms)', 'sensevoice.chunk_size_ms', 300, 50, 500, 10) +
-            this._text('用户名', 'sensevoice.username', 'YGZ醒脑片') +
             this._select('语言', 'sensevoice.language', [
                 {value:'auto',label:'auto'},{value:'zh',label:'zh'},{value:'en',label:'en'},
                 {value:'yue',label:'yue'},{value:'ja',label:'ja'},{value:'ko',label:'ko'}
@@ -104,7 +103,56 @@ const Config = {
             this._num('静音阈值(秒)', 'sensevoice.silence_threshold', 2.0, 0, 5, 0.1) +
             this._num('心跳间隔(秒)', 'sensevoice.ping_interval', 20, 1, 120, 1) +
             this._num('心跳超时(秒)', 'sensevoice.ping_timeout', 60, 1, 300, 1) +
-            this._num('最大重连次数', 'sensevoice.max_reconnect_attempts', 5, 0, 50, 1);
+            this._section('易错词替换（上=正确词，下=错误词）') +
+            `<div id="replaceRulesList"></div>
+            <button class="btn btn-secondary" id="addReplaceRuleBtn">添加规则</button>`;
+    },
+
+    // 易错词替换编辑器：正确词 -> 多个错误词
+    replaceRulesPanel(data) {
+        const rules = data || {};
+        let h = '';
+        Object.keys(rules).forEach(correct => {
+            const wrongs = Array.isArray(rules[correct]) ? rules[correct] : [];
+            h += this.replaceRuleRow(correct, wrongs);
+        });
+        if (!Object.keys(rules).length) {
+            h += `<div class="help-text">暂无替换规则，点击下方按钮添加</div>`;
+        }
+        return h;
+    },
+
+    replaceRuleRow(correct, wrongs) {
+        const wrongTags = (wrongs || []).map(w =>
+            `<span class="split-tag" data-wrong="${this._esc(w)}">${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button></span>`
+        ).join('');
+        return `<div class="replace-rule-row">
+            <div class="form-group"><label>正确词</label>
+                <input type="text" data-replace-correct value="${this._esc(correct || '')}"></div>
+            <div class="form-group"><label>错误词（回车添加，点击 × 删除）</label>
+                <div class="split-flag-editor replace-wrong-editor">
+                    <div class="split-tags replace-wrong-tags">${wrongTags}</div>
+                    <div class="split-add-row">
+                        <input type="text" class="split-add-input replace-wrong-input" placeholder="输入错误词后回车添加" maxlength="20">
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    },
+
+    collectReplaceRules() {
+        const result = {};
+        document.querySelectorAll('#replaceRulesList .replace-rule-row').forEach(row => {
+            const correct = row.querySelector('[data-replace-correct]').value.trim();
+            if (!correct) return;
+            const wrongs = [];
+            row.querySelectorAll('.replace-wrong-tags .split-tag').forEach(t => {
+                const w = t.dataset.wrong;
+                if (w) wrongs.push(w);
+            });
+            result[correct] = wrongs;
+        });
+        return result;
     },
 
     // ============ 声纹管理面板 ============
@@ -406,14 +454,49 @@ const Config = {
             this._check('忽略自己发送的消息', 'minecraft.ignore_self_messages', false);
     },
 
-    // ============ OBS ============
+    // ============ 角色主动回复 (llm_active) ============
+    llm_active() {
+        return this._section('角色主动回复 (llm_active)') +
+            this._num('空闲冷却时间(秒)', 'llm_active.cold_time', 90, 1, 3600, 1,
+                '空闲后触发主动回复的基础等待时间，实际等待 = 该值 × 随机(0.8~1.2)') +
+            this._num('连续触发阈值 n', 'llm_active.n', 1, 0, 100, 1,
+                '连续空闲触发次数 ≤ n 使用继承话题策略，> n 使用创造话题策略') +
+            this._num('摘要检索条数上限', 'llm_active.origin_summary_limit', 30, 1, 200, 1,
+                '创造话题策略时检索记忆摘要的最大条数') +
+            this._num('最近说话人数量', 'llm_active.origin_speaker_limit', 3, 1, 3, 1,
+                '创造话题策略时读取最近说话人档案的数量（最多3个）');
+    },
+
+    // ============ OBS（占位） ============
     obs() {
         return this._section('OBS 直播控制') +
-            this._check('启用OBS控制', 'obs.switch', false) +
-            this._text('WebSocket地址', 'obs.url', '127.0.0.1') +
-            this._num('端口', 'obs.port', 4455, 1, 65535, 1) +
-            this._password('密码', 'obs.password', '') +
-            this._text('唱歌背景（场景名=音乐路径，JSON格式）', 'obs.song_background', '');
+            `<div class="help-text">OBS 直播控制功能已移除，当前仅保留 TTS 浏览器字幕模块（暂无配置项）。</div>`;
+    },
+
+    // ============ Toolbox 父级模型 ============
+    toolbox() {
+        const type = this._val('toolbox.llm_type', 'deepseek');
+        let h = this._section('Toolbox 父级模型') +
+            this._llmTypeSelect('父级 LLM 类型', 'toolbox.llm_type', type);
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="toolbox_ds">DeepSeek</button>
+            <button class="modal-tab" data-tab="toolbox_aliyun">阿里云</button>
+        </div>`;
+        h += `<div class="tab-content active" data-tab-content="toolbox_ds">` +
+            this._password('API Key', 'toolbox.deepseek.api_key', '') +
+            this._text('Base URL', 'toolbox.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'toolbox.deepseek.model', 'deepseek-chat') +
+            this._num('温度', 'toolbox.deepseek.temperature', 0.7, 0, 2, 0.1) +
+            this._num('max_tokens', 'toolbox.deepseek.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="toolbox_aliyun">` +
+            this._password('API Key', 'toolbox.aliyun.api_key', '') +
+            this._text('Base URL', 'toolbox.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'toolbox.aliyun.model', 'qwen-plus') +
+            this._num('温度', 'toolbox.aliyun.temperature', 0.7, 0, 2, 0.1) +
+            this._num('max_tokens', 'toolbox.aliyun.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        return h;
     },
 
     // ============ 角色卡（配置部分 + JSON 字段） ============

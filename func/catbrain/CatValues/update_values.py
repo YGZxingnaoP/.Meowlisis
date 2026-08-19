@@ -15,7 +15,7 @@ from func.catbrain.CatValues.port.aliyun import MeowValuesAliyunLLM
 from func.catbrain.CatValues.port.review import MeowValuesReviewLLM
 from func.catbrain.CatValues.values_tools import MeowValuesUpdateTool, MeowValuesReviewTool
 from func.catbrain.CatValues.load_values import MeowLoadValues
-from func.toolbox.txt_reader.file_analysis import MeowFileAnalysis
+from func.catbrain.txt_reader.file_analysis import MeowFileAnalysis
 
 
 class MeowUpdateValues:

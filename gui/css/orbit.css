@@ -208,3 +208,185 @@
     transform: translateX(-50%) scale(1);
     opacity: 1;
 }
+
+/* ========== Toolbox 子视图 ========== */
+.toolbox-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(6px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1500;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+}
+
+.toolbox-overlay.show {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.toolbox-panel {
+    position: relative;
+    width: 980px;
+    height: 640px;
+    background: #ffffff;
+    border: 10px solid var(--pink-soft);
+    border-radius: 32px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    padding: 20px;
+    transform: scale(0.9) translateY(20px);
+    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toolbox-overlay.show .toolbox-panel {
+    transform: scale(1) translateY(0);
+}
+
+.toolbox-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 8px 0;
+}
+
+.toolbox-header h3 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--pink-dark);
+}
+
+.toolbox-system {
+    position: relative;
+    width: 900px;
+    height: 540px;
+    margin: 12px auto 0;
+    cursor: grab;
+}
+
+.toolbox-system:active {
+    cursor: grabbing;
+}
+
+.toolbox-center-cluster {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    z-index: 10;
+}
+
+.toolbox-orbit {
+    position: absolute;
+    width: 600px;
+    height: 600px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scaleY(0.5);
+    z-index: 5;
+    pointer-events: none;
+    cursor: grab;
+}
+
+.toolbox-overlay.show .toolbox-orbit {
+    pointer-events: auto;
+}
+
+.toolbox-orbit:active {
+    cursor: grabbing;
+}
+
+.toolbox-ring {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 182, 193, 0.6);
+    box-shadow: 0 0 40px rgba(255, 182, 193, 0.3), inset 0 0 40px rgba(255, 182, 193, 0.1);
+}
+
+.toolbox-center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, var(--white), var(--pink-light));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 8px 32px var(--shadow), 0 0 50px var(--shadow-deep);
+    z-index: 10;
+    transition: transform 0.3s ease;
+}
+
+.toolbox-center:hover {
+    transform: translate(-50%, -50%) scale(1.08);
+}
+
+.toolbox-center-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--pink-deep);
+    text-align: center;
+}
+
+.toolbox-planet {
+    position: absolute;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    text-align: center;
+    line-height: 1.2;
+    color: white;
+    background: rgba(161, 140, 209, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 20px rgba(161, 140, 209, 0.4), inset 0 0 20px rgba(255, 255, 255, 0.2);
+    transition: box-shadow 0.3s ease;
+    user-select: none;
+}
+
+.toolbox-overlay.show .toolbox-planet {
+    pointer-events: auto;
+}
+
+.toolbox-planet:hover {
+    box-shadow: 0 8px 32px rgba(161, 140, 209, 0.65), inset 0 0 24px rgba(255, 255, 255, 0.35);
+}
+
+.toolbox-planet::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%) scale(0);
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.95);
+    color: var(--text-main);
+    font-size: 13px;
+    border-radius: 8px;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    opacity: 0;
+    transition: all 0.2s ease;
+    pointer-events: none;
+}
+
+.toolbox-planet:hover::after {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+}

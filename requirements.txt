@@ -42,3 +42,4 @@ onnxruntime
 jieba
 jieba-fast
 sentencepiece
+lunar-python

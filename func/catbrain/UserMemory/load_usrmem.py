@@ -24,6 +24,7 @@ class MeowLoadUserMemory:
         "favorite_songs": "喜欢的歌曲",
         "favorite_shows": "喜欢的影视作品",
         "favorite_foods": "喜欢的食物",
+        "tags_preference": "喜欢的话题标签",
         "affinity": "好感度",
     }
 
@@ -61,12 +62,16 @@ class MeowLoadUserMemory:
             return {}
 
     def build(self, username: str) -> str:
-        """按用户名构建用户记忆 markdown 提示词（标题直接为用户名，跳过 unknown，好感度 0 保留）"""
+        """按用户名构建用户记忆 markdown（标题说明当前说话人，首行显示用户名，跳过 unknown，好感度 0 保留）"""
         data = self.load(username)
         if not data:
             return ""
-        lines = [f"# {username or '默认'}"]
+        name = username or str(data.get("name") or "").strip() or "默认"
+        lines = [f"# 现在和你说话的是{name}"]
+        lines.append(f"- 用户名称：{name}")
         for key, label in self.FIELD_LABELS.items():
+            if key == "name":
+                continue  # 用户名已在档案首行显示
             raw = data.get(key, "")
             # 好感度为数值，0 是有效值需保留
             if key == "affinity":
@@ -74,7 +79,11 @@ class MeowLoadUserMemory:
                     continue
                 lines.append(f"- {label}：{raw}")
                 continue
-            value = str(raw or "").strip()
+            # tags_preference 为标签列表，用顿号连接展示
+            if isinstance(raw, list):
+                value = "、".join(str(x).strip() for x in raw if str(x).strip())
+            else:
+                value = str(raw or "").strip()
             if not value or value.lower() == "unknown":
                 continue
             lines.append(f"- {label}：{value}")

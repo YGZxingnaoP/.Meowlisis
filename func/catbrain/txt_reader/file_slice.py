@@ -5,7 +5,7 @@ import os
 from typing import Dict
 
 from func.log.default_log import DefaultLog
-from func.toolbox.txt_reader.path_guard import MeowPathGuard
+from func.catbrain.txt_reader.path_guard import MeowPathGuard
 
 
 class MeowFileSliceTool:

@@ -17,12 +17,18 @@ const Orbit = {
         { id: 'character', label: '角色卡', tooltip: '角色卡配置' },
         { id: 'sensevoice', label: 'SenseVoice', tooltip: '语音识别配置' },
         { id: 'llm', label: 'LLM', tooltip: '大语言模型配置' },
+        { id: 'active', label: '主动回复', tooltip: '角色主动回复配置' },
         { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
-        { id: 'danmaku', label: '弹幕', tooltip: 'B站弹幕配置' },
-        { id: 'vtuber', label: 'VTuber', tooltip: 'VTuber / VTS 配置' },
+        { id: 'danmaku', label: 'BiliLive', tooltip: 'B站直播弹幕配置' },
+        { id: 'toolbox', label: 'Toolbox', tooltip: '工具箱（Minecraft/OBS/VTS）' }
+    ],
+
+    // Toolbox 子视图外围行星球（父级模型中心球 + 三个工具球）
+    toolboxPlanets: [
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
-        { id: 'obs', label: 'OBS', tooltip: 'OBS 直播控制配置' }
+        { id: 'obs', label: 'OBS', tooltip: 'OBS 字幕模块（占位）' },
+        { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' }
     ],
 
     rotation: 0,
@@ -34,6 +40,8 @@ const Orbit = {
     catbrainEl: null,
     dragging: false,
     suppressClick: false,
+    toolboxRotation: 0,
+    toolboxPlanetEls: [],
 
     init() {
         const orbitOuter = document.getElementById('orbitOuter');
@@ -68,7 +76,134 @@ const Orbit = {
         // 外层拖动
         this.bindDragRotation();
 
+        // Toolbox 子视图
+        this.initToolboxSub();
+
         console.log(`Created ${this.outerPlanets.length} config planets + ${this.launcherPlanets.length} launcher planets`);
+    },
+
+    // ============ Toolbox 子视图 ============
+    initToolboxSub() {
+        const orbit = document.getElementById('toolboxOrbit');
+        if (!orbit) return;
+        this.toolboxPlanetEls = [];
+        this.toolboxPlanets.forEach((p, i) => {
+            const el = this.createToolboxPlanet(p, i, this.toolboxPlanets.length);
+            orbit.appendChild(el);
+            this.toolboxPlanetEls.push(el);
+        });
+        const center = document.getElementById('toolboxCenter');
+        if (center) {
+            center.addEventListener('mousedown', (e) => e.stopPropagation());
+            center.addEventListener('click', () => {
+                if (window.App && typeof window.App.onToolboxPlanetClick === 'function') {
+                    window.App.onToolboxPlanetClick('center');
+                }
+            });
+        }
+        this.bindToolboxDragRotation();
+    },
+
+    createToolboxPlanet(p, index, total) {
+        const el = document.createElement('div');
+        el.className = 'toolbox-planet';
+        el.innerHTML = `<span class="planet-label">${p.label}</span>`;
+        el.dataset.tooltip = p.tooltip;
+        el.dataset.id = p.id;
+        const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
+        el.dataset.baseAngle = baseAngle;
+        this.updateToolboxPlanetPosition(el, 0);
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this.suppressClick) return;
+            if (window.App && typeof window.App.onToolboxPlanetClick === 'function') {
+                window.App.onToolboxPlanetClick(p.id);
+            }
+        });
+        return el;
+    },
+
+    updateToolboxPlanetPosition(el, rotationDeg) {
+        const baseAngle = parseFloat(el.dataset.baseAngle);
+        const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
+        const radius = 300;
+        const planetSize = 48;
+        const x = radius + radius * Math.sin(currentAngle) - planetSize;
+        const y = radius + radius * Math.cos(currentAngle) - planetSize;
+        el.style.left = `${x}px`;
+        el.style.top = `${y}px`;
+        const depth = Math.cos(currentAngle);
+        const scale = 0.65 + (depth + 1) / 2 * 0.55;
+        el.style.transform = `scale(${scale}, ${scale * 2})`;
+        el.style.zIndex = Math.round((depth + 1) * 50 + 5);
+    },
+
+    bindToolboxDragRotation() {
+        const orbit = document.getElementById('toolboxSystem');
+        if (!orbit) return;
+        let dragging = false;
+        let lastX = 0;
+        let velocity = 0;
+        let rafId = null;
+
+        const applyRotation = (rot) => {
+            this.toolboxRotation = rot;
+            this.toolboxPlanetEls.forEach(el => {
+                this.updateToolboxPlanetPosition(el, rot);
+            });
+        };
+
+        const inertia = () => {
+            this.toolboxRotation += velocity;
+            velocity *= 0.92;
+            applyRotation(this.toolboxRotation);
+            if (Math.abs(velocity) < 0.05) {
+                rafId = null;
+                return;
+            }
+            rafId = requestAnimationFrame(inertia);
+        };
+
+        const onMove = (e) => {
+            if (!dragging) return;
+            const dx = e.clientX - lastX;
+            velocity = dx * 0.35;
+            lastX = e.clientX;
+            this.toolboxRotation += dx * 0.3;
+            applyRotation(this.toolboxRotation);
+            if (Math.abs(dx) > 5) {
+                this.suppressClick = true;
+            }
+        };
+
+        const onUp = () => {
+            dragging = false;
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            setTimeout(() => { this.suppressClick = false; }, 50);
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+            }
+            if (Math.abs(velocity) > 0.05) {
+                rafId = requestAnimationFrame(inertia);
+            } else {
+                rafId = null;
+            }
+        };
+
+        orbit.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            dragging = true;
+            lastX = e.clientX;
+            velocity = 0;
+            this.suppressClick = false;
+            if (rafId !== null) {
+                cancelAnimationFrame(rafId);
+                rafId = null;
+            }
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('mouseup', onUp);
+        });
     },
 
     // ============ 启动球 ============

@@ -17,7 +17,6 @@ from func.tts.gpt_sovits import GptSovits
 from func.tts.player import AudioPlayer
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
-from func.toolbox.obs.obs_init import ObsInit
 from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
 from func.tools.singleton_mode import singleton
 from func.tts.state import TTsState
@@ -41,10 +40,9 @@ class TTsCore:
         self.system_prompt = SystemPromptBridge()
         self.sensevoice_tts = SenseVoiceTtsBridge()
 
-        # 引擎、播放器、OBS、表情、动作
+        # 引擎、播放器、表情
         self.sovits = GptSovits()
         self.player = AudioPlayer()
-        self.obs = ObsInit().get_ws()
         self.emoteOper = EmoteOper()
 
         # 字幕独立线程

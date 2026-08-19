@@ -58,6 +58,9 @@ class LLmCore:
             return
         llm_json = {"traceid": traceid, "prompt": cleaned, "username": username}
         self.llmData.QuestionList.put(llm_json)
+        # 通知主动回复模块：llm 收到用户消息
+        from func.pipeline.llm_timer import LLMTimerBridge
+        LLMTimerBridge().notify_user_message()
         self.log.info(f"[{traceid}] 消息入队: {cleaned}")
 
     def add_system_message(self, text: str, username: str = "主人"):
@@ -65,6 +68,9 @@ class LLmCore:
         traceid = str(uuid.uuid4())
         llm_json = {"traceid": traceid, "prompt": text, "username": username}
         self.llmData.QuestionList.put(llm_json)
+        # 通知主动回复模块：llm 收到用户消息
+        from func.pipeline.llm_timer import LLMTimerBridge
+        LLMTimerBridge().notify_user_message()
         self.log.info(f"[{traceid}] 系统主动消息: {text}")
 
     def check_answer(self):
@@ -129,6 +135,9 @@ class LLmCore:
 
         self.log.info(f"[{traceid}][AI回复]{final_text}")
         self.llmData.is_ai_ready = True
+        # 通知主动回复模块：llm 完成回复
+        from func.pipeline.llm_timer import LLMTimerBridge
+        LLMTimerBridge().notify_ai_reply()
 
     def _update_emotion_async(self, prompt: str, reply_text: str):
         """后置情绪/性格更新：正文生成后单独调用工具，更新 latest_emotion.json"""

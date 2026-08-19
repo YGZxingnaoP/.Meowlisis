@@ -3,7 +3,6 @@ from threading import Thread
 import datetime
 from func.log.default_log import DefaultLog
 from func.pipeline.danmuku_llm import DanmukuLLMBridge
-from func.toolbox.obs.obs_init import ObsInit
 from func.tools.singleton_mode import singleton
 from func.config.app_config import AppConfig
 from func.llm.state import LLmState
@@ -32,9 +31,6 @@ class BlivedmCore:
     ttsCore = TTsCore()  # 语音核心
 
     danmuku_llm = DanmukuLLMBridge()  # 弹幕→LLM 桥接
-
-    def __init__(self):
-        self.obs = ObsInit().get_ws()
 
     # blivedm弹幕监听
     async def blivedm_start(self):

@@ -55,9 +55,16 @@ class ShortMemory:
         """保存一条短期记忆，并按该 type 的独立上限裁剪最旧一轮"""
         with self._lock:
             data = self._read()
+            # 正常对话恢复时，先清除此前的主动回复记录，避免孤立消息无限堆积
+            if message.get("type") == "llm_fast_response":
+                data = self._clear_active(data)
             data.append(message)
             data = self._trim_by_type(data, message.get("type"), max_rounds)
             self._write(data)
+
+    def _clear_active(self, data: list) -> list:
+        """清除全部 llm_active_response 类型记录"""
+        return [m for m in data if m.get("type") != "llm_active_response"]
 
     def _trim_by_type(self, data: list, mem_type, max_rounds: int) -> list:
         """按指定 type 裁剪：超过 max_rounds 轮时删除最旧的完整一轮"""

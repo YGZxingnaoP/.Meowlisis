@@ -20,7 +20,7 @@ class MeowLLMLtMemBridge:
         self.save_memory = MeowSaveMemory()
         self.get_memory = MeowGetMemory()
         self.user_updater = MeowUpdateUserInfo()
-        # 当前用户（最近一次发送消息的用户，供 load_usrmem 等模块获取）
+        # 当前用户（最近一次发送消息的用户，供 load_usrmem 等模块获取；calendar 日期提示词也通过此桥接获取当前用户名）
         self.last_username = ""
 
     def record_user_message(self, username: str, text: str):

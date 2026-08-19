@@ -8,6 +8,18 @@ const App = {
         Modal.init();
         Orbit.init();
 
+        // Toolbox 子视图关闭
+        const toolboxClose = document.getElementById('toolboxClose');
+        if (toolboxClose) {
+            toolboxClose.addEventListener('click', () => this.closeToolbox());
+        }
+        const toolboxOverlay = document.getElementById('toolboxOverlay');
+        if (toolboxOverlay) {
+            toolboxOverlay.addEventListener('click', (e) => {
+                if (e.target === toolboxOverlay) this.closeToolbox();
+            });
+        }
+
         try {
             this.config = await API.getConfig();
             window._config = this.config;
@@ -43,6 +55,7 @@ const App = {
         if (id === 'sensevoice') { await this.openSensevoicePanel(); return; }
         if (id === 'tts') { await this.openTtsPanel(); return; }
         if (id === 'llm') { await this.openLlmPanel(); return; }
+        if (id === 'toolbox') { this.openToolbox(); return; }
 
         // CatBrain 子球
         const catbrainSubMap = {
@@ -58,15 +71,39 @@ const App = {
 
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic() },
-            'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
-            'vtuber': { title: 'VTuber 设置', fn: () => Config.vtuber() },
-            'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
-            'obs': { title: 'OBS 设置', fn: () => Config.obs() }
+            'active': { title: '主动回复设置', fn: () => Config.llm_active() },
+            'danmaku': { title: 'BiliLive 设置', fn: () => Config.danmaku() }
         };
 
         const panel = panelMap[id];
         if (!panel) {
             console.warn('No panel found for id:', id);
+            return;
+        }
+        this._openConfigPanel(panel.title, panel.fn);
+    },
+
+    // ============ Toolbox 子视图 ============
+    openToolbox() {
+        const overlay = document.getElementById('toolboxOverlay');
+        if (overlay) overlay.classList.add('show');
+    },
+
+    closeToolbox() {
+        const overlay = document.getElementById('toolboxOverlay');
+        if (overlay) overlay.classList.remove('show');
+    },
+
+    onToolboxPlanetClick(id) {
+        const map = {
+            'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
+            'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
+            'obs': { title: 'OBS 设置', fn: () => Config.obs() },
+            'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() }
+        };
+        const panel = map[id];
+        if (!panel) {
+            console.warn('No toolbox panel for id:', id);
             return;
         }
         this._openConfigPanel(panel.title, panel.fn);
@@ -228,6 +265,9 @@ const App = {
             Modal.show('SenseVoice 设置', html, async () => {
                 const updates = Config.collectValues();
                 Config.applyUpdates(updates, this.config);
+                // 易错词替换规则（dict 结构单独收集）
+                this.config.sensevoice = this.config.sensevoice || {};
+                this.config.sensevoice.replace_rules = Config.collectReplaceRules();
                 try {
                     await API.saveConfig(this.config);
                     this.showToast('配置已保存');
@@ -236,12 +276,66 @@ const App = {
                 }
             });
 
+            // 渲染易错词替换规则
+            const rulesEl = document.getElementById('replaceRulesList');
+            if (rulesEl) {
+                const rules = (this.config.sensevoice && this.config.sensevoice.replace_rules) || {};
+                rulesEl.innerHTML = Config.replaceRulesPanel(rules);
+            }
+            this.bindReplaceRuleEvents();
+
             await this.loadSpeakers();
             this.bindSpeakerEvents();
         } catch (e) {
             console.error('Error rendering sensevoice panel:', e);
             this.showToast('面板渲染失败: ' + e.message, true);
         }
+    },
+
+    bindReplaceRuleEvents() {
+        const addBtn = document.getElementById('addReplaceRuleBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const list = document.getElementById('replaceRulesList');
+                const empty = list.querySelector('.help-text');
+                if (empty) empty.remove();
+                list.insertAdjacentHTML('beforeend', Config.replaceRuleRow('', []));
+            });
+        }
+
+        const list = document.getElementById('replaceRulesList');
+        if (!list) return;
+
+        // 错误词输入：回车添加 tag
+        list.addEventListener('keydown', (e) => {
+            const input = e.target.closest('.replace-wrong-input');
+            if (!input || e.key !== 'Enter') return;
+            e.preventDefault();
+            const w = input.value.trim();
+            if (!w) return;
+            const tags = input.closest('.replace-wrong-editor').querySelector('.replace-wrong-tags');
+            if (tags.querySelector(`[data-wrong="${w}"]`)) {
+                input.value = '';
+                return;
+            }
+            const tag = document.createElement('span');
+            tag.className = 'split-tag';
+            tag.dataset.wrong = w;
+            tag.textContent = w;
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'split-tag-remove';
+            btn.innerHTML = '&times;';
+            tag.appendChild(btn);
+            tags.appendChild(tag);
+            input.value = '';
+        });
+
+        // 错误词 tag：点击 × 删除
+        list.addEventListener('click', (e) => {
+            const btn = e.target.closest('.split-tag-remove');
+            if (btn) btn.closest('.split-tag').remove();
+        });
     },
 
     async loadSpeakers() {

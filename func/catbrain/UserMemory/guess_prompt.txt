@@ -2,4 +2,5 @@
 要求：
 1. 仅根据消息内容进行合理猜测，不得编造确凿事实；
 2. 无法判断的信息一律填写 unknown；
-3. 请调用 save_user_info 工具输出结果。
+3. tags_preference 仅从已有tags附件中选择，禁止新建，没有把握时留空数组；
+4. 请调用 save_user_info 工具输出结果。

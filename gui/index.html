@@ -28,6 +28,28 @@
         </div>
     </div>
 
+    <!-- Toolbox 子视图 -->
+    <div class="toolbox-overlay" id="toolboxOverlay">
+        <div class="toolbox-panel">
+            <div class="toolbox-header">
+                <h3>Toolbox 工具箱</h3>
+                <button class="modal-close" id="toolboxClose">&times;</button>
+            </div>
+            <div class="toolbox-system" id="toolboxSystem">
+                <!-- 中心父级模型球（独立，不随轨道压扁） -->
+                <div class="toolbox-center-cluster">
+                    <div class="toolbox-center" id="toolboxCenter">
+                        <span class="toolbox-center-label">父级模型</span>
+                    </div>
+                </div>
+                <!-- 椭圆轨道（立体倾斜） -->
+                <div class="toolbox-orbit" id="toolboxOrbit">
+                    <div class="toolbox-ring"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Config Modal -->
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal-window" id="modalWindow">

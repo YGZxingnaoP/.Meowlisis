@@ -25,3 +25,16 @@ class LLMTtsBridge:
             "seg_index": seg_index,
         }
         llm_data.AnswerList.put(json_msg)
+
+    def send_whole_to_answer_queue(self, llm_data, text: str, traceid: str):
+        """将整段文本一次性推送到 TTS 回答队列（不分段，供主动回复 inherit 使用）"""
+        if not text:
+            return
+        json_msg = {
+            "voiceType": "chat",
+            "traceid": traceid,
+            "chatStatus": "end",
+            "text": text,
+            "language": "AutoChange",
+        }
+        llm_data.AnswerList.put(json_msg)

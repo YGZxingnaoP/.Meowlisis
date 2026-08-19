@@ -94,6 +94,7 @@ class MeowUpdateUserInfo:
             )
         messages = [
             {"role": "system", "content": system_text},
+            {"role": "user", "content": self.tool.build_tags_attachment()},
             {"role": "user", "content": f"该用户发来的第一条消息：\n{line}"}
         ]
         result = self._call_tool(messages)
@@ -127,6 +128,7 @@ class MeowUpdateUserInfo:
         existing_text = json.dumps(existing, ensure_ascii=False) if existing else "（暂无档案）"
         messages = [
             {"role": "system", "content": system_text},
+            {"role": "user", "content": self.tool.build_tags_attachment()},
             {"role": "user", "content": f"该用户当前档案：\n{existing_text}"},
             {"role": "user", "content": f"待分析的对话记录：\n{content}"}
         ]
@@ -162,7 +164,7 @@ class MeowUpdateUserInfo:
         return None
 
     def _check_format(self, result: Dict) -> bool:
-        """校验格式：affinity 需为整数，其余字段需为非空字符串"""
+        """校验格式：affinity 需为整数，tags_preference 需为列表，其余字段需为非空字符串"""
         for field in self.tool.FIELDS:
             if field not in result:
                 self.log.error(f"用户信息格式不合法，缺少字段: {field}")
@@ -171,21 +173,41 @@ class MeowUpdateUserInfo:
                 if not isinstance(result[field], int):
                     self.log.error("用户信息格式不合法，affinity 非整数")
                     return False
+            elif field == "tags_preference":
+                if not isinstance(result[field], list):
+                    self.log.error("用户信息格式不合法，tags_preference 非列表")
+                    return False
             elif not isinstance(result[field], str):
                 self.log.error(f"用户信息格式不合法，字段非字符串: {field}")
                 return False
         return True
 
     def _is_placeholder(self, data: Dict) -> bool:
-        """判断档案是否为占位档（除 name 与 affinity 外全部为 unknown）"""
+        """判断档案是否为占位档（除 name、affinity 与空 tags_preference 外全部为 unknown）"""
         if not isinstance(data, dict):
             return False
         for field in self.tool.FIELDS:
             if field in ("name", "affinity"):
                 continue
+            if field == "tags_preference":
+                if data.get(field):
+                    return False
+                continue
             if str(data.get(field, "") or "").strip().lower() != "unknown":
                 return False
         return True
+
+    def _normalize_tags_preference(self, value) -> list:
+        """规范化 tags_preference：仅保留已有 tags 内出现的标签，去空去重"""
+        existing = set(self.tool.tag_store.load())
+        if not isinstance(value, list):
+            return []
+        result = []
+        for t in value:
+            t = str(t).strip()
+            if t and t in existing and t not in result:
+                result.append(t)
+        return result
 
     def _save_placeholder(self, username: str):
         """同步创建 unknown 占位档案（name 为用户名，其余字段 unknown）"""
@@ -198,6 +220,7 @@ class MeowUpdateUserInfo:
         data = {field: "unknown" for field in self.tool.FIELDS}
         data["name"] = username
         data["affinity"] = 0
+        data["tags_preference"] = []
         try:
             with open(latest_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -220,8 +243,9 @@ class MeowUpdateUserInfo:
                     os.replace(latest_path, backup_path)
                 except Exception:
                     self.log.exception(f"用户档案备份失败: {latest_path}")
-        # 只保留标准字段（affinity 为数值，缺失默认 0）
+        # 只保留标准字段（affinity 为数值，tags_preference 过滤为已有标签）
         data = {k: result.get(k, "unknown") for k in self.tool.FIELDS}
+        data["tags_preference"] = self._normalize_tags_preference(result.get("tags_preference"))
         if not isinstance(data.get("affinity"), int):
             try:
                 data["affinity"] = int(data["affinity"]) if data.get("affinity") not in (None, "") else 0

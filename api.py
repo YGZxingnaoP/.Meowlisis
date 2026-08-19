@@ -6,16 +6,14 @@ from threading import Thread
 from flask import Flask, jsonify, request
 from flask_apscheduler import APScheduler
 
-from func.toolbox.obs.obs_websocket import VideoControl
 from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
 from func.log.default_log import DefaultLog
-from func.toolbox.obs.obs_init import ObsInit
 from func.toolbox.vtuber.emote_oper import EmoteOper
 from func.tts.tts_core import TTsCore
 from func.llm.llm_core import LLmCore
+from func.llm_active.active_core import AutoActiveCore
 from func.catbrain.prompt_builder import MeowPromptBuilder
 from func.pipeline.system_prompt import SystemPromptBridge
-from func.toolbox.vtuber.action_oper import ActionOper
 from func.pipeline.config_reader import ConfigReader
 from func.sensevoice.sensevoice_core import SenseVoiceCore
 
@@ -56,11 +54,6 @@ sched1 = APScheduler()
 sched1.init_app(app)
 # ============================================
 
-# ============= OBS直播软件控制 ================
-# obs直播软件连接
-obs = ObsInit().get_ws()
-# ============================================
-
 # ============= LLM参数 =====================
 llmCore = LLmCore()  # llm核心
 get_subtitle_server()
@@ -74,13 +67,16 @@ from func.catbrain.CatValues.values_timer import MeowValuesTimer
 MeowValuesTimer().start()
 # ============================================
 
+# ============= 角色主动回复 =====================
+active_core = AutoActiveCore()  # 空闲主动回复核心（计时器启动后立即开始计时）
+# ============================================
+
 # ============= 语音合成 =====================
 ttsCore = TTsCore() # 语音核心
 # ============================================
 
 # ============= vtuber操作 =====================
 vtuberState = VtuberState()  # vtuber运行态
-actionOper = ActionOper()  # 动作核心
 emoteOper = EmoteOper() # 表情初始化
 # ========================================
 
@@ -105,14 +101,6 @@ def http_emote():
     emote_thread1 = Thread(target=emoteOper.emote_ws, args=(1, 0.2, text))
     emote_thread1.start()
     return jsonify({"status": "成功"})
-
-# http更换场景
-@app.route("/http_scene", methods=["GET"])
-def http_scene():
-    scenename = request.args["scenename"]
-    actionOper.changeScene(scenename)
-    return jsonify({"status": "成功"})
-
 
 # http接口处理【postman接口调用】
 @app.route("/msg", methods=["POST"])
@@ -161,20 +149,6 @@ def main():
     emoteOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
     vtuberState.now_clothes = "便衣"
 
-    # 停止所有视频播放
-    obs.play_video("唱歌视频", "")
-    obs.control_video("唱歌视频", VideoControl.STOP.value)
-    obs.control_video("video", VideoControl.STOP.value)
-    obs.control_video("表情", VideoControl.STOP.value)
-    obs.play_video("伴奏", "")
-    obs.control_video("伴奏", VideoControl.STOP.value)
-
-    # 切换场景:初始化
-    actionOper.init_scene()
-
-    # 场景[白天黑夜]判断
-    actionOper.check_scene_time()
-
     # 获取全局配置
     config = ConfigReader().get()
 
@@ -201,10 +175,10 @@ def main():
     if "blivedm" in mode or "api" in mode:
         # LLM回复
         sched1.add_job(func=llmCore.check_answer, trigger="interval", seconds=1, id="answer", max_instances=100)
+        # 角色主动回复计时检测
+        sched1.add_job(func=active_core.check_active, trigger="interval", seconds=1, id="active", max_instances=1)
         # tts语音合成
         sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=1, id="tts", max_instances=1000)
-        # 时间判断场景[白天黑夜切换]
-        sched1.add_job(func=actionOper.check_scene_time, trigger="cron", hour="6,17,18", id="scene_time")
         sched1.start()
 
         # 开启web

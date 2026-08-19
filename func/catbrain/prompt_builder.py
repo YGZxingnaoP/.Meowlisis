@@ -9,10 +9,11 @@ from func.catbrain.CharacterCard.load_refaudio import MeowLoadRefAudio
 from func.catbrain.CatValues.load_values import MeowLoadValues
 from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
 from func.catbrain.AbstractMem.load_abmem import MeowLoadAbstractMemory
+from func.calendar.prompt_builder import DatePromptBuilder
 
 
 class MeowPromptBuilder:
-    """提示词构建器：不在此处转化内容，仅按固定顺序拼接各模块已构建的 markdown 提示词"""
+    """提示词构建器：按固定顺序拼接各模块已构建的 markdown 提示词"""
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -21,6 +22,7 @@ class MeowPromptBuilder:
         self.usrmem = MeowLoadUserMemory()
         self.abmem = MeowLoadAbstractMemory()
         self.ref_audio = MeowLoadRefAudio()
+        self.calendar = DatePromptBuilder()
 
     def _current_emotion(self) -> str:
         """读取当前情绪（来自 pipeline 情绪桥接）"""
@@ -32,7 +34,7 @@ class MeowPromptBuilder:
         return f"现在{AppConfig().ai_name}的情绪：{self._current_emotion()}"
 
     def build(self, username=None, current_message: str = "") -> str:
-        """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→记忆摘要）"""
+        """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→日期→记忆摘要）"""
         # 当前用户优先取传入参数，缺失时从 llm_ltmem 桥接获取最近用户
         if not username:
             try:
@@ -44,7 +46,19 @@ class MeowPromptBuilder:
             self.character_prompt.build(),  # 角色卡（已含当前情绪）
             self.values.build(),
             self.usrmem.build(username),
+            self.calendar.build(username),  # 日期块（节日/节气/生日）
             self.abmem.build_prompt(current_message, username),
+        ]
+        return "\n\n".join([p for p in parts if p])
+
+    def build_active(self, cold_time, current_message: str = "") -> str:
+        """构建主动回复系统提示词（顺序：角色卡→价值观→空闲占位→日期→记忆摘要，不含用户档案）"""
+        parts = [
+            self.character_prompt.build(),  # 角色卡（已含当前情绪）
+            self.values.build(),
+            f"# 现在已经{cold_time}秒没人跟你说话了",
+            self.calendar.build_no_user(),  # 日期块（仅节日/节气，不获取 username）
+            self.abmem.build_prompt(current_message, None),
         ]
         return "\n\n".join([p for p in parts if p])
 

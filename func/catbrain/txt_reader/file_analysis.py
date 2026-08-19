@@ -5,11 +5,11 @@ import json
 from typing import Dict, List
 
 from func.log.default_log import DefaultLog
-from func.toolbox.txt_reader.file_list import MeowFileListTool
-from func.toolbox.txt_reader.file_read import MeowFileReadTool
-from func.toolbox.txt_reader.file_slice import MeowFileSliceTool
-from func.toolbox.txt_reader.keyword_locate import MeowKeywordLocateTool
-from func.toolbox.txt_reader.jieba_segment import MeowJiebaSegmentTool
+from func.catbrain.txt_reader.file_list import MeowFileListTool
+from func.catbrain.txt_reader.file_read import MeowFileReadTool
+from func.catbrain.txt_reader.file_slice import MeowFileSliceTool
+from func.catbrain.txt_reader.keyword_locate import MeowKeywordLocateTool
+from func.catbrain.txt_reader.jieba_segment import MeowJiebaSegmentTool
 
 
 class MeowFileAnalysis:

@@ -26,7 +26,6 @@ class SenseVoiceConfig:
         self.itn = cfg.get('itn', True)
 
         # 用户身份与声纹
-        self.username = cfg.get('username', '访客')
         self.target_speakers = cfg.get('target_speakers', [])
         self.speaker_threshold = cfg.get('speaker_threshold', 0.2)
 
@@ -46,7 +45,9 @@ class SenseVoiceConfig:
         # 热词列表
         self.hotwords = cfg.get('hotwords', [])
 
+        # 易错词替换规则：正确词 -> [错误词列表]
+        self.replace_rules = cfg.get('replace_rules', {})
+
         # 连接保活与重连
         self.ping_interval = cfg.get('ping_interval', 20)
         self.ping_timeout = cfg.get('ping_timeout', 60)
-        self.max_reconnect_attempts = cfg.get('max_reconnect_attempts', 5)
