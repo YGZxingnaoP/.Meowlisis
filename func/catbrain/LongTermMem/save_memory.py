@@ -30,3 +30,14 @@ class MeowSaveMemory:
                 f.write(line + "\n")
         except Exception:
             self.log.exception("长期记忆写入失败")
+
+    def save_image_line(self, text: str) -> str:
+        """存储图片描述（补丁）：用户名标识为「图片」，content 仅【图片】前缀 + 描述。
+
+        返回生成的完整行，供调用方同步缓存到摘要（.temp/record.txt）。
+        """
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        content = str(text or "").replace("\r", " ").replace("\n", " ")
+        line = f"[{now}][图片]: 【图片】{content}"
+        self.save_line(line)
+        return line

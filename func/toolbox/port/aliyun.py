@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.toolbox.config import TBoxConfig
+from func.tools.text_cleaner import clean_resp_content
 
 
 class TBoxAliyunLLM:
@@ -66,7 +67,8 @@ class TBoxAliyunLLM:
         level = "enabled" if enable_thinking else "off"
         params["extra_body"] = self._build_extra_body(tool_choice, level)
         try:
-            return self.client.chat.completions.create(**params)
+            resp = self.client.chat.completions.create(**params)
+            return clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"Toolbox Qwen 调用异常: {e}")
             return None

@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.llm.config import LLMConfig
+from func.tools.text_cleaner import clean_resp_content
 
 
 class AutoDeepSeekLLM:
@@ -59,7 +60,8 @@ class AutoDeepSeekLLM:
         if tool_choice:
             params["tool_choice"] = tool_choice
         try:
-            return self.client.chat.completions.create(**params)
+            resp = self.client.chat.completions.create(**params)
+            return clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"主动回复 DeepSeek 调用异常: {e}")
             return None

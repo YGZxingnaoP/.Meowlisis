@@ -35,8 +35,10 @@ class SenseVoiceConfig:
         self.chunk_size_ms = cfg.get('chunk_size_ms', 200)
         self.chunk = int(self.rate * self.chunk_size_ms / 1000)
 
-        # 说话状态检测阈值
+        # 说话状态检测阈值（VAD，用于上报服务端说话状态）
         self.energy_threshold = cfg.get('vad_energy_threshold', 400)
+        # 打断阈值（独立于说话判断阈值，用于触发 TTS 打断；应比 vad 阈值更严格）
+        self.interrupt_threshold = cfg.get('interrupt_threshold', 800)
         self.silence_threshold = cfg.get('silence_threshold', 2.0)
 
         # 断句合并延迟

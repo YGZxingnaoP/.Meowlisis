@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
+from func.tools.text_cleaner import clean_resp_content
 
 
 class MeowAbstractDeepSeekLLM:
@@ -50,7 +51,8 @@ class MeowAbstractDeepSeekLLM:
         if tool_choice:
             params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
-            return self.client.chat.completions.create(**params)
+            resp = self.client.chat.completions.create(**params)
+            return clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"摘要 DeepSeek 调用异常: {e}")
             return None

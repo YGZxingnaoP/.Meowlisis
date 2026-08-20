@@ -129,8 +129,21 @@ def input_msg():
     data = request.json
     query = data["msg"]  # 获取弹幕内容
     user_name = data["username"]  # 获取用户昵称
+    # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
+    try:
+        from func.toolbox.excuse import TBExcuse
+        if TBExcuse().route_text(query, user_name):
+            return jsonify({"status": "成功", "excuse": True})
+    except Exception:
+        pass
     traceid = str(uuid.uuid4())
+    # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, query, user_name)
+    try:
+        from func.pipeline.msg_toolbox import MsgToolboxBridge
+        MsgToolboxBridge().send_to_toolbox(query, user_name)
+    except Exception:
+        pass
     return jsonify({"status": "成功"})
 
 
@@ -155,8 +168,20 @@ def chat():
     if text is None:
         jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"值为空\",\"content\": \"" + text + "\"})"
         return jsonStr
-    # 消息处理
+    # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
+    try:
+        from func.toolbox.excuse import TBExcuse
+        if TBExcuse().route_text(text, username):
+            return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
+    except Exception:
+        pass
+    # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, text, username)
+    try:
+        from func.pipeline.msg_toolbox import MsgToolboxBridge
+        MsgToolboxBridge().send_to_toolbox(text, username)
+    except Exception:
+        pass
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
     # =========end========
     if CallBackForTest is not None:
@@ -179,7 +204,24 @@ def main():
     if sensevoice_config.get('enabled', False):
         from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
         sensevoice_bridge = SenseVoiceLLMBridge()
-        asr_core = SenseVoiceCore(callback=sensevoice_bridge.send_to_llm)
+
+        def sensevoice_callback(text, username):
+            # excuse 询问链路优先：正在等待用户补充需求时，拦截并阻塞 sensevoice_llm
+            try:
+                from func.toolbox.excuse import TBExcuse
+                if TBExcuse().route_text(text, username):
+                    return
+            except Exception:
+                pass
+            # 双通道：主 LLM 快速回复 + toolbox 工具分析
+            sensevoice_bridge.send_to_llm(text, username)
+            try:
+                from func.pipeline.msg_toolbox import MsgToolboxBridge
+                MsgToolboxBridge().send_to_toolbox(text, username)
+            except Exception:
+                pass
+
+        asr_core = SenseVoiceCore(callback=sensevoice_callback)
         asr_core.start()
         log.info("已启用 SenseVoice 语音识别后台线程（高精度流式+声纹）")
 

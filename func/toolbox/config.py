@@ -31,3 +31,9 @@ class TBoxConfig:
         self.aliyun_model = al.get('model', 'qwen-plus')
         self.aliyun_temperature = al.get('temperature', 0.7)
         self.aliyun_max_tokens = al.get('max_tokens', 2048)
+
+        # ========== excuse 通用询问链路 ==========
+        # 是否启用 excuse 阻塞等待（关闭则询问后不阻塞，直接返回）
+        self.excuse_enabled = cfg.get('excuse_enabled', True)
+        # excuse 等待用户文本输入超时（秒）
+        self.excuse_timeout = cfg.get('excuse_timeout', 60)

@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
+from func.tools.text_cleaner import clean_resp_content
 
 
 class MeowValuesDeepSeekLLM:
@@ -48,11 +49,12 @@ class MeowValuesDeepSeekLLM:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        # DeepSeek thinking 模式不支持强制工具调用，需禁用
-        if tool_choice:
+        # 深度思考与 function calling 冲突：仅在有工具调用时禁用思考，保证 JSON 稳定输出
+        if tools:
             params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
-            return self.client.chat.completions.create(**params)
+            resp = self.client.chat.completions.create(**params)
+            return clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"价值观 DeepSeek 调用异常: {e}")
             return None

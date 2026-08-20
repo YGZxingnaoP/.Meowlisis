@@ -8,22 +8,30 @@ from func.log.default_log import DefaultLog
 
 
 class ToolboxTtsBridge:
-    """Toolbox → TTS 传递桥接"""
+    """Toolbox → TTS 传递桥接
+
+    本桥接在 pipeline 层内部持有 LLmState（AnswerList），
+    toolbox 层只传递文本数据，不再直接 import/操作 llm 层状态对象。
+    """
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
+        # pipeline 层自己持有 TTS 回答队列所属状态，封装 llm 层运行时对象
+        from func.llm.state import LLmState
+        self.llm_data = LLmState()
 
-    def send_to_answer_queue(self, llm_data, text: str, traceid: str = "",
+    def send_to_answer_queue(self, text: str, traceid: str = "",
                              seg_index: int = 0, chat_status: str = "end"):
         """将 toolbox 输出文本片段推送到 TTS 回答队列（空文本 + end 作为结束标记仍发送）"""
         if not text and chat_status != "end":
             return
         json_msg = {
             "voiceType": "chat",
+            "source": "toolbox",
             "traceid": traceid or str(uuid.uuid4()),
             "chatStatus": chat_status,
             "text": text,
             "language": "AutoChange",
             "seg_index": seg_index,
         }
-        llm_data.AnswerList.put(json_msg)
+        self.llm_data.AnswerList.put(json_msg)

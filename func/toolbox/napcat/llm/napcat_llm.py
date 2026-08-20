@@ -28,6 +28,7 @@ class TBNapCatLLM:
         # 流式过滤状态（与 TTS 一致的 think/括号剥离）
         self._in_think = False
         self._paren_depth = 0
+        self._bracket_depth = 0
         self._tag = ""
         self._temp = ""
         self._filtered = ""
@@ -49,29 +50,28 @@ class TBNapCatLLM:
             self.log.exception("获取 napcat 系统提示词失败")
             return ""
 
-    def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
-              on_segment: Optional[Callable[[str], None]] = None) -> str:
-        """流式生成回复，正则过滤后按短句切分，通过 on_segment 回传；返回完整回复文本"""
+    def reply_stream(self, system_prompt: str, messages: List[dict],
+                     on_segment: Optional[Callable[[str], None]] = None) -> str:
+        """通用流式回复：自定义 system prompt 与历史消息，流式过滤/切分后回传。
+
+        - 返回清理后的完整回复文本；
+        - on_segment 回调逐段回传（供 napcat 发送、戳一戳发牢骚等复用）。
+        """
         llm, base_max_tokens = self._llm()
         if llm is None or not llm.client:
             self.log.error("NapCat 回复 LLM 不可用")
             return ""
-        # max_tokens：直接使用 func/llm 配置值（不再做 /4 或 ×2 的特殊处理）
         if self._max_tokens is None:
-            self._max_tokens = max(8, int(base_max_tokens))
+            self._max_tokens = max(8, int(base_max_tokens) + 128)
         self._reset_filter()
 
-        system_prompt = self._system_prompt(username, text)
-        messages = []
+        full_messages = []
         if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        for m in short_memory or []:
-            if m.get("role") in ("user", "assistant") and m.get("content"):
-                messages.append({"role": m["role"], "content": m["content"]})
-        messages.append({"role": "user", "content": text})
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages or [])
 
         stream = llm.chat_stream(
-            messages,
+            full_messages,
             options={"max_tokens": self._max_tokens},
             thinking_level=self.napcat_cfg.thinking_level,
         )
@@ -80,7 +80,6 @@ class TBNapCatLLM:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
-            # 思考内容仅统计长度用于诊断，不回传给用户
             if getattr(delta, "reasoning_content", None):
                 reasoning_len += len(delta.reasoning_content)
             if not delta.content:
@@ -90,7 +89,6 @@ class TBNapCatLLM:
             for seg in self._split():
                 if on_segment:
                     on_segment(seg)
-        # 刷出残留 think 标签与剩余缓冲
         if self._tag:
             self._flush_tag()
         if self._temp.strip():
@@ -105,6 +103,18 @@ class TBNapCatLLM:
                 f"[NapCat] 回复为空！reasoning_content 长度={reasoning_len}，"
                 f"max_tokens={self._max_tokens}。若思考模式开启，可能是 max_tokens 太小被思考占满"
             )
+        return final
+
+    def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
+              on_segment: Optional[Callable[[str], None]] = None) -> str:
+        """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息"""
+        system_prompt = self._system_prompt(username, text)
+        messages = []
+        for m in short_memory or []:
+            if m.get("role") in ("user", "assistant") and m.get("content"):
+                messages.append({"role": m["role"], "content": m["content"]})
+        messages.append({"role": "user", "content": text})
+        final = self.reply_stream(system_prompt, messages, on_segment)
         self.log.info(f"[NapCat] 回复 {username}: {final[:50]}...")
         return final
 
@@ -112,6 +122,7 @@ class TBNapCatLLM:
     def _reset_filter(self):
         self._in_think = False
         self._paren_depth = 0
+        self._bracket_depth = 0
         self._tag = ""
         self._temp = ""
         self._filtered = ""
@@ -142,6 +153,15 @@ class TBNapCatLLM:
 
     def _feed_plain(self, ch: str):
         if self._in_think:
+            return
+        if ch == "【":
+            self._bracket_depth += 1
+            return
+        if ch == "】":
+            if self._bracket_depth > 0:
+                self._bracket_depth -= 1
+            return
+        if self._bracket_depth > 0:
             return
         if ch in "（(":
             self._paren_depth += 1

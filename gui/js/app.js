@@ -101,7 +101,12 @@ const App = {
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
             'obs': { title: 'OBS 设置', fn: () => Config.obs() },
             'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() },
-            'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() }
+            'meowvision': { title: 'MeowVision 视觉设置', fn: () => Config.meowvision() },
+            'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() },
+            'napcat_private': { title: 'NapCat 私聊回复', fn: () => Config.napcat_private() },
+            'napcat_group': { title: 'NapCat 群聊回复', fn: () => Config.napcat_group() },
+            'napcat_send': { title: 'NapCat 主动发送', fn: () => Config.napcat_send() },
+            'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() }
         };
         const panel = map[id];
         if (!panel) {
@@ -132,22 +137,91 @@ const App = {
         setTimeout(() => {
             this.bindTabs();
             this.bindSplitFlagEditor();
+            this.bindDictEditors();
         }, 10);
     },
 
-    // ============ LLM 面板（含前置词） ============
+    // ============ 键值对编辑器事件绑定 ============
+    bindDictEditors() {
+        // 简单键值对（group_bots：机器人名 → QQ号）
+        document.querySelectorAll('[data-kv-editor]').forEach(editor => {
+            const path = editor.dataset.kvEditor;
+            const container = editor.parentElement;
+            const hidden = container.querySelector(`input[data-path="${path}"]`);
+            const addBtn = container.querySelector(`[data-kv-add="${path}"]`);
+            const sync = () => {
+                const obj = {};
+                editor.querySelectorAll('.kv-row').forEach(row => {
+                    const k = row.querySelector('[data-kv-key]');
+                    const v = row.querySelector('[data-kv-value]');
+                    if (k && v && k.value.trim()) obj[k.value.trim()] = v.value.trim();
+                });
+                if (hidden) hidden.value = JSON.stringify(obj);
+            };
+            editor.addEventListener('click', (e) => {
+                const btn = e.target.closest('.kv-remove');
+                if (btn) { btn.closest('.kv-row').remove(); sync(); }
+            });
+            editor.addEventListener('input', sync);
+            if (addBtn) {
+                addBtn.addEventListener('click', () => {
+                    const empty = editor.querySelector('.help-text');
+                    if (empty) empty.remove();
+                    editor.insertAdjacentHTML('beforeend', Config._kvRow('', '', '机器人名', 'QQ号'));
+                    sync();
+                });
+            }
+        });
+
+        // 每群配置（group_per_group：群号 → 触发基数/pass次数）
+        document.querySelectorAll('[data-gc-editor]').forEach(editor => {
+            const path = editor.dataset.gcEditor;
+            const container = editor.parentElement;
+            const hidden = container.querySelector(`input[data-path="${path}"]`);
+            const addBtn = container.querySelector(`[data-gc-add="${path}"]`);
+            const sync = () => {
+                const obj = {};
+                editor.querySelectorAll('.kv-row').forEach(row => {
+                    const g = row.querySelector('[data-gc-group]');
+                    const b = row.querySelector('[data-gc-base]');
+                    const p = row.querySelector('[data-gc-pass]');
+                    if (g && g.value.trim()) {
+                        const cfg = {};
+                        if (b && b.value !== '') cfg.reply_base = parseInt(b.value, 10);
+                        if (p && p.value !== '') cfg.pass_rounds = parseInt(p.value, 10);
+                        obj[g.value.trim()] = cfg;
+                    }
+                });
+                if (hidden) hidden.value = JSON.stringify(obj);
+            };
+            editor.addEventListener('click', (e) => {
+                const btn = e.target.closest('.kv-remove');
+                if (btn) { btn.closest('.kv-row').remove(); sync(); }
+            });
+            editor.addEventListener('input', sync);
+            if (addBtn) {
+                addBtn.addEventListener('click', () => {
+                    const empty = editor.querySelector('.help-text');
+                    if (empty) empty.remove();
+                    editor.insertAdjacentHTML('beforeend', Config._groupConfigRow('', {}));
+                    sync();
+                });
+            }
+        });
+    },
+
+    // ============ LLM 面板（含前置词/后置词） ============
     async openLlmPanel() {
         try {
-            // 先获取前置词，渲染时直接内联到 textarea，避免异步填充时序问题
-            let frontPrompt = '';
+            // 先获取完整前置词/后置词对象，渲染时直接内联到 textarea，避免异步填充时序问题
+            let frontData = {};
             try {
-                const front = await API.getFrontPrompt();
-                frontPrompt = front.prompt || '';
+                frontData = await API.getFrontPrompt() || {};
             } catch (e) {
                 console.warn('加载前置词失败:', e);
             }
 
-            const html = Config.llm(frontPrompt);
+            const html = Config.llm(frontData);
             Modal.show('LLM 设置', html, async () => {
                 try {
                     // 1. 保存 config.yml 的 llm 节点
@@ -155,11 +229,14 @@ const App = {
                     Config.applyUpdates(updates, this.config);
                     await API.saveConfig(this.config);
 
-                    // 2. 保存前置词
-                    const frontEl = document.getElementById('frontPromptInput');
-                    if (frontEl) {
-                        await API.saveFrontPrompt({ prompt: frontEl.value });
-                    }
+                    // 2. 保存前置词/后置词（完整对象，避免覆盖其它字段）
+                    const front = {
+                        prompt: document.getElementById('frontPromptInput')?.value || '',
+                        prompt_active: document.getElementById('activeFrontPromptInput')?.value || '',
+                        prompt_napcat: document.getElementById('napcatFrontPromptInput')?.value || '',
+                        post_prompt: document.getElementById('postPromptInput')?.value || ''
+                    };
+                    await API.saveFrontPrompt(front);
 
                     this.showToast('LLM 配置已保存');
                 } catch (e) {

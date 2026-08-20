@@ -54,6 +54,29 @@ class MeowPromptBuilder:
         ]
         return "\n\n".join([p for p in parts if p])
 
+    def build_group(self, username=None, group_name: str = "", group_info_text: str = "",
+                    current_message: str = "", online: bool = True) -> str:
+        """构建群聊系统提示词（顺序：角色卡→价值观→[用户档案|群聊档案]→日期→记忆摘要）
+
+        - 仅当用户在群内单独 @ 角色时（username 非空）才使用该用户档案；
+        - 否则使用群聊档案 group_info_text（原用户档案处替换为群聊档案）。
+        - 长期记忆摘要仅根据当前话题（无用户时 username 传空，joint 相似度不参与）。
+        """
+        if username:
+            user_block = self.usrmem.build(username)
+            calendar_block = self.calendar.build(username)
+        else:
+            user_block = group_info_text or ""
+            calendar_block = self.calendar.build_no_user()  # 群聊无特定用户：不检查生日
+        parts = [
+            self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
+            self.values.build(),
+            user_block,
+            calendar_block,
+            self.abmem.build_prompt(current_message, username or ""),
+        ]
+        return "\n\n".join([p for p in parts if p])
+
     def build_active(self, cold_time, current_message: str = "") -> str:
         """构建主动回复系统提示词（顺序：角色卡→价值观→空闲占位→日期→记忆摘要，不含用户档案）"""
         parts = [

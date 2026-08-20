@@ -25,11 +25,12 @@ const Orbit = {
         { id: 'toolbox', label: 'Toolbox', tooltip: '工具箱（Minecraft/OBS/VTS）' }
     ],
 
-    // Toolbox 子视图外围行星球（父级模型中心球 + 四个工具球）
+    // Toolbox 子视图外围行星球（父级模型中心球 + 工具球）
     toolboxPlanets: [
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
         { id: 'obs', label: 'OBS', tooltip: 'OBS 字幕模块（占位）' },
         { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
+        { id: 'meowvision', label: '视觉', tooltip: 'MeowVision 视觉模块配置' },
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' }
     ],
 
@@ -44,6 +45,9 @@ const Orbit = {
     suppressClick: false,
     toolboxRotation: 0,
     toolboxPlanetEls: [],
+    napcatSubEls: [],
+    napcatOpen: false,
+    napcatEl: null,
 
     init() {
         const orbitOuter = document.getElementById('orbitOuter');
@@ -115,14 +119,84 @@ const Orbit = {
         const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
         el.dataset.baseAngle = baseAngle;
         this.updateToolboxPlanetPosition(el, 0);
-        el.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (this.suppressClick) return;
-            if (window.App && typeof window.App.onToolboxPlanetClick === 'function') {
-                window.App.onToolboxPlanetClick(p.id);
-            }
-        });
+
+        if (p.id === 'napcat') {
+            // NapCat 球：点击分裂出 4 个子配置球（主动回复/私聊回复/群聊回复/角色账号名）
+            this.napcatEl = el;
+            this.createNapcatSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleNapcatSubs();
+            });
+        } else {
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onToolboxPlanetClick === 'function') {
+                    window.App.onToolboxPlanetClick(p.id);
+                }
+            });
+        }
         return el;
+    },
+
+    // NapCat 子球（私聊回复/群聊回复/主动发送/角色名）
+    createNapcatSubs(parent) {
+        const subs = [
+            { id: 'napcat_private', label: '私聊回复', tooltip: '私聊回复配置' },
+            { id: 'napcat_group', label: '群聊回复', tooltip: '群聊回复与主动插话配置' },
+            { id: 'napcat_send', label: '主动发送', tooltip: '主动发送触发型工具配置' },
+            { id: 'napcat_account', label: '角色名', tooltip: '连接与角色名配置' }
+        ];
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: -27 },
+            { x: 115, y: 27 },
+            { x: 82, y: 82 }
+        ];
+        this.napcatSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyNapcatSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onToolboxPlanetClick === 'function') {
+                    window.App.onToolboxPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.napcatSubEls.push(el);
+        });
+    },
+
+    _applyNapcatSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleNapcatSubs() {
+        this.napcatOpen = !this.napcatOpen;
+        if (this.napcatEl) {
+            this.napcatEl.classList.toggle('active', this.napcatOpen);
+        }
+        this.napcatSubEls.forEach(el => this._applyNapcatSub(el, this.napcatOpen));
     },
 
     updateToolboxPlanetPosition(el, rotationDeg) {

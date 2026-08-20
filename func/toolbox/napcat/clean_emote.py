@@ -7,7 +7,9 @@ import os
 import re
 import datetime
 
-EMOTE_DIR = os.path.join(".NapCat", "EmoteLab")
+# 项目根目录（clean_emote.py 位于 func/toolbox/napcat/，向上三级为根目录）
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+EMOTE_DIR = os.path.join(_PROJECT_ROOT, ".NapCat", "EmoteLab")
 # 日期后缀：_YYYY-MM-DD-HH-MM-SS.gif
 DATE_RE = re.compile(r"_(?P<date>\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2})\.gif$", re.IGNORECASE)
 

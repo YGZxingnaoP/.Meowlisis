@@ -109,12 +109,12 @@ class SenseVoiceCore:
             while self.running:
                 frame = self.audio.next_frame()
 
-                # 检测说话状态变化，变化时上报服务端并传递状态给 TTS
-                event = self.interrupt.update(frame)
-                if event:
-                    speaking = (event == 'started')
-                    await self.manager.send_speaking(speaking)
-                    self.sensevoice_tts.set_speaking(speaking)
+                # 检测说话状态（VAD）与打断状态，分别上报/传递
+                vad_event, interrupt_event = self.interrupt.update(frame)
+                if vad_event:
+                    await self.manager.send_speaking(vad_event == 'started')
+                if interrupt_event:
+                    self.sensevoice_tts.set_speaking(interrupt_event == 'started')
 
                 # 持续发送音频帧，保持数据流连续不断
                 await self.manager.send_audio(frame)

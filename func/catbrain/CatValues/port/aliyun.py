@@ -8,6 +8,7 @@ from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
+from func.tools.text_cleaner import clean_resp_content
 
 
 class MeowValuesAliyunLLM:
@@ -48,10 +49,11 @@ class MeowValuesAliyunLLM:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        # 思考强度最高：显式开启思考模式
-        params["extra_body"] = {"enable_thinking": True}
+        # 深度思考与 function calling 冲突：仅在有工具调用时禁用思考，保证 JSON 稳定输出
+        params["extra_body"] = {"enable_thinking": False if tools else self.enable_thinking}
         try:
-            return self.client.chat.completions.create(**params)
+            resp = self.client.chat.completions.create(**params)
+            return clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"价值观 Qwen 调用异常: {e}")
             return None

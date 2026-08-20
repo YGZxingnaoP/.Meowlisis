@@ -24,6 +24,7 @@ class Output:
         self.chat_status = "start"
         self._in_think = False
         self._paren_depth = 0
+        self._bracket_depth = 0
         self._tag = ""
 
     def process_chunk(self, chunk: str, traceid: str):
@@ -61,8 +62,17 @@ class Output:
             self._feed_plain(c)
 
     def _feed_plain(self, ch: str):
-        """处理普通字符：think 内与括号内丢弃，其余进入缓冲"""
+        """处理普通字符：think 内、括号内、方括号【】内丢弃，其余进入缓冲"""
         if self._in_think:
+            return
+        if ch == "【":
+            self._bracket_depth += 1
+            return
+        if ch == "】":
+            if self._bracket_depth > 0:
+                self._bracket_depth -= 1
+            return
+        if self._bracket_depth > 0:
             return
         if ch in "（(":
             self._paren_depth += 1

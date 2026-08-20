@@ -18,6 +18,7 @@ class LLMTtsBridge:
             return
         json_msg = {
             "voiceType": "chat",
+            "source": "llm",
             "traceid": traceid,
             "chatStatus": chat_status,
             "text": text,
@@ -32,6 +33,7 @@ class LLMTtsBridge:
             return
         json_msg = {
             "voiceType": "chat",
+            "source": "llm",
             "traceid": traceid,
             "chatStatus": "end",
             "text": text,

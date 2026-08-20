@@ -62,6 +62,59 @@ const Config = {
             ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
     },
 
+    // ============ 键值对（dict）可视化编辑器 ============
+    _dictHidden(path, obj) {
+        const json = JSON.stringify(obj || {});
+        const safe = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/'/g, '&#39;');
+        return `<input type="hidden" data-path="${path}" value='${safe}'>`;
+    },
+
+    // 简单键值对编辑器（名 → QQ号），用于 group_bots
+    _kvDictEditor(label, path, help, keyLabel, valueLabel) {
+        const obj = this._val(path, {}) || {};
+        const rows = Object.keys(obj).map(k => this._kvRow(k, obj[k], keyLabel, valueLabel)).join('');
+        return `<div class="form-group"><label>${label}</label>
+            <div class="kv-editor" data-kv-editor="${path}">
+                ${rows || '<div class="help-text">暂无条目，点击下方按钮添加</div>'}
+            </div>
+            <button type="button" class="btn btn-secondary" data-kv-add="${path}">添加条目</button>
+            ${this._dictHidden(path, obj)}
+            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+    },
+
+    _kvRow(key, value, keyLabel, valueLabel) {
+        return `<div class="kv-row">
+            <input type="text" data-kv-key value="${this._esc(key || '')}" placeholder="${keyLabel}">
+            <input type="text" data-kv-value value="${this._esc(value || '')}" placeholder="${valueLabel}">
+            <button type="button" class="kv-remove" title="删除">&times;</button>
+        </div>`;
+    },
+
+    // 每群配置编辑器（群号 → 触发基数 / pass 次数），用于 group_per_group
+    _groupConfigEditor(label, path, help) {
+        const obj = this._val(path, {}) || {};
+        const rows = Object.keys(obj).map(gid => this._groupConfigRow(gid, obj[gid])).join('');
+        return `<div class="form-group"><label>${label}</label>
+            <div class="kv-editor" data-gc-editor="${path}">
+                ${rows || '<div class="help-text">暂无条目，点击下方按钮添加</div>'}
+            </div>
+            <button type="button" class="btn btn-secondary" data-gc-add="${path}">添加群配置</button>
+            ${this._dictHidden(path, obj)}
+            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+    },
+
+    _groupConfigRow(gid, cfg) {
+        cfg = cfg || {};
+        const base = cfg.reply_base != null ? cfg.reply_base : '';
+        const pass = cfg.pass_rounds != null ? cfg.pass_rounds : '';
+        return `<div class="kv-row kv-row-3">
+            <input type="text" data-gc-group value="${this._esc(gid || '')}" placeholder="群号">
+            <input type="number" data-gc-base value="${base}" placeholder="触发基数(默认6)">
+            <input type="number" data-gc-pass value="${pass}" placeholder="pass次数(默认1)">
+            <button type="button" class="kv-remove" title="删除">&times;</button>
+        </div>`;
+    },
+
     _section(title) {
         return `<div class="form-section"><h4>${title}</h4></div>`;
     },
@@ -98,7 +151,10 @@ const Config = {
             this._num('说话人判定阈值', 'sensevoice.speaker_threshold', 0.2, 0, 1, 0.05) +
             this._list('目标说话人（逗号分隔）', 'sensevoice.target_speakers', []) +
             this._list('热词（逗号分隔，每项: 词 权重...）', 'sensevoice.hotwords', []) +
-            this._num('VAD 能量阈值', 'sensevoice.vad_energy_threshold', 400, 0, 5000, 50) +
+            this._num('VAD 能量阈值', 'sensevoice.vad_energy_threshold', 400, 0, 5000, 50,
+                '说话判断阈值（判断是否有语音活动）') +
+            this._num('打断阈值', 'sensevoice.interrupt_threshold', 800, 0, 5000, 50,
+                '触发 TTS 打断的能量阈值，应比 VAD 阈值更严格（更高），避免轻微噪音误打断') +
             this._num('句子合并延迟(秒)', 'sensevoice.merge_delay', 1.0, 0, 5, 0.1) +
             this._num('静音阈值(秒)', 'sensevoice.silence_threshold', 2.0, 0, 5, 0.1) +
             this._num('心跳间隔(秒)', 'sensevoice.ping_interval', 20, 1, 120, 1) +
@@ -167,9 +223,13 @@ const Config = {
     },
 
     // ============ LLM ============
-    llm(frontPrompt) {
+    llm(front) {
         const type = this._val('llm.local_llm_type', 'deepseek');
-        const fp = frontPrompt || '';
+        const f = front || {};
+        const frontPrompt = f.prompt || '';
+        const activeFront = f.prompt_active || '';
+        const napcatFront = f.prompt_napcat || '';
+        const postPrompt = f.post_prompt || '';
         let h = this._section('LLM 大模型') +
             `<div class="form-group"><label>LLM类型</label>
             <select data-path="llm.local_llm_type">
@@ -208,11 +268,23 @@ const Config = {
             this.splitFlagEditor('llm.split_flag') +
             this._num('最小分段长度', 'llm.split_limit', 6, 1, 100, 1);
 
-        // 前置词模块（单独保存到 character/front/prompt.json）
-        h += this._section('前置词') +
-            `<div class="form-group"><label>前置词（system prompt 最前面）</label>
-                <textarea id="frontPromptInput" class="auto-grow" rows="3" placeholder="请输入前置词">${this._esc(fp)}</textarea>
-                <div class="help-text">该内容会在每次对话的 system prompt 最前面拼接</div>
+        // 前置词/后置词模块（单独保存到 character/front/prompt.json）
+        h += this._section('提示词（前置词放最前，后置词放最后）') +
+            `<div class="form-group"><label>前置词（行为约束，system prompt 最前）</label>
+                <textarea id="frontPromptInput" class="auto-grow" rows="3" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(frontPrompt)}</textarea>
+                <div class="help-text">放在 system prompt 最前面，约束本次回复行为</div>
+            </div>` +
+            `<div class="form-group"><label>主动回复前置词</label>
+                <textarea id="activeFrontPromptInput" class="auto-grow" rows="2" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(activeFront)}</textarea>
+                <div class="help-text">主动找话题时的行为约束</div>
+            </div>` +
+            `<div class="form-group"><label>NapCat 前置词</label>
+                <textarea id="napcatFrontPromptInput" class="auto-grow" rows="2" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(napcatFront)}</textarea>
+                <div class="help-text">QQ 回复时的行为约束</div>
+            </div>` +
+            `<div class="form-group"><label>后置词（人设，system prompt 最后）</label>
+                <textarea id="postPromptInput" class="auto-grow" rows="2" placeholder="你是...，大家都叫你...">${this._esc(postPrompt)}</textarea>
+                <div class="help-text">放在 system prompt 最后，描述角色身份</div>
             </div>`;
 
         return h;
@@ -440,14 +512,27 @@ const Config = {
             this._text('认证令牌', 'emote.vtuber_authenticationToken', '');
     },
 
-    // ============ NapCat（QQ 机器人） ============
+    // ============ NapCat（QQ 机器人）子球 ============
     napcat() {
-        return this._section('NapCat QQ 机器人') +
+        // 总览（向后兼容，实际由四个子球分别配置）
+        return this.napcat_account() + this.napcat_private() + this.napcat_group() + this.napcat_send();
+    },
+
+    napcat_account() {
+        return this._section('NapCat 连接与角色名') +
             this._check('启用 NapCat', 'napcat.enabled', false) +
             this._text('WebSocket 地址', 'napcat.ws_url', 'ws://127.0.0.1:3001') +
             this._password('Access Token（可空）', 'napcat.access_token', '') +
+            this._text('角色名（群内 @ 该昵称触发立即回复）', 'napcat.self_nickname', '喵利呜西斯') +
+            this._check('调试：原始事件落盘', 'napcat.debug_event_dump', false,
+                '开启后把 NapCat 原始事件写入 .temp/napcat_raw_events.jsonl（用于拿群机器人消息样本）');
+    },
+
+    napcat_private() {
+        return this._section('NapCat 私聊回复') +
+            this._check('启用私聊回复', 'napcat.private_reply_enabled', true) +
             this._num('拉取历史条数', 'napcat.history_limit', 30, 1, 200, 1,
-                '向上获取的聊天记录条数，作为 napcat 回复的短期记忆') +
+                '向上获取的聊天记录条数，作为 napcat 私聊回复的短期记忆') +
             this._num('短期记忆轮数', 'napcat.short_mem_rounds', 30, 1, 200, 1,
                 'qq_response 类型短期记忆保留轮数（1 轮 = 用户 + AI）') +
             this._check('启用短期记忆', 'napcat.short_mem_enabled', true) +
@@ -458,10 +543,46 @@ const Config = {
                 { value: 'medium', label: '中' },
                 { value: 'high', label: '高' }
             ], 'medium', 'DeepSeek/Aliyun 当前仅支持开/关，medium 及以上均开启思考') +
+            this._num('回复字数', 'napcat.reply_word_count', 10, 1, 100, 1,
+                '每次回复约该字数，严格上限 = 该值 + 10') +
             this._check('启用表情发送', 'napcat.emote_enabled', true) +
             this._num('表情触发概率(%)', 'napcat.emote_probability', 30, 0, 100, 1,
                 '最终概率 = 配置概率 + 用户好感度') +
             this._text('表情文件目录', 'napcat.emote_dir', '.NapCat/EmoteLab');
+    },
+
+    napcat_group() {
+        return this._section('NapCat 群聊回复') +
+            this._check('启用群聊回复', 'napcat.group_reply_enabled', true) +
+            this._list('群聊名称黑名单（逗号分隔，空=不拦截）', 'napcat.group_blacklist', []) +
+            this._num('群聊历史拉取条数', 'napcat.group_history_limit', 50, 1, 500, 1,
+                'get_group_record 向上获取的群聊历史条数（content 标注【用户名】:内容）') +
+            this._num('群聊短期记忆容纳条数', 'napcat.group_memory_limit', 10, 1, 200, 1,
+                'qq_groupchat 类型仅存 assistant 消息，最多容纳条数') +
+            this._kvDictEditor('群机器人映射（机器人名 → QQ号）', 'napcat.group_bots', {},
+                '识别群机器人，如 幻梦 → 3889006601', '机器人名', 'QQ号') +
+            this._section('群聊主动插话（按消息数判断）') +
+            this._check('启用群聊主动插话', 'napcat.group_active_enabled', true) +
+            this._num('触发基数（更新 N 次后判断）', 'napcat.group_reply_base', 6, 1, 100, 1,
+                '群聊消息累计该次数后由 AI 判断是否插话') +
+            this._num('触发抖动比例(±)', 'napcat.group_reply_jitter', 0.2, 0, 0.5, 0.05,
+                '实际阈值 = 基数 ± 该比例，取整随机') +
+            this._num('pass 允许连续次数', 'napcat.group_pass_rounds', 1, 0, 20, 1,
+                'AI 连续输出 pass 的次数，超过后必须发送') +
+            this._groupConfigEditor('每群单独配置（群号 → 触发基数/pass次数）', 'napcat.group_per_group',
+                '留空则使用上面的全局配置；仅填写的字段覆盖全局') +
+            this._section('群性质概括 (group_info)') +
+            this._num('概括间隔（AI 发送条数）', 'napcat.group_info_interval', 100, 1, 10000, 1) +
+            this._num('概括最近条数', 'napcat.group_info_recent', 50, 1, 500, 1) +
+            this._num('概括采样范围（最近条数之外）', 'napcat.group_info_sample_range', 200, 1, 2000, 1);
+    },
+
+    napcat_send() {
+        return this._section('NapCat 主动发送（触发型工具）') +
+            this._check('启用主动发送', 'napcat.active_sender.enabled', true,
+                'AI 主动给好友/群发消息、文件、链接（受 toolcalls 控制）') +
+            this._num('冷却时间(秒)', 'napcat.active_sender.cooldown', 60, 0, 3600, 1,
+                '两次主动发送的最小间隔');
     },
 
     // ============ Minecraft ============
@@ -520,7 +641,25 @@ const Config = {
             this._num('温度', 'toolbox.aliyun.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'toolbox.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
+        h += this._section('excuse 通用询问链路') +
+            this._check('启用 excuse 询问', 'toolbox.excuse_enabled', true,
+                'AI 有疑问时以角色口吻语音询问，并阻塞等待用户文本输入补充需求') +
+            this._num('excuse 等待超时(秒)', 'toolbox.excuse_timeout', 60, 1, 600, 1);
         return h;
+    },
+
+    // ============ MeowVision 视觉模块 ============
+    meowvision() {
+        return this._section('MeowVision 视觉理解（阿里云 qvq）') +
+            this._password('API Key', 'meowvision.api_key', '') +
+            this._text('Base URL', 'meowvision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'meowvision.model', 'qvq-plus') +
+            this._num('温度', 'meowvision.temperature', 0.7, 0, 2, 0.1) +
+            this._num('最大输出 tokens', 'meowvision.max_tokens', 512, 1, 8192, 16,
+                '视觉回复最大 token，默认 512') +
+            this._num('Top P', 'meowvision.top_p', 0.9, 0, 1, 0.05) +
+            this._text('图片缓存目录', 'meowvision.cache_dir', './.temp/vision_cache',
+                '截图/裁切/编码结果统一缓存目录；NapCat 收到的图片也会先落到此目录避免直接用 url');
     },
 
     // ============ 角色卡（配置部分 + JSON 字段） ============
@@ -700,9 +839,14 @@ const Config = {
                 path === 'app.mode' ||
                 path === 'sensevoice.target_speakers' ||
                 path === 'sensevoice.hotwords' ||
-                path === 'minecraft.filter_players'
+                path === 'minecraft.filter_players' ||
+                path === 'napcat.group_blacklist'
             )) {
                 current[last] = value.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+            } else if (path === 'napcat.group_bots' || path === 'napcat.group_per_group') {
+                // dict 编辑器：隐藏 input 存 JSON 字符串，这里解析回对象
+                try { current[last] = JSON.parse(value); }
+                catch (e) { current[last] = {}; }
             } else {
                 current[last] = value;
             }

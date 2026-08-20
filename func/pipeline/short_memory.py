@@ -63,8 +63,11 @@ class ShortMemory:
             self._write(data)
 
     def _clear_active(self, data: list) -> list:
-        """清除全部 llm_active_response 类型记录"""
-        return [m for m in data if m.get("type") != "llm_active_response"]
+        """清除主动回复与视觉回复记录（llm_active_response / vision_response）
+
+        保存正常对话（llm_fast_response）时调用，避免孤立消息无限堆积。
+        """
+        return [m for m in data if m.get("type") not in ("llm_active_response", "vision_response")]
 
     def _trim_by_type(self, data: list, mem_type, max_rounds: int) -> list:
         """按指定 type 裁剪：超过 max_rounds 轮时删除最旧的完整一轮"""
@@ -88,6 +91,12 @@ class ShortMemory:
             remove_indices = type_indices[: remove_count * 2]
             for idx in sorted(remove_indices, reverse=True):
                 data.pop(idx)
+        elif rounds == 0 and type_indices:
+            # 非成对类型（如 qq_groupchat 仅存 assistant）：按消息条数裁剪最旧
+            remove_n = max(0, len(type_indices) - max_rounds)
+            if remove_n > 0:
+                for idx in sorted(type_indices[:remove_n], reverse=True):
+                    data.pop(idx)
         return data
 
     def load(self) -> list:
