@@ -75,6 +75,12 @@ class TTsCore:
         # 打断标志：置位后丢弃后续待合成/待入队内容
         self._interrupt_flag = threading.Event()
 
+        # ===== 语音优先级抢占 =====
+        # 正在播放片段的优先级 / 正在合成任务的优先级（0=空闲）
+        self.priority_lock = threading.Lock()
+        self._playing_priority = 0
+        self._synth_priority = 0
+
         # 任务调度线程：按来源分组串行处理 TTS 任务
         self.task_thread = Thread(target=self._task_worker, daemon=True)
         self.task_thread.start()
@@ -84,6 +90,19 @@ class TTsCore:
         self.play_thread.start()
         self.subtitle.start()
         self.interrupt.start()
+
+    @staticmethod
+    def _priority_of(source) -> int:
+        """按 source 映射语音优先级：weather/news(3) > 其它 toolbox(2) > llm/other(1)
+
+        仅严格更高优先级才触发抢占；同优先级不抢占。
+        """
+        s = str(source or "")
+        if s in ("toolbox_weather", "toolbox_news"):
+            return 3
+        if s.startswith("toolbox"):
+            return 2
+        return 1
 
     def _is_paused(self):
         """线程安全地读取暂停状态"""
@@ -107,6 +126,9 @@ class TTsCore:
                 self.pending_segments.clear()
             self._clear_task_queue()
             self._interrupt_flag.set()
+            with self.priority_lock:
+                self._playing_priority = 0
+                self._synth_priority = 0
 
     def resume(self):
         """恢复播放"""
@@ -150,6 +172,9 @@ class TTsCore:
                             pass
             self.paused = True
             self.ttsData.is_tts_ready = True
+            with self.priority_lock:
+                self._playing_priority = 0
+                self._synth_priority = 0
         self.log.info("TTS 彻底清除完成")
 
     def _remove_file(self, file_path):
@@ -164,7 +189,7 @@ class TTsCore:
         """清空播放队列并删除对应音频文件"""
         while not self.play_queue.empty():
             try:
-                file_path, _, _ = self.play_queue.get_nowait()
+                file_path, _, _, _ = self.play_queue.get_nowait()
                 self._remove_file(file_path)
             except Exception:
                 pass
@@ -176,7 +201,7 @@ class TTsCore:
                 time.sleep(0.1)
                 continue
             try:
-                file_path, subtitle_json, _ = self.play_queue.get(timeout=0.5)
+                file_path, subtitle_json, _, priority = self.play_queue.get(timeout=0.5)
             except queue.Empty:
                 continue
 
@@ -184,13 +209,21 @@ class TTsCore:
                 self._remove_file(file_path)
                 continue
 
+            # 记录正在播放片段的优先级（供高优先级抢占判断）
+            with self.priority_lock:
+                self._playing_priority = int(priority or 0)
+
             # 仅在完整回复首次出现时推送浏览器字幕
             full_text = subtitle_json.get("text", "") if subtitle_json else ""
             if full_text:
                 self.subtitle.send_full_text(full_text)
 
-            # 阻塞播放，播放完成后删除文件
-            self.player.play_file(file_path, self.config.volume)
+            try:
+                # 阻塞播放，播放完成后删除文件
+                self.player.play_file(file_path, self.config.volume)
+            finally:
+                with self.priority_lock:
+                    self._playing_priority = 0
             self._remove_file(file_path)
 
     def _interrupt_playback(self):
@@ -210,8 +243,11 @@ class TTsCore:
         self._clear_task_queue()
         self._interrupt_flag.set()
         self.subtitle.clear()
+        with self.priority_lock:
+            self._playing_priority = 0
+            self._synth_priority = 0
 
-    def _add_segment(self, traceid, seg_index, file_path, reply_json, is_end=False):
+    def _add_segment(self, traceid, seg_index, file_path, reply_json, is_end=False, priority=0):
         """将分段放入顺序缓冲，按序进入播放队列"""
         with self.pending_lock:
             if traceid not in self.pending_segments:
@@ -224,18 +260,18 @@ class TTsCore:
             tracker = self.pending_segments[traceid]
 
         with tracker["lock"]:
-            tracker["buffer"][seg_index] = (file_path, reply_json, is_end)
+            tracker["buffer"][seg_index] = (file_path, reply_json, is_end, priority)
             self._flush_buffer(tracker)
 
     def _flush_buffer(self, tracker):
         """按 seg_index 顺序刷新缓冲到播放与字幕队列"""
         while tracker["next"] in tracker["buffer"]:
             idx = tracker["next"]
-            file_path, reply_json, is_end = tracker["buffer"].pop(idx)
+            file_path, reply_json, is_end, priority = tracker["buffer"].pop(idx)
             self.subtitle.put(reply_json)
             if file_path is not None:
                 self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}")
-                self.play_queue.put((file_path, reply_json, is_end))
+                self.play_queue.put((file_path, reply_json, is_end, priority))
             tracker["next"] += 1
 
             if is_end:
@@ -249,14 +285,14 @@ class TTsCore:
         try:
             traceid = str(uuid.uuid4())
             json = {"voiceType": "other", "traceid": traceid, "chatStatus": "end", "text": text, "lanuage": ""}
-            self.tts_say_do(json)
+            self.tts_say_do(json, generation=self.ttsData.generation)
         except Exception:
             self.log.exception("【tts_say】发生异常：")
 
     def tts_chat_say(self, json):
         """聊天分段合成入口（线程池调用）"""
         try:
-            self.tts_say_do(json)
+            self.tts_say_do(json, generation=self.ttsData.generation)
         except Exception:
             self.log.exception("【tts_chat_say】发生异常：")
 
@@ -285,13 +321,14 @@ class TTsCore:
         reply_text = text
         traceid = json.get("traceid", "")
         chat_status = json.get("chatStatus", "end")
+        priority = self._priority_of(json.get("source", "other"))
 
         # 空文本 + end 作为结束标记
         if text == "" and chat_status == "end":
             reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": ""}
             if is_segmented:
                 # 分段场景：空结束段仅用于清理顺序缓冲，不入播放队列
-                self._add_segment(traceid, seg_index, None, reply_json, is_end=True)
+                self._add_segment(traceid, seg_index, None, reply_json, is_end=True, priority=priority)
             else:
                 self.subtitle.put(reply_json)
                 self.log.info(reply_json)
@@ -330,12 +367,13 @@ class TTsCore:
 
         if is_segmented:
             # 分段任务交给顺序缓冲，保证按序播放
-            self._add_segment(traceid, seg_index, audio_file, reply_json, is_end=(chat_status == "end"))
+            self._add_segment(traceid, seg_index, audio_file, reply_json,
+                              is_end=(chat_status == "end"), priority=priority)
         else:
             # 非分段任务直接入队
             is_last = (chat_status == "end")
             self.subtitle.put(reply_json)
-            self.play_queue.put((audio_file, reply_json, is_last))
+            self.play_queue.put((audio_file, reply_json, is_last, priority))
 
     def _resolve_ref_audio(self) -> dict:
         """从 system_prompt 获取当前角色卡绑定的参考音频配置"""
@@ -367,6 +405,7 @@ class TTsCore:
         traceid = json.get("traceid", "")
         source = json.get("source", "other")
         is_end = (json.get("chatStatus") == "end")
+        new_task = None
         with self.ttsData.task_lock:
             cur = self.ttsData.pending_tasks.get(traceid)
             if cur is None:
@@ -378,14 +417,48 @@ class TTsCore:
                     "source": source,
                     "segments": [],
                     "generation": self.ttsData.generation,
+                    "priority": self._priority_of(source),
                 }
                 self.ttsData.pending_tasks[traceid] = cur
             # 同 traceid：并入当前任务
             cur["segments"].append(json)
             if is_end:
-                # 一句话完整，入队，从缓冲移除
-                self.ttsData.task_queue.put(cur)
+                # 一句话完整：先从缓冲移除
                 self.ttsData.pending_tasks.pop(traceid, None)
+                new_task = cur
+
+        # 锁外：抢占判断（内部会获取 task_lock，避免嵌套死锁）+ 入队
+        if new_task is not None:
+            self._maybe_preempt(new_task)
+            self.ttsData.task_queue.put(new_task)
+
+    def _maybe_preempt(self, new_task: dict):
+        """高优先级抢占：新任务优先级严格高于「正在播放 + 正在合成」时，掐断低优先级内容。
+
+        - 停止当前播放、清空播放队列与任务队列、代际 +1 丢弃正在合成的旧任务；
+        - 同优先级不抢占（保持原有 FIFO）。
+        """
+        new_pri = int(new_task.get("priority", 0) or 0)
+        with self.priority_lock:
+            current_max = max(self._playing_priority, self._synth_priority)
+            if new_pri <= current_max:
+                return
+            # 完全空闲（无播放、无合成）时无需抢占，也避免多余的 player.stop()
+            if current_max == 0:
+                return
+
+        self.log.info(
+            f"[TTS] 高优先级语音抢占：source={new_task.get('source')} pri={new_pri} > 当前={current_max}"
+        )
+        # 代际 +1：所有旧任务（含正在合成、排队）作废
+        with self.ttsData.task_lock:
+            self.ttsData.generation += 1
+            new_task["generation"] = self.ttsData.generation
+        self.player.stop()
+        self._clear_play_queue()
+        self._clear_task_queue()
+        with self.pending_lock:
+            self.pending_segments.clear()
 
     def _task_worker(self):
         """串行处理任务队列：一个任务的所有分段合成+播放完，才轮到下一个任务"""
@@ -397,10 +470,17 @@ class TTsCore:
                 continue
             if self._is_paused():
                 continue
-            for seg in task.get("segments", []):
-                if gen != self.ttsData.generation or self._is_paused():
-                    break
-                self.tts_say_do(seg, gen)
+            # 记录正在合成任务的优先级（供高优先级抢占判断）
+            with self.priority_lock:
+                self._synth_priority = int(task.get("priority", 0) or 0)
+            try:
+                for seg in task.get("segments", []):
+                    if gen != self.ttsData.generation or self._is_paused():
+                        break
+                    self.tts_say_do(seg, gen)
+            finally:
+                with self.priority_lock:
+                    self._synth_priority = 0
 
     def _clear_task_queue(self):
         """清空任务队列与未完成句子缓冲（暂停/打断时调用）"""

@@ -158,6 +158,36 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
+    def get_watching_prompt(self, username=None, current_message: str = "",
+                            front_note: str = "") -> str:
+        """watching（长期观察屏幕）提示词：前置词 + 游戏场景说明 + body(不含摘要) + 后置词(在看XX内容)
+
+        - front_note：AI 决策填写的游戏场景说明（谁在玩什么、画面特征等），加在前置词之后；
+        - body：角色卡 + 价值观 + 用户档案 + 日期（不含长期记忆摘要 abmem）；
+        - 后置词末尾追加「你在看{username}的内容」。
+        """
+        body = ""
+        if self._builder and hasattr(self._builder, "build_watching"):
+            body = self._builder.build_watching(username, current_message)
+        elif self._builder:
+            body = self._builder.build(username, current_message)
+
+        front = self.get_front_prompt()
+        if front:
+            front = front.replace("{username}", username or "主人")
+        if front_note and front_note.strip():
+            front = f"{front}\n{front_note.strip()}"
+
+        post = self.get_post_prompt()
+        name = username or "用户"
+        if post:
+            post = f"{post}\n你现在在看{name}的屏幕内容，正在陪{name}"
+        else:
+            post = f"你现在在看{name}的屏幕内容，正在陪{name}"
+
+        parts = [p for p in (front, body, post) if p]
+        return "\n\n".join(parts)
+
     def get_active_prompt(self, cold_time, current_message: str = "") -> str:
         """主动回复提示词：前置词(行为约束) + body + 后置词(人设+空闲提示)"""
         body = ""

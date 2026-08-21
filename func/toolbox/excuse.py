@@ -68,7 +68,6 @@ class TBExcuse:
     # ==================== 文本拦截入口 ====================
     def route_text(self, text: str, username: str = "") -> bool:
         """文本输入统一拦截：若正在等待询问回复，则消费该文本并返回 True（已处理）。
-
         接入方式：
         - api.py 的 sensevoice 回调、/msg、/chat 端点先调用本方法；
         - 返回 True 则不再走后续 LLM 处理链。
@@ -93,30 +92,27 @@ class TBExcuse:
             self._waiting = value
 
     def _save_memory(self, role: str, content: str):
-        """保存询问/确认到 public_short_memory，type=toolbox_response（user/assistant 成对）"""
+        """保存询问/确认到 public_short_memory，type=toolbox_excuse（user/assistant 成对）"""
         try:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save({
                 "role": role,
                 "content": f"【toolbox询问】{content}",
-                "type": "toolbox_response",
+                "type": "toolbox_excuse",
             }, 30)
         except Exception:
             self.log.exception("[Excuse] 保存短期记忆失败")
 
     def _speak(self, text: str):
-        """通过 toolbox_tts 合成语音（桥接内部自持 LLmState，toolbox 只传文本）"""
+        """通过 toolbox_tts 合成语音（桥接内部自持 LLmState，toolbox 只传文本，分段流式）"""
         try:
             from func.pipeline.toolbox_tts import ToolboxTtsBridge
-            ToolboxTtsBridge().send_to_answer_queue(
-                text, traceid=str(uuid.uuid4()), chat_status="end"
-            )
+            ToolboxTtsBridge().send_stream(text, source="toolbox")
         except Exception:
             self.log.exception("[Excuse] TTS 合成失败")
 
     def _in_character(self, question: str, username: str = "") -> str:
         """以角色身份提问：用完整系统提示词，让角色以 AI 方式思考后自然发问。
-
         - 不是机械改写，而是让 LLM 在完整角色人设（前置词+角色卡+价值观+记忆）约束下，
           把「内部需要询问的信息」转化为角色自己会说的话。
         - 失败回退原文 question。
@@ -130,7 +126,7 @@ class TBExcuse:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": (
                         f"你现在需要向用户询问一个信息，内部需求是：{question}\n"
-                        f"请以你自己的角色身份，自然、口语化地问出这个问题。"
+                        f"请以你自己的角色身份，自然、口语化地问出这个问题。注意需要明确问句，让用户知道要回复什么"
                     )},
                 ])
                 if resp and resp.choices:

@@ -160,6 +160,16 @@ const API = {
         return res.json();
     },
 
+    async verifySite(site, query) {
+        const res = await fetch('/api/verify_site', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ site, query: query || '测试' })
+        });
+        if (!res.ok) throw new Error('Failed to verify site');
+        return res.json();
+    },
+
     async getPrompt() {
         try {
             const res = await fetch('/api/prompt');

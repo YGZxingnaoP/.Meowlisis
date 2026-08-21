@@ -320,6 +320,22 @@ def get_sovits_models():
     return jsonify({'ckpt': sorted(set(ckpts)), 'pth': sorted(set(pths))})
 
 
+@app.route('/api/verify_site', methods=['POST'])
+def verify_site():
+    """验证数据库来源站点是否可爬取（供「来源」配置界面验证按钮调用）"""
+    data = request.get_json() or {}
+    site = data.get('site', '')
+    query = data.get('query', '测试')
+    if not site:
+        return jsonify({'ok': False, 'message': '缺少站点标识', 'sample': []}), 400
+    try:
+        from func.database.search.crawler import CatLearnCrawler
+        result = CatLearnCrawler().verify_site(site, query)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'ok': False, 'message': str(e), 'sample': []}), 500
+
+
 @app.route('/api/front_prompt', methods=['GET'])
 def get_front_prompt():
     p = BASE_DIR / "character" / "front" / "prompt.json"

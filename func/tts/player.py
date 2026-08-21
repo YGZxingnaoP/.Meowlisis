@@ -44,10 +44,7 @@ class AudioPlayer:
         raw = data.tobytes()
         frame_bytes = self.CHUNK * channels * 2  # int16 每帧 2 字节
 
-        # 打开前检查是否已要求停止
-        if self._stop_flag.is_set():
-            return False
-
+        # 开始新播放：清除旧的停止标志（新播放任务应能正常开始）
         self._stop_flag.clear()
         with self._lock:
             try:

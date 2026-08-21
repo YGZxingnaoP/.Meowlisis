@@ -52,6 +52,11 @@ class TBNapCatActive:
             self._reset(group_id)
             return {"action": "reply", "force": False, "at_self": True, "username": username}
 
+        # 普通消息：仅纯文本消息累计计数（纯图片/表情等无文本消息不触发主动回复）
+        text = str(parsed.get("text") or "").strip()
+        if not text:
+            return {"action": "skip", "force": False, "at_self": False, "username": None}
+
         # 普通消息：累计计数
         with self._lock:
             st = self._state.setdefault(group_id, self._new_state(group_id))
@@ -66,6 +71,10 @@ class TBNapCatActive:
                 st["pass_count"] = 0
             action = "reply" if force else "decide"
         return {"action": action, "force": force, "at_self": False, "username": None}
+
+    def reset_group(self, group_id: str):
+        """重置某群计数（@ 触发时调用，@ 回复后主动插话重新计时）"""
+        self._reset(group_id)
 
     # ==================== pass / 回复记录 ====================
     def record_pass(self, group_id: str):

@@ -659,7 +659,139 @@ const Config = {
                 '视觉回复最大 token，默认 512') +
             this._num('Top P', 'meowvision.top_p', 0.9, 0, 1, 0.05) +
             this._text('图片缓存目录', 'meowvision.cache_dir', './.temp/vision_cache',
-                '截图/裁切/编码结果统一缓存目录；NapCat 收到的图片也会先落到此目录避免直接用 url');
+                '截图/裁切/编码结果统一缓存目录；NapCat 收到的图片也会先落到此目录避免直接用 url') +
+            this._section('Watching 长期观察') +
+            this._check('启用 Watching（长期观察屏幕）', 'meowvision.watching.enabled', true,
+                'AI 判断用户有「陪打游戏 / 陪看屏幕」意图时才进入长期观察流程') +
+            this._num('变化检测相似阈值', 'meowvision.watching.change_similarity_threshold', 0.85, 0, 1, 0.05,
+                '前后两帧相似度达到该值判定为「无变化」，无变化时本轮不传视觉模型') +
+            this._num('窗口消失确认秒数', 'meowvision.watching.window_gone_confirm_seconds', 5, 1, 60, 1,
+                '绑定游戏窗口消失后，连续多少秒未检测到才判定强制结束');
+    },
+
+    // ============ 天气查询 (weather) ============
+    weather() {
+        return this._section('天气查询（触发型工具）') +
+            this._check('启用天气查询', 'weather.enabled', true,
+                'AI 根据用户天气询问触发查询并播报，数据来自中国天气网（受 toolcalls 控制）');
+    },
+
+    // ============ 新闻查询 (news) ============
+    news() {
+        return this._section('新闻查询（触发型工具）') +
+            this._check('启用新闻查询', 'news.enabled', true,
+                'AI 根据用户新闻/热点询问触发爬取并概括，数据来自 Readhub（受 toolcalls 控制）') +
+            this._num('爬取条数', 'news.top_n', 3, 1, 10, 1,
+                '每次爬取并概括的新闻条数（默认 3，最多 10）');
+    },
+
+    // ============ 数据库（database）子球 ============
+    db_search() {
+        const type = this._val('database.search.llm_type', 'deepseek');
+        let h = this._section('搜索学习 (database.search)') +
+            this._num('搜索 LLM 温度', 'database.search.temperature', 0.7, 0, 2, 0.1,
+                '搜索模块独立 LLM，temperature 默认 0.7') +
+            this._llmTypeSelect('搜索 LLM 类型', 'database.search.llm_type', type);
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="db_search_ds">DeepSeek</button>
+            <button class="modal-tab" data-tab="db_search_aliyun">阿里云</button>
+        </div>`;
+        h += `<div class="tab-content active" data-tab-content="db_search_ds">` +
+            this._password('API Key', 'database.search.deepseek.api_key', '') +
+            this._text('Base URL', 'database.search.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'database.search.deepseek.model', 'deepseek-chat') +
+            this._num('max_tokens', 'database.search.deepseek.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="db_search_aliyun">` +
+            this._password('API Key', 'database.search.aliyun.api_key', '') +
+            this._text('Base URL', 'database.search.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'database.search.aliyun.model', 'qwen-plus') +
+            this._num('max_tokens', 'database.search.aliyun.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += this._section('聊天记录滚动') +
+            this._num('滚动触发条数', 'database.record.max_messages', 50, 1, 1000, 1,
+                '累计多少条 user 消息滚动一轮（触发核心搜索决策）') +
+            this._num('保留轮数', 'database.record.rounds', 2, 1, 10, 1,
+                'last / past_1 / ... 保留轮数');
+        return h;
+    },
+
+    db_store() {
+        let h = this._section('知识存储与检索 (database.store)') +
+            this._password('硅基流动 API Key', 'database.store.embedding.api_key', '') +
+            this._text('Embedding Base URL', 'database.store.embedding.base_url', 'https://api.siliconflow.cn/v1') +
+            this._text('Embedding 模型', 'database.store.embedding.model', 'BAAI/bge-m3',
+                '统一文本向量模型 bge-m3（图片内容已排除）') +
+            this._num('默认检索条数', 'database.store.top_k', 5, 1, 50, 1,
+                '每条消息提取 keys 后检索的知识库条数') +
+            this._num('关键词触发检索条数', 'database.store.keyword_top_k', 15, 1, 50, 1,
+                '命中"知道/了解"关键词时检索的知识库条数') +
+            this._text('向量库目录', 'database.store.db_dir', '.DataBase',
+                'ChromaDB 持久化目录（项目根目录）');
+        return h;
+    },
+
+    // ============ 数据库来源（sites）子球 ============
+    db_source() {
+        const sites = this._val('database.search.sites', {}) || {};
+        const keys = Object.keys(sites);
+        let h = this._section('网页数据来源 (database.search.sites)') +
+            `<div id="sourceSiteList">`;
+        if (!keys.length) {
+            h += `<div class="help-text">暂无站点，点击下方按钮添加</div>`;
+        } else {
+            keys.forEach(k => { h += this.sourceSiteRow(k, sites[k] || {}); });
+        }
+        h += `</div>`;
+        h += `<button class="btn btn-secondary" id="addSourceSiteBtn">添加站点</button>` +
+            `<div class="help-text">策略：http=网页解析、api=JSON接口、direct=直连详情页。search_url 用 {q} 占位搜索关键词。</div>`;
+        return h;
+    },
+
+    sourceSiteRow(key, cfg) {
+        cfg = cfg || {};
+        const label = cfg.label != null ? cfg.label : key;
+        const description = cfg.description || '';
+        const enabled = cfg.enabled !== false;
+        const strategy = cfg.strategy || 'http';
+        const count = cfg.count != null ? cfg.count : 5;
+        const baseUrl = cfg.base_url || '';
+        const searchUrl = cfg.search_url || '';
+        const interval = cfg.interval != null ? cfg.interval : 2;
+        return `<div class="char-card" data-source-site="${this._esc(key)}">
+            <div class="char-card-title source-site-toggle" style="cursor:pointer;">
+                <span class="source-toggle-arrow">▾</span>
+                ${this._esc(label)} <span class="help-text">(${this._esc(key)})</span>
+            </div>
+            <div class="source-site-body">
+                <div class="form-group"><label>站点标识</label>
+                    <input type="text" data-source-field="key" value="${this._esc(key)}" placeholder="如 mcmod"></div>
+                <div class="form-group"><label>显示名</label>
+                    <input type="text" data-source-field="label" value="${this._esc(label)}" placeholder="如 MC百科"></div>
+                <div class="form-group"><label>适用场景</label>
+                    <input type="text" data-source-field="description" value="${this._esc(description)}" placeholder="如 Minecraft 相关知识检索"></div>
+                <div class="checkbox-group"><input type="checkbox" data-source-field="enabled" ${enabled ? 'checked' : ''}><label>启用</label></div>
+                <div class="form-group"><label>策略</label>
+                    <select data-source-field="strategy">
+                        <option value="http" ${strategy === 'http' ? 'selected' : ''}>http</option>
+                        <option value="api" ${strategy === 'api' ? 'selected' : ''}>api</option>
+                        <option value="direct" ${strategy === 'direct' ? 'selected' : ''}>direct</option>
+                    </select></div>
+                <div class="form-group"><label>每站爬取条数</label>
+                    <input type="number" data-source-field="count" value="${count}" min="1" max="50" step="1"></div>
+                <div class="form-group"><label>站点主页</label>
+                    <input type="text" data-source-field="base_url" value="${this._esc(baseUrl)}" placeholder="https://..."></div>
+                <div class="form-group"><label>搜索 URL 模板</label>
+                    <input type="text" data-source-field="search_url" value="${this._esc(searchUrl)}" placeholder="https://...?q={q}"></div>
+                <div class="form-group"><label>请求间隔(秒)</label>
+                    <input type="number" data-source-field="interval" value="${interval}" min="0" max="60" step="0.5"></div>
+                <div class="source-verify-row">
+                    <button type="button" class="btn btn-secondary source-verify-btn">验证</button>
+                    <button type="button" class="btn btn-secondary source-remove-btn">删除</button>
+                </div>
+                <div class="source-verify-result help-text"></div>
+            </div>
+        </div>`;
     },
 
     // ============ 角色卡（配置部分 + JSON 字段） ============
@@ -765,6 +897,33 @@ const Config = {
             updates.push({ path, value });
         });
         return updates;
+    },
+
+    // 收集数据库来源站点（sites 编辑器）
+    collectSources() {
+        const result = {};
+        document.querySelectorAll('#sourceSiteList [data-source-site]').forEach(card => {
+            const get = (field) => {
+                const el = card.querySelector(`[data-source-field="${field}"]`);
+                if (!el) return undefined;
+                if (el.type === 'checkbox') return el.checked;
+                if (el.type === 'number') return parseFloat(el.value);
+                return el.value;
+            };
+            const key = (get('key') || '').trim();
+            if (!key) return;
+            result[key] = {
+                label: get('label') || key,
+                description: get('description') || '',
+                enabled: get('enabled') !== false,
+                strategy: get('strategy') || 'http',
+                count: get('count') || 5,
+                base_url: get('base_url') || '',
+                search_url: get('search_url') || '',
+                interval: get('interval') || 2,
+            };
+        });
+        return result;
     },
 
     // 收集新结构角色卡（共用字段 + setting 字典 + personality 字典）

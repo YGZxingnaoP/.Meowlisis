@@ -42,6 +42,11 @@ class TBNapCatCore:
         self._buffer_lock = threading.Lock()
         self._buffers = {}
 
+        # 群聊 @ 消息聚合缓冲：(group_id, user_id) -> {"group_id","user_id","username","self_id","group_name","texts","count","timer"}
+        # 等待策略与私聊共用（BUFFER_WAIT_MIN/MAX、BUFFER_MAX_ROUNDS），仅检测该用户后续消息
+        self._group_buffer_lock = threading.Lock()
+        self._group_buffers = {}
+
         # 私聊消息回调（默认指向内部串联处理：解析→缓冲→拉历史→TBoxCore.receive_qq）
         self.on_private_message: Optional[Callable[[dict], None]] = self._handle_private_message
         # 群聊消息回调（默认指向内部串联处理：解析→黑名单→TBoxCore.receive_group）
@@ -78,6 +83,7 @@ class TBNapCatCore:
         self.running = False
         # 清理所有待发送的消息缓冲定时器
         self._clear_buffers()
+        self._clear_group_buffers()
         if self.loop and self.loop.is_running():
             self.loop.call_soon_threadsafe(self.loop.stop)
         if self.thread:
@@ -166,13 +172,27 @@ class TBNapCatCore:
     def _handle_private_message(self, event: dict):
         """解析私聊消息并送入聚合缓冲（延迟合并后统一交给 AI）"""
         try:
+            # QQ excuse 等待路由（绑定用户）：正在等待该用户回复时优先消费，不走正常回复
+            try:
+                _uid = event.get("user_id") or (event.get("sender") or {}).get("user_id")
+                from func.toolbox.napcat.message.get_message import TBGetMessage
+                _parsed = TBGetMessage().parse(event)
+                _text = (_parsed or {}).get("text", "") or ""
+                if _text.strip():
+                    from func.toolbox.napcat.excuse_router import TBNapcatExcuseRouter
+                    _router = TBNapcatExcuseRouter()
+                    if _router.route(_router.private_key(str(_uid or "")), _text.strip()):
+                        self.log.info(f"[NapCat] 私聊 excuse 等待命中，消费: {_text[:20]}")
+                        return
+            except Exception:
+                pass
             # 私聊回复开关
             if not self.config.private_reply_enabled:
                 return
             # 消息打断戳一戳计数（私聊）
             try:
                 user_id = event.get("user_id") or (event.get("sender") or {}).get("user_id")
-                from func.toolbox.napcat.groupchat.poke_detector import TBPokeDetector
+                from func.toolbox.napcat.poke_detector import TBPokeDetector
                 TBPokeDetector().on_interrupt("private", str(user_id or ""))
             except Exception:
                 pass
@@ -183,23 +203,32 @@ class TBNapCatCore:
                 user_id = event.get("user_id") or (event.get("sender") or {}).get("user_id")
                 self_id = event.get("self_id")
                 username = str((event.get("sender") or {}).get("nickname") or user_id or "")
-                text = TBImageSearch.text_from_segments(event.get("message"))
-                # 图片落地本地缓存区（避免直接用带鉴权的 url）
+                # 图片消息自带文本 + 此前待发送的聚合文本（先文本后图片 → 合并一次性看图回复，不走 LLM）
+                # 单发图片无文本时 text 为空，不向上检索填充文本
+                image_text = TBImageSearch.text_from_segments(event.get("message"))
+                pending_text = self._take_pending_text(str(user_id))
+                text = "，".join(t for t in (pending_text, image_text) if t and t.strip())
+                # 短期记忆（QQ 历史）作为视觉上下文传输，保证看图能结合对话背景
+                short_memory = self.get_record.fetch(str(user_id), self_id)
+                # 图片落地本地缓存区 + 动图抽帧（避免直接用带鉴权的 url）
                 from func.toolbox.meowvision.config import TBVisionConfig
                 cache_dir = TBVisionConfig().cache_dir
-                image_paths = TBImageSearch.to_local_paths(images, cache_dir)
+                image_paths = TBImageSearch.prepare_for_vision(images, cache_dir)
                 if image_paths:
-                    from func.toolbox.meowvision.vision_core import TBVisionCore
+                    from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
                     # 幻梦（机器人）发的图不写记忆，其余用户图正常写记忆
                     is_bot = self._is_bot_user(user_id)
-                    result = TBVisionCore().process(
+                    result = TBNapCatVisionActive().process(
                         image_paths, text, username,
                         need_description=True, write_memory=not is_bot,
+                        history_messages=short_memory,
                     )
                     vision_reply = (result.get("reply") or "").strip()
                     if vision_reply:
                         self.send_private_text(str(user_id), vision_reply)
                         self.log.info(f"[视觉] 私聊图片视觉回复已发: {vision_reply[:30]}")
+                    else:
+                        self.log.warning(f"[视觉] 私聊图片视觉回复为空，未发送（图片 {len(image_paths)} 张）")
                 return
             parsed = self.get_message.parse(event)
             if not parsed or not parsed.get("text"):
@@ -237,7 +266,7 @@ class TBNapCatCore:
                 user_id = str(event.get("user_id", "") or event.get("sender_id", "") or "")
                 session_id = user_id
 
-            from func.toolbox.napcat.groupchat.poke_detector import TBPokeDetector
+            from func.toolbox.napcat.poke_detector import TBPokeDetector
             triggered = TBPokeDetector().on_poke(message_type, session_id, user_id)
             if triggered:
                 # 补充 event 里的 user_id 供发牢骚发送使用
@@ -295,10 +324,26 @@ class TBNapCatCore:
     def _handle_group_message(self, event: dict):
         """解析群聊消息并送入 TBoxCore.receive_group（黑名单/主动回复逻辑在内部处理）"""
         try:
+            # QQ excuse 等待路由（绑定群 + 用户）：正在等待该用户回复时优先消费，不走正常回复
+            try:
+                _gid = event.get("group_id")
+                _uid = event.get("user_id") or (event.get("sender") or {}).get("user_id")
+                from func.toolbox.napcat.groupchat.get_group_message import TBGetGroupMessage
+                _parsed = TBGetGroupMessage().parse(event)
+                _text = (_parsed or {}).get("text", "") or ""
+                if _text.strip() and _gid is not None and _uid is not None:
+                    from func.toolbox.napcat.excuse_router import TBNapcatExcuseRouter
+                    _router = TBNapcatExcuseRouter()
+                    _key = _router.group_key(str(_gid), str(_uid))
+                    if _router.route(_key, _text.strip()):
+                        self.log.info(f"[NapCat] 群聊 excuse 等待命中，消费: {_text[:20]}")
+                        return
+            except Exception:
+                pass
             # 消息打断戳一戳计数（群聊）
             try:
                 group_id = event.get("group_id")
-                from func.toolbox.napcat.groupchat.poke_detector import TBPokeDetector
+                from func.toolbox.napcat.poke_detector import TBPokeDetector
                 TBPokeDetector().on_interrupt("group", str(group_id or ""))
             except Exception:
                 pass
@@ -437,6 +482,21 @@ class TBNapCatCore:
         except Exception:
             self.log.exception("发送缓冲消息异常")
 
+    def _take_pending_text(self, user_id: str) -> str:
+        """取出并取消某用户尚未发送的聚合文本缓冲（图片到达时合并到视觉输入）。
+
+        返回合并后的纯文本；无缓冲则返回空串。调用后该用户缓冲被清空、定时器取消。
+        """
+        with self._buffer_lock:
+            buf = self._buffers.pop(str(user_id or ""), None)
+            if buf is None:
+                return ""
+            timer = buf.get("timer")
+            if timer is not None:
+                timer.cancel()
+            texts = [t for t in (buf.get("texts") or []) if t and t.strip()]
+        return "，".join(texts)
+
     def _clear_buffers(self):
         """清空所有缓冲并取消定时器（停止时调用）"""
         with self._buffer_lock:
@@ -444,6 +504,135 @@ class TBNapCatCore:
                 if buf.get("timer") is not None:
                     buf["timer"].cancel()
             self._buffers.clear()
+
+    # ==================== 群聊 @ 聚合缓冲 ====================
+    @staticmethod
+    def _group_buffer_key(group_id, user_id) -> tuple:
+        return (str(group_id or ""), str(user_id or ""))
+
+    def group_buffer_exists(self, group_id, user_id) -> bool:
+        """该用户在群聊中是否有等待中的 @ 缓冲"""
+        with self._group_buffer_lock:
+            return self._group_buffer_key(group_id, user_id) in self._group_buffers
+
+    def buffer_group_at(self, parsed: dict) -> dict:
+        """@ 消息进入群聊缓冲。若该用户已有缓冲（新的 @），先取出旧缓冲并取消计时。
+
+        返回被挤出的旧缓冲（无则返回 None），由调用方决定是否立即 flush 旧的回复任务。
+        """
+        group_id = str(parsed.get("group_id", "") or "")
+        user_id = str(parsed.get("user_id", "") or "")
+        username = str(parsed.get("username", "") or "")
+        self_id = str(parsed.get("self_id", "") or "")
+        group_name = str(parsed.get("group_name", "") or "")
+        text = str(parsed.get("text", "") or "").strip()
+
+        key = self._group_buffer_key(group_id, user_id)
+        old = None
+        with self._group_buffer_lock:
+            # 新的 @：挤出旧缓冲
+            if key in self._group_buffers:
+                old = self._group_buffers.pop(key)
+                if old.get("timer") is not None:
+                    old["timer"].cancel()
+
+            buf = {
+                "group_id": group_id,
+                "user_id": user_id,
+                "username": username,
+                "self_id": self_id,
+                "group_name": group_name,
+                "texts": [text] if text else [],
+                "count": 0,
+                "timer": None,
+            }
+            self._group_buffers[key] = buf
+            buf["count"] = 1
+            wait = random.uniform(self.BUFFER_WAIT_MIN, self.BUFFER_WAIT_MAX)
+            timer = threading.Timer(wait, self._on_group_buffer_timeout,
+                                    args=(group_id, user_id, buf["count"]))
+            timer.daemon = True
+            buf["timer"] = timer
+            timer.start()
+            self.log.info(f"[NapCat群缓冲] 群 {group_id} 用户 {user_id} @ 触发，{wait:.1f} 秒后无新消息则回复")
+
+        return old
+
+    def add_group_buffer_text(self, parsed: dict):
+        """合并该用户后续文本/表情到群聊缓冲，重置计时（仅检测该用户）"""
+        group_id = str(parsed.get("group_id", "") or "")
+        user_id = str(parsed.get("user_id", "") or "")
+        text = str(parsed.get("text", "") or "").strip()
+        if not text:
+            return
+
+        key = self._group_buffer_key(group_id, user_id)
+        to_flush = None
+        with self._group_buffer_lock:
+            buf = self._group_buffers.get(key)
+            if buf is None:
+                return
+            buf["texts"].append(text)
+            buf["username"] = str(parsed.get("username", "") or buf.get("username", ""))
+            if buf.get("timer") is not None:
+                buf["timer"].cancel()
+                buf["timer"] = None
+            buf["count"] += 1
+            if buf["count"] >= self.BUFFER_MAX_ROUNDS:
+                to_flush = self._group_buffers.pop(key, None)
+                self.log.info(f"[NapCat群缓冲] 群 {group_id} 用户 {user_id} 达到上限，立即回复")
+            else:
+                wait = random.uniform(self.BUFFER_WAIT_MIN, self.BUFFER_WAIT_MAX)
+                timer = threading.Timer(wait, self._on_group_buffer_timeout,
+                                        args=(group_id, user_id, buf["count"]))
+                timer.daemon = True
+                buf["timer"] = timer
+                timer.start()
+        if to_flush:
+            self._flush_group_buffer(to_flush)
+
+    def take_group_buffer(self, group_id, user_id) -> dict:
+        """取出并取消该用户的群聊 @ 缓冲（图片/表情触发时），返回缓冲或 None"""
+        key = self._group_buffer_key(group_id, user_id)
+        with self._group_buffer_lock:
+            buf = self._group_buffers.pop(key, None)
+            if buf is not None and buf.get("timer") is not None:
+                buf["timer"].cancel()
+            return buf
+
+    def _on_group_buffer_timeout(self, group_id: str, user_id: str, count: int):
+        """群聊缓冲定时器到期：若无新消息（count 未变），取出并回复"""
+        key = self._group_buffer_key(group_id, user_id)
+        to_flush = None
+        with self._group_buffer_lock:
+            buf = self._group_buffers.get(key)
+            if buf is None or buf.get("count") != count:
+                return
+            to_flush = self._group_buffers.pop(key, None)
+        if to_flush:
+            self.log.info(f"[NapCat群缓冲] 群 {group_id} 用户 {user_id} 停顿超时，回复")
+            self._flush_group_buffer(to_flush)
+
+    def _flush_group_buffer(self, buf: dict):
+        """flush 群聊 @ 缓冲：纯 @ 无文本时用占位，交给 toolbox_core 走群聊文本回复"""
+        texts = [t for t in (buf.get("texts") or []) if t and t.strip()]
+        if not texts:
+            text = f"{buf.get('username', '有人')}@了你"
+        else:
+            text = "，".join(texts)
+        try:
+            from func.toolbox.toolbox_core import TBoxCore
+            TBoxCore().reply_group_at(buf, text)
+        except Exception:
+            self.log.exception("群聊 @ 缓冲 flush 异常")
+
+    def _clear_group_buffers(self):
+        """清空所有群聊 @ 缓冲并取消定时器（停止时调用）"""
+        with self._group_buffer_lock:
+            for buf in self._group_buffers.values():
+                if buf.get("timer") is not None:
+                    buf["timer"].cancel()
+            self._group_buffers.clear()
 
     # ==================== 发送 API ====================
     def _next_echo(self) -> str:

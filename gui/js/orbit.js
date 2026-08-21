@@ -20,6 +20,7 @@ const Orbit = {
         { id: 'llm', label: 'LLM', tooltip: '大语言模型配置' },
         { id: 'active', label: '主动回复', tooltip: '角色主动回复配置' },
         { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
+        { id: 'database', label: '数据库', tooltip: '数据库知识库配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
         { id: 'danmaku', label: 'BiliLive', tooltip: 'B站直播弹幕配置' },
         { id: 'toolbox', label: 'Toolbox', tooltip: '工具箱（Minecraft/OBS/VTS）' }
@@ -31,7 +32,9 @@ const Orbit = {
         { id: 'obs', label: 'OBS', tooltip: 'OBS 字幕模块（占位）' },
         { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
         { id: 'meowvision', label: '视觉', tooltip: 'MeowVision 视觉模块配置' },
-        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' }
+        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' },
+        { id: 'weather', label: '天气', tooltip: '天气查询配置' },
+        { id: 'news', label: '新闻', tooltip: '新闻查询配置' }
     ],
 
     rotation: 0,
@@ -41,6 +44,9 @@ const Orbit = {
     catbrainSubEls: [],
     catbrainOpen: false,
     catbrainEl: null,
+    databaseSubEls: [],
+    databaseOpen: false,
+    databaseEl: null,
     dragging: false,
     suppressClick: false,
     toolboxRotation: 0,
@@ -360,6 +366,15 @@ const Orbit = {
                 if (this.suppressClick) return;
                 this.toggleCatbrainSubs();
             });
+        } else if (p.id === 'database') {
+            // 数据库球：点击分裂出 2 个子配置球（搜索/知识）
+            this.databaseEl = el;
+            this.createDatabaseSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleDatabaseSubs();
+            });
         } else {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -430,6 +445,63 @@ const Orbit = {
             this.catbrainEl.classList.toggle('active', this.catbrainOpen);
         }
         this.catbrainSubEls.forEach(el => this._applyCatbrainSub(el, this.catbrainOpen));
+    },
+
+    // 数据库子球（搜索/知识/来源）
+    createDatabaseSubs(parent) {
+        const subs = [
+            { id: 'db_search', label: '搜索', tooltip: '搜索学习配置' },
+            { id: 'db_store', label: '知识', tooltip: '存储及检索配置' },
+            { id: 'db_source', label: '来源', tooltip: '网页数据来源配置' }
+        ];
+        // 目标偏移：3 个子球沿数据库球右侧弧线排列（右上/右中/右下）
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: 0 },
+            { x: 82, y: 82 }
+        ];
+        this.databaseSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyDatabaseSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.databaseSubEls.push(el);
+        });
+    },
+
+    _applyDatabaseSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleDatabaseSubs() {
+        this.databaseOpen = !this.databaseOpen;
+        if (this.databaseEl) {
+            this.databaseEl.classList.toggle('active', this.databaseOpen);
+        }
+        this.databaseSubEls.forEach(el => this._applyDatabaseSub(el, this.databaseOpen));
     },
 
 

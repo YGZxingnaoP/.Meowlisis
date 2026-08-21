@@ -29,8 +29,11 @@ class TBVisionSender:
         self.llm = TBVisionAliyunLLM(self.config)
 
     def send(self, images: List[str], user_message: str = "",
-             system_prompt: str = "") -> Optional[str]:
-        """发送图片与文本给视觉模型，返回模型回复（content），失败返回 None"""
+             system_prompt: str = "", history_messages: Optional[List[dict]] = None) -> Optional[str]:
+        """发送图片与文本给视觉模型，返回模型回复（content），失败返回 None
+
+        - history_messages：短期记忆上下文（[{role, content}]），插入到最终图片消息之前。
+        """
         if not images:
             self.log.warning("MeowVision 发送失败：无图片")
             return None
@@ -41,6 +44,11 @@ class TBVisionSender:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+
+        # 短期记忆上下文（纯文本，放在图片消息之前）
+        for m in history_messages or []:
+            if isinstance(m, dict) and m.get("role") in ("user", "assistant") and m.get("content"):
+                messages.append({"role": m["role"], "content": str(m["content"])})
 
         content = []
         for img in images:

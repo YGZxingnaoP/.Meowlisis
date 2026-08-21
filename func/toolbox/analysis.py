@@ -53,6 +53,28 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册视觉模块失败")
 
+        # 天气查询模块
+        try:
+            from func.toolbox.weather.weather_core import TBWeatherCore
+            weather = TBWeatherCore()
+            for tool_schema in weather.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, weather)
+        except Exception:
+            self.log.exception("注册天气查询模块失败")
+
+        # 新闻查询模块
+        try:
+            from func.toolbox.news.news_core import TBNewsCore
+            news = TBNewsCore()
+            for tool_schema in news.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, news)
+        except Exception:
+            self.log.exception("注册新闻查询模块失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -80,33 +102,13 @@ class TBoxAnalysis:
                 schemas.extend(tool.build_tools())
         return schemas
 
-    def _intent_tool(self) -> List[Dict]:
-        """意图判断工具：先判断用户消息是否包含需要调用某个模块的操作意图"""
-        return [{
-            "type": "function",
-            "function": {
-                "name": "decide_intent",
-                "description": "判断用户消息是否包含需要调用工具箱模块的操作意图",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "is_action": {
-                            "type": "boolean",
-                            "description": (
-                                "是否包含操作意图。操作意图包括："
-                                "qq/发消息/发文件/发链接（QQ发送）；"
-                                "看屏幕/截图/看图片/看我在做什么/看我打游戏（视觉）。"
-                                "普通闲聊、询问、讨论填 false。"
-                            ),
-                        },
-                    },
-                    "required": ["is_action"],
-                },
-            },
-        }]
+    def decide(self, text: str, username: str):
+        """接收输入内容，单次 toolcalls 由 AI 决定是否调用工具并执行。
 
-    def decide(self, text: str, username: str, suppress_fast_reply: bool = False):
-        """接收输入内容，由 AI 决策调用哪个工具并执行。"""
+        - 提供全部已注册工具，tool_choice=auto，让 AI 自行判断是否需要工具；
+        - 调用了工具：逐个 dispatch 执行；
+        - 未调用工具：静默（双通道下主 LLM 已回复，toolbox 不重复回复）。
+        """
         self.current_username = username
         llm = self._ensure_llm()
         if llm is None or not llm.client:
@@ -117,53 +119,36 @@ class TBoxAnalysis:
         base_prompt = TBoxGetPrompt().get_tool_prompt(username, text) or ""
         history_messages = self._load_short_memory()
 
-        # ============ 阶段1：意图预判（无工具，强制调用 decide_intent） ============
-        intent_prompt = (
+        system_prompt = (
             f"{base_prompt}\n\n"
-            f"【意图判断】请判断用户这条消息是否是在要求你执行某个实际操作。\n"
-            f"操作包括：QQ发消息/发文件/发链接；看屏幕/截图/看图片/看我在做什么/陪我打游戏/陪我玩。\n"
-            f"如果是操作请求，is_action 填 true；如果只是普通闲聊、询问、讨论，is_action 填 false。"
+            f"【工具调用】根据用户消息判断是否需要调用工具箱工具。\n"
+            f"只有用户「明确」表达以下操作意图时，才调用对应工具：\n"
+            f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
+            f"- 所有可能和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
+            f"- 明确询问天气/气温/下雨 → query_weather；\n"
+            f"- 明确要看新闻/热点/头条 → read_news。\n"
+            f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
+            f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
+            f"- 普通闲聊、询问、讨论、表达情绪、分享观点；\n"
+            f"- 意图模糊、无法确定用户是否要执行操作。\n"
         )
-        intent_messages = [{"role": "system", "content": intent_prompt}]
-        intent_messages.extend(history_messages)
-        intent_messages.append({"role": "user", "content": text})
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": text})
 
-        intent_resp = llm.chat(
-            intent_messages,
-            tools=self._intent_tool(),
-            tool_choice={"type": "function", "function": {"name": "decide_intent"}},
-        )
-        is_action = self._parse_intent(intent_resp)
-        if not is_action:
-            # 闲聊/非操作意图
-            if suppress_fast_reply:
-                self.log.info("父级 toolcalls 意图判断为非操作，且已由主链路回复，静默")
-            else:
-                content = self._extract_content(intent_resp)
-                if content.strip():
-                    from func.pipeline.toolbox_llm import ToolboxLLMBridge
-                    ToolboxLLMBridge().send_to_llm(content, username)
-            return
-
-        # ============ 阶段2：强制工具调用（意图已确认，必须选一个模块执行） ============
-        self.log.info("父级 toolcalls 判定为操作意图，进入强制工具调用")
-        action_prompt = (
-            f"{base_prompt}\n\n"
-            f"【工具调用】用户已经明确表达了操作意图，你必须调用一个工具来完成，禁止只输出文字。"
-        )
-        action_messages = [{"role": "system", "content": action_prompt}]
-        action_messages.extend(history_messages)
-        action_messages.append({"role": "user", "content": text})
-
-        resp = llm.chat(action_messages, tools=self.build_tools(), tool_choice="required")
+        resp = llm.chat(messages, tools=self.build_tools(), tool_choice="auto")
         if not resp or not resp.choices:
-            self.log.warning("父级 toolcalls 强制工具调用无响应")
+            self.log.warning("父级 toolcalls 无响应")
             return
+
         msg = resp.choices[0].message
-        if not msg.tool_calls:
-            self.log.warning("父级 toolcalls 判定为操作意图，但未调用工具")
+        tool_calls = msg.tool_calls or []
+        if not tool_calls:
+            self.log.info("父级 toolcalls 未调用工具，静默")
             return
-        for tc in msg.tool_calls:
+
+        self.log.info(f"父级 toolcalls 命中工具 {[tc.function.name for tc in tool_calls]}: {text[:20]}")
+        for tc in tool_calls:
             name = tc.function.name
             try:
                 args = json.loads(tc.function.arguments or "{}")
@@ -172,30 +157,6 @@ class TBoxAnalysis:
                 args = {}
             result = self.dispatch(name, args, username)
             self.log.info(f"父级工具 {name} 执行结果: {result}")
-
-    def _parse_intent(self, resp) -> bool:
-        """解析意图判断结果，返回 is_action 布尔值"""
-        if not resp or not resp.choices:
-            return False
-        try:
-            msg = resp.choices[0].message
-            for tc in (msg.tool_calls or []):
-                if tc.function.name == "decide_intent":
-                    args = json.loads(tc.function.arguments or "{}")
-                    return bool(args.get("is_action"))
-        except Exception:
-            self.log.exception("解析意图判断失败")
-        return False
-
-    @staticmethod
-    def _extract_content(resp) -> str:
-        """从响应中提取 content 文本（用于非操作意图时的快速回复）"""
-        if not resp or not resp.choices:
-            return ""
-        try:
-            return (resp.choices[0].message.content or "").strip()
-        except Exception:
-            return ""
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

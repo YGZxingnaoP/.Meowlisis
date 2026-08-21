@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # func/toolbox/napcat/image/image_search.py
-# 图片检测：从消息段中提取严格意义上的图片（排除表情包 / gif / 动画表情）
+# 图片检测：从消息段中提取严格意义上的图片（排除表情包 subType=1，保留 gif 动图后续抽帧）
 # 并提供图片落地到本地缓存区的能力（避免直接使用带鉴权的 url）
 
 import os
@@ -12,28 +12,25 @@ from func.log.default_log import DefaultLog
 
 
 class TBImageSearch:
-    """图片段检测与提取：仅识别 image 段，且排除 gif / 表情；支持落地本地缓存"""
+    """图片段检测与提取：识别 image 段，排除表情包；支持落地本地缓存与动图抽帧"""
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
     @staticmethod
-    def _is_gif(data: dict) -> bool:
-        """根据文件名或 subType 判断是否为 gif / 表情图"""
-        if str(data.get("subType", "") or "") in ("1", 1):
-            return True
-        file = str(data.get("file", "") or "").lower()
-        return file.endswith(".gif")
+    def _is_emoji(data: dict) -> bool:
+        """subType=1 表示 QQ 表情/动画表情，不作为图片内容处理"""
+        return str(data.get("subType", "") or "") in ("1", 1)
 
     @classmethod
     def extract_images(cls, segments) -> List[Dict]:
-        """提取严格图片段信息，返回 [{url, file}]（排除 gif / 表情 / face / mface）"""
+        """提取图片段信息，返回 [{url, file}]（排除表情 subType=1；gif 动图保留，后续抽帧）"""
         result: List[Dict] = []
         for seg in segments or []:
             if not isinstance(seg, dict) or seg.get("type") != "image":
                 continue
             data = seg.get("data") or {}
-            if cls._is_gif(data):
+            if cls._is_emoji(data):
                 continue
             url = str(data.get("url", "") or "").strip()
             file = str(data.get("file", "") or "").strip()
@@ -43,7 +40,7 @@ class TBImageSearch:
 
     @classmethod
     def has_image(cls, segments) -> bool:
-        """判断消息段中是否包含严格图片（排除 gif / 表情）"""
+        """判断消息段中是否包含图片（排除表情包 subType=1）"""
         return bool(cls.extract_images(segments))
 
     @staticmethod
@@ -69,6 +66,59 @@ class TBImageSearch:
             if path:
                 result.append(path)
         return result
+
+    @classmethod
+    def prepare_for_vision(cls, images: List[Dict], cache_dir: str) -> List[str]:
+        """落地图片 → 限制张数 → 超限压缩 → 动图抽帧，返回最终交给视觉模块的路径列表。
+
+        处理顺序：
+        1. 落地本地（file 优先，url 下载）；
+        2. 最多保留最近 max_images 张（超限取最后 N 张）；
+        3. 静态图超 max_image_size_mb 则压缩；动图先抽帧再对帧压缩；
+        4. 动图（GIF）→ 抽中间帧±偏移两帧做相似度比对，达标取前者，否则取两帧。
+        """
+        from func.toolbox.napcat.image.gif_frame import TBGifFrame
+        paths = cls.to_local_paths(images, cache_dir)
+
+        # 最多 N 张，超限取最近（最后）的 N 张
+        max_n = cls._max_images()
+        if max_n and max_n > 0 and len(paths) > max_n:
+            paths = paths[-max_n:]
+
+        final: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            if not os.path.exists(p):
+                # 落地失败回退的 url，原样交给视觉模型
+                final.append(p)
+                continue
+            if TBGifFrame.is_animated(p):
+                # 动图：先抽帧，再逐帧压缩
+                for frame in TBGifFrame().select_frames(p, cache_dir):
+                    final.append(cls._compress_if_needed(frame, cache_dir))
+            else:
+                final.append(cls._compress_if_needed(p, cache_dir))
+        return final
+
+    @staticmethod
+    def gather_text_context(current_text: str, history_messages: List[dict],
+                            limit: int = 3) -> str:
+        """向上检索文本：当前无文本时，从历史（text-only OpenAI messages）取最近用户文本作上下文。
+
+        - current_text 非空则直接返回；
+        - 否则先过滤出全部 user 文本，再取最近 limit 条，逗号合并返回（仍为空则返回空串）。
+        """
+        current = (current_text or "").strip()
+        if current:
+            return current
+        user_texts = []
+        for m in history_messages or []:
+            if isinstance(m, dict) and m.get("role") == "user":
+                content = str(m.get("content") or "").strip()
+                if content:
+                    user_texts.append(content)
+        return "，".join(user_texts[-limit:])
 
     @classmethod
     def _resolve_local(cls, img: Dict, cache_dir: str) -> str:
@@ -111,3 +161,66 @@ class TBImageSearch:
         if ext in (".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"):
             return ext
         return ".jpg"
+
+    # ==================== 张数 / 大小限制 ====================
+    @staticmethod
+    def _max_images() -> int:
+        """单次最多处理图片数（配置 max_images，默认 5；<=0 表示不限制）"""
+        try:
+            from func.toolbox.napcat.config import TBNapCatConfig
+            return int(TBNapCatConfig().max_images)
+        except Exception:
+            return 5
+
+    @staticmethod
+    def _max_image_bytes() -> int:
+        """单张图片大小上限（字节，配置 max_image_size_mb，默认 2MB）"""
+        try:
+            from func.toolbox.napcat.config import TBNapCatConfig
+            mb = float(TBNapCatConfig().max_image_size_mb)
+            return int(mb * 1024 * 1024)
+        except Exception:
+            return 2 * 1024 * 1024
+
+    @classmethod
+    def _compress_if_needed(cls, path: str, cache_dir: str) -> str:
+        """图片超过大小上限时压缩（逐步缩尺寸 + 降质量重存为 JPEG），未超限原样返回。
+
+        - 压缩失败回退原图；
+        - 压缩后仍可能略超上限（极端情况），但已尽量逼近上限。
+        """
+        max_bytes = cls._max_image_bytes()
+        try:
+            if os.path.getsize(path) <= max_bytes:
+                return os.path.abspath(path)
+        except OSError:
+            return path
+
+        try:
+            from PIL import Image
+            img = Image.open(path).convert("RGB")
+            os.makedirs(cache_dir, exist_ok=True)
+            out = os.path.join(cache_dir, f"napcat_cmp_{uuid.uuid4().hex[:10]}.jpg")
+
+            # 逐级缩小最长边，并逐步降质量，直到 <= max_bytes
+            for max_dim in (4096, 3072, 2304, 1728, 1296, 972, 729, 547):
+                w, h = img.size
+                if max(w, h) > max_dim:
+                    ratio = max_dim / max(w, h)
+                    resized = img.resize(
+                        (max(1, int(w * ratio)), max(1, int(h * ratio))),
+                        Image.LANCZOS,
+                    )
+                else:
+                    resized = img
+                for quality in (85, 75, 60):
+                    resized.save(out, "JPEG", quality=quality, optimize=True)
+                    try:
+                        if os.path.getsize(out) <= max_bytes:
+                            return os.path.abspath(out)
+                    except OSError:
+                        continue
+            return os.path.abspath(out)
+        except Exception:
+            DefaultLog().getLogger().warning(f"图片压缩失败，使用原图: {path}")
+            return path

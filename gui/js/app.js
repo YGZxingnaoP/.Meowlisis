@@ -70,6 +70,17 @@ const App = {
             return;
         }
 
+        // 数据库子球
+        if (id === 'db_source') { this.openDatabaseSourcePanel(); return; }
+        const databaseSubMap = {
+            'db_search': { title: '搜索学习', fn: () => Config.db_search() },
+            'db_store': { title: '知识存储与检索', fn: () => Config.db_store() }
+        };
+        if (databaseSubMap[id]) {
+            this._openConfigPanel(databaseSubMap[id].title, databaseSubMap[id].fn);
+            return;
+        }
+
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic() },
             'active': { title: '主动回复设置', fn: () => Config.llm_active() },
@@ -106,7 +117,9 @@ const App = {
             'napcat_private': { title: 'NapCat 私聊回复', fn: () => Config.napcat_private() },
             'napcat_group': { title: 'NapCat 群聊回复', fn: () => Config.napcat_group() },
             'napcat_send': { title: 'NapCat 主动发送', fn: () => Config.napcat_send() },
-            'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() }
+            'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() },
+            'weather': { title: '天气查询设置', fn: () => Config.weather() },
+            'news': { title: '新闻查询设置', fn: () => Config.news() }
         };
         const panel = map[id];
         if (!panel) {
@@ -139,6 +152,84 @@ const App = {
             this.bindSplitFlagEditor();
             this.bindDictEditors();
         }, 10);
+    },
+
+    // ============ 数据库来源站点编辑器 ============
+    async openDatabaseSourcePanel() {
+        const html = Config.db_source();
+        Modal.show('网页数据来源', html, async () => {
+            try {
+                this.config.database = this.config.database || {};
+                this.config.database.search = this.config.database.search || {};
+                this.config.database.search.sites = Config.collectSources();
+                await API.saveConfig(this.config);
+                this.showToast('来源配置已保存');
+            } catch (e) {
+                this.showToast('保存失败: ' + e.message, true);
+            }
+        });
+        setTimeout(() => this.bindSourceSiteEvents(), 10);
+    },
+
+    bindSourceSiteEvents() {
+        const list = document.getElementById('sourceSiteList');
+        if (!list) return;
+
+        // 添加站点
+        const addBtn = document.getElementById('addSourceSiteBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => {
+                const empty = list.querySelector('.help-text');
+                if (empty) empty.remove();
+                list.insertAdjacentHTML('beforeend', Config.sourceSiteRow('', {}));
+            });
+        }
+
+        // 折叠 / 删除 / 验证（事件委托）
+        list.addEventListener('click', async (e) => {
+            // 折叠：点击标题栏切换 body 显隐
+            const toggle = e.target.closest('.source-site-toggle');
+            if (toggle) {
+                const card = toggle.closest('[data-source-site]');
+                const body = card.querySelector('.source-site-body');
+                const arrow = toggle.querySelector('.source-toggle-arrow');
+                if (body) {
+                    const collapsed = body.style.display === 'none';
+                    body.style.display = collapsed ? '' : 'none';
+                    if (arrow) arrow.textContent = collapsed ? '▾' : '▸';
+                }
+                return;
+            }
+
+            const card = e.target.closest('[data-source-site]');
+            if (!card) return;
+            if (e.target.closest('.source-remove-btn')) {
+                card.remove();
+                if (!list.querySelector('[data-source-site]')) {
+                    list.innerHTML = '<div class="help-text">暂无站点，点击下方按钮添加</div>';
+                }
+                return;
+            }
+            if (e.target.closest('.source-verify-btn')) {
+                const key = (card.querySelector('[data-source-field="key"]') || {}).value || '';
+                const query = '测试';
+                const resultEl = card.querySelector('.source-verify-result');
+                if (!key) {
+                    resultEl.textContent = '请先填写站点标识';
+                    return;
+                }
+                resultEl.textContent = '验证中...';
+                try {
+                    const r = await API.verifySite(key, query);
+                    resultEl.textContent = (r.ok ? '✓ 通过：' : '✗ 失败：') + r.message;
+                    if (r.sample && r.sample.length) {
+                        resultEl.textContent += '（' + r.sample.map(s => s.title).slice(0, 3).join('、') + '...）';
+                    }
+                } catch (err) {
+                    resultEl.textContent = '验证失败: ' + err.message;
+                }
+            }
+        });
     },
 
     // ============ 键值对编辑器事件绑定 ============

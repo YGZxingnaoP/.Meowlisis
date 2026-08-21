@@ -49,6 +49,16 @@ class TBNapCatConfig:
         # 回复字数（默认10，严格上限 = 该值 + 10）
         self.reply_word_count = cfg.get('reply_word_count', 10)
 
+        # ========== 图片模块（接收图片 / 动图抽帧） ==========
+        # 单次上传最多处理的图片数（超限取最近 N 张），默认 5
+        self.max_images = cfg.get('max_images', 5)
+        # 单张图片大小上限（MB，超过则压缩），默认 2
+        self.max_image_size_mb = cfg.get('max_image_size_mb', 2)
+        # 动图抽帧相似度阈值（0~1）：中间帧±偏移两帧相似度达该值则只取前者，默认 0.8
+        self.gif_similarity_threshold = cfg.get('gif_similarity_threshold', 0.8)
+        # 动图抽帧偏移量：取中间帧前后各偏移该数量的两帧进行比对，默认 2
+        self.gif_frame_offset = cfg.get('gif_frame_offset', 2)
+
         # ========== 表情模块 ==========
         # 表情发送总开关
         self.emote_enabled = cfg.get('emote_enabled', True)

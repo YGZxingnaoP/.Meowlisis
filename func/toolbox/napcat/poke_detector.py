@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/napcat/groupchat/poke_detector.py
+# func/toolbox/napcat/poke_detector.py
 # 戳一戳检测：连续被戳 N 次触发；中间有任何消息打断则重新计数
+# 通用计数器：私聊与群聊共用，message_type 区分阈值（不拆类）
 
 import time
 import threading

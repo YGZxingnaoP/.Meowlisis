@@ -52,3 +52,6 @@ character/abstract_memory/
 
 #CatBrain 角色数据（含身份证号、用户隐私，不入库）
 character/info/
+
+#DataBase数据
+.DataBase/

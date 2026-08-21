@@ -74,6 +74,11 @@ MeowValuesTimer().start()
 active_core = AutoActiveCore()  # 空闲主动回复核心（计时器启动后立即开始计时）
 # ============================================
 
+# ============= 数据库（知识库 RAG） =====================
+from func.database.database_core import CatLearnCore
+CatLearnCore().init()
+# ============================================
+
 # ============= 语音合成 =====================
 ttsCore = TTsCore() # 语音核心
 # ============================================
@@ -144,6 +149,12 @@ def input_msg():
         MsgToolboxBridge().send_to_toolbox(query, user_name)
     except Exception:
         pass
+    # 数据库关键词匹配
+    try:
+        from func.pipeline.msg_database import MsgDatabaseBridge
+        MsgDatabaseBridge().send_to_database(query, user_name)
+    except Exception:
+        pass
     return jsonify({"status": "成功"})
 
 
@@ -182,6 +193,12 @@ def chat():
         MsgToolboxBridge().send_to_toolbox(text, username)
     except Exception:
         pass
+    # 数据库关键词匹配
+    try:
+        from func.pipeline.msg_database import MsgDatabaseBridge
+        MsgDatabaseBridge().send_to_database(text, username)
+    except Exception:
+        pass
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
     # =========end========
     if CallBackForTest is not None:
@@ -218,6 +235,12 @@ def main():
             try:
                 from func.pipeline.msg_toolbox import MsgToolboxBridge
                 MsgToolboxBridge().send_to_toolbox(text, username)
+            except Exception:
+                pass
+            # 数据库关键词匹配
+            try:
+                from func.pipeline.msg_database import MsgDatabaseBridge
+                MsgDatabaseBridge().send_to_database(text, username)
             except Exception:
                 pass
 

@@ -3,7 +3,7 @@
 # MeowVision 响应层：获取视觉模型回复（图片描述 + 角色回复），并做正则优化
 
 import re
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from func.log.default_log import DefaultLog
 from func.toolbox.meowvision.get_prompt import TBVisionGetPrompt
@@ -27,12 +27,13 @@ class TBVisionGetResponse:
         self.sender = TBVisionSender()
 
     def analyze(self, images: List[str], user_message: str = "",
-                username: str = "", need_description: bool = True) -> Dict[str, str]:
+                username: str = "", need_description: bool = True,
+                history_messages: Optional[List[dict]] = None) -> Dict[str, str]:
         """返回 {"description": str, "reply": str}"""
         system_prompt = self.get_prompt.get_system_prompt(
             username, user_message, need_description=need_description
         )
-        raw = self.sender.send(images, user_message, system_prompt)
+        raw = self.sender.send(images, user_message, system_prompt, history_messages)
         return self._split(raw, need_description)
 
     # ==================== 解析 ====================

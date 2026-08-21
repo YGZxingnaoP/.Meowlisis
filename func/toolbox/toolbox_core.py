@@ -47,20 +47,16 @@ class TBoxCore:
         except Exception:
             self.log.exception("设置 MeowVision 回传回调失败")
 
-    def receive(self, text: str, username: str, suppress_fast_reply: bool = True):
+    def receive(self, text: str, username: str):
         """接收输入内容（来自 pipeline），交给 analysis 决策调用工具。
 
-        suppress_fast_reply 默认 True：来自 msg_toolbox 双通道，主 LLM 已快速回复，
-        工具分析无工具时静默，避免重复回复。
+        双通道：主 LLM 已快速回复，工具分析无工具时静默，避免重复回复。
         """
-        self.analysis.decide(text, username, suppress_fast_reply=suppress_fast_reply)
+        self.analysis.decide(text, username)
 
     def forward_vision_reply(self, text: str):
-        """接收 MeowVision 视觉模块回传的回复，通过 pipeline 转发给 TTS 合成"""
-        import uuid
-        self.toolbox_tts.send_to_answer_queue(
-            text, traceid=str(uuid.uuid4()), seg_index=0, chat_status="end"
-        )
+        """接收 MeowVision 视觉模块回传的回复，通过 pipeline 转发给 TTS 合成（分段流式）"""
+        self.toolbox_tts.send_stream(text, source="toolbox")
 
     def receive_qq(self, username: str, user_id: str, text: str, short_memory: list):
         """接收 QQ 私聊消息：记录记忆 → napcat 独立 LLM 回复 → 回发 QQ
@@ -73,6 +69,22 @@ class TBoxCore:
             return
         # 机器人消息（如幻梦）：仅参与当轮上下文，不写入任何记忆文件
         is_bot = self._is_bot(user_id)
+        # 0.5 数据库关键词匹配（仅私聊，机器人消息不进入）
+        if not is_bot:
+            try:
+                from func.pipeline.msg_database import MsgDatabaseBridge
+                MsgDatabaseBridge().send_to_database(text, username)
+            except Exception:
+                self.log.exception("QQ 私聊 → database 处理异常")
+        # 0.8 napcat 意图分析：命中工具则走工具流程（结果发 QQ），跳过原 LLM 回复
+        if not is_bot:
+            try:
+                from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
+                qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
+                if TBNapcatAnalysis().decide_and_run(text, username, qq_context, short_memory):
+                    return
+            except Exception:
+                self.log.exception("QQ 私聊意图分析异常")
         # 1. 记录用户消息短期记忆（qq_response，加前缀）
         if self.napcat_config.short_mem_enabled and not is_bot:
             self.short_memory.save({
@@ -141,43 +153,72 @@ class TBoxCore:
         if not self.napcat_config.group_reply_enabled:
             return
 
-        # 2. 图片检测：严格图片（含幻梦发的图片）→ 视觉决策 → meowvision 看图并回发群
-        # 规则：@了角色 → 必看；否则走 vision_decide 深度思考判断（与普通图片一致）
-        try:
-            from func.toolbox.napcat.image.image_search import TBImageSearch
-            images = TBImageSearch.extract_images(raw_message)
+        # 提前提取图片（供 @ 缓冲协调与后续普通图片检测复用）
+        from func.toolbox.napcat.image.image_search import TBImageSearch
+        images = TBImageSearch.extract_images(raw_message)
+
+        # @ 触发时重置该群主动回复计数（@ 回复后主动插话重新计时，保持原行为）
+        if at_self:
+            from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
+            TBNapCatActive().reset_group(group_id)
+
+        # 1.5 群聊 @ 聚合缓冲协调（@ 后等待该用户后续消息，等待策略与私聊共用，仅检测该用户）
+        has_buffer = self.napcat_core.group_buffer_exists(group_id, user_id)
+
+        if at_self and not images:
+            # 纯 @ 或 @ + 文字（无图片）：进入缓冲等待后续消息
+            old = self.napcat_core.buffer_group_at(parsed)
+            if old:
+                self._flush_group_at_text(old)
+            return
+
+        if at_self and images:
+            # @ + 图片：@ 了角色必看，直接走视觉；新 @ 先挤出旧缓冲
+            old = self.napcat_core.take_group_buffer(group_id, user_id)
+            if old:
+                self._flush_group_at_text(old)
+            self._reply_group_image(group_id, group_name, user_id, username, text,
+                                    images, is_bot, self_id)
+            return
+
+        if has_buffer:
+            # 该用户正在 @ 等待中，后续消息（仅检测该用户，不影响其他用户）
             if images:
-                need_view = at_self
-                if not need_view:
-                    from func.toolbox.napcat.image.vision_decide import TBVisionDecide
-                    chat_record = None
-                    try:
-                        from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
-                        chat_record = TBGetGroupRecord().fetch(group_id, self_id)
-                    except Exception:
-                        pass
-                    need_view = TBVisionDecide().should_view(text, images, chat_record, username=username)
+                # 图片：取出缓冲文本 + 图片，一次性走视觉（与私聊先文本后图片一致）
+                buf = self.napcat_core.take_group_buffer(group_id, user_id)
+                pending_text = "，".join([t for t in (buf.get("texts") or []) if t and t.strip()]) if buf else ""
+                image_text = TBImageSearch.text_from_segments(raw_message)
+                merged = "，".join([t for t in (pending_text, image_text) if t and t.strip()])
+                self._reply_group_image(group_id, group_name, user_id, username, merged,
+                                        images, is_bot, self_id)
+                return
+            # 文本 / 表情：合并到缓冲，重置计时
+            emote_text = self._extract_emote_text(raw_message)
+            if emote_text:
+                merged_parsed = dict(parsed)
+                merged_parsed["text"] = "，".join([t for t in (text, emote_text) if t and t.strip()])
+                self.napcat_core.add_group_buffer_text(merged_parsed)
+            else:
+                self.napcat_core.add_group_buffer_text(parsed)
+            return
+
+        # 2. 普通图片检测（非 @ 且无缓冲）：vision_decide 深度思考判断是否看
+        if images:
+            try:
+                from func.toolbox.napcat.image.vision_decide import TBVisionDecide
+                chat_record = None
+                try:
+                    from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+                    chat_record = TBGetGroupRecord().fetch(group_id, self_id)
+                except Exception:
+                    pass
+                need_view = TBVisionDecide().should_view(text, images, chat_record, username=username)
                 if need_view:
-                    # 图片落地本地缓存区（避免直接用带鉴权的 url）
-                    from func.toolbox.meowvision.config import TBVisionConfig
-                    cache_dir = TBVisionConfig().cache_dir
-                    image_paths = TBImageSearch.to_local_paths(images, cache_dir)
-                    if image_paths:
-                        # 走 meowvision 视觉：看图 + 写记忆（幻梦图不写记忆），回复发回 QQ 群
-                        from func.toolbox.meowvision.vision_core import TBVisionCore
-                        result = TBVisionCore().process(
-                            image_paths, text, username,
-                            need_description=True, write_memory=not is_bot,
-                        )
-                        vision_reply = (result.get("reply") or "").strip()
-                        if vision_reply:
-                            from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
-                            for seg in TBNapCatGroupLLM.split_segments(vision_reply):
-                                self.napcat_core.send_group_text(group_id, seg)
-                            self.log.info(f"[视觉] 群图片视觉回复已发群 {group_name}: {vision_reply[:30]}")
+                    self._reply_group_image(group_id, group_name, user_id, username, text,
+                                            images, is_bot, self_id)
                     return
-        except Exception:
-            self.log.exception("群聊图片检测异常")
+            except Exception:
+                self.log.exception("群聊图片检测异常")
 
         # 3. 主动回复决策
         from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
@@ -261,6 +302,138 @@ class TBoxCore:
                 self.napcat_core.send_group_text(group_id, seg)
             self._after_group_reply(parsed, final, at_self=False)
             self._maybe_send_group_emote(parsed, text, final, short_memory)
+
+    # ==================== 群聊 @ 缓冲 flush ====================
+    def reply_group_at(self, buf: dict, text: str):
+        """群聊 @ 缓冲 flush：拉历史 + 群档案 + 记忆 + 群聊 LLM 回复 + 发群。
+
+        - text 由缓冲计算而来（纯 @ 时为「{username}@了你」占位，否则为合并文本）；
+        - 仅真实文本（非占位）才写用户档案与短期记忆，避免污染。
+        """
+        group_id = str(buf.get("group_id", ""))
+        group_name = str(buf.get("group_name", ""))
+        user_id = str(buf.get("user_id", ""))
+        username = str(buf.get("username", ""))
+        self_id = str(buf.get("self_id", ""))
+        has_real_text = bool([t for t in (buf.get("texts") or []) if t and t.strip()])
+        is_bot = self._is_bot(user_id)
+
+        parsed = {
+            "group_id": group_id,
+            "group_name": group_name,
+            "user_id": user_id,
+            "username": username,
+            "self_id": self_id,
+            "at_self": True,
+            "is_self": False,
+            "text": text,
+        }
+
+        # 历史 + 群档案
+        from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+        from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
+        short_memory = TBGetGroupRecord().fetch(group_id, self_id)
+        group_info_text = TBGroupInfo().build_prompt(group_name)
+
+        # 用户档案昵称（@ 触发时按 QQ 号解析稳定昵称）
+        reply_username = None
+        try:
+            from func.toolbox.napcat.groupchat.user_nickname import TBUserNicknameMap
+            reply_username = TBUserNicknameMap().resolve(user_id)
+        except Exception:
+            reply_username = None
+        if not reply_username:
+            reply_username = username
+
+        # 仅真实文本记录用户档案 + 短期记忆
+        if has_real_text and not is_bot:
+            try:
+                self.napcat_ltmem.record_user(reply_username or username, text)
+            except Exception:
+                self.log.exception("群聊 @ 记录用户档案失败")
+        if has_real_text and self.napcat_config.short_mem_enabled and not is_bot:
+            self.short_memory.save({
+                "role": "user",
+                "content": f"【来自QQ群的消息】{text}",
+                "type": "qq_response",
+            }, self.napcat_config.short_mem_rounds)
+
+        # napcat 意图分析（@ 触发）：命中工具则走工具流程（结果发群），跳过原群聊 LLM 回复
+        try:
+            from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
+            qq_context = {
+                "message_type": "group",
+                "target_id": group_id,
+                "user_id": user_id,
+                "group_name": group_name,
+                "self_id": self_id,
+            }
+            if TBNapcatAnalysis().decide_and_run(text, reply_username, qq_context, short_memory):
+                return
+        except Exception:
+            self.log.exception("群聊 @ 意图分析异常")
+
+        # 流式回复
+        final = self.napcat_group_llm.reply(
+            reply_username, group_id, group_name, text, short_memory, group_info_text,
+            on_segment=lambda seg: self.napcat_core.send_group_text(group_id, seg),
+        )
+        if final and final.strip().lower() != "pass":
+            self._after_group_reply(parsed, final, True)
+            self._maybe_send_group_emote(parsed, text, final, short_memory)
+
+    def _flush_group_at_text(self, buf: dict):
+        """flush 被新 @ 挤出的旧缓冲（与 napcat_core 定时超时 flush 共用同一文本计算逻辑）"""
+        if not buf:
+            return
+        texts = [t for t in (buf.get("texts") or []) if t and t.strip()]
+        if not texts:
+            text = f"{buf.get('username', '有人')}@了你"
+        else:
+            text = "，".join(texts)
+        self.reply_group_at(buf, text)
+
+    # ==================== 群聊图片视觉回复 ====================
+    def _reply_group_image(self, group_id, group_name, user_id, username, text,
+                           images, is_bot, self_id):
+        """群聊图片视觉回复：无文本向上检索 → 落地图片 → 视觉 → 发群"""
+        from func.toolbox.napcat.image.image_search import TBImageSearch
+        # 无文本 → 向上检索最近群历史用户文本作为看图上下文
+        if not text.strip():
+            try:
+                from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+                group_history = TBGetGroupRecord().fetch(group_id, self_id)
+                text = TBImageSearch.gather_text_context("", group_history)
+            except Exception:
+                self.log.exception("群聊图片向上检索文本失败")
+
+        # 图片落地本地缓存区 + 动图抽帧 + 张数/大小限制
+        from func.toolbox.meowvision.config import TBVisionConfig
+        cache_dir = TBVisionConfig().cache_dir
+        image_paths = TBImageSearch.prepare_for_vision(images, cache_dir)
+        if image_paths:
+            from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
+            result = TBNapCatVisionActive().process(
+                image_paths, text, username,
+                need_description=True, write_memory=not is_bot,
+            )
+            vision_reply = (result.get("reply") or "").strip()
+            if vision_reply:
+                from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
+                for seg in TBNapCatGroupLLM.split_segments(vision_reply):
+                    self.napcat_core.send_group_text(group_id, seg)
+                self.log.info(f"[视觉] 群图片视觉回复已发群 {group_name}: {vision_reply[:30]}")
+
+    @staticmethod
+    def _extract_emote_text(segments) -> str:
+        """从消息段提取动画表情文本（mface 有 summary 名称），静态 face 忽略"""
+        buf = ""
+        for seg in segments or []:
+            if isinstance(seg, dict) and seg.get("type") == "mface":
+                summary = str((seg.get("data") or {}).get("summary", "") or "").strip()
+                if summary:
+                    buf += f"[动画表情：{summary}]"
+        return buf.strip()
 
     @staticmethod
     def _is_pass(text: str) -> bool:

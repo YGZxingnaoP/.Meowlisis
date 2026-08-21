@@ -182,6 +182,7 @@
 此外，还需回答我的问题，napcat能否执行群机器人指令，且正常获取群机器人的消息，如@幻梦这样的，或者需要我用什么手段获得样本
 
 
+
 # ToolBox\meowvision
 ## 功能概述
 - 1、该功能负责项目的所有视觉事件，为极其重要的视觉模块
@@ -282,16 +283,157 @@ for chunk in completion:
 有问题提出，先分析项目，暂时实现我需要的功能
 
 
-# ToolBox\turtledraw
-# 原则
+
+
+
+# ToolBox\meowvision\watching
+## 功能概述
+- 1、这是一个视觉的拓展模块
+- 2、主要功能为，在ai决策需要长期观察屏幕时才开启
+- 3、该功能启动和结束都由ai控制，及ai填写参数后启动，ai决策停止后结束
+- 4、该模块主要负责长期检测屏幕或传输的画面数据，通过算法给视觉模型进行分析回馈
+## 功能子模块介绍
+### start_tool.py模块，用于手机ai决定的配置
+- 1、以toolcalls的方式让ai决定是否调用工具，必须开启深度思考,(在用户有陪他打游戏，或者让角色陪自己看屏幕的意图，则决定使用该工具)
+- 2、这个工具需要让ai决定截屏频率（规定在20秒至两分钟），截屏区域，是否需要前后图片变化程度检测，持续时间（30分钟至5小时），前置词，游戏窗口绑定等
+- 2.1、补充：前后图片变化检查需要判断该游戏的 界面变化会不会很大，是不是第一人称，满足上述情况才开启
+- 3、收集完配置项后
+- 4、如果ai不确定，需要发起excuse向用户提问，尽量明确
+- 5、ai确定输出后，把所有配置数据传递至vision_loop模块，开始执行循环
+- 6、该功能可以获得用户当前打开的窗口列表，让ai决定循环和哪个窗口进程绑定
+- 7、获取的信息保存在项目根目录的.temp\内
+### vision_loop.py模块
+- 1、该循环收到ai决定的配置信息，并根据循环持续时间，截屏区域，截屏间隔
+- 2、该循环与游戏窗口强绑定，若游戏窗口在循环时间内消失，则立刻结束循环
+- 3、循环强制结束，通过toolbox向llm发消息，告知用户强制结束了游戏；若是循环时间限制到了，则告知用户，通过toolbox提示llm，生成自己不想玩了类似的提示
+- 4、循环过程中，将根据间隔持续用image_handle获取截屏，处理截屏，并根据是否需要前后图片变化程度检查，传递图片
+- 5、得到图片，获取短期记忆，角色提示词，游戏相关数据库内容（先保留，后续完成知识库后实现），前置词和后置词由start_tool.py配置，强调游戏场景，谁在玩游戏，注意内容
+- 5.1、补充，角色提示词需要获取用户档案，但是不需要获取长期记忆摘要
+- 6、所有内容和短期记忆一通过api传递给模型，让ai根据图片，以角色身份给出评价，抒发情感，发出吐槽和赞扬的内容
+- 7、仅ai回复的assistant消息写进长期记忆记录和public_short_memory
+- 8、ai回复内容需要进行正则处理，去掉括号去掉think，然后发送至tts合成
+- 8.1、注意标注来源，不要和其它语音合成混乱
+## 原则
 - 1、逐字分析我的需求，有任何疑问提出，确保没有歧义
 - 2、toolbox下的所有类名都需要TB前缀
-- 3、无时无刻必须遵守桥接原则，toolbox内的数据由toolbox传递给pipeline，任何数据传递都要经过pipeline，保证逻辑整洁有原则
-有问题提出，先分析项目，暂时实现我需要的功能
+- 3、无时无刻必须遵守桥接原则，toolbox内的数据由toolbox传递给pipeline，任何数据传递都要经过pipeline，保证逻辑整洁有原则（toolbox内不用）
+先分析项目，有问题提出
 
-# ToolBox\database
-# 原则
+
+# func\database模块
+## 功能概述
+- 1、项目核心模块之一，用于数据库的更新和使用
+- 2、文件类型主要有网页信息，文档信息
+- 3、该模块会被napcat和system_prompt.py使用
+- 补充：system_prompt.py将拼接数据库加载的结果
+## 项目根目录
+- 1、新建database_core.py，用于所有的数据初始化和数据传输
+- 2、config.py用于配置项的汇总
+- 3、找到pipeline，在其中新建msg_database的内容，所有msg收到的sensevoice或者qq消息，全部都由这个传递给database_core.py，进行关键词匹配
+- 4、database_core需要汇总信息到pipeline\system_prompt
+## 关于database_core
+- 1、database_core收到一条消息，需要进行关键词匹配
+- 2、如果有“搜索”“搜搜”“搜一下”（可以适当扩展一下，禁止过多）这样的词语匹配，立刻调用search模块进行搜索
+- 3、如果有“知道”“了解”“听说过”类似这样的词语匹配，立刻调用store\searching.py模块的检索部分构建提示词
+- 4、同时得做非关键词审查，比如“知道了”“不知道”“不了解”“没听说过”类似这样的词出现，被上述误判，需要有单独方法拦截
+- 5、新增alluser_record.py，用于存储所有用户消息，及标注为user的全部存储，且仅包含用户名称，可以配置文件更新消息条数，默认15
+- 5.1、保存的alluser_record.json，实际上内部存储2轮（默认2，可配置），及last和past_1两个属性的聊天记录文本，目的防止更新聊天记录，导致聊天内容截断，话题不连续，格式如下
+```
+{
+  'state': "last",
+  'text': "[用户1]xxxxx\n[用户2]xxxx\n[用户2]xxxxx\n......"
+}
+{
+  'state': "past_1",
+  'text': "[用户1]xxxxx\n[用户2]xxxx\n[用户2]xxxxx\n......"
+}
+```
+- 5.2、每次更新都删去最下面的一条past，然后把last下移一个，然后写新的last
+- 5.3、补充：alluser_record.json保存逻辑和catbrain的聊天记录逻辑类似，但是注意有明显不同，如这里只记录用户消息，且文件格式是json
+## func\database\commet模块移植整合
+- 1、源项目在D:\Git\Comet下，主要分析后端api文件夹
+- 2、把项目的源代码整合进func\database\commet，并在项目启动的时候初始化
+- 3、告诉我需要安装的库，如果有必要，让我手动配置环境
+- 4、api的服务功能舍弃，只保留数据库rag功能
+## database\store模块，用于更新数据库，加载数据库（加载多少由当前用户消息决定）
+- 1、新建database\store\port，用于配置硅基流动的```BAAI/bge-m3```模型，参考如下
+```
+import requests
+response = requests.post(
+    "https://api.siliconflow.cn/v1/embeddings",
+    headers={
+        "Authorization": "Bearer $SILICONFLOW_API_KEY",
+        "Content-Type": "application/json"
+    },
+    json={
+        "input": {"image": "https://example.com/image.jpg"},
+        "model": "Qwen/Qwen3-VL-Embedding-8B"
+    }
+)
+print(response.json())
+
+```
+- 1.1、注意，需要使用视觉模型，且仅当有图片使用的时候才传输图片，详见下方
+- 1.2、新建learning.py,当search模块发出了搜索完成信号后，访问```.temp\database\web_result```下的每个搜索结果，通过api调用向量模型，存储进知识库，构建索引
+- 1.2.1、补充，该文件开始构建索引前（不是一次性全部移出），就从temp里移出，按方案（待定，需要你推荐）存储到项目根目录的```.DataBase```内
+- 1.3、新建searching.py，从database_core获得用户信息，用tool_choice（不思考）从中提取keys，要求禁止输出过于宽泛的内容，比如“游戏”“战争”“家庭”这种没有针对性的名词概念
+- 1.3.1、补充，如果实在找不出有针对性的索引，那么直接跳过
+- 1.4、新建build_prompt.py获得索引后，去.DataBase启用知识库，检索5条最相关的内容（可配置），然后传递至database_core.py,插入system_prompt.py(在用户档案下方，markdown标题为“{角色名}的知识库”)
+- 1.5、当database_core由关键词匹配触发了索引,则检索15条最相关内容（可配置），其余逻辑同上
+### 关于napcat回复
+- 1、新建qq_image.py,进行图片索引
+- 2、在pipeline新建toolbox_database,仅当napcat内部触发了视觉模块，才传输图片到database进行索引提取
+- 3、其余提示词构建逻辑不变，仅增加图片的传递
+## database\search模块，用于搜索学习
+- 1、内置port模块，和llm完全相同，且单独配置apikey和temperature，默认0.7
+- 2、每次alluser_record.json更新同时，把已有数据发送给llm，（注意！此处llm传递是项目唯一不需要提示词的地方）
+- 2.1、让ai深度思考，然后决定是否调用tool（只有在话题极为混乱，语法都无法辨别，完全找不到更新知识库的内容时，才决定不用工具）
+- 2.2、新增search_task.py的tool供ai使用，该工具让ai设置搜索任务，尽量多个，单个任务的json格式如下
+```
+{
+  'task_id': 1
+  'search_keys': "原神，二次元游戏，米哈游"
+  'web_url': "www.baidu.com\xxx"
+}
+```
+- 2.3、上述search_keys值，需要给ai严格限制，禁止输出过于宽泛的内容，比如“游戏”“战争”“家庭”这种没有针对性的名词概念，必须专有名词优先，名称优先
+- 2.3.1、补充，若ai思考后，认为，只能得出没有针对性概念的名词，直接结束
+- 2.4、根据web可以供ai选择，如```www.mcmod.cn```(对应minecraft相关知识检索), ```mzh.moegirl.org.cn/```（对应二次元相关模块检索）```games.gg```(游戏信息检索)，```www.zhihu.com```(话题观点检索)，这些内容可以配置
+- 2.4.1、各种网站可能会碰到人机验证和各种爬取阻碍，给我写三种方案保证能获得信息，且不对网站服务器造成伤害，配置可以为每个网站选择特定方案
+- 2.5、任务完成后，相同网站队列，不同网站并行，开始爬取相关数据
+- 2.5.1、补充：爬取条数每个网站单独配置，默认为5
+- 2.6、得到的所有结果缓存在.temp\database\web_result下，目前我不确定格式如何保存，因为爬取的内容可能有图片，各种文本，数据，目前我倾向于，一次爬取结果以一个文件夹打包
+- 2.7、搜索完成后，向store模块发出信号
+## 关于前端和配置项（config.yml）
+- 1、同步修改config.yml
+- 2、主界面新增“数据库”球，点开后有两个子球“搜索”和“知识”，分别对应搜索模块，和存储及检索模块
+- 3、子球和catbrain一样，沿着弧线排列
+
+## 原则
 - 1、逐字分析我的需求，有任何疑问提出，确保没有歧义
-- 2、toolbox下的所有类名都需要TB前缀
-有问题提出，先分析项目，暂时实现我需要的功能
+- 2、database下的所有类名都需要CatLearn前缀
+- 3、无时无刻必须遵守桥接原则，toolbox内的数据由toolbox传递给pipeline，任何数据传递都要经过pipeline，保证逻辑整洁有原则（toolbox内不用）
+先分析项目，有问题提出
 
+
+# toolbox\meowsongs模块
+## meowsongs\netease模块，负责从网易云获取歌曲，播放歌曲
+## meowsongs\sing模块，负责翻唱学习，展示全曲
+## meowsongs\impromptu_sing模块，根据歌词匹配，即兴播放单句歌曲
+
+# toolbox新增天气查询模块和新闻查询模块
+## toolbox\weather
+1、该工具需要在analysis注册，并给ai选择
+2、该工具访问https://www.weather.com.cn/
+3、该工具需要触发excuse询问用户需要的城市，今天还是明天，还是所有的天气预报（如果需求已经详细就ok）
+4、根据需求传递内容给toolbox的llm回复，并给tts发送，类型为toolbox_weather
+## toolbox\news
+1、该工具需要在analysis注册，并给ai选择
+2、调用工具后，内部需要获得提示词
+3、访问https://www.readhub.cn/hot，爬取最新3条数据标题，进一步获取其中的正文文本
+4、获取文本后，和角色提示词一同发送给toolbox的llm模块，让其概括新闻并告诉用户
+5、回复内容给tts，类型为tool_nes
+6、前端增加toolbox子界面球，为“新闻”
+## napcat对接
+1、回答问题，如果我需要napcat模块也能调用这两个模块，该怎么办
+分析我的需求，实现前先向我提问，避免歧义

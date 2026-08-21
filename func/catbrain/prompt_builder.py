@@ -49,6 +49,7 @@ class MeowPromptBuilder:
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
             self.usrmem.build(username),
+            self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
             self.calendar.build(username),  # 日期块（节日/节气/生日）
             self.abmem.build_prompt(current_message, username),
         ]
@@ -72,8 +73,29 @@ class MeowPromptBuilder:
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
             user_block,
+            self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
             calendar_block,
             self.abmem.build_prompt(current_message, username or ""),
+        ]
+        return "\n\n".join([p for p in parts if p])
+
+    def build_watching(self, username=None, current_message: str = "") -> str:
+        """构建 watching（长期观察屏幕）系统提示词 body。
+
+        顺序：角色卡→价值观→用户档案→日期，不含长期记忆摘要（abmem）。
+        """
+        if not username:
+            try:
+                from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+                username = MeowLLMLtMemBridge().last_username
+            except Exception:
+                username = None
+        parts = [
+            self.character_prompt.build(),  # 角色卡（已含当前情绪）
+            self.values.build(),
+            self.usrmem.build(username),
+            self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
+            self.calendar.build(username),  # 日期块
         ]
         return "\n\n".join([p for p in parts if p])
 
@@ -87,6 +109,15 @@ class MeowPromptBuilder:
             self.abmem.build_prompt(current_message, None),
         ]
         return "\n\n".join([p for p in parts if p])
+
+    @staticmethod
+    def _build_knowledge(username: str = "", current_message: str = "") -> str:
+        """从 database_core 获取知识库提示词（含网络搜索摘要，同步）"""
+        try:
+            from func.database.database_core import CatLearnCore
+            return CatLearnCore().build_knowledge_prompt(username, current_message)
+        except Exception:
+            return ""
 
     def build_character(self) -> str:
         """构建仅角色卡提示词（供摘要概括等模块使用）"""

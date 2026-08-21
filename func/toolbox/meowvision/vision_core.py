@@ -4,7 +4,7 @@
 # 职责：传输图片与消息 → 获取图片描述与角色回复 → 记录短期/长期记忆 → 回传 toolbox_core 转发 TTS
 
 import uuid
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
@@ -95,13 +95,31 @@ class TBVisionCore:
 
     # ==================== 执行分发 ====================
     def dispatch(self, name: str, arguments: Dict) -> str:
-        """按工具名执行（父级 toolcalls 调用入口）"""
+        """按工具名执行（父级 toolcalls 调用入口）
+
+        先判断是否需要 watching（长期观察屏幕）；需要则走 watching 循环，
+        否则走普通视觉逻辑（一次性看图/截图）。
+        """
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
         arguments = arguments or {}
         image_paths = arguments.get("image_paths") or []
         user_message = arguments.get("user_message") or ""
         username = self._username or "用户"
+
+        # 1. 判断是否开启 watching（长期观察，受 watching.enabled 开关控制）
+        try:
+            from func.toolbox.meowvision.watching.config import TBWatchingConfig
+            if TBWatchingConfig().enabled:
+                from func.toolbox.meowvision.watching.start_tool import TBWatchingStart
+                watching_config = TBWatchingStart().decide_and_start(username, user_message)
+                if watching_config:
+                    title = watching_config.get("window_title", "")
+                    return f"已启动长期观察屏幕，绑定窗口：{title}"
+        except Exception:
+            self.log.exception("[MeowVision] watching 决策失败，回退普通视觉")
+
+        # 2. 普通视觉逻辑
         # 传了外部图片路径 → 需要图片描述；用缓存（角色自己截图）→ 不需要描述
         need_description = bool(image_paths)
         return self.run(image_paths, user_message, username, need_description)
@@ -149,16 +167,20 @@ class TBVisionCore:
         return reply
 
     def process(self, images: List[str], user_message: str, username: str,
-                need_description: bool = True, write_memory: bool = True) -> Dict[str, str]:
+                need_description: bool = True, write_memory: bool = True,
+                history_messages: Optional[List[dict]] = None) -> Dict[str, str]:
         """看图 + 写记忆（短期/长期），返回 {description, reply}。
 
         - 不 TTS、不清缓存、不发送（由调用方决定：主链路 run 回传 TTS，napcat 链路发 QQ）。
+        - history_messages：短期记忆上下文（[{role, content}]），传给视觉模型作为对话背景。
         - 用户发的图（need_description=True）：短期记忆 user=【图片】+描述 + assistant=回复；
           长期记忆图片描述 user 身份（无具体用户名）+ 回复 AI 身份。
         - 角色自己截图（need_description=False）：只存 assistant=回复。
         - write_memory=False：只看图，不写任何记忆（如幻梦机器人发的图）。
         """
-        result = self.get_response.analyze(images, user_message, username, need_description)
+        result = self.get_response.analyze(
+            images, user_message, username, need_description, history_messages
+        )
         description = (result.get("description") or "").strip()
         reply = (result.get("reply") or "").strip()
         if not reply:

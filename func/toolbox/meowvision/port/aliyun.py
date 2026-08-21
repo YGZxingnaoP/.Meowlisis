@@ -39,7 +39,12 @@ class TBVisionAliyunLLM:
             self.log.error(f"初始化 MeowVision 阿里云视觉客户端失败: {e}")
 
     def chat(self, messages: List[Dict]) -> Optional[str]:
-        """非流式对话：返回视觉模型正式回复文本（content），失败返回 None"""
+        """流式对话：返回视觉模型正式回复文本（content），失败返回 None。
+
+        QVQ 系列（qvq-plus 等）是「仅思考模型」，仅支持流式输出（stream=True）；
+        非流式调用会返回空 content。因此这里统一走流式，收集 reasoning_content
+        与 content，最终只返回正式回复 content。
+        """
         if not self.client:
             self.log.error("MeowVision 阿里云视觉客户端不可用")
             return None
@@ -48,19 +53,32 @@ class TBVisionAliyunLLM:
             "messages": messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
+            "stream": True,
         }
         if self.top_p is not None:
             params["top_p"] = self.top_p
+
+        reasoning_len = 0
+        answer_parts = []
         try:
-            resp = self.client.chat.completions.create(**params)
-            if not resp or not getattr(resp, "choices", None):
-                return None
-            msg = resp.choices[0].message
-            content = getattr(msg, "content", None)
-            # 仅接受文本内容；非 str（如多模态返回 list）时返回 None，避免上游拿到非预期类型
-            if isinstance(content, str) and content.strip():
-                return content
-            return None
+            stream = self.client.chat.completions.create(**params)
+            for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                if getattr(delta, "reasoning_content", None):
+                    reasoning_len += len(delta.reasoning_content)
+                if getattr(delta, "content", None):
+                    answer_parts.append(delta.content)
         except Exception as e:
             self.log.error(f"MeowVision 阿里云视觉调用异常: {e}")
             return None
+
+        answer = "".join(answer_parts).strip()
+        if not answer:
+            self.log.warning(
+                f"MeowVision 视觉模型 content 为空：reasoning={reasoning_len} 字，"
+                f"max_tokens={self.max_tokens}（QVQ 仅思考模型，若 reasoning 已满可能是 max_tokens 不足）"
+            )
+            return None
+        return answer
