@@ -107,6 +107,31 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
+    def get_danmaku_prompt(self, username=None, current_message: str = "",
+                           multi_user: bool = False) -> str:
+        """弹幕提示词：前置词(行为约束) + body + 弹幕后置词(回复弹幕)
+
+        - 单用户：body 含用户档案/记忆，后置词「你在回复{username}的弹幕」；
+        - 多用户：body 仅角色人设(角色卡+价值观，不带用户档案)，后置词「你收到了好多弹幕，挑选一些回复一下」。
+        """
+        body = ""
+        if self._builder:
+            if multi_user and hasattr(self._builder, "build_persona"):
+                body = self._builder.build_persona()
+            else:
+                body = self._builder.build(username, current_message)
+        front = self.get_front_prompt()
+        if front:
+            front = front.replace("{username}", username or "主人")
+        post = self.get_post_prompt()
+        if multi_user:
+            post = f"{post}\n你收到了好多弹幕，挑选一些回复一下"
+        else:
+            name = username or "用户"
+            post = f"{post}\n你在回复{name}的弹幕"
+        parts = [p for p in (front, body, post) if p]
+        return "\n\n".join(parts)
+
     def get_napcat_prompt(self, username=None, current_message: str = "") -> str:
         """NapCat 提示词：前置词(行为约束+QQ指令) + body + 后置词(人设+说话人)"""
         body = ""

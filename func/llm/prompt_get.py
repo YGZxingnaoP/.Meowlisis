@@ -14,3 +14,8 @@ class PromptGet:
     def get_system_prompt(self, username=None, current_message: str = "") -> str:
         """获取完整系统提示词（来源为 catbrain，传入当前消息供记忆摘要检索）"""
         return self.bridge.get_system_prompt(username, current_message)
+
+    def get_danmaku_prompt(self, username=None, current_message: str = "",
+                           multi_user: bool = False) -> str:
+        """获取弹幕专用系统提示词（弹幕来源的回复后置词）"""
+        return self.bridge.get_danmaku_prompt(username, current_message, multi_user)

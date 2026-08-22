@@ -1,0 +1,14 @@
+正在加载声纹模型...
+2026-08-22 12:06:13,654 [INFO] download models from model hub: ms
+2026-08-22 12:06:13,680 [WARNING] trust_remote_code: False
+2026-08-22 12:06:13,930 [INFO] Loading pretrained params from D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
+2026-08-22 12:06:13,934 [INFO] ckpt: D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
+2026-08-22 12:06:14,098 [INFO] scope_map: ['module.', 'None']
+2026-08-22 12:06:14,099 [INFO] excludes: None
+2026-08-22 12:06:14,114 [INFO] Loading ckpt: D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin, status: <All keys matched successfully>
+funasr version: 1.4.2.
+声纹模型加载完成
+[1/1]
+提取声纹: YGZ醒脑片
+  完成: YGZ醒脑片
+声纹库已写入: D:\.Meowlisis\.SenseVoice\voicetexture\speaker_db.json

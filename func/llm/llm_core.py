@@ -51,12 +51,25 @@ class LLmCore:
                 self.log.warning(f"未知 LLM 类型 {self.config.local_llm_type}，默认使用 deepseek")
             return DeepSeekLLM(self.config)
 
-    def msg_deal(self, traceid: str, text: str, username: str):
-        """外部消息入口：正则清洗后放入问题队列"""
+    def msg_deal(self, traceid: str, text: str, username: str, source: str = "llm",
+                 preamble_text: str = "", multi_user: bool = False):
+        """外部消息入口：正则清洗后放入问题队列
+
+        :param source: 来源标记（llm / danmaku），danmaku 走弹幕专用提示词
+        :param preamble_text: 朗读前置段（弹幕朗读），回复前先送 TTS 朗读
+        :param multi_user: 是否多用户弹幕（后置词用「挑选一些回复」）
+        """
         cleaned = self.message_get.clean(text)
         if not cleaned:
             return
-        llm_json = {"traceid": traceid, "prompt": cleaned, "username": username}
+        llm_json = {
+            "traceid": traceid,
+            "prompt": cleaned,
+            "username": username,
+            "source": source,
+            "preamble_text": preamble_text,
+            "multi_user": multi_user,
+        }
         self.llmData.QuestionList.put(llm_json)
         # 通知主动回复模块：llm 收到用户消息
         from func.pipeline.llm_timer import LLMTimerBridge
@@ -93,12 +106,18 @@ class LLmCore:
         traceid = question_data["traceid"]
         prompt = question_data["prompt"]
         username = question_data.get("username") or "用户"
+        source = question_data.get("source", "llm")
+        preamble_text = question_data.get("preamble_text", "") or ""
+        multi_user = bool(question_data.get("multi_user", False))
 
         # 记录用户消息到长期记忆
         self.ltmem.record_user_message(username, prompt)
 
-        # 获取系统提示词（来自 catbrain，传入当前消息供记忆摘要检索）
-        system_prompt = self.prompt_get.get_system_prompt(username, prompt)
+        # 获取系统提示词（弹幕来源走弹幕专用提示词，否则走主链路提示词）
+        if source == "danmaku":
+            system_prompt = self.prompt_get.get_danmaku_prompt(username, prompt, multi_user)
+        else:
+            system_prompt = self.prompt_get.get_system_prompt(username, prompt)
 
         # 构建完整消息：系统提示词 + 短期记忆（历史）+ 当前消息
         messages = self.message_builder.build_messages(username, system_prompt, prompt)
@@ -108,6 +127,10 @@ class LLmCore:
 
         # 每次对话新建带流式状态的处理器
         output = Output(self.config, self.llmData)
+
+        # 弹幕朗读前置段：先送 TTS 朗读（与回复共享 traceid，连续不插入）
+        if preamble_text:
+            output.send_preamble(preamble_text, traceid)
 
         # 第一阶段：直接流式生成正文（不再前置强制工具调用，降低首字延迟）
         stream = self.llm.chat_stream(messages)
@@ -152,7 +175,8 @@ class LLmCore:
                 {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
             ]
 
-            stream = self.llm.chat_stream(update_messages, tools=tools, tool_choice=tool_choice)
+            stream = self.llm.chat_stream(update_messages, tools=tools, tool_choice=tool_choice,
+                                          enable_thinking=False)
             for chunk in stream:
                 if not chunk.choices:
                     continue

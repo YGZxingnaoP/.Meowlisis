@@ -336,6 +336,56 @@ def verify_site():
         return jsonify({'ok': False, 'message': str(e), 'sample': []}), 500
 
 
+@app.route('/api/bili_login/start', methods=['POST'])
+def bili_login_start():
+    """生成 B站扫码登录二维码（供弹幕配置界面「扫码登录」按钮调用）"""
+    try:
+        from gui.tools import bili_login
+        return jsonify(bili_login.start_login())
+    except Exception as e:
+        return jsonify({'ok': False, 'message': str(e)}), 500
+
+
+@app.route('/api/bili_login/check', methods=['POST'])
+def bili_login_check():
+    """轮询扫码登录状态（供弹幕配置界面轮询调用）"""
+    data = request.get_json() or {}
+    qrcode_key = data.get('qrcode_key', '')
+    try:
+        from gui.tools import bili_login
+        return jsonify(bili_login.check_login(qrcode_key or None))
+    except Exception as e:
+        return jsonify({'ok': False, 'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/verify_sessdata', methods=['POST'])
+def verify_sessdata():
+    """验证 SESSDATA 是否有效（调用 B站 nav 接口检查登录态，供弹幕配置界面验证按钮调用）"""
+    data = request.get_json() or {}
+    sessdata = (data.get('sessdata') or '').strip()
+    if not sessdata:
+        return jsonify({'ok': False, 'message': '请输入 SESSDATA'}), 400
+    try:
+        import requests
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                          '(KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            'Referer': 'https://www.bilibili.com/',
+        }
+        r = requests.get('https://api.bilibili.com/x/web-interface/nav',
+                         cookies={'SESSDATA': sessdata}, headers=headers, timeout=10)
+        j = r.json()
+        code = j.get('code')
+        if code == 0 and (j.get('data') or {}).get('isLogin'):
+            uname = (j.get('data') or {}).get('uname', '')
+            return jsonify({'ok': True, 'message': f'验证成功，已登录：{uname}'})
+        if code == -101:
+            return jsonify({'ok': False, 'message': 'SESSDATA 无效或已过期（未登录）'})
+        return jsonify({'ok': False, 'message': f"验证失败：{j.get('message') or code}"})
+    except Exception as e:
+        return jsonify({'ok': False, 'message': f'验证异常：{e}'}), 500
+
+
 @app.route('/api/front_prompt', methods=['GET'])
 def get_front_prompt():
     p = BASE_DIR / "character" / "front" / "prompt.json"

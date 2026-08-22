@@ -170,6 +170,32 @@ const API = {
         return res.json();
     },
 
+    async verifySessdata(sessdata) {
+        const res = await fetch('/api/verify_sessdata', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sessdata })
+        });
+        if (!res.ok) throw new Error('Failed to verify SESSDATA');
+        return res.json();
+    },
+
+    async startBiliLogin() {
+        const res = await fetch('/api/bili_login/start', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start B站扫码登录');
+        return res.json();
+    },
+
+    async checkBiliLogin(qrcodeKey) {
+        const res = await fetch('/api/bili_login/check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ qrcode_key: qrcodeKey || '' })
+        });
+        if (!res.ok) throw new Error('Failed to check B站扫码登录');
+        return res.json();
+    },
+
     async getPrompt() {
         try {
             const res = await fetch('/api/prompt');

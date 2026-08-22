@@ -248,6 +248,21 @@ body {
     margin-bottom: 12px;
 }
 
+.verify-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.verify-row input[type="text"] {
+    flex: 1;
+}
+
+.verify-row .btn {
+    flex-shrink: 0;
+    padding: 10px 16px;
+}
+
 .checkbox-group label {
     margin-bottom: 0;
     cursor: pointer;

@@ -75,6 +75,17 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册新闻查询模块失败")
 
+        # 弹幕主动发送模块
+        try:
+            from func.toolbox.danmaku.active_sender.active_sender import TBDanmakuActive
+            danmaku_active = TBDanmakuActive()
+            for tool_schema in danmaku_active.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, danmaku_active)
+        except Exception:
+            self.log.exception("注册弹幕主动发送模块失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -126,7 +137,8 @@ class TBoxAnalysis:
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
             f"- 所有可能和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"
-            f"- 明确要看新闻/热点/头条 → read_news。\n"
+            f"- 明确要看新闻/热点/头条 → read_news；\n"
+            f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send。\n"
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
             f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
             f"- 普通闲聊、询问、讨论、表达情绪、分享观点；\n"

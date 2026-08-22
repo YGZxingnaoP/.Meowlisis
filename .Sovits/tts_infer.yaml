@@ -10,7 +10,7 @@ custom:
   vits_weights_path: SoVITS_weights_v2Pro/tangyuan_e16_s768.pth
 device: cuda
 is_half: true
-speed_factor: 1.2
+speed_factor: 1.08
 t2s_weights_path: GPT_weights_v2Pro/tangyuan-e15.ckpt
 temperature: 1
 text_split_method: cut5

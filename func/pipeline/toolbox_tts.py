@@ -63,6 +63,19 @@ class ToolboxTtsBridge:
             self.send_to_answer_queue(seg, traceid=traceid,
                                       seg_index=i, chat_status=chat_status, source=source)
 
+    def is_busy(self) -> bool:
+        """检测当前是否有 TTS 说话任务（供弹幕消费调度轮询）。
+
+        - True 表示正在说话/有排队任务，弹幕只进队列不传递；
+        - False 表示空闲，可立即消费弹幕队列。
+        """
+        try:
+            from func.tts.tts_core import TTsCore
+            return TTsCore().is_busy()
+        except Exception:
+            self.log.exception("检测 TTS 忙状态失败")
+            return False
+
     @classmethod
     def _split(cls, text: str) -> list:
         """按标点切分文本为多个片段（保留标点，过滤空段）"""

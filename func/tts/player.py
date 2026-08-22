@@ -3,6 +3,7 @@
 import os
 import threading
 
+import numpy as np
 import pyaudio
 import soundfile as sf
 
@@ -94,6 +95,64 @@ class AudioPlayer:
                     self._stream.stop_stream()
                 except Exception:
                     pass
+
+    def open_stream(self, samplerate: int = 32000, channels: int = 1) -> bool:
+        """打开常驻输出流（供流式播放反复写入），返回是否成功"""
+        if self._pa is None:
+            return False
+        # 开始新播放：清除旧的停止标志
+        self._stop_flag.clear()
+        with self._lock:
+            try:
+                stream = self._pa.open(
+                    format=pyaudio.paInt16,
+                    channels=channels,
+                    rate=int(samplerate),
+                    output=True,
+                )
+            except Exception as e:
+                print(f"打开音频流失败: {e}")
+                return False
+            self._stream = stream
+        return True
+
+    def write(self, data: bytes, volume: float = 1.0) -> bool:
+        """向常驻流写入 PCM 字节，返回 False 表示已停止/失败"""
+        if not data:
+            return True
+        if self._stop_flag.is_set():
+            return False
+        stream = self._stream
+        if stream is None:
+            return False
+        # 音量调节（int16 缩放）
+        if volume != 1.0:
+            try:
+                arr = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+                arr = (arr * volume).clip(-32768, 32767).astype(np.int16)
+                data = arr.tobytes()
+            except Exception:
+                pass
+        try:
+            stream.write(data)
+            return True
+        except Exception:
+            # 被 stop 打断时 write 会抛异常，视为正常打断
+            return False
+
+    def close_stream(self):
+        """关闭常驻输出流"""
+        with self._lock:
+            if self._stream is not None:
+                try:
+                    self._stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    self._stream.close()
+                except Exception:
+                    pass
+                self._stream = None
 
     def is_playing(self) -> bool:
         """返回当前是否有音频正在播放"""

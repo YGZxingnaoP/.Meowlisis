@@ -231,8 +231,8 @@
 
 .toolbox-panel {
     position: relative;
-    width: 980px;
-    height: 640px;
+    width: 1120px;
+    height: 740px;
     background: #ffffff;
     border: 10px solid var(--pink-soft);
     border-radius: 32px;
@@ -261,8 +261,8 @@
 
 .toolbox-system {
     position: relative;
-    width: 900px;
-    height: 540px;
+    width: 1040px;
+    height: 620px;
     margin: 12px auto 0;
     cursor: grab;
 }
@@ -282,8 +282,8 @@
 
 .toolbox-orbit {
     position: absolute;
-    width: 600px;
-    height: 600px;
+    width: 760px;
+    height: 760px;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%) scaleY(0.5);

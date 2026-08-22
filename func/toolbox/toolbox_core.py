@@ -11,11 +11,8 @@ from func.toolbox.analysis import TBoxAnalysis
 from func.toolbox.get_prompt import TBoxGetPrompt
 from func.pipeline.sensevoice_toolbox import SenseVoiceToolboxBridge
 from func.pipeline.toolbox_tts import ToolboxTtsBridge
-from func.pipeline.toolbox_ltmem import ToolboxLtMemBridge
-from func.pipeline.toolbox_llm import ToolboxLLMBridge
-from func.pipeline.napcat_llm import NapcatLLMBridge
-from func.pipeline.napcat_group_llm import NapcatGroupLLMBridge
-from func.pipeline.napcat_ltmem import NapcatLtMemBridge
+from func.pipeline.toolbox_ltmem import ToolboxLtMemBridge, NapcatLtMemBridge
+from func.pipeline.toolbox_llm import ToolboxLLMBridge, NapcatLLMBridge, NapcatGroupLLMBridge
 from func.pipeline.short_memory import ShortMemory
 from func.toolbox.napcat.config import TBNapCatConfig
 from func.toolbox.napcat.napcat_core import TBNapCatCore

@@ -58,6 +58,11 @@ const App = {
         if (id === 'llm') { await this.openLlmPanel(); return; }
         if (id === 'toolbox') { this.openToolbox(); return; }
 
+        // TTS 子球
+        if (id === 'tts_model') { await this.openTtsModelPanel(); return; }
+        if (id === 'tts_params') { await this.openTtsParamsPanel(); return; }
+        if (id === 'tts_config') { await this.openTtsConfigPanel(); return; }
+
         // CatBrain 子球
         const catbrainSubMap = {
             'ltmem': { title: '长期记忆', fn: () => Config.catbrain_ltmem() },
@@ -83,8 +88,7 @@ const App = {
 
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic() },
-            'active': { title: '主动回复设置', fn: () => Config.llm_active() },
-            'danmaku': { title: 'BiliLive 设置', fn: () => Config.danmaku() }
+            'active': { title: '主动回复设置', fn: () => Config.llm_active() }
         };
 
         const panel = panelMap[id];
@@ -119,7 +123,8 @@ const App = {
             'napcat_send': { title: 'NapCat 主动发送', fn: () => Config.napcat_send() },
             'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() },
             'weather': { title: '天气查询设置', fn: () => Config.weather() },
-            'news': { title: '新闻查询设置', fn: () => Config.news() }
+            'news': { title: '新闻查询设置', fn: () => Config.news() },
+            'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() }
         };
         const panel = map[id];
         if (!panel) {
@@ -151,7 +156,122 @@ const App = {
             this.bindTabs();
             this.bindSplitFlagEditor();
             this.bindDictEditors();
+            this.bindSessdataVerify();
+            this.bindBiliLogin();
         }, 10);
+    },
+
+    bindSessdataVerify() {
+        const btn = document.querySelector('.sessdata-verify-btn');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            const input = document.querySelector('input[data-path="danmaku.blivedm.sessdata"]');
+            const resultEl = document.querySelector('.sessdata-verify-result');
+            const sessdata = (input && input.value || '').trim();
+            if (!sessdata) {
+                if (resultEl) resultEl.textContent = '请先输入 SESSDATA';
+                return;
+            }
+            if (resultEl) resultEl.textContent = '验证中...';
+            try {
+                const r = await API.verifySessdata(sessdata);
+                if (resultEl) resultEl.textContent = (r.ok ? '✓ ' : '✗ ') + (r.message || '');
+            } catch (err) {
+                if (resultEl) resultEl.textContent = '验证失败: ' + err.message;
+            }
+        });
+    },
+
+    bindBiliLogin() {
+        const btn = document.querySelector('.bili-login-btn');
+        if (!btn) return;
+        btn.addEventListener('click', () => this.openBiliLogin());
+    },
+
+    openBiliLogin() {
+        // 独立的扫码登录弹窗（不复用配置 Modal，避免「保存」语义冲突）
+        const overlay = document.createElement('div');
+        overlay.className = 'bili-login-overlay';
+        overlay.innerHTML = `
+            <div class="bili-login-box">
+                <div class="bili-login-header">
+                    <span>B站扫码登录</span>
+                    <button type="button" class="bili-login-close">&times;</button>
+                </div>
+                <div class="bili-login-body">
+                    <div class="bili-login-qr-wrap">
+                        <img class="bili-login-qr" alt="登录二维码" src="">
+                    </div>
+                    <div class="bili-login-status">正在生成二维码...</div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+
+        const img = overlay.querySelector('.bili-login-qr');
+        const statusEl = overlay.querySelector('.bili-login-status');
+        const closeBtn = overlay.querySelector('.bili-login-close');
+        let timer = null;
+
+        const close = () => {
+            if (timer) clearInterval(timer);
+            overlay.remove();
+        };
+        closeBtn.addEventListener('click', close);
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+        const fillBack = (sessdata, biliJct) => {
+            // 回填到配置面板的输入框 + 内存 config 对象
+            const sInput = document.querySelector('input[data-path="danmaku.blivedm.sessdata"]');
+            const jInput = document.querySelector('input[data-path="danmaku.blivedm.bili_jct"]');
+            if (sInput) sInput.value = sessdata || '';
+            if (jInput) jInput.value = biliJct || '';
+            if (this.config) {
+                this.config.danmaku = this.config.danmaku || {};
+                this.config.danmaku.blivedm = this.config.danmaku.blivedm || {};
+                this.config.danmaku.blivedm.sessdata = sessdata || '';
+                this.config.danmaku.blivedm.bili_jct = biliJct || '';
+            }
+        };
+
+        const poll = async (qrcodeKey) => {
+            try {
+                const r = await API.checkBiliLogin(qrcodeKey);
+                if (r && r.status === 'success') {
+                    statusEl.textContent = '✓ ' + (r.message || '登录成功');
+                    statusEl.classList.add('success');
+                    fillBack(r.sessdata, r.bili_jct);
+                    clearInterval(timer);
+                    setTimeout(close, 1200);
+                    return true;
+                }
+                if (r && (r.status === 'expired' || (r.ok === false && r.status === 'error'))) {
+                    statusEl.textContent = '✗ ' + (r.message || '登录失败');
+                    statusEl.classList.add('error');
+                    clearInterval(timer);
+                    return true;
+                }
+                statusEl.textContent = (r && r.message) ? r.message : '等待扫码...';
+            } catch (err) {
+                statusEl.textContent = '轮询失败: ' + err.message;
+                clearInterval(timer);
+            }
+            return false;
+        };
+
+        API.startBiliLogin().then(r => {
+            if (!r || !r.ok) {
+                statusEl.textContent = '✗ ' + (r.message || '生成二维码失败');
+                statusEl.classList.add('error');
+                return;
+            }
+            img.src = r.qrcode;
+            statusEl.textContent = '请用手机 B站 App 扫码，并确认登录';
+            timer = setInterval(() => poll(r.qrcode_key), 2000);
+        }).catch(err => {
+            statusEl.textContent = '生成二维码失败: ' + err.message;
+            statusEl.classList.add('error');
+        });
     },
 
     // ============ 数据库来源站点编辑器 ============
@@ -687,6 +807,86 @@ const App = {
             if (modelPanel) modelPanel.innerHTML = Config.ttsModelPanel(ttsModel, sovitsModels);
         } catch (e) {
             console.error('Error rendering tts panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    // ============ TTS 子球：模型配置 ============
+    async openTtsModelPanel() {
+        try {
+            const [ttsModel, sovitsModels, refAudio] = await Promise.all([
+                API.getTtsConfig(),
+                API.getSovitsModels(),
+                API.getRefAudio()
+            ]);
+            const html = Config.tts_model_panel(ttsModel, sovitsModels);
+            Modal.show('TTS 模型配置', html, async () => {
+                try {
+                    // 1. 参考音频（ref_audio/config.json）
+                    const refAudioData = Config.collectRefAudio();
+                    await API.saveRefAudio(refAudioData);
+                    // 2. 模型权重（tts_infer.yaml）
+                    const ttsModelData = Config.collectTtsModel();
+                    await API.saveTtsConfig(ttsModelData);
+                    this.showToast('模型配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+
+            // 异步填充参考音频
+            const refPanel = document.getElementById('refAudioPanel');
+            if (refPanel) {
+                refPanel.innerHTML = Config.refAudioPanel(refAudio);
+                Modal.initAutoGrow(refPanel);
+            }
+        } catch (e) {
+            console.error('Error rendering tts model panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    // ============ TTS 子球：参数配置 ============
+    async openTtsParamsPanel() {
+        try {
+            const ttsModel = await API.getTtsConfig();
+            const html = Config.tts_params_panel(ttsModel);
+            Modal.show('TTS 参数配置', html, async () => {
+                try {
+                    // 1. config.yml 的 tts 节点（流式参数 + 音量 + 线程数）
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    await API.saveConfig(this.config);
+                    // 2. tts_infer.yaml 合成参数（语速/温度/top_k/top_p/切分）
+                    const ttsModelData = Config.collectTtsModel();
+                    await API.saveTtsConfig(ttsModelData);
+                    this.showToast('参数配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering tts params panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    // ============ TTS 子球：打断与流式开关 ============
+    async openTtsConfigPanel() {
+        try {
+            const html = Config.tts_config_panel();
+            Modal.show('TTS 打断与流式开关', html, async () => {
+                try {
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    await API.saveConfig(this.config);
+                    this.showToast('配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering tts config panel:', e);
             this.showToast('面板渲染失败: ' + e.message, true);
         }
     },

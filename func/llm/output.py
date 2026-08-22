@@ -85,6 +85,20 @@ class Output:
             self.temp += ch
             self.filtered_content += ch
 
+    def send_preamble(self, text: str, traceid: str):
+        """发送朗读前置段（弹幕朗读等），占用 seg_index=0，后续 LLM 回复从 1 开始。
+
+        - 与 LLM 回复共享同一 traceid，TTS 按 traceid 归组为一个连续任务，中间不插入；
+        - chat_status 置为空串（非 end），等待后续 LLM 回复段补全后统一结束。
+        """
+        if not text or not text.strip():
+            return
+        self.tts_bridge.send_to_answer_queue(
+            self.llm_data, text.strip(), traceid,
+            seg_index=0, chat_status=""
+        )
+        self.segment_idx = 1
+
     def _split_send(self, traceid: str):
         """按标点在达到最小长度后切分发送"""
         if len(self.temp) < self.split_limit:

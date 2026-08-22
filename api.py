@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import uuid
-import asyncio
 import subprocess
 from threading import Thread
 from flask import Flask, jsonify, request
@@ -20,7 +19,7 @@ from func.pipeline.system_prompt import SystemPromptBridge
 from func.pipeline.config_reader import ConfigReader
 from func.sensevoice.sensevoice_core import SenseVoiceCore
 
-from func.toolbox.danmaku.blivedm.blivedm_core import BlivedmCore
+from func.toolbox.danmaku.danmaku_core import TBDanmakuCore
 from func.config.app_config import AppConfig
 from func.toolbox.vtuber.state import VtuberState
 from func.toolbox.minecraft.logreader import MinecraftLogReader
@@ -44,11 +43,8 @@ log.warning(
 log.info(f"开始启动人工智能【{Ai_Name}】！")
 
 
-# 1.b站直播间 2.api web
-mode = appConfig.mode
-
-# ============= B站直播间 =====================
-blivedmCore = BlivedmCore()
+# ============= B站弹幕模块 =====================
+danmaku_core = TBDanmakuCore()
 # ============================================
 
 # ============= api web =====================
@@ -264,25 +260,24 @@ def main():
     atexit.register(mc_reader.stop)
     atexit.register(napcat_core.stop)
 
-    if "blivedm" in mode or "api" in mode:
-        # LLM回复
-        sched1.add_job(func=llmCore.check_answer, trigger="interval", seconds=1, id="answer", max_instances=100)
-        # 角色主动回复计时检测
-        sched1.add_job(func=active_core.check_active, trigger="interval", seconds=1, id="active", max_instances=1)
-        # tts语音合成
-        sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=1, id="tts", max_instances=1000)
-        sched1.start()
+    # LLM回复
+    sched1.add_job(func=llmCore.check_answer, trigger="interval", seconds=1, id="answer", max_instances=100)
+    # 角色主动回复计时检测
+    sched1.add_job(func=active_core.check_active, trigger="interval", seconds=1, id="active", max_instances=1)
+    # tts语音合成
+    sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=1, id="tts", max_instances=1000)
+    sched1.start()
 
-        # 开启web
-        app_thread = Thread(target=apprun)
-        app_thread.start()
+    # 开启web
+    app_thread = Thread(target=apprun)
+    app_thread.start()
 
-    # 可以监听多个弹幕平台
-    if "blivedm" in mode:
-        asyncio.run(blivedmCore.listen_blivedm_task())
-    else:
-        while True:
-            time.sleep(10)
+    # 弹幕模块（独立后台线程，由 danmaku.blivedm.enabled 控制）
+    danmaku_core.start()
+
+    # 主线程兜底
+    while True:
+        time.sleep(10)
     log.info("结束")
 
 

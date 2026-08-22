@@ -17,8 +17,5 @@ class AppConfig:
         # AI 名称（根级）
         self.ai_name = root.get('AiName', '喵呜')
 
-        # 运行模式：列表，如 ["api"] / ["blivedm"]
-        self.mode = app.get('mode', [])
-
         # API Web 端口
         self.port = app.get('port', 1800)

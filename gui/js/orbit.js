@@ -22,8 +22,7 @@ const Orbit = {
         { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
         { id: 'database', label: '数据库', tooltip: '数据库知识库配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
-        { id: 'danmaku', label: 'BiliLive', tooltip: 'B站直播弹幕配置' },
-        { id: 'toolbox', label: 'Toolbox', tooltip: '工具箱（Minecraft/OBS/VTS）' }
+        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/OBS/VTS）' }
     ],
 
     // Toolbox 子视图外围行星球（父级模型中心球 + 工具球）
@@ -34,7 +33,8 @@ const Orbit = {
         { id: 'meowvision', label: '视觉', tooltip: 'MeowVision 视觉模块配置' },
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' },
         { id: 'weather', label: '天气', tooltip: '天气查询配置' },
-        { id: 'news', label: '新闻', tooltip: '新闻查询配置' }
+        { id: 'news', label: '新闻', tooltip: '新闻查询配置' },
+        { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' }
     ],
 
     rotation: 0,
@@ -47,6 +47,9 @@ const Orbit = {
     databaseSubEls: [],
     databaseOpen: false,
     databaseEl: null,
+    ttsSubEls: [],
+    ttsOpen: false,
+    ttsEl: null,
     dragging: false,
     suppressClick: false,
     toolboxRotation: 0,
@@ -208,7 +211,7 @@ const Orbit = {
     updateToolboxPlanetPosition(el, rotationDeg) {
         const baseAngle = parseFloat(el.dataset.baseAngle);
         const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
-        const radius = 300;
+        const radius = 380;
         const planetSize = 48;
         const x = radius + radius * Math.sin(currentAngle) - planetSize;
         const y = radius + radius * Math.cos(currentAngle) - planetSize;
@@ -375,6 +378,15 @@ const Orbit = {
                 if (this.suppressClick) return;
                 this.toggleDatabaseSubs();
             });
+        } else if (p.id === 'tts') {
+            // TTS 球：点击分裂出 3 个子配置球（模型/参数/配置）
+            this.ttsEl = el;
+            this.createTtsSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleTtsSubs();
+            });
         } else {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -502,6 +514,63 @@ const Orbit = {
             this.databaseEl.classList.toggle('active', this.databaseOpen);
         }
         this.databaseSubEls.forEach(el => this._applyDatabaseSub(el, this.databaseOpen));
+    },
+
+    // TTS 子球（模型/参数/配置）
+    createTtsSubs(parent) {
+        const subs = [
+            { id: 'tts_model', label: '模型', tooltip: '模型配置（权重与参考音频）' },
+            { id: 'tts_params', label: '参数', tooltip: '参数配置（语速/温度/流式参数）' },
+            { id: 'tts_config', label: '配置', tooltip: '打断与流式开关' }
+        ];
+        // 目标偏移：3 个子球沿 TTS 球右侧弧线排列（右上/右中/右下）
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: 0 },
+            { x: 82, y: 82 }
+        ];
+        this.ttsSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyTtsSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.ttsSubEls.push(el);
+        });
+    },
+
+    _applyTtsSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleTtsSubs() {
+        this.ttsOpen = !this.ttsOpen;
+        if (this.ttsEl) {
+            this.ttsEl.classList.toggle('active', this.ttsOpen);
+        }
+        this.ttsSubEls.forEach(el => this._applyTtsSub(el, this.ttsOpen));
     },
 
 
