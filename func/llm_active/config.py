@@ -26,6 +26,9 @@ class AutoActiveConfig:
         # origin 最近说话人最大数量
         self.origin_speaker_limit = cfg.get('origin_speaker_limit', 3)
 
+        # 主动回复插播短期记忆兜底上限（条），尾部孤立时按此裁剪
+        self.active_mem_limit = cfg.get('active_mem_limit', 50)
+
         # 复用 llm 的分段配置（origin 流式输出照搬 llm 分段逻辑）
         llm_cfg = ConfigReader().get('llm', {})
         split_flag = llm_cfg.get('split_flag', ',|，|。|!|！|?|？|\n')

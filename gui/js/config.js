@@ -222,13 +222,8 @@ const Config = {
     },
 
     // ============ LLM ============
-    llm(front) {
+    llm_model() {
         const type = this._val('llm.local_llm_type', 'deepseek');
-        const f = front || {};
-        const frontPrompt = f.prompt || '';
-        const activeFront = f.prompt_active || '';
-        const napcatFront = f.prompt_napcat || '';
-        const postPrompt = f.post_prompt || '';
         let h = this._section('LLM 大模型') +
             `<div class="form-group"><label>LLM类型</label>
             <select data-path="llm.local_llm_type">
@@ -266,9 +261,16 @@ const Config = {
         h += this._num('短期记忆轮数', 'llm.short_term_rounds', 5, 1, 60, 1) +
             this.splitFlagEditor('llm.split_flag') +
             this._num('最小分段长度', 'llm.split_limit', 6, 1, 100, 1);
+        return h;
+    },
 
-        // 前置词/后置词模块（单独保存到 character/front/prompt.json）
-        h += this._section('提示词（前置词放最前，后置词放最后）') +
+    llm_prompt(front) {
+        const f = front || {};
+        const frontPrompt = f.prompt || '';
+        const activeFront = f.prompt_active || '';
+        const napcatFront = f.prompt_napcat || '';
+        const postPrompt = f.post_prompt || '';
+        return this._section('提示词（前置词放最前，后置词放最后）') +
             `<div class="form-group"><label>前置词（行为约束，system prompt 最前）</label>
                 <textarea id="frontPromptInput" class="auto-grow" rows="3" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(frontPrompt)}</textarea>
                 <div class="help-text">放在 system prompt 最前面，约束本次回复行为</div>
@@ -285,8 +287,68 @@ const Config = {
                 <textarea id="postPromptInput" class="auto-grow" rows="2" placeholder="你是...，大家都叫你...">${this._esc(postPrompt)}</textarea>
                 <div class="help-text">放在 system prompt 最后，描述角色身份</div>
             </div>`;
+    },
 
-        return h;
+    _narrationFormula() {
+        return `<div class="formula-box">
+            <div class="formula-box-title">计算公式</div>
+            <div class="formula-block">
+                <div class="formula-row">
+                    <span class="formula-name">水词密度分</span>
+                    <span class="formula-expr">Density = 100 − ( W / L × 100 )</span>
+                    <span class="formula-cond">若 W / L ≥ θ 则 Density = 0</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">超长惩罚</span>
+                    <span class="formula-expr">Penalty = 0，当 L ≤ L<sub>0</sub></span>
+                    <span class="formula-expr">Penalty = min( P<sub>cap</sub>, ( L − L<sub>0</sub> ) × r )，当 L &gt; L<sub>0</sub></span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">原始得分</span>
+                    <span class="formula-expr">Raw<sub>t</sub> = max( 0, Density − Penalty )</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">平滑得分</span>
+                    <span class="formula-expr">S<sub>t</sub> = λ · S<sub>t−1</sub> + ( 1 − λ ) · Raw<sub>t</sub></span>
+                    <span class="formula-cond">λ = 0.75（下降）/ 0.55（上升）/ 0.70（相等）</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">清洗档位</span>
+                    <span class="formula-expr">S ≥ 60 不清洗；30 ≤ S &lt; 60 清部分；S &lt; 30 全清</span>
+                </div>
+            </div>
+            <div class="formula-params">
+                W = 命中水词字符数，L = 回复总字符数，θ = 密度阈值，L<sub>0</sub> = 超长阈值，
+                r = 惩罚系数，P<sub>cap</sub> = 惩罚封顶，λ = 惯性系数
+            </div>
+        </div>`;
+    },
+
+    llm_algorithm() {
+        return this._narrationFormula() +
+            this._section('回复丰富性算法 (narration)') +
+            this._check('启用清洗算法', 'llm.narration.enabled', true,
+                '关闭后不做水词清洗，也不更新平滑得分') +
+            this._section('平滑得分（EWMA）') +
+            this._num('初始得分 S0', 'llm.narration.initial_score', 70, 0, 100, 1) +
+            this._num('下降惯性系数 λ_down', 'llm.narration.lambda_down', 0.75, 0, 1, 0.05,
+                'Raw < S 时使用，越大下降越慢') +
+            this._num('上升惯性系数 λ_up', 'llm.narration.lambda_up', 0.55, 0, 1, 0.05,
+                'Raw > S 时使用，越小上升越快') +
+            this._num('相等惯性系数 λ_equal', 'llm.narration.lambda_equal', 0.70, 0, 1, 0.05) +
+            this._section('原始得分（Raw）') +
+            this._num('水词密度阈值', 'llm.narration.density_threshold', 0.8, 0, 1, 0.05,
+                '水词占比 ≥ 该值时 DensityScore 直接为 0') +
+            this._num('超长阈值 L', 'llm.narration.length_threshold', 30, 1, 500, 1,
+                '回复字符数超过该值开始惩罚') +
+            this._num('超长惩罚系数', 'llm.narration.length_penalty_rate', 0.4, 0, 5, 0.1,
+                'Penalty = (L - 阈值) × 系数') +
+            this._num('超长惩罚封顶', 'llm.narration.length_penalty_cap', 20, 0, 100, 1) +
+            this._section('清洗档位') +
+            this._num('部分清洗上限', 'llm.narration.part_level_upper', 60, 0, 100, 1,
+                'S ≥ 该值完全不清洗') +
+            this._num('部分清洗下限', 'llm.narration.part_level_lower', 30, 0, 100, 1,
+                '该值 ≤ S < 上限时清洗口头禅/连接词/重复短句；S < 该值全清');
     },
 
     // 分割符编辑器：每个符号单独展示为小块，隐藏 input 保存 | 分隔的字符串
@@ -613,6 +675,11 @@ const Config = {
             ], 'random') +
             this._num('全部回复字符上限', 'danmaku.multi_danmaku_char_limit', 200, 1, 2000, 10,
                 'all 策略总字符数超过该值时自动回退到选最长一条') +
+            this._section('弹幕记忆') +
+            this._num('弹幕短期记忆上限(条)', 'danmaku.memory_short_limit', 40, 1, 500, 1,
+                '弹幕专属短期记忆，按条计数，超出删最旧') +
+            this._check('弹幕长期记忆', 'danmaku.ltmem_enabled', true,
+                '关闭后弹幕不写长期记忆与摘要缓存（用户记忆不受影响）') +
             this._section('礼物与主动发送') +
             this._check('礼物/舰长感谢', 'danmaku.gift_thanks_enabled', true,
                 '收到礼物/舰长时由 AI 拟感谢词并语音播报') +
@@ -653,7 +720,7 @@ const Config = {
             this._num('拉取历史条数', 'napcat.history_limit', 30, 1, 200, 1,
                 '向上获取的聊天记录条数，作为 napcat 私聊回复的短期记忆') +
             this._num('短期记忆轮数', 'napcat.short_mem_rounds', 30, 1, 200, 1,
-                'qq_response 类型短期记忆保留轮数（1 轮 = 用户 + AI）') +
+                'qq_response 类型短期记忆保留轮数（1 轮 = 用户 + AI），不成对的孤立消息按条数兜底裁剪') +
             this._check('启用短期记忆', 'napcat.short_mem_enabled', true) +
             this._check('启用长期记忆', 'napcat.ltmem_enabled', false) +
             this._select('深度思考级别', 'napcat.thinking_level', [
@@ -728,7 +795,9 @@ const Config = {
             this._num('摘要检索条数上限', 'llm_active.origin_summary_limit', 30, 1, 200, 1,
                 '创造话题策略时检索记忆摘要的最大条数') +
             this._num('最近说话人数量', 'llm_active.origin_speaker_limit', 3, 1, 3, 1,
-                '创造话题策略时读取最近说话人档案的数量（最多3个）');
+                '创造话题策略时读取最近说话人档案的数量（最多3个）') +
+            this._num('主动回复插播记忆上限(条)', 'llm_active.active_mem_limit', 50, 1, 500, 1,
+                '主动回复单条消息在短期记忆中的兜底保留条数（尾部无后续对话时按此裁剪）');
     },
 
     // ============ OBS（占位） ============
@@ -786,6 +855,17 @@ const Config = {
                 '前后两帧相似度达到该值判定为「无变化」，无变化时本轮不传视觉模型') +
             this._num('窗口消失确认秒数', 'meowvision.watching.window_gone_confirm_seconds', 5, 1, 60, 1,
                 '绑定游戏窗口消失后，连续多少秒未检测到才判定强制结束');
+    },
+
+    // ============ 待办提醒 (calendar) ============
+    calendarPanel() {
+        return `<div class="calendar-panel">
+            <div class="calendar-toolbar">
+                <input type="text" id="newBacklogUserInput" placeholder="输入用户名">
+                <button type="button" class="btn btn-primary" id="addBacklogUserBtn">新建用户</button>
+            </div>
+            <div id="backlogUserList"></div>
+        </div>`;
     },
 
     // ============ 天气查询 (weather) ============

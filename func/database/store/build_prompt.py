@@ -6,11 +6,47 @@ import re
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
-from func.tools.smart_snippet import smart_snippet
 from func.config.app_config import AppConfig
 from func.database.config import CatLearnConfig
 from func.database.store.port.bge import CatLearnEmbedding
 from func.database.store.vector_db import CatLearnVectorDB
+
+
+def _normalize(text: str) -> str:
+    """压缩空白：把连续空白/换行压成单个空格或换行"""
+    if not text:
+        return ""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\n{2,}", "\n", text)
+    lines = [re.sub(r"[ \t]+", " ", l).strip() for l in text.split("\n")]
+    return "\n".join([l for l in lines if l])
+
+
+def _smart_snippet(text: str, max_len: int, suffix: str = "…") -> str:
+    """按句子边界智能截断，返回不超过约 max_len 的完整片段"""
+    text = _normalize(text)
+    if not text or max_len <= 0 or len(text) <= max_len:
+        return text
+
+    units = re.split(r"(?<=[。！？!?；;，,、\n])", text)
+    units = [u for u in units if u and u.strip()]
+
+    result = ""
+    for unit in units:
+        if not result and len(unit) > max_len:
+            return unit[:max_len].rstrip() + suffix
+        if len(result) + len(unit) > max_len:
+            break
+        result += unit
+        if len(result) >= max_len:
+            break
+
+    result = result.rstrip("，,、。！？!?；; \t\n")
+    if not result:
+        return text[:max_len].rstrip() + suffix
+    if len(result) < len(text):
+        return result + suffix
+    return result
 
 
 @singleton
@@ -53,7 +89,7 @@ class CatLearnBuildPrompt:
             text = str(r.get("text", "") or "").strip()
             if not text:
                 continue
-            snippet = smart_snippet(text, snippet_len)
+            snippet = _smart_snippet(text, snippet_len)
             snippet = self._clean_for_prompt(snippet)
             if not snippet:
                 continue

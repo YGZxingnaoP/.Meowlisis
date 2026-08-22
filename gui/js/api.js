@@ -196,6 +196,29 @@ const API = {
         return res.json();
     },
 
+    async getBacklogUsers() {
+        const res = await fetch('/api/backlog/users');
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async getBacklog(user) {
+        const res = await fetch('/api/backlog?user=' + encodeURIComponent(user || ''));
+        if (!res.ok) return { username: user, to_do_list: [] };
+        return res.json();
+    },
+
+    async saveBacklog(user, data) {
+        const payload = Object.assign({ username: user }, data || {});
+        const res = await fetch('/api/backlog', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('Failed to save backlog');
+        return res.json();
+    },
+
     async getPrompt() {
         try {
             const res = await fetch('/api/prompt');

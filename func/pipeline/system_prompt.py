@@ -92,11 +92,15 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
-    def get_system_prompt(self, username=None, current_message: str = "") -> str:
-        """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)"""
+    def get_system_prompt(self, username=None, current_message: str = "",
+                          mark_first: bool = True) -> str:
+        """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)
+
+        mark_first=False 时日期块不占用「当天首次说话」祝福判定。
+        """
         body = ""
         if self._builder:
-            body = self._builder.build(username, current_message)
+            body = self._builder.build(username, current_message, mark_first=mark_first)
         front = self.get_front_prompt()
         if front:
             front = front.replace("{username}", username or "主人")

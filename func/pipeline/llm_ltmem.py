@@ -62,6 +62,17 @@ class MeowLLMLtMemBridge:
         line = self._format_line(ai_name, text)
         self._dispatch(line, username, is_user=False)
 
+    def record_ai_profile(self, username: str, ai_name: str, text: str):
+        """仅记录 AI 回复到用户记忆（不写长期记忆、不写摘要缓存）。
+
+        供弹幕在「长期记忆关闭」时仍保持用户档案的 AI 侧上下文记录。
+        """
+        if not username:
+            return
+        line = self._format_line(ai_name, text)
+        self.last_username = username
+        self.user_updater.record(username, line, is_user=False)
+
     def _dispatch(self, line: str, username: str, is_user: bool):
         """分发一条记录到长期记忆存储、摘要缓存与用户记忆"""
         self.save_memory.save_line(line)

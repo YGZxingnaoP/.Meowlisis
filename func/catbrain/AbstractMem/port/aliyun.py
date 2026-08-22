@@ -2,13 +2,13 @@
 # func/catbrain/AbstractMem/port/aliyun.py
 # 摘要独立 Qwen（阿里云）端口（OpenAI 兼容，支持 function calling）
 
+import re
 from typing import List, Dict, Optional
 
 from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
-from func.tools.text_cleaner import clean_resp_content
 
 
 class MeowAbstractAliyunLLM:
@@ -32,6 +32,18 @@ class MeowAbstractAliyunLLM:
         except Exception as e:
             self.log.error(f"初始化摘要 Qwen 客户端失败: {e}")
 
+    @staticmethod
+    def _clean_resp_content(resp):
+        """去除响应 content 中的全角方括号【】及其内容"""
+        try:
+            if resp and getattr(resp, "choices", None):
+                content = getattr(resp.choices[0].message, "content", None)
+                if isinstance(content, str) and content:
+                    resp.choices[0].message.content = re.sub(r"【[^】]*】", "", content).strip()
+        except Exception:
+            pass
+        return resp
+
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None):
         """非流式对话，返回完整响应对象（用于摘要工具调用）"""
@@ -49,7 +61,7 @@ class MeowAbstractAliyunLLM:
             params["tool_choice"] = tool_choice
         try:
             resp = self.client.chat.completions.create(**params)
-            return clean_resp_content(resp)
+            return self._clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"摘要 Qwen 调用异常: {e}")
             return None

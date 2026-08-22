@@ -255,10 +255,16 @@ def main():
     napcat_core = TBNapCatCore()
     napcat_core.start()
 
+    # 待办提醒（独立线程，固定时间主动提醒）
+    from func.calendar.backlog import DateBacklog
+    backlog = DateBacklog()
+    backlog.start()
+
     # 注册退出清理
     import atexit
     atexit.register(mc_reader.stop)
     atexit.register(napcat_core.stop)
+    atexit.register(backlog.stop)
 
     # LLM回复
     sched1.add_job(func=llmCore.check_answer, trigger="interval", seconds=1, id="answer", max_instances=100)

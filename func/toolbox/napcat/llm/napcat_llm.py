@@ -190,15 +190,9 @@ class TBNapCatLLM:
 
     @staticmethod
     def remove_analysis(text: str) -> str:
-        """移除分析性文字与括号内容（与 TTS Output 一致）"""
+        """移除中英文圆括号内容（与 TTS Output 一致）"""
         if not text:
             return ""
-        keywords = ["这段对话", "这段文字", "这个对话"]
-        for kw in keywords:
-            idx = text.find(kw)
-            if idx != -1:
-                text = text[:idx].rstrip()
-                break
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
         return text.strip()

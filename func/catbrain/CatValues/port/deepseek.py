@@ -2,13 +2,13 @@
 # func/catbrain/CatValues/port/deepseek.py
 # 价值观独立 DeepSeek 端口（硬编码 temperature 0.7，思考强度最高）
 
+import re
 from typing import List, Dict, Optional
 
 from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
-from func.tools.text_cleaner import clean_resp_content
 
 
 class MeowValuesDeepSeekLLM:
@@ -34,6 +34,18 @@ class MeowValuesDeepSeekLLM:
         except Exception as e:
             self.log.error(f"初始化价值观 DeepSeek 客户端失败: {e}")
 
+    @staticmethod
+    def _clean_resp_content(resp):
+        """去除响应 content 中的全角方括号【】及其内容"""
+        try:
+            if resp and getattr(resp, "choices", None):
+                content = getattr(resp.choices[0].message, "content", None)
+                if isinstance(content, str) and content:
+                    resp.choices[0].message.content = re.sub(r"【[^】]*】", "", content).strip()
+        except Exception:
+            pass
+        return resp
+
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None):
         """非流式对话，返回完整响应对象（用于价值观分析与审查）"""
@@ -54,7 +66,7 @@ class MeowValuesDeepSeekLLM:
             params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             resp = self.client.chat.completions.create(**params)
-            return clean_resp_content(resp)
+            return self._clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"价值观 DeepSeek 调用异常: {e}")
             return None

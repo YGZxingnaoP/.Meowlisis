@@ -22,7 +22,8 @@ const Orbit = {
         { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
         { id: 'database', label: '数据库', tooltip: '数据库知识库配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
-        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/OBS/VTS）' }
+        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/OBS/VTS）' },
+        { id: 'calendar', label: '待办', tooltip: '待办提醒' }
     ],
 
     // Toolbox 子视图外围行星球（父级模型中心球 + 工具球）
@@ -50,6 +51,9 @@ const Orbit = {
     ttsSubEls: [],
     ttsOpen: false,
     ttsEl: null,
+    llmSubEls: [],
+    llmOpen: false,
+    llmEl: null,
     dragging: false,
     suppressClick: false,
     toolboxRotation: 0,
@@ -387,6 +391,15 @@ const Orbit = {
                 if (this.suppressClick) return;
                 this.toggleTtsSubs();
             });
+        } else if (p.id === 'llm') {
+            // LLM 球：点击分裂出 3 个子配置球（模型/提示词/算法）
+            this.llmEl = el;
+            this.createLlmSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleLlmSubs();
+            });
         } else {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -571,6 +584,62 @@ const Orbit = {
             this.ttsEl.classList.toggle('active', this.ttsOpen);
         }
         this.ttsSubEls.forEach(el => this._applyTtsSub(el, this.ttsOpen));
+    },
+
+    // LLM 子球（模型/提示词/算法）
+    createLlmSubs(parent) {
+        const subs = [
+            { id: 'llm_model', label: '模型', tooltip: 'LLM 模型与 API 参数' },
+            { id: 'llm_prompt', label: '提示词', tooltip: '前置词/后置词' },
+            { id: 'llm_algorithm', label: '算法', tooltip: '回复丰富性算法参数' }
+        ];
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: 0 },
+            { x: 82, y: 82 }
+        ];
+        this.llmSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyLlmSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.llmSubEls.push(el);
+        });
+    },
+
+    _applyLlmSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleLlmSubs() {
+        this.llmOpen = !this.llmOpen;
+        if (this.llmEl) {
+            this.llmEl.classList.toggle('active', this.llmOpen);
+        }
+        this.llmSubEls.forEach(el => this._applyLlmSub(el, this.llmOpen));
     },
 
 

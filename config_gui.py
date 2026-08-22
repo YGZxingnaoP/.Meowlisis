@@ -386,6 +386,66 @@ def verify_sessdata():
         return jsonify({'ok': False, 'message': f'验证异常：{e}'}), 500
 
 
+# ============ 待办提醒（backlog） ============
+def _backlog_dir():
+    return BASE_DIR / "character" / "backlog"
+
+
+def _safe_backlog_name(username):
+    import re
+    name = str(username or "").strip()
+    name = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', name)
+    return name or "unnamed"
+
+
+@app.route('/api/backlog/users', methods=['GET'])
+def list_backlog_users():
+    d = _backlog_dir()
+    if not d.exists():
+        return jsonify([])
+    names = [f.name[:-5] for f in d.glob('*.json')]
+    return jsonify(sorted(names))
+
+
+@app.route('/api/backlog', methods=['GET'])
+def get_backlog():
+    user = request.args.get('user', '')
+    path = _backlog_dir() / (_safe_backlog_name(user) + '.json')
+    if not path.exists():
+        return jsonify({'username': user, 'to_do_list': []})
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            data = {'username': user, 'to_do_list': []}
+        data.setdefault('username', user)
+        data.setdefault('to_do_list', [])
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/backlog', methods=['POST'])
+def post_backlog():
+    data = request.get_json() or {}
+    username = str(data.get('username') or '').strip()
+    if not username:
+        return jsonify({'status': 'error', 'message': '用户名不能为空'}), 400
+    todos = data.get('to_do_list', [])
+    if not isinstance(todos, list):
+        todos = []
+    content = {'username': username, 'to_do_list': todos}
+    d = _backlog_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    path = d / (_safe_backlog_name(username) + '.json')
+    try:
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(content, f, ensure_ascii=False, indent=2)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/front_prompt', methods=['GET'])
 def get_front_prompt():
     p = BASE_DIR / "character" / "front" / "prompt.json"

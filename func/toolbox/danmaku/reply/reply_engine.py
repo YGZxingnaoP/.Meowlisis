@@ -81,7 +81,7 @@ class TBDanmakuReply:
             self._reply_single(picked[0])
             return
 
-        # 多条（all 策略）：统一回复，不朗读
+        # 多条（all 策略）：统一回复，不朗读，只记 assistant（不记用户记忆）
         usernames = [d.get("username", "用户") for d in picked]
         multi_user = len(set(usernames)) > 1
         lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
@@ -90,6 +90,7 @@ class TBDanmakuReply:
         self.toolbox_llm.send_to_llm(
             wrapped, usernames[0], source="danmaku",
             preamble_text="", traceid=traceid, multi_user=multi_user,
+            memory_config=self._memory_config(assistant_only=True),
         )
 
     def _reply_single(self, d: dict):
@@ -103,6 +104,7 @@ class TBDanmakuReply:
         self.toolbox_llm.send_to_llm(
             wrapped, username, source="danmaku",
             preamble_text=read_text, traceid=traceid, multi_user=False,
+            memory_config=self._memory_config(assistant_only=False),
         )
 
     # ==================== SC 回复 ====================
@@ -118,7 +120,26 @@ class TBDanmakuReply:
             self.toolbox_llm.send_to_llm(
                 wrapped, username, source="danmaku",
                 preamble_text=read_text, traceid=traceid, multi_user=False,
+                memory_config=self._memory_config(assistant_only=False),
             )
         else:
             # 仅朗读 SC（独立完整 TTS 任务）
             self.toolbox_tts.send_stream(read_text, source="toolbox_danmaku")
+
+    # ==================== 弹幕专属记忆配置 ====================
+    def _memory_config(self, assistant_only: bool = False) -> dict:
+        """构造弹幕专属记忆配置（仅弹幕使用，与其它模块完全隔离）
+
+        - short_type: 弹幕短期记忆独立类型；
+        - short_mode: items（按条计数）；
+        - short_limit: danmaku.memory_short_limit；
+        - record_ltmem: danmaku.ltmem_enabled（是否写长期+摘要）；
+        - assistant_only: 多弹幕统一回复时只记 assistant、不记用户记忆。
+        """
+        return {
+            "short_type": "danmaku_response",
+            "short_mode": "items",
+            "short_limit": int(self.config.memory_short_limit or 40),
+            "record_ltmem": bool(self.config.ltmem_enabled),
+            "assistant_only": bool(assistant_only),
+        }

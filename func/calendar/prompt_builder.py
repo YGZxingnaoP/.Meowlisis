@@ -24,8 +24,11 @@ class DatePromptBuilder:
         self.daily_user = DateDailyUser()
         self.greeting = DateGreeting()
 
-    def build(self, username=None) -> str:
-        """构建当天日期提示词（无节日/节气/生日时返回空）"""
+    def build(self, username=None, mark_first: bool = True) -> str:
+        """构建当天日期提示词（无节日/节气/生日时返回空）
+
+        mark_first=False 时不判定/不占用「当天首次说话」祝福，仅保留日期信息。
+        """
         if not username:
             try:
                 from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
@@ -40,7 +43,7 @@ class DatePromptBuilder:
 
         # 第一次说话判断 + 记录（原子操作，username 为空不判定）
         is_first = False
-        if username:
+        if username and mark_first:
             is_first = self.daily_user.check_first_and_mark(username)
 
         if not lines:

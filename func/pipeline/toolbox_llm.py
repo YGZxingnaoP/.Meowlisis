@@ -21,7 +21,7 @@ class ToolboxLLMBridge:
 
     def send_to_llm(self, text: str, username: str, source: str = "toolbox",
                     preamble_text: str = "", traceid: str = "",
-                    multi_user: bool = False):
+                    multi_user: bool = False, memory_config: dict = None):
         """将 toolbox 工具输出内容送入 LLM 快速回复链。
 
         :param text: 要送入 LLM 的文本（弹幕为「【弹幕】用户名: 内容」包装）
@@ -30,6 +30,7 @@ class ToolboxLLMBridge:
         :param preamble_text: 朗读前置段（弹幕朗读），由主链路 Output 先送 TTS 再回复
         :param traceid: 复用外部 traceid（弹幕朗读与回复共享同一任务，保证连续）
         :param multi_user: 是否多用户弹幕（后置词用「挑选一些回复」）
+        :param memory_config: 弹幕专属记忆配置（仅弹幕传），与其它模块隔离
         """
         from func.llm.llm_core import LLmCore
         traceid = traceid or str(uuid.uuid4())
@@ -37,6 +38,7 @@ class ToolboxLLMBridge:
         LLmCore().msg_deal(
             traceid, text, username,
             source=source, preamble_text=preamble_text, multi_user=multi_user,
+            memory_config=memory_config,
         )
 
 

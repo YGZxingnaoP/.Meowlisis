@@ -2,13 +2,13 @@
 # func/database/search/port/aliyun.py
 # 搜索模块独立 Qwen（阿里云）端口（与 llm 端口相同，独立 apikey）
 
+import re
 from typing import List, Dict, Optional
 
 from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.database.config import CatLearnConfig
-from func.tools.text_cleaner import clean_resp_content
 
 
 class CatLearnSearchAliyunLLM:
@@ -32,6 +32,18 @@ class CatLearnSearchAliyunLLM:
         except Exception as e:
             self.log.error(f"初始化搜索 Qwen 客户端失败: {e}")
 
+    @staticmethod
+    def _clean_resp_content(resp):
+        """去除响应 content 中的全角方括号【】及其内容"""
+        try:
+            if resp and getattr(resp, "choices", None):
+                content = getattr(resp.choices[0].message, "content", None)
+                if isinstance(content, str) and content:
+                    resp.choices[0].message.content = re.sub(r"【[^】]*】", "", content).strip()
+        except Exception:
+            pass
+        return resp
+
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None, temperature=None, enable_thinking: bool = False):
         """非流式对话，返回完整响应对象"""
@@ -54,7 +66,7 @@ class CatLearnSearchAliyunLLM:
             params["extra_body"] = {"parameters": {"enable_thinking": True}}
         try:
             resp = self.client.chat.completions.create(**params)
-            return clean_resp_content(resp)
+            return self._clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"搜索 Qwen 调用异常: {e}")
             return None

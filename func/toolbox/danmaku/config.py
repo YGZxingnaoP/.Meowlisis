@@ -74,3 +74,9 @@ class TBDanmakuConfig:
         as_cfg = cfg.get('active_send', {}) or {}
         self.active_send_enabled = bool(as_cfg.get('enabled', True))
         self.active_send_cooldown = int(as_cfg.get('cooldown', 60))
+
+        # ========== 弹幕记忆（弹幕专属，与其它模块完全隔离） ==========
+        # 弹幕短期记忆上限（按条，danmaku_response 类型独立计数）
+        self.memory_short_limit = int(cfg.get('memory_short_limit', 40))
+        # 弹幕是否写长期记忆 + 摘要缓存（默认开启，不影响用户记忆）
+        self.ltmem_enabled = bool(cfg.get('ltmem_enabled', True))

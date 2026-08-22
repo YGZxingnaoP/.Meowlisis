@@ -3,6 +3,7 @@
  */
 const App = {
     config: null,
+    calendarData: {},
 
     async init() {
         Modal.init();
@@ -55,8 +56,13 @@ const App = {
         if (id === 'character') { await this.openCharacterPanel(); return; }
         if (id === 'sensevoice') { await this.openSensevoicePanel(); return; }
         if (id === 'tts') { await this.openTtsPanel(); return; }
-        if (id === 'llm') { await this.openLlmPanel(); return; }
         if (id === 'toolbox') { this.openToolbox(); return; }
+        if (id === 'calendar') { await this.openCalendarPanel(); return; }
+
+        // LLM 子球
+        if (id === 'llm_model') { await this.openLlmModelPanel(); return; }
+        if (id === 'llm_prompt') { await this.openLlmPromptPanel(); return; }
+        if (id === 'llm_algorithm') { await this.openLlmAlgorithmPanel(); return; }
 
         // TTS 子球
         if (id === 'tts_model') { await this.openTtsModelPanel(); return; }
@@ -108,6 +114,201 @@ const App = {
     closeToolbox() {
         const overlay = document.getElementById('toolboxOverlay');
         if (overlay) overlay.classList.remove('show');
+    },
+
+    // ============ 待办提醒面板 ============
+    async openCalendarPanel() {
+        try {
+            const users = await API.getBacklogUsers();
+            this.calendarData = {};
+            for (const u of users) {
+                this.calendarData[u] = await API.getBacklog(u);
+            }
+        } catch (e) {
+            this.calendarData = {};
+        }
+        Modal.show('待办提醒', Config.calendarPanel(), async () => {
+            await this.saveCalendar();
+        });
+        this.renderCalendarUsers();
+        this.bindCalendarEvents();
+    },
+
+    renderCalendarUsers() {
+        const list = document.getElementById('backlogUserList');
+        if (!list) return;
+        const users = Object.keys(this.calendarData);
+        if (!users.length) {
+            list.innerHTML = '<div class="help-text">暂无用户，输入用户名新建</div>';
+            return;
+        }
+        list.innerHTML = users.map(u => {
+            const todos = (this.calendarData[u] && this.calendarData[u].to_do_list) || [];
+            const todoHtml = todos.map((t, i) => this.renderCalendarTodo(u, i, t)).join('');
+            return `<div class="char-card" data-backlog-user="${this._escAttr(u)}">
+                <div class="char-card-title backlog-user-toggle" style="cursor:pointer;">
+                    <span class="backlog-toggle-arrow">▾</span> ${this._esc(u)}
+                </div>
+                <div class="backlog-user-body">
+                    <div class="backlog-todo-list">${todoHtml || '<div class="help-text">暂无待办</div>'}</div>
+                    <button type="button" class="btn btn-secondary backlog-add-todo" data-user="${this._escAttr(u)}">添加待办</button>
+                </div>
+            </div>`;
+        }).join('');
+    },
+
+    renderCalendarTodo(user, index, todo) {
+        todo = todo || {};
+        const type = todo.type === 'steady' ? 'steady' : 'instant';
+        const qq = !!todo.qq;
+        const timeParts = String(todo.time || '').split(':');
+        const timeHour = timeParts[0] || '';
+        const timeMinute = timeParts[1] || '';
+        return `<div class="backlog-todo" data-user="${this._escAttr(user)}" data-todo-index="${index}">
+            <div class="form-group"><label>提醒日期</label>
+                <input type="text" data-todo-field="day" value="${this._esc(todo.day || '')}" placeholder="MM-DD，留空/none 每天"></div>
+            <div class="form-group"><label>提醒时间</label>
+                <div class="time-row">
+                    <input type="number" data-todo-field="time_hour" value="${this._esc(timeHour)}" min="0" max="23" placeholder="时">
+                    <span class="time-colon">:</span>
+                    <input type="number" data-todo-field="time_minute" value="${this._esc(timeMinute)}" min="0" max="59" placeholder="分">
+                </div></div>
+            <div class="form-group"><label>类型</label>
+                <button type="button" class="btn btn-secondary cycle-btn" data-todo-field="type" data-todo-values="instant,steady" data-todo-value="${type}">${type}</button></div>
+            <div class="form-group"><label>QQ提醒</label>
+                <button type="button" class="btn btn-secondary cycle-btn" data-todo-field="qq" data-todo-values="false,true" data-todo-value="${qq ? 'true' : 'false'}">${qq ? '开' : '关'}</button></div>
+            <div class="form-group"><label>重复间隔(秒)</label>
+                <input type="number" data-todo-field="repeat_interval" value="${todo.repeat_interval != null ? todo.repeat_interval : 300}"></div>
+            <div class="form-group"><label>总次数</label>
+                <input type="number" data-todo-field="loop" value="${todo.loop != null ? todo.loop : 2}"></div>
+            <div class="form-group"><label>提醒内容</label>
+                <input type="text" data-todo-field="content" value="${this._esc(todo.content || '')}" placeholder="提醒内容"></div>
+            <button type="button" class="btn btn-secondary backlog-remove-todo">删除待办</button>
+        </div>`;
+    },
+
+    _esc(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    },
+
+    _escAttr(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    },
+
+    bindCalendarEvents() {
+        const list = document.getElementById('backlogUserList');
+        if (!list) return;
+
+        const newInput = document.getElementById('newBacklogUserInput');
+        const addUserBtn = document.getElementById('addBacklogUserBtn');
+        const addUser = () => {
+            const name = (newInput && newInput.value || '').trim();
+            if (!name) { this.showToast('请输入用户名', true); return; }
+            if (this.calendarData[name]) { this.showToast('用户已存在', true); return; }
+            this.calendarData[name] = { username: name, to_do_list: [] };
+            if (newInput) newInput.value = '';
+            this.renderCalendarUsers();
+        };
+        if (addUserBtn) addUserBtn.addEventListener('click', addUser);
+        if (newInput) newInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addUser(); });
+
+        list.addEventListener('click', (e) => {
+            const toggle = e.target.closest('.backlog-user-toggle');
+            if (toggle) {
+                const card = toggle.closest('[data-backlog-user]');
+                const body = card.querySelector('.backlog-user-body');
+                const arrow = toggle.querySelector('.backlog-toggle-arrow');
+                if (body) {
+                    const collapsed = body.style.display === 'none';
+                    body.style.display = collapsed ? '' : 'none';
+                    if (arrow) arrow.textContent = collapsed ? '▾' : '▸';
+                }
+                return;
+            }
+
+            const addTodo = e.target.closest('.backlog-add-todo');
+            if (addTodo) {
+                const user = addTodo.dataset.user;
+                const data = this.calendarData[user] || { username: user, to_do_list: [] };
+                data.to_do_list = data.to_do_list || [];
+                data.to_do_list.push({ day: '', time: '', type: 'instant', repeat_interval: 300, loop: 2, content: '', qq: false });
+                this.calendarData[user] = data;
+                this.renderCalendarUsers();
+                return;
+            }
+
+            const removeTodo = e.target.closest('.backlog-remove-todo');
+            if (removeTodo) {
+                const todo = removeTodo.closest('.backlog-todo');
+                const user = todo.dataset.user;
+                const index = parseInt(todo.dataset.todoIndex, 10);
+                const data = this.calendarData[user];
+                if (data && data.to_do_list) {
+                    data.to_do_list.splice(index, 1);
+                    this.renderCalendarUsers();
+                }
+                return;
+            }
+
+            const cycle = e.target.closest('.cycle-btn');
+            if (cycle) {
+                const values = (cycle.dataset.todoValues || '').split(',');
+                const cur = cycle.dataset.todoValue;
+                let idx = values.indexOf(cur);
+                idx = (idx + 1) % values.length;
+                const next = values[idx];
+                cycle.dataset.todoValue = next;
+                cycle.textContent = cycle.dataset.todoField === 'qq' ? (next === 'true' ? '开' : '关') : next;
+                // 同步到内存数据
+                const todo = cycle.closest('.backlog-todo');
+                const user = todo.dataset.user;
+                const index = parseInt(todo.dataset.todoIndex, 10);
+                const data = this.calendarData[user];
+                if (data && data.to_do_list && data.to_do_list[index]) {
+                    if (cycle.dataset.todoField === 'qq') {
+                        data.to_do_list[index].qq = (next === 'true');
+                    } else {
+                        data.to_do_list[index][cycle.dataset.todoField] = next;
+                    }
+                }
+                return;
+            }
+        });
+
+        list.addEventListener('input', (e) => {
+            const input = e.target.closest('input[data-todo-field]');
+            if (!input) return;
+            const todo = input.closest('.backlog-todo');
+            const user = todo.dataset.user;
+            const index = parseInt(todo.dataset.todoIndex, 10);
+            const data = this.calendarData[user];
+            const item = data && data.to_do_list && data.to_do_list[index];
+            if (!item) return;
+            const field = input.dataset.todoField;
+            if (field === 'time_hour' || field === 'time_minute') {
+                const parts = String(item.time || '').split(':');
+                const hour = field === 'time_hour' ? String(input.value || '') : (parts[0] || '');
+                const minute = field === 'time_minute'
+                    ? (input.value === '' ? '' : String(input.value).padStart(2, '0'))
+                    : (parts[1] || '');
+                item.time = `${hour}:${minute}`;
+                return;
+            }
+            let v = input.value;
+            if (input.type === 'number') v = input.value === '' ? 0 : parseFloat(input.value);
+            item[field] = v;
+        });
+    },
+
+    async saveCalendar() {
+        try {
+            for (const u of Object.keys(this.calendarData)) {
+                await API.saveBacklog(u, this.calendarData[u]);
+            }
+            this.showToast('待办已保存');
+        } catch (e) {
+            this.showToast('保存失败: ' + e.message, true);
+        }
     },
 
     onToolboxPlanetClick(id) {
@@ -422,25 +623,40 @@ const App = {
     },
 
     // ============ LLM 面板（含前置词/后置词） ============
-    async openLlmPanel() {
+    async openLlmModelPanel() {
         try {
-            // 先获取完整前置词/后置词对象，渲染时直接内联到 textarea，避免异步填充时序问题
+            const html = Config.llm_model();
+            Modal.show('LLM 模型设置', html, async () => {
+                try {
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    await API.saveConfig(this.config);
+                    this.showToast('LLM 模型配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+            setTimeout(() => {
+                this.bindTabs();
+                this.bindSplitFlagEditor();
+            }, 10);
+        } catch (e) {
+            console.error('Error rendering llm model panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    async openLlmPromptPanel() {
+        try {
             let frontData = {};
             try {
                 frontData = await API.getFrontPrompt() || {};
             } catch (e) {
                 console.warn('加载前置词失败:', e);
             }
-
-            const html = Config.llm(frontData);
-            Modal.show('LLM 设置', html, async () => {
+            const html = Config.llm_prompt(frontData);
+            Modal.show('LLM 提示词设置', html, async () => {
                 try {
-                    // 1. 保存 config.yml 的 llm 节点
-                    const updates = Config.collectValues();
-                    Config.applyUpdates(updates, this.config);
-                    await API.saveConfig(this.config);
-
-                    // 2. 保存前置词/后置词（完整对象，避免覆盖其它字段）
                     const front = {
                         prompt: document.getElementById('frontPromptInput')?.value || '',
                         prompt_active: document.getElementById('activeFrontPromptInput')?.value || '',
@@ -448,19 +664,32 @@ const App = {
                         post_prompt: document.getElementById('postPromptInput')?.value || ''
                     };
                     await API.saveFrontPrompt(front);
-
-                    this.showToast('LLM 配置已保存');
+                    this.showToast('提示词已保存');
                 } catch (e) {
                     this.showToast('保存失败: ' + e.message, true);
                 }
             });
-
-            setTimeout(() => {
-                this.bindTabs();
-                this.bindSplitFlagEditor();
-            }, 10);
         } catch (e) {
-            console.error('Error rendering llm panel:', e);
+            console.error('Error rendering llm prompt panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    async openLlmAlgorithmPanel() {
+        try {
+            const html = Config.llm_algorithm();
+            Modal.show('LLM 算法设置', html, async () => {
+                try {
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    await API.saveConfig(this.config);
+                    this.showToast('算法配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering llm algorithm panel:', e);
             this.showToast('面板渲染失败: ' + e.message, true);
         }
     },

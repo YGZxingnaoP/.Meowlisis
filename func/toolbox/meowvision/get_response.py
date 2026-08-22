@@ -18,9 +18,6 @@ class TBVisionGetResponse:
     - need_description=False（角色自己截图）时，不要求输出描述，description 恒为空串。
     """
 
-    # 分析性引导词（命中则截断，与主链路 Output.remove_analysis 完全一致）
-    ANALYSIS_KEYWORDS = ["这段对话", "这段文字", "这个对话"]
-
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.get_prompt = TBVisionGetPrompt()
@@ -99,24 +96,17 @@ class TBVisionGetResponse:
 
     @classmethod
     def clean(cls, text) -> str:
-        """正则优化：去 think 标签、方括号【】、圆括号（）() 及分析性文字"""
+        """正则优化：去 think 标签、方括号【】、圆括号（）()"""
         if not text:
             return ""
         text = str(text)
         text = cls._strip_think(text)
-
-        # 分析性文字截断
-        for kw in cls.ANALYSIS_KEYWORDS:
-            idx = text.find(kw)
-            if idx != -1:
-                text = text[:idx].rstrip()
-                break
 
         # 移除全角方括号【】及其内容、中英文圆括号及其内容
         text = re.sub(r"【[^】]*】", "", text)
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
 
-        # 清理多余空白与孤立标点
+        # 清理多余空白
         text = re.sub(r"[ \t]+", " ", text)
         return text.strip()

@@ -2,13 +2,13 @@
 # func/llm_active/port/deepseek.py
 # 主动回复 DeepSeek 端口（复用 llm 配置，max_tokens 两倍且上限 2048）
 
+import re
 from typing import List, Dict, Optional
 
 from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.llm.config import LLMConfig
-from func.tools.text_cleaner import clean_resp_content
 
 
 class AutoDeepSeekLLM:
@@ -42,6 +42,18 @@ class AutoDeepSeekLLM:
             enable = options.get('enable_thinking')
         return {"thinking": {"type": "enabled" if enable else "disabled"}}
 
+    @staticmethod
+    def _clean_resp_content(resp):
+        """去除响应 content 中的全角方括号【】及其内容"""
+        try:
+            if resp and getattr(resp, "choices", None):
+                content = getattr(resp.choices[0].message, "content", None)
+                if isinstance(content, str) and content:
+                    resp.choices[0].message.content = re.sub(r"【[^】]*】", "", content).strip()
+        except Exception:
+            pass
+        return resp
+
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None, options: Optional[Dict] = None):
         """非流式对话，返回完整响应（用于 inherit 工具调用）"""
@@ -61,7 +73,7 @@ class AutoDeepSeekLLM:
             params["tool_choice"] = tool_choice
         try:
             resp = self.client.chat.completions.create(**params)
-            return clean_resp_content(resp)
+            return self._clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"主动回复 DeepSeek 调用异常: {e}")
             return None

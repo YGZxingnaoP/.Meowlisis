@@ -56,7 +56,7 @@ class AutoOriginCore:
         ]
 
         traceid = str(uuid.uuid4())
-        output = Output(self.config, LLmState())
+        output = Output(self.config, LLmState(), enable_narration=False)
         stream = self.llm.chat_stream(messages, options={"enable_thinking": True})
         for chunk in stream:
             if not chunk.choices:

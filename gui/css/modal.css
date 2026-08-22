@@ -404,3 +404,142 @@
 .bili-login-status.error {
     color: #c62828;
 }
+
+.calendar-toolbar {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+    align-items: center;
+}
+
+.calendar-toolbar input {
+    width: 170px;
+    flex: 0 0 auto;
+    padding: 9px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--pink-soft);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main, #fff);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+}
+
+.calendar-toolbar input::placeholder {
+    color: var(--text-light);
+}
+
+.calendar-toolbar input:focus {
+    border-color: var(--pink-main);
+    box-shadow: 0 0 0 3px rgba(255, 150, 200, 0.18);
+}
+
+.backlog-user-body {
+    padding: 8px 0 4px;
+}
+
+.backlog-todo {
+    border: 1px solid var(--pink-soft);
+    border-radius: 10px;
+    padding: 10px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.backlog-todo .form-group {
+    margin-bottom: 8px;
+}
+
+.backlog-todo .cycle-btn {
+    min-width: 90px;
+}
+
+.backlog-todo .time-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.backlog-todo .time-row input {
+    width: 72px;
+    text-align: center;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--pink-soft);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-main, #fff);
+    font-size: 13px;
+    outline: none;
+}
+
+.backlog-todo .time-row input:focus {
+    border-color: var(--pink-main);
+    box-shadow: 0 0 0 3px rgba(255, 150, 200, 0.18);
+}
+
+.backlog-todo .time-colon {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--pink-main);
+}
+
+.backlog-todo .backlog-remove-todo {
+    margin-top: 4px;
+}
+
+.formula-box {
+    background: linear-gradient(145deg, rgba(255, 150, 200, 0.10), rgba(255, 150, 200, 0.04));
+    border: 1px solid var(--pink-soft);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+}
+
+.formula-box-title {
+    font-size: 13px;
+    font-weight: bold;
+    color: var(--pink-main);
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+}
+
+.formula-block {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.formula-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px 12px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+
+.formula-name {
+    flex: 0 0 auto;
+    min-width: 72px;
+    color: var(--text-light);
+}
+
+.formula-expr {
+    font-family: 'Cambria Math', 'Times New Roman', serif;
+    color: var(--text-main, #fff);
+    font-weight: 500;
+}
+
+.formula-cond {
+    color: var(--text-light);
+    font-size: 12px;
+}
+
+.formula-params {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--pink-soft);
+    font-size: 12px;
+    color: var(--text-light);
+    line-height: 1.6;
+}

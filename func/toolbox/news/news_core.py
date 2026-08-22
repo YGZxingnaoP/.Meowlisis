@@ -299,17 +299,12 @@ class TBNewsCore:
 
     @staticmethod
     def _clean(text: str) -> str:
-        """正则优化：去 think 标签、方括号/圆括号内容及分析性文字"""
+        """正则优化：去 think 标签、方括号/圆括号内容"""
         if not text:
             return ""
         text = str(text)
         text = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
         text = re.sub(r"</?think>", "", text, flags=re.IGNORECASE)
-        for kw in ("这段对话", "这段文字", "这个对话"):
-            idx = text.find(kw)
-            if idx != -1:
-                text = text[:idx].rstrip()
-                break
         text = re.sub(r"【[^】]*】", "", text)
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)

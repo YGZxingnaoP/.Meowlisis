@@ -2,13 +2,13 @@
 # func/toolbox/port/deepseek.py
 # Toolbox 独立 DeepSeek 端口（OpenAI 兼容，支持 function calling 与流式）
 
+import re
 from typing import List, Dict, Optional
 
 from openai import OpenAI
 
 from func.log.default_log import DefaultLog
 from func.toolbox.config import TBoxConfig
-from func.tools.text_cleaner import clean_resp_content
 
 
 class TBoxDeepSeekLLM:
@@ -47,6 +47,18 @@ class TBoxDeepSeekLLM:
             thinking_type = "enabled"
         return {"thinking": {"type": thinking_type}}
 
+    @staticmethod
+    def _clean_resp_content(resp):
+        """去除响应 content 中的全角方括号【】及其内容"""
+        try:
+            if resp and getattr(resp, "choices", None):
+                content = getattr(resp.choices[0].message, "content", None)
+                if isinstance(content, str) and content:
+                    resp.choices[0].message.content = re.sub(r"【[^】]*】", "", content).strip()
+        except Exception:
+            pass
+        return resp
+
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None, enable_thinking=None):
         """非流式对话，返回完整响应对象（用于 toolcalls 判断）"""
@@ -68,7 +80,7 @@ class TBoxDeepSeekLLM:
         params["extra_body"] = self._build_extra_body(tool_choice, level)
         try:
             resp = self.client.chat.completions.create(**params)
-            return clean_resp_content(resp)
+            return self._clean_resp_content(resp)
         except Exception as e:
             self.log.error(f"Toolbox DeepSeek 调用异常: {e}")
             return None
