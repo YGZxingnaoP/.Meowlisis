@@ -17,6 +17,7 @@ cachetools
 aiohttp
 chardet
 requests
+dashscope
 
 # ---------- SenseVoice 语音识别服务 ----------
 torch

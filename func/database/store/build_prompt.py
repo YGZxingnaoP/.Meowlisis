@@ -8,7 +8,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.config.app_config import AppConfig
 from func.database.config import CatLearnConfig
-from func.database.store.port.bge import CatLearnEmbedding
+from func.database.store.port import get_embedding
 from func.database.store.vector_db import CatLearnVectorDB
 
 
@@ -60,7 +60,7 @@ class CatLearnBuildPrompt:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = CatLearnConfig()
-        self.embedding = CatLearnEmbedding()
+        self.embedding = get_embedding()
         self.vdb = CatLearnVectorDB()
 
     def build(self, keys: list, top_k: int = None, keyword_trigger: bool = False) -> str:

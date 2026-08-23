@@ -170,6 +170,42 @@ const API = {
         return res.json();
     },
 
+    async startDbPrefill(payload) {
+        const res = await fetch('/api/db_prefill/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {})
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            data.ok = false;
+            data.message = data.message || ('启动失败: ' + res.status);
+        }
+        return data;
+    },
+
+    async getDbPrefillConfig() {
+        const res = await fetch('/api/db_prefill_config');
+        if (!res.ok) return {};
+        return res.json();
+    },
+
+    async saveDbPrefillConfig(cfg) {
+        const res = await fetch('/api/db_prefill_config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg || {})
+        });
+        if (!res.ok) throw new Error('Failed to save db prefill config');
+        return res.json();
+    },
+
+    async getDbPrefillStatus() {
+        const res = await fetch('/api/db_prefill/status');
+        if (!res.ok) return { running: false, done: false, result: 0, error: '' };
+        return res.json();
+    },
+
     async verifySessdata(sessdata) {
         const res = await fetch('/api/verify_sessdata', {
             method: 'POST',

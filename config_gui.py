@@ -9,6 +9,7 @@ import sys
 import json
 import yaml
 import subprocess
+from threading import Thread
 from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, send_from_directory, jsonify, request
@@ -334,6 +335,74 @@ def verify_site():
         return jsonify(result)
     except Exception as e:
         return jsonify({'ok': False, 'message': str(e), 'sample': []}), 500
+
+
+# ============ 知识库预填充 ============
+_db_prefill_state = {"running": False, "done": False, "result": 0, "error": ""}
+
+
+@app.route('/api/db_prefill/start', methods=['POST'])
+def db_prefill_start():
+    """启动知识库预填充（后台线程爬取真实网页内容入库，供「预填」子球一键调用）"""
+    global _db_prefill_state
+    if _db_prefill_state.get("running"):
+        return jsonify({'ok': False, 'message': '已有预填充任务在运行'}), 409
+    data = request.get_json() or {}
+    sites = data.get('sites') or []
+    keywords = data.get('keywords') or {}
+    reset = bool(data.get('reset', True))
+
+    _db_prefill_state = {"running": True, "done": False, "result": 0, "error": ""}
+
+    def _run():
+        global _db_prefill_state
+        try:
+            from func.database.seed import run_seed
+            n = run_seed(
+                reset=reset,
+                sites=list(sites) if sites else None,
+                site_keywords=keywords if isinstance(keywords, dict) and keywords else None,
+            )
+            _db_prefill_state = {"running": False, "done": True, "result": n, "error": ""}
+        except Exception as e:
+            _db_prefill_state = {"running": False, "done": True, "result": 0, "error": str(e)}
+
+    Thread(target=_run, daemon=True).start()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/db_prefill/status', methods=['GET'])
+def db_prefill_status():
+    """查询预填充进度（供前端轮询）"""
+    return jsonify(_db_prefill_state)
+
+
+@app.route('/api/db_prefill_config', methods=['GET'])
+def db_prefill_config_get():
+    """读取预填充配置（独立文件 gui/tools/prefill_seed.json，不混入 config.yml）"""
+    path = BASE_DIR / "gui" / "tools" / "prefill_seed.json"
+    if not path.exists():
+        return jsonify({})
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return jsonify(data if isinstance(data, dict) else {})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/db_prefill_config', methods=['POST'])
+def db_prefill_config_post():
+    """保存预填充配置到独立文件 gui/tools/prefill_seed.json"""
+    data = request.get_json()
+    path = BASE_DIR / "gui" / "tools" / "prefill_seed.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data if isinstance(data, dict) else {}, f, ensure_ascii=False, indent=2)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @app.route('/api/bili_login/start', methods=['POST'])

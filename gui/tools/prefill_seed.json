@@ -1,0 +1,44 @@
+{
+  "sites": {
+    "3dmgame": {
+      "label": "3DM游戏网",
+      "keywords": [
+        "Minecraft",
+        "异环",
+        "杀戮尖塔",
+        "战争雷霆",
+        "少女前线",
+        "明日方舟",
+        "星露谷物语"
+      ]
+    },
+    "baidu": {
+      "label": "其它",
+      "keywords": [
+        "夜鹿 yorushika",
+        "deepseek",
+        "seedance2.5",
+        "上海理工大学"
+      ]
+    },
+    "mcmod": {
+      "label": "MC百科",
+      "keywords": [
+        "暮色森林",
+        "机械动力",
+        "All the Mods 10",
+        "格雷科技：新视野"
+      ]
+    },
+    "moegirl": {
+      "label": "萌娘百科",
+      "keywords": [
+        "Darling in the FranXX",
+        "我的青春恋爱物语果然有问题",
+        "杀戮少女",
+        "超时空辉夜姬",
+        "月刊少女野崎君"
+      ]
+    }
+  }
+}

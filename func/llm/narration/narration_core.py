@@ -4,6 +4,7 @@
 
 import os
 import json
+import datetime
 import threading
 
 from func.log.default_log import DefaultLog
@@ -36,6 +37,9 @@ class NarrationCore:
         self._load_config()
         self.s = float(self.initial_score)
         self._lock = threading.Lock()
+        self._score_lock = threading.Lock()
+        self.score_path = os.path.join("character", "memory", "llm_response_score.json")
+        self.session_key = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def _load_config(self):
         try:
@@ -54,6 +58,7 @@ class NarrationCore:
         self.length_penalty_cap = float(cfg.get("length_penalty_cap", 20))
         self.part_level_upper = float(cfg.get("part_level_upper", 60))
         self.part_level_lower = float(cfg.get("part_level_lower", 30))
+        self.score_log_enabled = bool(cfg.get("score_log_enabled", False))
 
     def _load(self):
         try:
@@ -103,7 +108,29 @@ class NarrationCore:
             f"[narration] Raw={raw:.1f} S={new_s:.1f} "
             f"(prev={prev:.1f} lambda={lam:.2f} L={L} W={W})"
         )
+        if self.score_log_enabled:
+            self._log_score(raw, new_s)
         return raw, new_s
+
+    def _log_score(self, raw: float, smooth: float):
+        """把本轮原始/平滑得分追加到当前启动分组的分数记录文件"""
+        try:
+            os.makedirs(os.path.dirname(self.score_path), exist_ok=True)
+            with self._score_lock:
+                data = {}
+                if os.path.exists(self.score_path):
+                    with open(self.score_path, "r", encoding="utf-8") as f:
+                        loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        data = loaded
+                data.setdefault(self.session_key, []).append({
+                    "raw": round(float(raw), 2),
+                    "smooth": round(float(smooth), 2),
+                })
+                with open(self.score_path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            self.log.exception("写入分数记录失败")
 
     def _raw_score(self, text):
         L = len(text)

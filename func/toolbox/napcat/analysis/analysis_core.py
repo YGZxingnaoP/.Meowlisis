@@ -39,9 +39,10 @@ class TBNapcatAnalysis:
         system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
         system = (
             f"{system}\n\n"
-            f"【工具调用】请判断用户这条 QQ 消息是否需要查询天气或查看新闻：\n"
+            f"【工具调用】请判断用户这条 QQ 消息是否需要查询天气、查看新闻或新建待办：\n"
             f"- 询问天气/气温/是否下雨/要不要带伞 → 调用 query_weather；\n"
             f"- 询问新闻/热点/最近发生了什么/有什么大事 → 调用 read_news；\n"
+            f"- 明确要新建/记录待办或提醒事项（如提醒我几点做什么）→ 调用 add_backlog；\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
         )
         messages: List[dict] = [{"role": "system", "content": system}]
@@ -86,6 +87,13 @@ class TBNapcatAnalysis:
                 if isinstance(result, tuple) and result and result[0] == "redeliver":
                     self._redeliver(result[1], username, qq_context, short_memory)
                 handled = True
+            elif name == "add_backlog":
+                from func.toolbox.add_backlog.add_tool import TBAddBacklogTool
+                TBAddBacklogTool().set_username(username)
+                result = TBAddBacklogTool().dispatch_qq(name, args, qq_context)
+                if isinstance(result, tuple) and result and result[0] == "redeliver":
+                    self._redeliver(result[1], username, qq_context, short_memory)
+                handled = True
             else:
                 self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
         return handled
@@ -126,7 +134,7 @@ class TBNapcatAnalysis:
 
     # ==================== 工具 schema ====================
     def _build_tools(self) -> List[dict]:
-        """复用 weather / news 的工具 schema"""
+        """复用 weather / news / add_backlog 的工具 schema"""
         tools = []
         try:
             from func.toolbox.weather.weather_core import TBWeatherCore
@@ -138,6 +146,13 @@ class TBNapcatAnalysis:
             tools.extend(TBNewsCore().build_tools())
         except Exception:
             self.log.exception("构建 news 工具失败")
+        try:
+            from func.toolbox.add_backlog.config import TBAddBacklogConfig
+            if TBAddBacklogConfig().qq_enabled:
+                from func.toolbox.add_backlog.add_tool import TBAddBacklogTool
+                tools.extend(TBAddBacklogTool().build_tools())
+        except Exception:
+            self.log.exception("构建 add_backlog 工具失败")
         return tools
 
     # ==================== LLM（复用 napcat 现有配置 func/llm） ====================

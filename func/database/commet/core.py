@@ -25,8 +25,9 @@ class CatLearnCommet:
             from func.database.commet.learning_doc import CatLearnDocLearning
             count = CatLearnDocLearning().scan_and_learn()
             if count:
-                self.log.info(f"commet 初始化完成，文档入库 {count} 条")
+                self.log.info(f"commet 文档入库 {count} 条")
             else:
-                self.log.info("commet 初始化完成（inbox 无待入库文档）")
+                self.log.info("commet inbox 无待入库文档")
+            self.log.info("commet 初始化完成")
         except Exception:
             self.log.exception("commet 初始化异常")

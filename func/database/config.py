@@ -72,9 +72,21 @@ class CatLearnConfig:
         # ========== store 模块 ==========
         st = cfg.get('store', {})
         emb = st.get('embedding', {})
-        self.embedding_api_key = emb.get('api_key', '')
-        self.embedding_base_url = emb.get('base_url', 'https://api.siliconflow.cn/v1')
-        self.embedding_model = emb.get('model', 'BAAI/bge-m3')
+        # 向量引擎：aliyun（DashScope qwen3.7-text-embedding）或 siliconflow（BAAI/bge-m3）
+        self.embedding_provider = str(emb.get('provider', 'siliconflow')).strip().lower()
+        # 阿里云 DashScope 文本向量（qwen3.7-text-embedding）
+        ali = emb.get('aliyun', {}) or {}
+        self.embedding_aliyun_api_key = ali.get('api_key', '')
+        self.embedding_aliyun_base_url = ali.get('base_url', 'https://dashscope.aliyuncs.com/api/v1')
+        self.embedding_aliyun_model = ali.get('model', 'qwen3.7-text-embedding')
+        # 硅基流动文本向量（BAAI/bge-m3）
+        sfs = emb.get('siliconflow', {}) or {}
+        # 兼容旧的扁平配置（api_key / base_url / model 直接放在 embedding 下）
+        self.embedding_api_key = sfs.get('api_key', emb.get('api_key', ''))
+        self.embedding_base_url = sfs.get('base_url', emb.get('base_url', 'https://api.siliconflow.cn/v1'))
+        self.embedding_model = sfs.get('model', emb.get('model', 'BAAI/bge-m3'))
+        # 阿里云向量维度（可配置，默认 1024）
+        self.embedding_dimension = int(emb.get('dimension', 1024))
         # 默认检索条数（每条消息 searching 提取 keys 后检索）
         self.store_top_k = int(st.get('top_k', 5))
         # 关键词（知道/了解）触发时检索条数

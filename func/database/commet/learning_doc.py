@@ -10,7 +10,7 @@ from func.tools.singleton_mode import singleton
 from func.database.commet.parser import CatLearnParser
 from func.database.commet.chunker import CatLearnChunker
 from func.database.commet.classifier import CatLearnClassifier
-from func.database.store.port.bge import CatLearnEmbedding
+from func.database.store.port import get_embedding
 from func.database.store.vector_db import CatLearnVectorDB
 
 
@@ -28,7 +28,7 @@ class CatLearnDocLearning:
         self.parser = CatLearnParser()
         self.chunker = CatLearnChunker()
         self.classifier = CatLearnClassifier()
-        self.embedding = CatLearnEmbedding()
+        self.embedding = get_embedding()
         self.vdb = CatLearnVectorDB()
 
     @property

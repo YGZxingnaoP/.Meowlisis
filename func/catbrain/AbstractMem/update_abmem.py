@@ -30,11 +30,17 @@ class MeowUpdateAbstractMemory:
         self.summary_tool = MeowSummaryTool()
         self.tag_store = MeowTagStore()
         self.llm = None
-        self.meow_path = os.path.join("character", "abstract_memory", "meow.json")
+        self.meow_path = self._current_meow_path()
         self._lock = threading.Lock()
         self._loader = MeowLoadAbstractMemory()
         # 哲思话题触发价值观更新的冷却控制
         self._last_philosophy_trigger = 0.0
+
+    @staticmethod
+    def _current_meow_path() -> str:
+        """按当前月份生成摘要文件路径（meow-YYMM.json）"""
+        yymm = datetime.datetime.now().strftime("%y%m")
+        return os.path.join("character", "abstract_memory", f"meow-{yymm}.json")
 
     def _ensure_llm(self):
         """懒加载摘要独立 LLM 客户端"""
@@ -197,8 +203,9 @@ class MeowUpdateAbstractMemory:
         return None
 
     def _append(self, result: Dict):
-        """将摘要结果追加写入 meow.json（加锁防止并发写丢数据）"""
-        os.makedirs(os.path.dirname(self.meow_path), exist_ok=True)
+        """将摘要结果追加写入当前月份文件 meow-YYMM.json（加锁防止并发写丢数据）"""
+        meow_path = self._current_meow_path()
+        os.makedirs(os.path.dirname(meow_path), exist_ok=True)
         with self._lock:
             data = self._loader.load()
             record = {
@@ -207,7 +214,7 @@ class MeowUpdateAbstractMemory:
             }
             data.append(record)
             try:
-                with open(self.meow_path, "w", encoding="utf-8") as f:
+                with open(meow_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, ensure_ascii=False, indent=2)
             except Exception:
-                self.log.exception("写入 meow.json 失败")
+                self.log.exception("写入摘要文件失败")

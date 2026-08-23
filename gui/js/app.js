@@ -83,6 +83,7 @@ const App = {
 
         // 数据库子球
         if (id === 'db_source') { this.openDatabaseSourcePanel(); return; }
+        if (id === 'db_prefill') { this.openDbPrefillPanel(); return; }
         const databaseSubMap = {
             'db_search': { title: '搜索学习', fn: () => Config.db_search() },
             'db_store': { title: '知识存储与检索', fn: () => Config.db_store() }
@@ -325,7 +326,8 @@ const App = {
             'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() },
             'weather': { title: '天气查询设置', fn: () => Config.weather() },
             'news': { title: '新闻查询设置', fn: () => Config.news() },
-            'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() }
+            'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
+            'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() }
         };
         const panel = map[id];
         if (!panel) {
@@ -490,6 +492,140 @@ const App = {
             }
         });
         setTimeout(() => this.bindSourceSiteEvents(), 10);
+    },
+
+    // ============ 知识库一键预填 ============
+    async openDbPrefillPanel() {
+        let data = {};
+        try {
+            data = await API.getDbPrefillConfig() || {};
+        } catch (e) {
+            console.warn('加载预填配置失败:', e);
+        }
+        const html = Config.db_prefill(data);
+        Modal.show('知识库预填充', html, null);
+        setTimeout(() => this.bindDbPrefillEvents(), 10);
+    },
+
+    bindDbPrefillEvents() {
+        const startBtn = document.getElementById('dbPrefillStartBtn');
+        const statusEl = document.getElementById('dbPrefillStatus');
+        if (!startBtn || !statusEl) return;
+
+        // 绑定每个站点的词条 tag 编辑器
+        document.querySelectorAll('[data-keyword-editor]').forEach(editor => {
+            this._bindKeywordEditor(editor);
+        });
+
+        startBtn.addEventListener('click', async () => {
+            const sites = [];
+            const keywords = {};
+            document.querySelectorAll('.db-prefill-site:checked').forEach(cb => {
+                sites.push(cb.dataset.site);
+            });
+            document.querySelectorAll('[data-keyword-editor]').forEach(editor => {
+                const site = editor.dataset.keywordEditor;
+                if (!sites.includes(site)) return;
+                const words = [];
+                editor.querySelectorAll('.split-tag').forEach(t => {
+                    const k = t.dataset.keyword;
+                    if (k) words.push(k);
+                });
+                if (words.length) keywords[site] = words;
+            });
+
+            if (!sites.length || !Object.keys(keywords).length) {
+                this.showToast('请至少选择一个站点并添加词条', true);
+                return;
+            }
+
+            const reset = document.getElementById('dbPrefillReset').checked;
+
+            // 1. 保存词条配置到 gui/tools/prefill_seed.json（独立于 config.yml）
+            try {
+                const cfg = await API.getDbPrefillConfig() || {};
+                cfg.sites = cfg.sites || {};
+                sites.forEach(site => {
+                    const label = (cfg.sites[site] && cfg.sites[site].label) || site;
+                    cfg.sites[site] = { label, keywords: keywords[site] || [] };
+                });
+                await API.saveDbPrefillConfig(cfg);
+            } catch (e) {
+                this.showToast('保存预填配置失败: ' + e.message, true);
+            }
+
+            startBtn.disabled = true;
+            statusEl.textContent = '预填充中，请稍候...';
+            try {
+                const r = await API.startDbPrefill({ sites, keywords, reset });
+                if (!r.ok) {
+                    statusEl.textContent = r.message || '启动失败';
+                    startBtn.disabled = false;
+                    return;
+                }
+                this.pollDbPrefillStatus(startBtn, statusEl);
+            } catch (e) {
+                statusEl.textContent = '启动失败: ' + e.message;
+                startBtn.disabled = false;
+            }
+        });
+    },
+
+    _bindKeywordEditor(editor) {
+        const tagsEl = editor.querySelector('.split-tags');
+        const addInput = editor.querySelector('.split-add-input');
+        if (!tagsEl || !addInput) return;
+
+        const add = () => {
+            const k = addInput.value.trim();
+            if (!k) return;
+            const exists = Array.from(tagsEl.querySelectorAll('.split-tag'))
+                .some(t => t.dataset.keyword === k);
+            if (exists) {
+                addInput.value = '';
+                return;
+            }
+            const tag = document.createElement('span');
+            tag.className = 'split-tag';
+            tag.dataset.keyword = k;
+            tag.innerHTML = `${this._esc(k)}<button type="button" class="split-tag-remove">&times;</button>`;
+            tagsEl.appendChild(tag);
+            addInput.value = '';
+        };
+        addInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); add(); }
+        });
+        tagsEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('.split-tag-remove');
+            if (btn) btn.closest('.split-tag').remove();
+        });
+    },
+
+    pollDbPrefillStatus(startBtn, statusEl) {
+        const timer = setInterval(async () => {
+            try {
+                const s = await API.getDbPrefillStatus();
+                if (s.done) {
+                    clearInterval(timer);
+                    startBtn.disabled = false;
+                    statusEl.textContent = s.error
+                        ? ('预填充失败: ' + s.error)
+                        : ('预填充完成，共入库 ' + s.result + ' 条');
+                    return;
+                }
+                if (!s.running) {
+                    clearInterval(timer);
+                    startBtn.disabled = false;
+                    statusEl.textContent = '任务已停止';
+                    return;
+                }
+                statusEl.textContent = '预填充中，请稍候...';
+            } catch (e) {
+                clearInterval(timer);
+                startBtn.disabled = false;
+                statusEl.textContent = '查询状态失败: ' + e.message;
+            }
+        }, 2000);
     },
 
     bindSourceSiteEvents() {

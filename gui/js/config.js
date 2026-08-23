@@ -126,6 +126,15 @@ const Config = {
             .replace(/>/g, '&gt;');
     },
 
+    _escAttr(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
     // ============ 基本设置（根级 + app） ============
     basic() {
         return this._section('基础信息') +
@@ -329,6 +338,8 @@ const Config = {
             this._section('回复丰富性算法 (narration)') +
             this._check('启用清洗算法', 'llm.narration.enabled', true,
                 '关闭后不做水词清洗，也不更新平滑得分') +
+            this._check('分数记录', 'llm.narration.score_log_enabled', false,
+                '开启后把每次对话的原始/平滑得分按启动时间分组写入 character/memory/llm_response_score.json') +
             this._section('平滑得分（EWMA）') +
             this._num('初始得分 S0', 'llm.narration.initial_score', 70, 0, 100, 1) +
             this._num('下降惯性系数 λ_down', 'llm.narration.lambda_down', 0.75, 0, 1, 0.05,
@@ -884,6 +895,15 @@ const Config = {
                 '每次爬取并概括的新闻条数（默认 3，最多 10）');
     },
 
+    // ============ 新建待办提醒 (add_backlog) ============
+    addBacklog() {
+        return this._section('新建待办（触发型工具）') +
+            this._check('启用新建待办', 'add_backlog.enabled', true,
+                'AI 根据用户「记一下 / 提醒我几点做什么」触发，深度思考后写入 character/backlog（受 toolcalls 控制）') +
+            this._check('QQ 对接', 'add_backlog.qq_enabled', true,
+                '开启后 QQ 私聊 / 群聊@ 也可触发新建待办，且待办 qq 提醒强制开启');
+    },
+
     // ============ 数据库（database）子球 ============
     db_search() {
         const type = this._val('database.search.llm_type', 'deepseek');
@@ -907,7 +927,12 @@ const Config = {
             this._text('模型', 'database.search.aliyun.model', 'qwen-plus') +
             this._num('max_tokens', 'database.search.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += this._section('聊天记录滚动') +
+        h += this._section('搜索 Agent') +
+            this._num('工具循环最大轮数', 'database.search.agent.max_rounds', 5, 1, 50, 1,
+                '单任务 AI 调用工具的最大轮数，达到后强制结束') +
+            this._num('visit_url 正文截断长度', 'database.search.agent.visit_max_chars', 8000, 500, 50000, 500,
+                'visit_url 单次回传给 AI 的正文字符数上限') +
+            this._section('聊天记录滚动') +
             this._num('滚动触发条数', 'database.record.max_messages', 50, 1, 1000, 1,
                 '累计多少条 user 消息滚动一轮（触发核心搜索决策）') +
             this._num('保留轮数', 'database.record.rounds', 2, 1, 10, 1,
@@ -916,11 +941,37 @@ const Config = {
     },
 
     db_store() {
+        const provider = this._val('database.store.embedding.provider', 'siliconflow');
         let h = this._section('知识存储与检索 (database.store)') +
-            this._password('硅基流动 API Key', 'database.store.embedding.api_key', '') +
-            this._text('Embedding Base URL', 'database.store.embedding.base_url', 'https://api.siliconflow.cn/v1') +
-            this._text('Embedding 模型', 'database.store.embedding.model', 'BAAI/bge-m3',
-                '统一文本向量模型 bge-m3（图片内容已排除）') +
+            `<div class="form-group"><label>向量平台</label>
+            <select data-path="database.store.embedding.provider">
+                <option value="aliyun" ${provider === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>硅基流动</option>
+            </select>
+            <div class="help-text">选择文本向量化（embedding）平台，两个平台独立配置 API Key</div></div>`;
+
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="embed_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="embed_sf">硅基流动</button>
+        </div>`;
+
+        h += `<div class="tab-content active" data-tab-content="embed_aliyun">` +
+            this._password('API Key', 'database.store.embedding.aliyun.api_key', '') +
+            this._text('Base URL', 'database.store.embedding.aliyun.base_url', 'https://dashscope.aliyuncs.com/api/v1') +
+            this._text('模型', 'database.store.embedding.aliyun.model', 'qwen3.7-text-embedding') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="embed_sf">` +
+            this._password('API Key', 'database.store.embedding.siliconflow.api_key', '') +
+            this._text('Base URL', 'database.store.embedding.siliconflow.base_url', 'https://api.siliconflow.cn/v1') +
+            this._text('模型', 'database.store.embedding.siliconflow.model', 'BAAI/bge-m3') +
+            `</div>`;
+
+        h += this._select('向量维度', 'database.store.embedding.dimension', [
+            {value:'2560',label:'2560'},{value:'2048',label:'2048'},{value:'1536',label:'1536'},
+            {value:'1024',label:'1024'},{value:'768',label:'768'},{value:'512',label:'512'},
+            {value:'256',label:'256'}
+        ], '1024', '仅阿里云 qwen3.7-text-embedding 支持指定维度；改维度后需重新预填充') +
             this._num('默认检索条数', 'database.store.top_k', 5, 1, 50, 1,
                 '每条消息提取 keys 后检索的知识库条数') +
             this._num('关键词触发检索条数', 'database.store.keyword_top_k', 15, 1, 50, 1,
@@ -928,6 +979,52 @@ const Config = {
             this._text('向量库目录', 'database.store.db_dir', '.DataBase',
                 'ChromaDB 持久化目录（项目根目录）');
         return h;
+    },
+
+    // ============ 数据库预填充（一键预填）子球 ============
+    db_prefill(data) {
+        const sites = (data && data.sites) || {};
+        const siteKeys = Object.keys(sites);
+        if (!siteKeys.length) {
+            return this._section('知识库预填充') +
+                `<div class="help-text">未读取到预填充配置（gui/tools/prefill_seed.json），请检查文件是否存在。</div>`;
+        }
+        let h = this._section('知识库预填充') +
+            `<div class="help-text">选择数据来源站点并添加搜索词条（回车添加、点击 × 删除），点击「一键预填」后将模拟现有 search 模块：搜索 → 抓详情页正文 → 分块 → 向量化 → 入库。源文件归档到 .DataBase/raw_seed。</div>`;
+
+        siteKeys.forEach(site => {
+            const cfg = sites[site] || {};
+            const label = cfg.label || site;
+            const keywords = cfg.keywords || [];
+            h += `<div class="char-card">
+                <div class="checkbox-group"><input type="checkbox" class="db-prefill-site" data-site="${this._escAttr(site)}" checked><label>${this._esc(label)}（${this._esc(site)}）</label></div>
+                ${this._keywordTagEditor(site, keywords)}
+            </div>`;
+        });
+
+        h += `<div class="checkbox-group"><input type="checkbox" id="dbPrefillReset" checked><label>清空已有预填数据后再写入</label></div>
+            <div class="speaker-actions">
+                <button type="button" class="btn btn-primary" id="dbPrefillStartBtn">一键预填</button>
+            </div>
+            <div id="dbPrefillStatus" class="help-text" style="margin-top:8px;"></div>`;
+        return h;
+    },
+
+    // 词条 tag 编辑器（借鉴 LLM 分隔符编辑器：每个词条单独一个 tag）
+    _keywordTagEditor(site, keywords) {
+        const list = (keywords || []).filter(k => k != null && String(k).trim());
+        const tags = list.map(k =>
+            `<span class="split-tag" data-keyword="${this._escAttr(k)}">${this._esc(k)}<button type="button" class="split-tag-remove">&times;</button></span>`
+        ).join('');
+        return `<div class="form-group"><label>搜索词条</label>
+            <div class="split-flag-editor" data-keyword-editor="${this._escAttr(site)}">
+                <div class="split-tags">${tags}</div>
+                <div class="split-add-row">
+                    <input type="text" class="split-add-input" placeholder="输入词条后回车添加">
+                </div>
+            </div>
+            <div class="help-text">每个词条单独一条，回车添加，点击 × 删除</div>
+        </div>`;
     },
 
     // ============ 数据库来源（sites）子球 ============

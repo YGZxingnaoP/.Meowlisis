@@ -30,9 +30,9 @@ class TBExcuse:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBoxConfig()
-        self._queue = queue.Queue()
+        # 按 username 隔离等待队列，避免多用户语音追问串线
+        self._queues = {}
         self._lock = threading.Lock()
-        self._waiting = False
 
     # ==================== 主入口 ====================
     def ask(self, question: str, username: str = "", timeout: float = None) -> Optional[str]:
@@ -52,14 +52,18 @@ class TBExcuse:
             return None
 
         # 阻塞等待文本输入（sensevoice_llm 或 api 直接文本，经 route_text 送达）
-        self._set_waiting(True)
+        key = username or "default"
+        q = queue.Queue()
+        with self._lock:
+            self._queues[key] = q
         try:
-            reply = self._queue.get(timeout=timeout)
+            reply = q.get(timeout=timeout)
         except queue.Empty:
             self.log.warning("[Excuse] 等待用户回复超时")
             reply = None
         finally:
-            self._set_waiting(False)
+            with self._lock:
+                self._queues.pop(key, None)
 
         if reply:
             self._save_memory("user", str(reply))
@@ -67,15 +71,18 @@ class TBExcuse:
 
     # ==================== 文本拦截入口 ====================
     def route_text(self, text: str, username: str = "") -> bool:
-        """文本输入统一拦截：若正在等待询问回复，则消费该文本并返回 True（已处理）。
+        """文本输入统一拦截：若该用户正在等待询问回复，则消费该文本并返回 True（已处理）。
         接入方式：
         - api.py 的 sensevoice 回调、/msg、/chat 端点先调用本方法；
         - 返回 True 则不再走后续 LLM 处理链。
         """
-        if not self._waiting:
+        key = username or "default"
+        with self._lock:
+            q = self._queues.get(key)
+        if q is None:
             return False
         if text and text.strip():
-            self._queue.put(text.strip())
+            q.put(text.strip())
             return True
         return False
 
@@ -83,14 +90,13 @@ class TBExcuse:
     def route_sensevoice(self, text: str, username: str = "") -> bool:
         return self.route_text(text, username)
 
-    def is_waiting(self) -> bool:
-        return self._waiting
+    def is_waiting(self, username: str = "") -> bool:
+        """判断指定用户（缺省 default）是否正在等待询问回复"""
+        key = username or "default"
+        with self._lock:
+            return key in self._queues
 
     # ==================== 内部 ====================
-    def _set_waiting(self, value: bool):
-        with self._lock:
-            self._waiting = value
-
     def _save_memory(self, role: str, content: str):
         """保存询问/确认到 public_short_memory，type=toolbox_excuse（user/assistant 成对）"""
         try:

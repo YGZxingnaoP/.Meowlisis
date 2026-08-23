@@ -35,7 +35,8 @@ const Orbit = {
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' },
         { id: 'weather', label: '天气', tooltip: '天气查询配置' },
         { id: 'news', label: '新闻', tooltip: '新闻查询配置' },
-        { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' }
+        { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' },
+        { id: 'add_backlog', label: '提醒', tooltip: '新建待办触发工具配置' }
     ],
 
     rotation: 0,
@@ -472,17 +473,19 @@ const Orbit = {
         this.catbrainSubEls.forEach(el => this._applyCatbrainSub(el, this.catbrainOpen));
     },
 
-    // 数据库子球（搜索/知识/来源）
+    // 数据库子球（搜索/知识/来源/预填）
     createDatabaseSubs(parent) {
         const subs = [
             { id: 'db_search', label: '搜索', tooltip: '搜索学习配置' },
             { id: 'db_store', label: '知识', tooltip: '存储及检索配置' },
-            { id: 'db_source', label: '来源', tooltip: '网页数据来源配置' }
+            { id: 'db_source', label: '来源', tooltip: '网页数据来源配置' },
+            { id: 'db_prefill', label: '预填', tooltip: '一键预填充知识库' }
         ];
-        // 目标偏移：3 个子球沿数据库球右侧弧线排列（右上/右中/右下）
+        // 目标偏移：4 个子球沿数据库球右侧弧线排列（右上/右中上/右中下/右下）
         const offsets = [
             { x: 82, y: -82 },
-            { x: 115, y: 0 },
+            { x: 115, y: -27 },
+            { x: 115, y: 27 },
             { x: 82, y: 82 }
         ];
         this.databaseSubEls = [];

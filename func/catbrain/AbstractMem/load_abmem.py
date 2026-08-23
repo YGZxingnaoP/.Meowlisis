@@ -24,7 +24,7 @@ class MeowLoadAbstractMemory:
         self.jieba_tool = MeowJiebaSegmentTool()
         self.summary_tool = MeowSummaryTool()
         self.short_memory = ShortMemory()
-        self.meow_path = os.path.join("character", "abstract_memory", "meow.json")
+        self.meow_dir = os.path.join("character", "abstract_memory")
         # 当前话题落盘路径（供主动回复模块读取）
         self.topic_path = os.path.join(".temp", "current_topic.json")
         self._saved_topic = None
@@ -45,16 +45,25 @@ class MeowLoadAbstractMemory:
         return self._llm
 
     def load(self) -> List[Dict]:
-        """读取 meow.json 全部摘要记忆（缺失或损坏时返回空列表）"""
-        if not os.path.exists(self.meow_path):
-            return []
+        """读取所有 meow-*.json 摘要记忆并合并（缺失或损坏时跳过）"""
+        result = []
+        if not os.path.isdir(self.meow_dir):
+            return result
         try:
-            with open(self.meow_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, list) else []
+            for fname in sorted(os.listdir(self.meow_dir)):
+                if not (fname.startswith("meow-") and fname.endswith(".json")):
+                    continue
+                path = os.path.join(self.meow_dir, fname)
+                try:
+                    with open(path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if isinstance(data, list):
+                        result.extend(data)
+                except Exception:
+                    self.log.exception(f"读取 {fname} 失败")
         except Exception:
-            self.log.exception("读取 meow.json 失败")
-            return []
+            self.log.exception("读取摘要目录失败")
+        return result
 
     def _current_topic(self, data: List[Dict]) -> str:
         """当前话题：优先用缓存，过期后用短期记忆决策，失败回退到最新摘要"""
