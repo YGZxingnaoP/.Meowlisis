@@ -217,11 +217,15 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
-    def get_active_prompt(self, cold_time, current_message: str = "") -> str:
-        """主动回复提示词：前置词(行为约束) + body + 后置词(人设+空闲提示)"""
+    def get_active_prompt(self, cold_time, current_message: str = "",
+                          topic_override: str = "") -> str:
+        """主动回复提示词：前置词(行为约束) + body + 后置词(人设+空闲提示)
+
+        topic_override：外部指定话题（如视频话题），透传给 body 的记忆摘要筛选。
+        """
         body = ""
         if self._builder:
-            body = self._builder.build_active(cold_time, current_message)
+            body = self._builder.build_active(cold_time, current_message, topic_override)
         front = self.get_active_front_prompt()
         post = self.get_post_prompt()
         if post:

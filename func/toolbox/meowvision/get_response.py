@@ -2,6 +2,7 @@
 # func/toolbox/meowvision/get_response.py
 # MeowVision 响应层：获取视觉模型回复（图片描述 + 角色回复），并做正则优化
 
+import json
 import re
 from typing import List, Dict, Optional
 
@@ -12,11 +13,15 @@ from func.toolbox.meowvision.sender import TBVisionSender
 
 class TBVisionGetResponse:
     """获取视觉模型回复：发送图片与消息，返回 {description, reply}。
-
-    - description：图片基本描述（50~80字纯文本），仅用于记忆，不参与 TTS / 发送。
+    - description：图片基本描述（30~50字纯文本），仅用于记忆，不参与 TTS / 发送。
     - reply：以角色身份对图片的正式回复，用于 TTS / 发送 / 记忆。
     - need_description=False（角色自己截图）时，不要求输出描述，description 恒为空串。
+
+    优先通过 function calling（tool_calls）解析结构化输出；
+    若模型未调用工具，则回退到 content 的【图片描述】/【回复】标记解析。
     """
+
+    TOOL_NAME = "reply_image"
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -30,13 +35,70 @@ class TBVisionGetResponse:
         system_prompt = self.get_prompt.get_system_prompt(
             username, user_message, need_description=need_description
         )
-        raw = self.sender.send(images, user_message, system_prompt, history_messages)
-        return self._split(raw, need_description)
+        tools = self.build_tools(need_description)
+        resp = self.sender.send(
+            images, user_message, system_prompt, history_messages, tools=tools
+        )
+        return self._parse(resp, need_description)
+
+    # ==================== 工具定义 ====================
+    def build_tools(self, need_description: bool = True) -> List[dict]:
+        """构建视觉回复工具 schema：reply 必填，need_description 时额外要求 description"""
+        properties = {
+            "reply": {
+                "type": "string",
+                "description": "以角色身份自然、口语化、简短地回复用户，控制在30字以内",
+            }
+        }
+        required = ["reply"]
+        if need_description:
+            properties["description"] = {
+                "type": "string",
+                "description": "图片内容描述，30~50字纯文本，不用markdown，不换行",
+            }
+            required = ["description", "reply"]
+        return [{
+            "type": "function",
+            "function": {
+                "name": self.TOOL_NAME,
+                "description": "以角色身份回复看到的图片内容",
+                "parameters": {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                },
+            },
+        }]
 
     # ==================== 解析 ====================
     @classmethod
+    def _parse(cls, resp, need_description: bool) -> Dict[str, str]:
+        """优先解析 tool_calls，未调用工具则回退解析 content 标记"""
+        if resp and getattr(resp, "choices", None):
+            msg = resp.choices[0].message
+            # 1. 优先解析 tool_calls
+            for tc in (msg.tool_calls or []):
+                if tc.function.name != cls.TOOL_NAME:
+                    continue
+                try:
+                    args = json.loads(tc.function.arguments or "{}")
+                    desc = str(args.get("description", "") or "").strip()
+                    reply = str(args.get("reply", "") or "").strip()
+                    return {
+                        "description": cls._normalize_desc(desc),
+                        "reply": cls.clean(reply),
+                    }
+                except Exception:
+                    DefaultLog().getLogger().exception("解析视觉工具参数失败")
+                    break
+            # 2. 回退：解析 content
+            content = getattr(msg, "content", "") or ""
+            return cls._split(content, need_description)
+        return {"description": "", "reply": ""}
+
+    @classmethod
     def _split(cls, raw, need_description: bool) -> Dict[str, str]:
-        """把模型输出拆成 description 与 reply（严格按【图片描述】/【回复】标记）"""
+        """把模型 content 拆成 description 与 reply（严格按【图片描述】/【回复】标记）"""
         if not raw:
             return {"description": "", "reply": ""}
         text = str(raw)

@@ -184,10 +184,18 @@ class TBWatchingLoop:
 
         history = self.short_memory.load()
         user_msg = "看看现在屏幕上的画面，以你的角色身份自然评价、吐槽或赞扬一下"
-        raw = self.sender.send([img_path], user_msg, system_prompt, history)
-        if not raw:
+        resp = self.sender.send([img_path], user_msg, system_prompt, history)
+        if not resp:
             return ""
-        reply = TBVisionGetResponse.clean(raw)
+        # 非流式：从响应对象取 content（watching 场景不带 tools，模型直接输出文字）
+        content = ""
+        try:
+            if getattr(resp, "choices", None):
+                content = resp.choices[0].message.content or ""
+        except Exception:
+            self.log.exception("[Watching] 解析视觉响应失败")
+            return ""
+        reply = TBVisionGetResponse.clean(content)
         return (reply or "").strip()
 
     # ==================== 记忆 / TTS / 结束 ====================

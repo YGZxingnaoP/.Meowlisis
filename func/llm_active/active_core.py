@@ -34,6 +34,13 @@ class AutoActiveCore:
             on_ai_reply=self._on_ai_reply,
         )
 
+        # 启动 B站内容收集后台线程（origin 视频素材池，缓存满自动停补）
+        try:
+            from func.llm_active.origin.web_browse.browse_core import AutoBrowseCore
+            AutoBrowseCore().start()
+        except Exception:
+            self.log.exception("启动 B站内容收集线程失败")
+
     def _create_llm(self):
         """根据 llm 后端类型创建主动回复 LLM 客户端"""
         if self.config.llm_type == "aliyun":

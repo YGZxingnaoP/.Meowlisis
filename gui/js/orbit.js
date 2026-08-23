@@ -9,7 +9,9 @@ const Orbit = {
         { id: 'main', label: '主程序', tooltip: '启动主程序', endpoint: 'http://127.0.0.1:1800' },
         { id: 'sovits', label: 'SoVITS', tooltip: '启动 SoVITS 服务', endpoint: 'http://127.0.0.1:9880' },
         { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' },
-        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat 快速启动', endpoint: 'ws://127.0.0.1:3001' }
+        { id: 'napcat', label: 'NapCat', tooltip: 'NapCat 快速启动', endpoint: 'ws://127.0.0.1:3001' },
+        { id: 'netease', label: '网易云', tooltip: '启动网易云搜歌服务', endpoint: 'http://127.0.0.1:5000' },
+        { id: 'rvc', label: 'RVC', tooltip: '启动 RVC 翻唱服务', endpoint: 'http://127.0.0.1:7865' }
     ],
 
     // 外层配置节点（与 config.yml 节点对应）
@@ -55,6 +57,9 @@ const Orbit = {
     llmSubEls: [],
     llmOpen: false,
     llmEl: null,
+    activeSubEls: [],
+    activeOpen: false,
+    activeEl: null,
     dragging: false,
     suppressClick: false,
     toolboxRotation: 0,
@@ -401,6 +406,15 @@ const Orbit = {
                 if (this.suppressClick) return;
                 this.toggleLlmSubs();
             });
+        } else if (p.id === 'active') {
+            // 主动回复球：点击分裂出 2 个子球（配置/浏览）
+            this.activeEl = el;
+            this.createActiveSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleActiveSubs();
+            });
         } else {
             el.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -643,6 +657,60 @@ const Orbit = {
             this.llmEl.classList.toggle('active', this.llmOpen);
         }
         this.llmSubEls.forEach(el => this._applyLlmSub(el, this.llmOpen));
+    },
+
+    // 主动回复子球（配置/浏览）
+    createActiveSubs(parent) {
+        const subs = [
+            { id: 'active_config', label: '配置', tooltip: '主动回复与B站浏览配置' },
+            { id: 'active_browse', label: '浏览', tooltip: 'B站内容缓存与收藏' }
+        ];
+        const offsets = [
+            { x: 82, y: -58 },
+            { x: 82, y: 58 }
+        ];
+        this.activeSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyActiveSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.activeSubEls.push(el);
+        });
+    },
+
+    _applyActiveSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleActiveSubs() {
+        this.activeOpen = !this.activeOpen;
+        if (this.activeEl) {
+            this.activeEl.classList.toggle('active', this.activeOpen);
+        }
+        this.activeSubEls.forEach(el => this._applyActiveSub(el, this.activeOpen));
     },
 
 

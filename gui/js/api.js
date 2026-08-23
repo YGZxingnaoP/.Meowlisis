@@ -60,6 +60,18 @@ const API = {
         return res.json();
     },
 
+    async startNetease() {
+        const res = await fetch('/api/start_netease', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start Netease');
+        return res.json();
+    },
+
+    async startRvc() {
+        const res = await fetch('/api/start_rvc', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start RVC');
+        return res.json();
+    },
+
     async getCharacterCard(file) {
         const res = await fetch('/api/character_card?file=' + encodeURIComponent(file || 'prompt'));
         if (!res.ok) throw new Error('Failed to load character card');
@@ -252,6 +264,24 @@ const API = {
             body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error('Failed to save backlog');
+        return res.json();
+    },
+
+    async getWebBrowseStatus() {
+        const res = await fetch('/api/web_browse/status');
+        if (!res.ok) return { enabled: false, interval: 600, max_cache: 5, cache_count: 0, is_full: false };
+        return res.json();
+    },
+
+    async getWebBrowseCache() {
+        const res = await fetch('/api/web_browse/cache');
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async getWebBrowseCollected() {
+        const res = await fetch('/api/web_browse/collected');
+        if (!res.ok) return [];
         return res.json();
     },
 

@@ -11,6 +11,7 @@ class AutoGetPrompt:
     def __init__(self):
         self.bridge = SystemPromptBridge()
 
-    def get_active_prompt(self, cold_time, current_message: str = "") -> str:
+    def get_active_prompt(self, cold_time, current_message: str = "",
+                          topic_override: str = "") -> str:
         """获取主动回复系统提示词：前置词追加空闲提示 + 角色主体（含空闲占位）"""
-        return self.bridge.get_active_prompt(cold_time, current_message)
+        return self.bridge.get_active_prompt(cold_time, current_message, topic_override)

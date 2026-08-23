@@ -101,14 +101,17 @@ class MeowPromptBuilder:
         ]
         return "\n\n".join([p for p in parts if p])
 
-    def build_active(self, cold_time, current_message: str = "") -> str:
-        """构建主动回复系统提示词（顺序：角色卡→价值观→空闲占位→日期→记忆摘要，不含用户档案）"""
+    def build_active(self, cold_time, current_message: str = "", topic_override: str = "") -> str:
+        """构建主动回复系统提示词（顺序：角色卡→价值观→空闲占位→日期→记忆摘要，不含用户档案）
+
+        topic_override：外部指定话题（如视频话题），透传给 abmem 用于记忆摘要筛选。
+        """
         parts = [
             self.character_prompt.build(),  # 角色卡（已含当前情绪）
             self.values.build(),
             f"# 现在已经{cold_time}秒没人跟你说话了",
             self.calendar.build_no_user(),  # 日期块（仅节日/节气，不获取 username）
-            self.abmem.build_prompt(current_message, None),
+            self.abmem.build_prompt(current_message, None, topic_override=topic_override),
         ]
         return "\n\n".join([p for p in parts if p])
 

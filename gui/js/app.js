@@ -36,7 +36,9 @@ const App = {
             sensevoice: { fn: () => API.startSensevoice(), name: 'SenseVoice' },
             sovits: { fn: () => API.startSovits(), name: 'SoVITS' },
             main: { fn: () => API.startMain(), name: '主程序' },
-            napcat: { fn: () => API.startNapcat(), name: 'NapCat' }
+            napcat: { fn: () => API.startNapcat(), name: 'NapCat' },
+            netease: { fn: () => API.startNetease(), name: '网易云' },
+            rvc: { fn: () => API.startRvc(), name: 'RVC' }
         };
         const item = map[id];
         if (!item) return;
@@ -68,6 +70,10 @@ const App = {
         if (id === 'tts_model') { await this.openTtsModelPanel(); return; }
         if (id === 'tts_params') { await this.openTtsParamsPanel(); return; }
         if (id === 'tts_config') { await this.openTtsConfigPanel(); return; }
+
+        // 主动回复子球（配置/浏览）
+        if (id === 'active_config') { await this.openActiveConfigPanel(); return; }
+        if (id === 'active_browse') { await this.openActiveBrowsePanel(); return; }
 
         // CatBrain 子球
         const catbrainSubMap = {
@@ -104,6 +110,80 @@ const App = {
             return;
         }
         this._openConfigPanel(panel.title, panel.fn);
+    },
+
+    // ============ 主动回复子球：配置 ============
+    async openActiveConfigPanel() {
+        const html = Config.llm_active();
+        Modal.show('主动回复配置', html, async () => {
+            try {
+                const updates = Config.collectValues();
+                Config.applyUpdates(updates, this.config);
+                await API.saveConfig(this.config);
+                this.showToast('主动回复配置已保存');
+            } catch (e) {
+                this.showToast('保存失败: ' + e.message, true);
+            }
+        });
+        setTimeout(() => {
+            this.bindTabs();
+            this.bindSplitFlagEditor();
+            this.bindDictEditors();
+            this.bindSessdataVerify();
+            this.bindBiliLogin();
+        }, 10);
+    },
+
+    // ============ 主动回复子球：浏览 ============
+    async openActiveBrowsePanel() {
+        let cache = [];
+        let collected = [];
+        try {
+            [cache, collected] = await Promise.all([
+                API.getWebBrowseCache(),
+                API.getWebBrowseCollected()
+            ]);
+        } catch (e) {
+            console.warn('加载浏览数据失败:', e);
+        }
+        const html = Config.webBrowsePanel({}, cache, collected);
+        Modal.show('B站内容浏览', html, async () => {
+            try {
+                const updates = Config.collectValues();
+                Config.applyUpdates(updates, this.config);
+                await API.saveConfig(this.config);
+                this.showToast('B站浏览配置已保存');
+            } catch (e) {
+                this.showToast('保存失败: ' + e.message, true);
+            }
+        });
+        setTimeout(() => {
+            this.bindBiliLogin();
+            this.bindWebBrowseRefresh();
+        }, 10);
+    },
+
+    bindWebBrowseRefresh() {
+        const btn = document.querySelector('.webbrowse-refresh-btn');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+                const [cache, collected] = await Promise.all([
+                    API.getWebBrowseCache(),
+                    API.getWebBrowseCollected()
+                ]);
+                const cacheEl = document.getElementById('webBrowseCacheList');
+                const collectedEl = document.getElementById('webBrowseCollectedList');
+                if (cacheEl) cacheEl.innerHTML = Config._videoList(cache, false);
+                if (collectedEl) collectedEl.innerHTML = Config._videoList(collected, true);
+                this.showToast('列表已刷新');
+            } catch (e) {
+                this.showToast('刷新失败: ' + e.message, true);
+            } finally {
+                btn.disabled = false;
+            }
+        });
     },
 
     // ============ Toolbox 子视图 ============

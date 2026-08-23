@@ -55,3 +55,20 @@ character/info/
 
 #DataBase数据
 .DataBase/
+
+#内置NeteaseMusic（仅忽略隐私与运行时缓存，MusicLibrary 的 DLL 保留入库）
+.NeteaseMusic/server/ncm_cookie.json
+.NeteaseMusic/server/songs_cache/
+.NeteaseMusic/MusicLibrary/lib/
+
+#内置RVC（模型权重与索引不入库，代码与目录结构保留）
+.RVC/assets/weights/*.pth
+.RVC/assets/indices/*.index
+.RVC/assets/rmvpe/*.pt
+.RVC/assets/rmvpe/*.onnx
+.RVC/assets/pretrained/*.pth
+.RVC/assets/pretrained_v2/*.pth
+.RVC/assets/pymss_weights/*.ckpt
+.RVC/assets/uvr5_weights/*.pth
+.RVC/assets/uvr5_weights/*.ckpt
+.RVC/assets/uvr5_weights/onnx_dereverb_By_FoxJoy/

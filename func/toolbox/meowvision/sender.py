@@ -29,10 +29,12 @@ class TBVisionSender:
         self.llm = TBVisionAliyunLLM(self.config)
 
     def send(self, images: List[str], user_message: str = "",
-             system_prompt: str = "", history_messages: Optional[List[dict]] = None) -> Optional[str]:
-        """发送图片与文本给视觉模型，返回模型回复（content），失败返回 None
+             system_prompt: str = "", history_messages: Optional[List[dict]] = None,
+             tools: Optional[List[dict]] = None, tool_choice=None):
+        """发送图片与文本给视觉模型，返回完整响应对象（含 content 与 tool_calls），失败返回 None
 
         - history_messages：短期记忆上下文（[{role, content}]），插入到最终图片消息之前。
+        - tools / tool_choice：透传给视觉模型，支持 function calling。
         """
         if not images:
             self.log.warning("MeowVision 发送失败：无图片")
@@ -61,7 +63,7 @@ class TBVisionSender:
         content.append({"type": "text", "text": (user_message or "请看看这张图片")})
         messages.append({"role": "user", "content": content})
 
-        return self.llm.chat(messages)
+        return self.llm.chat(messages, tools=tools, tool_choice=tool_choice)
 
     @classmethod
     def _to_url(cls, img) -> str:

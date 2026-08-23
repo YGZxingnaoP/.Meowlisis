@@ -11,11 +11,11 @@ from func.toolbox.meowvision.config import TBVisionConfig
 
 
 class TBVisionAliyunLLM:
-    """MeowVision 视觉理解客户端（qvq 系列多模态，仅阿里云平台）
+    """MeowVision 视觉理解客户端（多模态，仅阿里云平台）
 
-    - 非流式调用，直接返回模型看过图片后的正式回复内容（content）。
-    - qvq 系列思考过程位于 message.reasoning_content，正式回答位于 message.content，
-      此处仅取 content，思考内容由上层按需忽略。
+    - 非流式调用，返回完整响应对象（含 message.content 与 message.tool_calls）；
+    - 深度思考过程位于 message.reasoning_content（若模型输出），正式回答位于 message.content；
+    - 支持 function calling：tools / tool_choice 透传。
     """
 
     def __init__(self, config: Optional[TBVisionConfig] = None):
@@ -38,12 +38,12 @@ class TBVisionAliyunLLM:
         except Exception as e:
             self.log.error(f"初始化 MeowVision 阿里云视觉客户端失败: {e}")
 
-    def chat(self, messages: List[Dict]) -> Optional[str]:
-        """流式对话：返回视觉模型正式回复文本（content），失败返回 None。
+    def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
+             tool_choice=None):
+        """非流式对话，返回完整响应对象（含 content 与 tool_calls），失败返回 None。
 
-        QVQ 系列（qvq-plus 等）是「仅思考模型」，仅支持流式输出（stream=True）；
-        非流式调用会返回空 content。因此这里统一走流式，收集 reasoning_content
-        与 content，最终只返回正式回复 content。
+        非流式下深度思考（reasoning_content）与 tool_calls 都能从响应中取得，
+        上层可自行决定优先读取哪个。不传 tool_choice 时由模型自主决定是否调用工具。
         """
         if not self.client:
             self.log.error("MeowVision 阿里云视觉客户端不可用")
@@ -53,32 +53,16 @@ class TBVisionAliyunLLM:
             "messages": messages,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "stream": True,
+            "stream": False,
         }
         if self.top_p is not None:
             params["top_p"] = self.top_p
-
-        reasoning_len = 0
-        answer_parts = []
+        if tools:
+            params["tools"] = tools
+        if tool_choice is not None:
+            params["tool_choice"] = tool_choice
         try:
-            stream = self.client.chat.completions.create(**params)
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-                delta = chunk.choices[0].delta
-                if getattr(delta, "reasoning_content", None):
-                    reasoning_len += len(delta.reasoning_content)
-                if getattr(delta, "content", None):
-                    answer_parts.append(delta.content)
+            return self.client.chat.completions.create(**params)
         except Exception as e:
             self.log.error(f"MeowVision 阿里云视觉调用异常: {e}")
             return None
-
-        answer = "".join(answer_parts).strip()
-        if not answer:
-            self.log.warning(
-                f"MeowVision 视觉模型 content 为空：reasoning={reasoning_len} 字，"
-                f"max_tokens={self.max_tokens}（QVQ 仅思考模型，若 reasoning 已满可能是 max_tokens 不足）"
-            )
-            return None
-        return answer

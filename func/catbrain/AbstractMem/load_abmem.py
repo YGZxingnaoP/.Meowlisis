@@ -151,9 +151,10 @@ class MeowLoadAbstractMemory:
             return 0.0
         return 1.0 if username in joint else 0.0
 
-    def _rank(self, data: List[Dict], current_message: str, username: str) -> List[Dict]:
+    def _rank(self, data: List[Dict], current_message: str, username: str,
+              topic_override: str = "") -> List[Dict]:
         """按 topics>tags(前3相似度)>joint(相似度)>importance 优先级排序"""
-        current_topic = self._current_topic(data)
+        current_topic = topic_override or self._current_topic(data)
         msg_words = set(self.jieba_tool.segment(current_message)) if current_message else set()
         scored = []
         for item in data:
@@ -165,13 +166,17 @@ class MeowLoadAbstractMemory:
         scored.sort(key=lambda x: x[0], reverse=True)
         return [item for _, item in scored]
 
-    def build_prompt(self, current_message: str = "", username: str = "", limit: int = None) -> str:
-        """按优先级检索构建记忆摘要 markdown 提示词（标题为「ai_name的记忆」，limit 默认取配置）"""
+    def build_prompt(self, current_message: str = "", username: str = "", limit: int = None,
+                     topic_override: str = "") -> str:
+        """按优先级检索构建记忆摘要 markdown 提示词（标题为「ai_name的记忆」，limit 默认取配置）
+
+        topic_override：外部指定话题（如视频话题），非空时跳过短期记忆话题决策。
+        """
         data = self.load()
         if not data:
             return ""
         limit = limit if limit is not None else self.config.summary_top_limit
-        ranked = self._rank(data, current_message, username)
+        ranked = self._rank(data, current_message, username, topic_override)
         lines = [f"# {AppConfig().ai_name}的记忆"]
         for item in ranked[:limit]:
             topic = item.get("topic", "")

@@ -811,6 +811,88 @@ const Config = {
                 '主动回复单条消息在短期记忆中的兜底保留条数（尾部无后续对话时按此裁剪）');
     },
 
+    // ============ B站浏览配置（视觉模型 + 内容收集） ============
+    webBrowseConfig() {
+        let h = this._section('B站浏览视觉模型 (llm_active.vision)') +
+            this._password('API Key', 'llm_active.vision.api_key', '',
+                '独立于 MeowVision，仅用于 B站视频截图的内容理解') +
+            this._text('Base URL', 'llm_active.vision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'llm_active.vision.model', 'qwen3.7-flash') +
+            this._num('温度', 'llm_active.vision.temperature', 0.7, 0, 2, 0.1) +
+            this._num('最大输出 tokens', 'llm_active.vision.max_tokens', 600, 1, 8192, 16,
+                '内容描述(≤300字) + 话题 + tags 的输出预算') +
+            this._num('Top P', 'llm_active.vision.top_p', 0.9, 0, 1, 0.05);
+
+        h += this._section('B站内容收集 (llm_active.web_browse)') +
+            this._check('启用 B站内容收集', 'llm_active.web_browse.enabled', true,
+                '开启后后台线程定时抓取账号首页视频，抽帧 → 视觉概括 → 作为主动回复素材') +
+            this._num('采集间隔(秒)', 'llm_active.web_browse.interval', 600, 30, 86400, 10,
+                '每隔多久尝试补一个视频（默认 10 分钟）') +
+            this._num('缓存上限', 'llm_active.web_browse.max_cache', 5, 1, 20, 1,
+                '缓存达到该数量后暂停补货，消费后自动补') +
+            this._num('抽帧数', 'llm_active.web_browse.frames', 5, 1, 10, 1,
+                '视频 n 等分，每段随机抽 1 帧，压缩到 720p') +
+            this._list('允许主题（逗号分隔）', 'llm_active.web_browse.allow_topics', ['二次元', '科普', '游戏'],
+                '过滤视频的主题，空=随机') +
+            this._select('严格程度', 'llm_active.web_browse.strictness', [
+                { value: 'strict', label: 'strict（只允许列表内主题）' },
+                { value: 'loose', label: 'loose（允许其它主题）' }
+            ], 'strict') +
+            this._check('禁止抽象视频', 'llm_active.web_browse.forbid_abstract', true,
+                'LLM 语义判断，默认禁止抽象/整活类视频') +
+            this._num('UP主 mid', 'llm_active.web_browse.mid', 0, 0, 999999999, 1,
+                '0=自动用登录态抓自己账号首页视频；也可手动填指定 UP 主 mid');
+        return h;
+    },
+
+    // ============ B站内容浏览面板 ============
+    webBrowsePanel(status, cache, collected) {
+        const caches = cache || [];
+        const collecteds = collected || [];
+
+        let h = this.webBrowseConfig();
+
+        h += `<div class="speaker-actions">
+            <button type="button" class="btn btn-secondary webbrowse-refresh-btn">刷新列表</button>
+            <button type="button" class="btn btn-primary bili-login-btn">B站扫码登录</button>
+        </div>`;
+
+        h += this._section('待使用缓存（' + caches.length + '）');
+        h += `<div id="webBrowseCacheList">` + this._videoList(caches, false) + `</div>`;
+
+        h += this._section('已收藏（' + collecteds.length + '）');
+        h += `<div id="webBrowseCollectedList">` + this._videoList(collecteds, true) + `</div>`;
+        return h;
+    },
+
+    _videoList(items, isCollected) {
+        if (!items || !items.length) {
+            return isCollected
+                ? `<div class="help-text">暂无已收藏视频。主动回复使用过的视频会移动到此处。</div>`
+                : `<div class="help-text">暂无缓存视频，等待后台采集或先扫码登录并配置视觉 API Key。</div>`;
+        }
+        return items.map(v => this._videoCard(v, isCollected)).join('');
+    },
+
+    _videoCard(v, isCollected) {
+        v = v || {};
+        const tags = (v.tags || []).map(t => `<span class="webbrowse-tag">${this._esc(t)}</span>`).join('');
+        const urlHtml = (v.url && isCollected)
+            ? `<a class="webbrowse-link" href="${this._escAttr(v.url)}" target="_blank" rel="noopener">打开视频 ↗</a>`
+            : '';
+        return `<div class="char-card">
+            <div class="char-card-title">${this._esc(v.title || '(无标题)')}</div>
+            <div class="webbrowse-meta">
+                <span>UP：${this._esc(v.uploader || '-')}</span>
+                <span>时长：${this._esc(v.len || '-')}</span>
+                <span>话题：${this._esc(v.topic || '-')}</span>
+                ${urlHtml}
+            </div>
+            ${tags ? `<div class="webbrowse-tags">${tags}</div>` : ''}
+            <div class="webbrowse-content">${this._esc(v.content || '')}</div>
+        </div>`;
+    },
+
     // ============ OBS（占位） ============
     obs() {
         return this._section('OBS 直播控制') +
@@ -1295,7 +1377,8 @@ const Config = {
                 path === 'sensevoice.target_speakers' ||
                 path === 'sensevoice.hotwords' ||
                 path === 'minecraft.filter_players' ||
-                path === 'napcat.group_blacklist'
+                path === 'napcat.group_blacklist' ||
+                path === 'llm_active.web_browse.allow_topics'
             )) {
                 current[last] = value.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
             } else if (path === 'napcat.group_bots' || path === 'napcat.group_per_group') {

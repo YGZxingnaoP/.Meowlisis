@@ -181,6 +181,44 @@ def start_napcat():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/start_netease', methods=['POST'])
+def start_netease():
+    """启动网易云搜歌子服务（.NeteaseMusic/server/server.py）"""
+    try:
+        netease_dir = BASE_DIR / ".NeteaseMusic"
+        server_path = netease_dir / "server" / "server.py"
+        if not server_path.exists():
+            return jsonify({'status': 'error', 'message': 'server.py not found'}), 400
+        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        python = str(runtime_python) if runtime_python.exists() else sys.executable
+        if sys.platform == "win32":
+            subprocess.Popen([python, str(server_path)], cwd=str(netease_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            subprocess.Popen([python, str(server_path)], cwd=str(netease_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/start_rvc', methods=['POST'])
+def start_rvc():
+    """启动 RVC 翻唱子服务（.RVC/cover_server.py）"""
+    try:
+        rvc_dir = BASE_DIR / ".RVC"
+        server_path = rvc_dir / "cover_server.py"
+        if not server_path.exists():
+            return jsonify({'status': 'error', 'message': 'cover_server.py not found'}), 400
+        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        python = str(runtime_python) if runtime_python.exists() else sys.executable
+        if sys.platform == "win32":
+            subprocess.Popen([python, str(server_path)], cwd=str(rvc_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            subprocess.Popen([python, str(server_path)], cwd=str(rvc_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/character_card', methods=['GET'])
 def get_character_card():
     cfg = load_config()
@@ -541,6 +579,110 @@ def post_front_prompt():
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ============ 主动回复 B站浏览（web_browse） ============
+def _web_browse_cfg():
+    """读取 llm_active.web_browse 节点（带默认值，与后端 AutoWebBrowseConfig 一致）"""
+    cfg = load_config() or {}
+    la = cfg.get('llm_active', {}) or {}
+    return la.get('web_browse', {}) or {}
+
+
+def _web_browse_dir(key, default):
+    """解析 web_browse 目录配置为绝对路径"""
+    wb = _web_browse_cfg()
+    rel = wb.get(key, default)
+    p = (BASE_DIR / rel).resolve() if not os.path.isabs(str(rel)) else Path(rel).resolve()
+    return p
+
+
+@app.route('/api/web_browse/status', methods=['GET'])
+def web_browse_status():
+    """采集状态：配置 + 缓存数量 + 是否已满"""
+    wb = _web_browse_cfg()
+    cache_dir = _web_browse_dir('cache_dir', '.temp/web_browse_cache')
+    try:
+        cache_count = len([
+            f for f in os.listdir(cache_dir)
+            if f.endswith('.json')
+        ]) if cache_dir.is_dir() else 0
+    except Exception:
+        cache_count = 0
+    max_cache = int(wb.get('max_cache', 5) or 5)
+    return jsonify({
+        'enabled': bool(wb.get('enabled', True)),
+        'interval': int(wb.get('interval', 600) or 600),
+        'max_cache': max_cache,
+        'cache_count': cache_count,
+        'is_full': cache_count >= max_cache,
+        'frames': int(wb.get('frames', 5) or 5),
+        'allow_topics': wb.get('allow_topics', ['二次元', '科普', '游戏']) or [],
+        'strictness': wb.get('strictness', 'strict'),
+        'forbid_abstract': bool(wb.get('forbid_abstract', True)),
+        'mid': int(wb.get('mid', 0) or 0),
+    })
+
+
+@app.route('/api/web_browse/cache', methods=['GET'])
+def web_browse_cache():
+    """列出缓存目录下的视频摘要 json"""
+    cache_dir = _web_browse_dir('cache_dir', '.temp/web_browse_cache')
+    items = []
+    if cache_dir.is_dir():
+        try:
+            for f in sorted(os.listdir(cache_dir)):
+                if not f.endswith('.json'):
+                    continue
+                p = cache_dir / f
+                try:
+                    with open(p, 'r', encoding='utf-8') as fp:
+                        data = json.load(fp)
+                except Exception:
+                    data = {}
+                items.append({
+                    'file': f,
+                    'title': (data or {}).get('title', ''),
+                    'uploader': (data or {}).get('uploader', ''),
+                    'len': (data or {}).get('len', ''),
+                    'topic': (data or {}).get('topic', ''),
+                    'tags': (data or {}).get('tags', []) or [],
+                    'content': (data or {}).get('content', ''),
+                })
+        except Exception:
+            pass
+    return jsonify(items)
+
+
+@app.route('/api/web_browse/collected', methods=['GET'])
+def web_browse_collected():
+    """列出已收藏目录（character/shared_videos）下的视频摘要 json"""
+    collect_dir = _web_browse_dir('collect_dir', 'character/shared_videos')
+    items = []
+    if collect_dir.is_dir():
+        try:
+            for f in sorted(os.listdir(collect_dir)):
+                if not f.endswith('.json'):
+                    continue
+                p = collect_dir / f
+                try:
+                    with open(p, 'r', encoding='utf-8') as fp:
+                        data = json.load(fp)
+                except Exception:
+                    data = {}
+                items.append({
+                    'file': f,
+                    'title': (data or {}).get('title', ''),
+                    'uploader': (data or {}).get('uploader', ''),
+                    'len': (data or {}).get('len', ''),
+                    'topic': (data or {}).get('topic', ''),
+                    'tags': (data or {}).get('tags', []) or [],
+                    'content': (data or {}).get('content', ''),
+                    'url': (data or {}).get('url', ''),
+                })
+        except Exception:
+            pass
+    return jsonify(items)
 
 
 if __name__ == '__main__':
