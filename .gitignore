@@ -72,3 +72,7 @@ character/info/
 .RVC/assets/uvr5_weights/*.pth
 .RVC/assets/uvr5_weights/*.ckpt
 .RVC/assets/uvr5_weights/onnx_dereverb_By_FoxJoy/
+
+#音频文件
+character/songs/meow_list
+character/songs/raw_list
