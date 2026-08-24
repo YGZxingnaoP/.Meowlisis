@@ -62,16 +62,7 @@ character/info/
 .NeteaseMusic/MusicLibrary/lib/
 
 #内置RVC（模型权重与索引不入库，代码与目录结构保留）
-.RVC/assets/weights/*.pth
-.RVC/assets/indices/*.index
-.RVC/assets/rmvpe/*.pt
-.RVC/assets/rmvpe/*.onnx
-.RVC/assets/pretrained/*.pth
-.RVC/assets/pretrained_v2/*.pth
-.RVC/assets/pymss_weights/*.ckpt
-.RVC/assets/uvr5_weights/*.pth
-.RVC/assets/uvr5_weights/*.ckpt
-.RVC/assets/uvr5_weights/onnx_dereverb_By_FoxJoy/
+.RVC/assets
 
 #音频文件
 character/songs/meow_list
