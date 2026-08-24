@@ -14,7 +14,7 @@ class EmotionController:
     """解析 LLM 的 tool_calls，将情绪与性格指令传递到 pipeline 并落盘"""
 
     # 情绪枚举（沿用现有 emote 内容，后续扩展情感强度等）
-    EMOTIONS = ["happy", "sad", "call", "angry", "blush", "approve", "sweat", "blood", "love"]
+    EMOTIONS = ["happy", "sad", "call", "angry", "blush", "approve", "sweat", "blood", "love", "wordless"]
     TOOL_NAME = "set_emotion"
     LATEST_PATH = os.path.join(".temp", "latest_emotion.json")
 
@@ -106,7 +106,7 @@ class EmotionController:
                     pass
         self.last_result = result
         self._save_latest(result)
-        self.emotion_bridge.set_emotion(result["emotion"])
+        self.emotion_bridge.set_emotion(result["emotion"], result["intensity"])
         if result["need_thinking"]:
             self._launch_thinking()
         payload = self.build_payload()

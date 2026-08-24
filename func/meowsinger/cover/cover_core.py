@@ -24,6 +24,9 @@ class MeowCoverCore:
 
     def separate(self, input_path, output_dir):
         """调 RVC 服务分离人声/伴奏/和声，返回三轨路径 dict"""
+        # RVC 服务是独立进程，cwd 不在项目根目录，必须传绝对路径
+        input_path = os.path.abspath(input_path)
+        output_dir = os.path.abspath(output_dir)
         try:
             resp = requests.post(
                 f"{self.config.rvc_url}/api/separate",
@@ -45,6 +48,9 @@ class MeowCoverCore:
 
     def convert(self, vocal_path, output_path):
         """调 RVC 服务把分离出的人声变声，返回输出路径"""
+        # RVC 服务是独立进程，cwd 不在项目根目录，必须传绝对路径
+        vocal_path = os.path.abspath(vocal_path)
+        output_path = os.path.abspath(output_path)
         try:
             resp = requests.post(
                 f"{self.config.rvc_url}/api/convert",
@@ -72,7 +78,7 @@ class MeowCoverCore:
     def learn_song(self, title, mp3_path):
         """学习一首歌：分离 → 变声 → 三轨与歌词保存到 meow_list，返回是否成功"""
         title = self._safe_name(title)
-        folder = os.path.join(MEOW_DIR, title)
+        folder = os.path.abspath(os.path.join(MEOW_DIR, title))
         os.makedirs(folder, exist_ok=True)
 
         separated = self.separate(mp3_path, folder)
@@ -84,6 +90,7 @@ class MeowCoverCore:
         if not converted or not os.path.exists(converted):
             return False
 
+        converted = os.path.abspath(converted)
         if converted != cover_path:
             shutil.move(converted, cover_path)
 

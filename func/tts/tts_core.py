@@ -11,7 +11,6 @@ from threading import Lock, Thread
 from concurrent.futures import ThreadPoolExecutor
 
 from func.log.default_log import DefaultLog
-from func.toolbox.vtuber.emote_oper import EmoteOper
 from func.tts.config import TTSConfig
 from func.tts.gpt_sovits import GptSovits
 from func.tts.player import AudioPlayer
@@ -106,10 +105,9 @@ class TTsCore:
         self.system_prompt = SystemPromptBridge()
         self.sensevoice_tts = SenseVoiceTtsBridge()
 
-        # 引擎、播放器、表情
+        # 引擎、播放器
         self.sovits = GptSovits()
         self.player = AudioPlayer()
-        self.emoteOper = EmoteOper()
 
         # 字幕独立线程
         self.subtitle = SubtitleWorker(
@@ -548,14 +546,6 @@ class TTsCore:
                 self.log.info(reply_json)
             return
 
-        # 识别表情并累计感情值
-        emote_json = self.emoteOper.emote_content(text)
-        self.log.info(f"[{traceid}]输出表情{emote_json}")
-        emotion = "happy"
-        if emote_json:
-            emotion = emote_json[0]["content"]
-        self.emoteOper.mood(emotion)
-
         # 过滤影响合成的特殊字符
         text = re.sub(r"(《|》|（|）)", "", text)
 
@@ -577,10 +567,6 @@ class TTsCore:
         # 注册活跃流（供打断统一取消 + 抢占优先级判断）
         with self._streams_lock:
             self._active_streams[source] = priority
-
-        # 异步输出表情
-        emote_thread = Thread(target=self.emoteOper.emote_show, args=(emote_json,))
-        emote_thread.start()
 
         reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": reply_text}
 

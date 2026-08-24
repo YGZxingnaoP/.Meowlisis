@@ -31,6 +31,7 @@ class MeowSingerConfig:
         # 点歌模块
         song = cfg.get('song', {})
         self.song_enabled = bool(song.get('enabled', True))
+        self.song_trigger_mode = str(song.get('trigger_mode', 'both')).strip() or 'both'
         self.song_prefix = self._as_list(song.get('prefix', ['Meowlisis点歌']))
         self.song_intent = self._as_list(song.get('intent', ['点歌', '放歌', '放首歌']))
         self.netease_url = song.get('netease_url', 'http://127.0.0.1:5000')
@@ -38,6 +39,7 @@ class MeowSingerConfig:
         # 翻唱模块
         cover = cfg.get('cover', {})
         self.cover_enabled = bool(cover.get('enabled', True))
+        self.cover_trigger_mode = str(cover.get('trigger_mode', 'both')).strip() or 'both'
         self.cover_prefix = self._as_list(cover.get('prefix', ['Meowlisis唱歌']))
         self.cover_intent = self._as_list(cover.get('intent', ['唱首歌', '唱歌']))
         self.rvc_url = cover.get('rvc_url', 'http://127.0.0.1:7865')

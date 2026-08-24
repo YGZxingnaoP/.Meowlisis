@@ -43,7 +43,7 @@ class TBNapcatAnalysis:
             f"- 询问天气/气温/是否下雨/要不要带伞 → 调用 query_weather；\n"
             f"- 询问新闻/热点/最近发生了什么/有什么大事 → 调用 read_news；\n"
             f"- 明确要新建/记录待办或提醒事项（如提醒我几点做什么）→ 调用 add_backlog；\n"
-            f"- 想让角色即兴哼唱一小段歌（如 哼两句、唱一句）→ 调用 impromptu_sing；\n"
+            f"- 想让角色唱歌，想听角色唱歌→ 调用 impromptu_sing；\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
         )
         messages: List[dict] = [{"role": "system", "content": system}]

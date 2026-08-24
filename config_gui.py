@@ -64,6 +64,16 @@ def save_tts_config(cfg):
         yaml.dump(data, f, allow_unicode=True)
 
 
+@app.after_request
+def _no_cache(response):
+    """开发用配置管理器：禁用静态资源缓存，避免前端改动后浏览器仍用旧 JS/CSS"""
+    if request.path.endswith(('.js', '.css', '.html')) or request.path == '/':
+        response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+    return response
+
+
 @app.route('/')
 def index():
     return send_from_directory(GUI_DIR, 'index.html')
@@ -84,6 +94,16 @@ def post_config():
     cfg = request.get_json()
     save_config(cfg)
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/screen', methods=['GET'])
+def screen_info():
+    """返回当前屏幕（主显示器）真实分辨率，供 VTS 窗口预览按屏幕比例等比缩放。"""
+    try:
+        from gui.tools.screen_info import get_screen_info
+        return jsonify(get_screen_info())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/tts_config', methods=['GET'])
@@ -461,24 +481,39 @@ def db_prefill_config_post():
 
 @app.route('/api/bili_login/start', methods=['POST'])
 def bili_login_start():
-    """生成 B站扫码登录二维码（供弹幕配置界面「扫码登录」按钮调用）"""
+    """生成 B站扫码登录二维码（供弹幕/主动回复浏览界面「扫码登录」按钮调用）"""
+    data = request.get_json() or {}
+    target = data.get('target', 'danmaku')
     try:
         from gui.tools import bili_login
-        return jsonify(bili_login.start_login())
+        return jsonify(bili_login.start_login(target))
     except Exception as e:
         return jsonify({'ok': False, 'message': str(e)}), 500
 
 
 @app.route('/api/bili_login/check', methods=['POST'])
 def bili_login_check():
-    """轮询扫码登录状态（供弹幕配置界面轮询调用）"""
+    """轮询扫码登录状态（供弹幕/主动回复浏览界面轮询调用）"""
     data = request.get_json() or {}
     qrcode_key = data.get('qrcode_key', '')
+    target = data.get('target', None)
     try:
         from gui.tools import bili_login
-        return jsonify(bili_login.check_login(qrcode_key or None))
+        return jsonify(bili_login.check_login(qrcode_key or None, target))
     except Exception as e:
         return jsonify({'ok': False, 'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/vts/parameters', methods=['GET'])
+def vts_parameters():
+    """查询 VTS 当前模型输入参数（供前端「参数」子球调用）"""
+    try:
+        from gui.tools import vts_query
+        emote_cfg = load_config().get('emote', {}) or {}
+        ok, payload = vts_query.query_vts_parameters(emote_cfg)
+        return jsonify({'ok': ok, 'data': payload})
+    except Exception as e:
+        return jsonify({'ok': False, 'data': str(e)}), 500
 
 
 @app.route('/api/verify_sessdata', methods=['POST'])

@@ -81,6 +81,12 @@ const App = {
         if (id === 'meowsinger_cover') { await this.openMeowsingerCoverPanel(); return; }
         if (id === 'meowsinger_sentiment') { this._openConfigPanel('感想设置', () => Config.meowsingerSentiment()); return; }
 
+        // VTS 子球（配置/表情/窗口/参数）
+        if (id === 'vts_config') { this._openConfigPanel('VTS 配置', () => Config.vts_config()); return; }
+        if (id === 'vts_emotion') { this._openConfigPanel('VTS 表情绑定', () => Config.vts_emotion()); return; }
+        if (id === 'vts_window') { this._openConfigPanel('VTS 窗口', () => Config.vts_window()); return; }
+        if (id === 'vts_params') { this._openConfigPanel('VTS 模型参数', () => Config.vts_params()); return; }
+
         // CatBrain 子球
         const catbrainSubMap = {
             'ltmem': { title: '长期记忆', fn: () => Config.catbrain_ltmem() },
@@ -404,7 +410,6 @@ const App = {
         const map = {
             'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
-            'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() },
             'meowvision': { title: 'MeowVision 视觉设置', fn: () => Config.meowvision() },
             'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() },
             'napcat_private': { title: 'NapCat 私聊回复', fn: () => Config.napcat_private() },
@@ -447,9 +452,12 @@ const App = {
             this.bindTabs();
             this.bindSplitFlagEditor();
             this.bindWordTagEditor();
+            this.bindTriggerMode();
             this.bindDictEditors();
             this.bindSessdataVerify();
             this.bindBiliLogin();
+            this.bindVtsWindowPreview();
+            this.bindVtsParamsQuery();
         }, 10);
     },
 
@@ -475,12 +483,14 @@ const App = {
     },
 
     bindBiliLogin() {
-        const btn = document.querySelector('.bili-login-btn');
-        if (!btn) return;
-        btn.addEventListener('click', () => this.openBiliLogin());
+        document.querySelectorAll('.bili-login-btn').forEach(btn => {
+            const target = btn.dataset.target || 'danmaku';
+            btn.addEventListener('click', () => this.openBiliLogin(target));
+        });
     },
 
-    openBiliLogin() {
+    openBiliLogin(target) {
+        target = target || 'danmaku';
         // 独立的扫码登录弹窗（不复用配置 Modal，避免「保存」语义冲突）
         const overlay = document.createElement('div');
         overlay.className = 'bili-login-overlay';
@@ -512,27 +522,41 @@ const App = {
         closeBtn.addEventListener('click', close);
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-        const fillBack = (sessdata, biliJct) => {
-            // 回填到配置面板的输入框 + 内存 config 对象
-            const sInput = document.querySelector('input[data-path="danmaku.blivedm.sessdata"]');
-            const jInput = document.querySelector('input[data-path="danmaku.blivedm.bili_jct"]');
+        const fillBack = (sessdata, biliJct, mid) => {
+            // 回填到对应配置面板的输入框 + 内存 config 对象
+            const sPath = target === 'web_browse' ? 'llm_active.web_browse.sessdata' : 'danmaku.blivedm.sessdata';
+            const jPath = target === 'web_browse' ? 'llm_active.web_browse.bili_jct' : 'danmaku.blivedm.bili_jct';
+            const sInput = document.querySelector(`input[data-path="${sPath}"]`);
+            const jInput = document.querySelector(`input[data-path="${jPath}"]`);
             if (sInput) sInput.value = sessdata || '';
             if (jInput) jInput.value = biliJct || '';
+            if (mid) {
+                const mInput = document.querySelector('input[data-path="llm_active.web_browse.mid"]');
+                if (mInput) mInput.value = mid;
+            }
             if (this.config) {
-                this.config.danmaku = this.config.danmaku || {};
-                this.config.danmaku.blivedm = this.config.danmaku.blivedm || {};
-                this.config.danmaku.blivedm.sessdata = sessdata || '';
-                this.config.danmaku.blivedm.bili_jct = biliJct || '';
+                if (target === 'web_browse') {
+                    this.config.llm_active = this.config.llm_active || {};
+                    this.config.llm_active.web_browse = this.config.llm_active.web_browse || {};
+                    this.config.llm_active.web_browse.sessdata = sessdata || '';
+                    this.config.llm_active.web_browse.bili_jct = biliJct || '';
+                    if (mid) this.config.llm_active.web_browse.mid = mid;
+                } else {
+                    this.config.danmaku = this.config.danmaku || {};
+                    this.config.danmaku.blivedm = this.config.danmaku.blivedm || {};
+                    this.config.danmaku.blivedm.sessdata = sessdata || '';
+                    this.config.danmaku.blivedm.bili_jct = biliJct || '';
+                }
             }
         };
 
         const poll = async (qrcodeKey) => {
             try {
-                const r = await API.checkBiliLogin(qrcodeKey);
+                const r = await API.checkBiliLogin(qrcodeKey, target);
                 if (r && r.status === 'success') {
                     statusEl.textContent = '✓ ' + (r.message || '登录成功');
                     statusEl.classList.add('success');
-                    fillBack(r.sessdata, r.bili_jct);
+                    fillBack(r.sessdata, r.bili_jct, r.mid);
                     clearInterval(timer);
                     setTimeout(close, 1200);
                     return true;
@@ -551,7 +575,7 @@ const App = {
             return false;
         };
 
-        API.startBiliLogin().then(r => {
+        API.startBiliLogin(target).then(r => {
             if (!r || !r.ok) {
                 statusEl.textContent = '✗ ' + (r.message || '生成二维码失败');
                 statusEl.classList.add('error');
@@ -802,9 +826,11 @@ const App = {
             editor.addEventListener('input', sync);
             if (addBtn) {
                 addBtn.addEventListener('click', () => {
+                    const keyLabel = editor.dataset.kvKeyLabel || '机器人名';
+                    const valueLabel = editor.dataset.kvValueLabel || 'QQ号';
                     const empty = editor.querySelector('.help-text');
                     if (empty) empty.remove();
-                    editor.insertAdjacentHTML('beforeend', Config._kvRow('', '', '机器人名', 'QQ号'));
+                    editor.insertAdjacentHTML('beforeend', Config._kvRow('', '', keyLabel, valueLabel));
                     sync();
                 });
             }
@@ -843,6 +869,235 @@ const App = {
                     editor.insertAdjacentHTML('beforeend', Config._groupConfigRow('', {}));
                     sync();
                 });
+            }
+        });
+    },
+
+    // ============ VTS 窗口全屏预览（拖拽/等比缩放） ============
+    bindVtsWindowPreview() {
+        const preview = document.querySelector('[data-window-preview]');
+        if (!preview) return;
+        const screenEl = preview.querySelector('[data-window-screen]');
+        const box = preview.querySelector('[data-window-box]');
+        const sizeLabel = preview.querySelector('[data-window-size]');
+        // 像素输入框位于 .window-preview-fields，它是 data-window-preview 的兄弟节点，
+        // 必须在父容器（.form-group）内查找，否则这里拿不到输入框会导致函数提前 return、
+        // 拖拽事件从未绑定（症状：光标变成拖拽符号但完全拖不动）。
+        const scope = preview.closest('.form-group') || preview.parentElement || document;
+        const fieldX = scope.querySelector('input[data-window-field="x"]');
+        const fieldY = scope.querySelector('input[data-window-field="y"]');
+        const fieldW = scope.querySelector('input[data-window-field="w"]');
+        const fieldH = scope.querySelector('input[data-window-field="h"]');
+        if (!screenEl || !box || !fieldX || !fieldY || !fieldW || !fieldH) return;
+
+        const MIN = 50;
+        const infoLabel = (preview.closest('.form-group') || document).querySelector('[data-screen-info]');
+
+        // 先用浏览器 window.screen 兜底，随后用后端真实屏幕信息覆盖（与 tkinter 置顶窗口坐标一致）
+        let screenW = window.screen.width || 1920;
+        let screenH = window.screen.height || 1080;
+        let screenRatio = screenW / screenH;
+
+        let winW = parseFloat(fieldW.value) || 400;
+        let winH = parseFloat(fieldH.value) || 600;
+        let winX = parseFloat(fieldX.value) || 0;
+        let winY = parseFloat(fieldY.value) || 0;
+        // 用户手动改过像素后，不再被异步到达的屏幕信息强制等比重置
+        let userEdited = false;
+
+        // 按当前屏幕比例等比缩放（保持宽度，调整高度）
+        const normalizeRatio = () => {
+            if (screenRatio > 0 && Math.abs(winW / winH - screenRatio) > 0.01) {
+                winH = Math.round(winW / screenRatio);
+            }
+        };
+
+        // 让预览「屏幕」画布也按真实屏幕比例显示高度（限制在合理区间，避免竖屏/带鱼屏过高过矮）
+        const applyScreenAspect = () => {
+            if (!(screenW > 0) || !(screenH > 0)) return;
+            const cw = screenEl.clientWidth || 1;
+            const targetH = cw / (screenW / screenH);
+            const clamped = Math.max(180, Math.min(420, targetH));
+            screenEl.style.height = clamped + 'px';
+        };
+
+        const updateScreenInfo = () => {
+            if (infoLabel) {
+                infoLabel.textContent = `当前屏幕分辨率：${screenW}×${screenH}（窗口按屏幕比例等比缩放）`;
+            }
+        };
+
+        const scaleOf = () => {
+            const cw = screenEl.clientWidth || 1;
+            const ch = screenEl.clientHeight || 1;
+            return { sx: cw / screenW, sy: ch / screenH };
+        };
+
+        const render = () => {
+            const { sx, sy } = scaleOf();
+            box.style.left = (winX * sx) + 'px';
+            box.style.top = (winY * sy) + 'px';
+            box.style.width = (winW * sx) + 'px';
+            box.style.height = (winH * sy) + 'px';
+            if (sizeLabel) sizeLabel.textContent = `${Math.round(winW)}×${Math.round(winH)}`;
+        };
+
+        const sync = () => {
+            winW = Math.max(MIN, Math.min(winW, screenW));
+            winH = Math.max(MIN, Math.min(winH, screenH));
+            winX = Math.max(0, Math.min(screenW - winW, winX));
+            winY = Math.max(0, Math.min(screenH - winH, winY));
+            fieldX.value = Math.round(winX);
+            fieldY.value = Math.round(winY);
+            fieldW.value = Math.round(winW);
+            fieldH.value = Math.round(winH);
+            render();
+        };
+
+        const select = () => box.classList.add('selected');
+        const deselect = () => box.classList.remove('selected');
+
+        // ---- 最兼容拖拽：onmousedown + document mousemove/mouseup ----
+        let drag = null;
+
+        const startDrag = (e, mode) => {
+            if (e.button !== 0) return; // 仅左键
+            e.preventDefault();
+            drag = {
+                mode,
+                startX: e.clientX,
+                startY: e.clientY,
+                origX: winX,
+                origY: winY,
+                origW: winW,
+                origH: winH,
+                ratio: winW / winH,
+            };
+            select();
+            console.log('[VTS窗口] 开始拖拽', mode);
+            document.addEventListener('mousemove', onDragMove);
+            document.addEventListener('mouseup', onDragEnd);
+        };
+
+        const onDragMove = (e) => {
+            if (!drag) return;
+            const { sx, sy } = scaleOf();
+            const dx = (e.clientX - drag.startX) / sx;
+            const dy = (e.clientY - drag.startY) / sy;
+
+            if (drag.mode === 'move') {
+                winX = drag.origX + dx;
+                winY = drag.origY + dy;
+                sync();
+                return;
+            }
+
+            const dir = drag.mode;
+            const hx = dir.includes('w') ? -1 : 1;
+            const vy = dir.includes('n') ? -1 : 1;
+            const dw = dx * hx;
+            const dh = dy * vy;
+            const ratio = drag.ratio;
+
+            let nw, nh;
+            if (Math.abs(dw / drag.origW) > Math.abs(dh / drag.origH)) {
+                nw = drag.origW + dw;
+                nh = nw / ratio;
+            } else {
+                nh = drag.origH + dh;
+                nw = nh * ratio;
+            }
+            if (nw < MIN) { nw = MIN; nh = nw / ratio; }
+            if (nh < MIN) { nh = MIN; nw = nh * ratio; }
+
+            if (hx === 1) winX = drag.origX; else winX = drag.origX + drag.origW - nw;
+            if (vy === 1) winY = drag.origY; else winY = drag.origY + drag.origH - nh;
+            winW = nw;
+            winH = nh;
+            sync();
+        };
+
+        const onDragEnd = () => {
+            drag = null;
+            document.removeEventListener('mousemove', onDragMove);
+            document.removeEventListener('mouseup', onDragEnd);
+            console.log('[VTS窗口] 结束拖拽');
+        };
+
+        // 直接用 onmousedown 属性（最可靠），不用 addEventListener
+        box.onmousedown = (e) => {
+            if (e.target.closest('[data-handle]')) return;
+            startDrag(e, 'move');
+        };
+
+        preview.querySelectorAll('[data-handle]').forEach(h => {
+            h.onmousedown = (e) => {
+                startDrag(e, h.dataset.handle);
+            };
+        });
+
+        // 点空白取消选中
+        screenEl.onmousedown = (e) => {
+            if (e.target === screenEl) deselect();
+        };
+
+        // 手动输入像素时同步预览
+        const onFieldInput = () => {
+            winW = parseFloat(fieldW.value) || MIN;
+            winH = parseFloat(fieldH.value) || MIN;
+            winX = parseFloat(fieldX.value) || 0;
+            winY = parseFloat(fieldY.value) || 0;
+            userEdited = true;
+            sync();
+        };
+        fieldX.addEventListener('input', onFieldInput);
+        fieldY.addEventListener('input', onFieldInput);
+        fieldW.addEventListener('input', onFieldInput);
+        fieldH.addEventListener('input', onFieldInput);
+
+        // 初始渲染（先用 window.screen 兜底，保证面板打开即可见、可拖拽）
+        normalizeRatio();
+        applyScreenAspect();
+        updateScreenInfo();
+        sync();
+
+        // 异步获取后端真实屏幕信息（与 tkinter 置顶窗口同一坐标系统），按真实屏幕比例重新缩放
+        if (typeof API !== 'undefined' && typeof API.getScreenInfo === 'function') {
+            API.getScreenInfo().then((info) => {
+                if (!info || !(info.width > 0) || !(info.height > 0)) return;
+                screenW = info.width;
+                screenH = info.height;
+                screenRatio = screenW / screenH;
+                // 用户尚未手动调整时，按真实屏幕比例重新等比缩放
+                if (!userEdited) normalizeRatio();
+                applyScreenAspect();
+                updateScreenInfo();
+                sync();
+            }).catch(() => {});
+        }
+    },
+
+    // ============ VTS 参数查询 ============
+    bindVtsParamsQuery() {
+        const btn = document.querySelector('[data-vts-query]');
+        if (!btn) return;
+        btn.addEventListener('click', async () => {
+            const resultEl = document.querySelector('[data-vts-params-result]');
+            btn.disabled = true;
+            if (resultEl) resultEl.innerHTML = '<div class="help-text">查询中，请稍候…</div>';
+            try {
+                const r = await API.getVtsParameters();
+                if (r && r.ok) {
+                    const data = r.data || {};
+                    if (resultEl) resultEl.innerHTML = Config._vtsParamsTable(data, data);
+                } else {
+                    const msg = (r && r.data) ? r.data : '查询失败';
+                    if (resultEl) resultEl.innerHTML = `<div class="help-text">${this._esc(msg)}</div>`;
+                }
+            } catch (e) {
+                if (resultEl) resultEl.innerHTML = `<div class="help-text">查询失败：${this._esc(e.message)}</div>`;
+            } finally {
+                btn.disabled = false;
             }
         });
     },
@@ -1458,6 +1713,25 @@ const App = {
                 addInput.value = '';
                 sync();
             });
+        });
+    },
+
+    bindTriggerMode() {
+        document.querySelectorAll('select[data-trigger-mode]').forEach(sel => {
+            const group = sel.dataset.triggerMode;
+            const apply = () => {
+                const mode = sel.value;
+                document.querySelectorAll(`[data-mode-group="${group}"]`).forEach(g => {
+                    const show = g.dataset.modeShow;
+                    if (mode === 'both') {
+                        g.style.display = '';
+                    } else {
+                        g.style.display = (show === mode) ? '' : 'none';
+                    }
+                });
+            };
+            sel.addEventListener('change', apply);
+            apply();
         });
     },
 

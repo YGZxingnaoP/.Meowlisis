@@ -10,6 +10,18 @@ const API = {
         return res.json();
     },
 
+    async getScreenInfo() {
+        try {
+            const res = await fetch('/api/screen');
+            if (!res.ok) return null;
+            const data = await res.json();
+            if (data && data.width > 0 && data.height > 0) return data;
+            return null;
+        } catch {
+            return null;
+        }
+    },
+
     async saveConfig(config) {
         const res = await fetch('/api/config', {
             method: 'POST',
@@ -234,17 +246,21 @@ const API = {
         return res.json();
     },
 
-    async startBiliLogin() {
-        const res = await fetch('/api/bili_login/start', { method: 'POST' });
+    async startBiliLogin(target) {
+        const res = await fetch('/api/bili_login/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target: target || 'danmaku' })
+        });
         if (!res.ok) throw new Error('Failed to start B站扫码登录');
         return res.json();
     },
 
-    async checkBiliLogin(qrcodeKey) {
+    async checkBiliLogin(qrcodeKey, target) {
         const res = await fetch('/api/bili_login/check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ qrcode_key: qrcodeKey || '' })
+            body: JSON.stringify({ qrcode_key: qrcodeKey || '', target: target || 'danmaku' })
         });
         if (!res.ok) throw new Error('Failed to check B站扫码登录');
         return res.json();
@@ -259,6 +275,12 @@ const API = {
     async getBacklog(user) {
         const res = await fetch('/api/backlog?user=' + encodeURIComponent(user || ''));
         if (!res.ok) return { username: user, to_do_list: [] };
+        return res.json();
+    },
+
+    async getVtsParameters() {
+        const res = await fetch('/api/vts/parameters');
+        if (!res.ok) return { ok: false, data: '请求失败: ' + res.status };
         return res.json();
     },
 

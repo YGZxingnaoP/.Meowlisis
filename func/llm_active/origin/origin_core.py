@@ -119,6 +119,12 @@ class AutoOriginCore:
                 {"role": "assistant", "content": final_text, "type": "llm_active_response"},
                 self._max_rounds(),
             )
+            # 写入长期记忆与摘要缓存（不写用户档案，不需要 username）
+            try:
+                from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+                MeowLLMLtMemBridge().record_ltmem_only(AppConfig().ai_name, final_text)
+            except Exception:
+                self.log.exception("[主动回复-origin] 写入长期记忆失败")
         self.log.info(f"[{traceid}][主动回复-origin]{final_text}")
 
     def _move_collected(self, path):

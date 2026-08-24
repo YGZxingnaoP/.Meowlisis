@@ -10,7 +10,7 @@ from flask_apscheduler import APScheduler
 
 from func.subtitle.subtitle_server import get_subtitle_server
 from func.log.default_log import DefaultLog
-from func.toolbox.vtuber.emote_oper import EmoteOper
+from func.vts.vts_oper import VtsOper
 from func.tts.tts_core import TTsCore
 from func.llm.llm_core import LLmCore
 from func.llm_active.active_core import AutoActiveCore
@@ -21,7 +21,7 @@ from func.sensevoice.sensevoice_core import SenseVoiceCore
 
 from func.toolbox.danmaku.danmaku_core import TBDanmakuCore
 from func.config.app_config import AppConfig
-from func.toolbox.vtuber.state import VtuberState
+from func.vts.state import VtsState
 from func.toolbox.minecraft.logreader import MinecraftLogReader
 
 log = DefaultLog().getLogger()
@@ -80,8 +80,11 @@ ttsCore = TTsCore() # 语音核心
 # ============================================
 
 # ============= vtuber操作 =====================
-vtuberState = VtuberState()  # vtuber运行态
-emoteOper = EmoteOper() # 表情初始化
+vtsState = VtsState()  # vts运行态
+vtsOper = VtsOper() # 表情初始化
+# 情绪 → VTS 表情桥接（订阅 LLM 情绪更新，触发 VTS 热键）
+from func.pipeline.emotion_vts import EmotionVtsBridge
+EmotionVtsBridge()
 # ========================================
 
 log.info("--------------------")
@@ -102,7 +105,7 @@ def http_say():
 def http_emote():
     data = request.json
     text = data["text"]
-    emote_thread1 = Thread(target=emoteOper.emote_ws, args=(1, 0.2, text))
+    emote_thread1 = Thread(target=vtsOper.emote_ws, args=(1, 0.2, text))
     emote_thread1.start()
     return jsonify({"status": "成功"})
 
@@ -218,9 +221,13 @@ def chat():
 
 def main():
     # 初始化衣服
-    emoteOper.emote_ws(1, 0.2, "初始化")  # 解除当前衣服
-    emoteOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
-    vtuberState.now_clothes = "便衣"
+    vtsOper.emote_ws(1, 0.2, "初始化")  # 解除当前衣服
+    vtsOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
+    vtsState.now_clothes = "便衣"
+
+    # VTS 置顶透明窗口（按配置决定是否启动）
+    from func.vts.vts_window import VtsWindow
+    VtsWindow().start()
 
     # 获取全局配置
     config = ConfigReader().get()

@@ -25,7 +25,8 @@ const Orbit = {
         { id: 'database', label: '数据库', tooltip: '数据库知识库配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
         { id: 'subtitle', label: '字幕', tooltip: '字幕模块配置' },
-        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/VTS）' },
+        { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
+        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft 等工具）' },
         { id: 'meowsinger', label: '歌曲', tooltip: '点歌翻唱与感想配置' },
         { id: 'calendar', label: '待办', tooltip: '待办提醒' }
     ],
@@ -33,7 +34,6 @@ const Orbit = {
     // Toolbox 子视图外围行星球（父级模型中心球 + 工具球）
     toolboxPlanets: [
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
-        { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
         { id: 'meowvision', label: '视觉', tooltip: 'MeowVision 视觉模块配置' },
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' },
         { id: 'weather', label: '天气', tooltip: '天气查询配置' },
@@ -72,6 +72,9 @@ const Orbit = {
     meowsingerSubEls: [],
     meowsingerOpen: false,
     meowsingerEl: null,
+    vtsSubEls: [],
+    vtsOpen: false,
+    vtsEl: null,
 
     init() {
         const orbitOuter = document.getElementById('orbitOuter');
@@ -281,6 +284,65 @@ const Orbit = {
         this.meowsingerSubEls.forEach(el => this._applyMeowsingerSub(el, this.meowsingerOpen));
     },
 
+    // VTS 子球（配置/表情/窗口/参数）
+    createVtsSubs(parent) {
+        const subs = [
+            { id: 'vts_config', label: '配置', tooltip: 'VTS 连接与身体/嘴部配置' },
+            { id: 'vts_emotion', label: '表情', tooltip: '情绪槽位 → VTS 热键绑定' },
+            { id: 'vts_window', label: '窗口', tooltip: 'VTS 置顶窗口位置与大小' },
+            { id: 'vts_params', label: '参数', tooltip: '查询 VTS 当前模型参数' }
+        ];
+        // 目标偏移：4 个子球沿 VTS 球右侧弧线排列（右上/右中上/右中下/右下）
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: -27 },
+            { x: 115, y: 27 },
+            { x: 82, y: 82 }
+        ];
+        this.vtsSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyVtsSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.vtsSubEls.push(el);
+        });
+    },
+
+    _applyVtsSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleVtsSubs() {
+        this.vtsOpen = !this.vtsOpen;
+        if (this.vtsEl) {
+            this.vtsEl.classList.toggle('active', this.vtsOpen);
+        }
+        this.vtsSubEls.forEach(el => this._applyVtsSub(el, this.vtsOpen));
+    },
+
     updateToolboxPlanetPosition(el, rotationDeg) {
         const baseAngle = parseFloat(el.dataset.baseAngle);
         const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
@@ -486,6 +548,15 @@ const Orbit = {
                 e.stopPropagation();
                 if (this.suppressClick) return;
                 this.toggleMeowsingerSubs();
+            });
+        } else if (p.id === 'vts') {
+            // VTS 球：点击分裂出 3 个子球（配置/表情/窗口）
+            this.vtsEl = el;
+            this.createVtsSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleVtsSubs();
             });
         } else {
             el.addEventListener('click', (e) => {

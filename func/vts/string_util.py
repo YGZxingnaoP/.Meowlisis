@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/vtuber/string_util.py
+# func/vts/string_util.py
 # 字符串匹配工具
 
 

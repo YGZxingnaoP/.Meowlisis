@@ -40,12 +40,16 @@ BROWSER_HEADERS = {
 }
 
 # 模块级状态：当前有效的 qrcode_key（同一时间只允许一个扫码会话）
-_state = {"qrcode_key": None}
+_state = {"qrcode_key": None, "target": "danmaku"}
 _lock = threading.Lock()
 
 
-def start_login():
-    """生成 B站登录二维码，返回 dict（含二维码 base64 图片）"""
+def start_login(target="danmaku"):
+    """生成 B站登录二维码，返回 dict（含二维码 base64 图片）
+
+    target: danmaku=写回 danmaku.blivedm；web_browse=写回 llm_active.web_browse
+    """
+    target = target if target in ("danmaku", "web_browse") else "danmaku"
     try:
         resp = requests.get(GENERATE_URL, params={"source": SOURCE}, headers=HEADERS, timeout=10)
         data = resp.json()
@@ -72,12 +76,15 @@ def start_login():
 
     with _lock:
         _state["qrcode_key"] = qr_key
+        _state["target"] = target
 
-    return {"ok": True, "qrcode_key": qr_key, "qrcode": qr_b64}
+    return {"ok": True, "qrcode_key": qr_key, "qrcode": qr_b64, "target": target}
 
 
-def check_login(qrcode_key=None):
+def check_login(qrcode_key=None, target=None):
     """轮询一次登录状态，返回 dict。
+
+    target: 优先用调用方传入的 target；缺省回退到 start_login 时记录的 target。
 
     status 取值：
       waiting  - 未扫码/状态未知
@@ -89,6 +96,8 @@ def check_login(qrcode_key=None):
     key = qrcode_key or _state.get("qrcode_key")
     if not key:
         return {"ok": False, "status": "error", "message": "没有有效的扫码会话，请重新扫码登录"}
+
+    write_target = target if target in ("danmaku", "web_browse") else _state.get("target", "danmaku")
 
     try:
         resp = requests.get(POLL_URL, params={"qrcode_key": key, "source": SOURCE},
@@ -126,8 +135,16 @@ def check_login(qrcode_key=None):
                     "message": f"解析登录凭证失败（sessdata={'有' if sessdata else '空'}, "
                                f"bili_jct={'有' if bili_jct else '空'}）url片段: {hint}"}
 
+        # 登录成功后：web_browse 场景顺带解析 mid（DedeUserID 即 B站 UID/mid），写回 config
+        mid = None
+        if write_target == "web_browse":
+            if dedeuserid and str(dedeuserid).isdigit():
+                mid = int(dedeuserid)
+            else:
+                mid = fetch_mid(sessdata)
+
         try:
-            update_config(sessdata, bili_jct)
+            update_config(sessdata, bili_jct, write_target, mid)
         except Exception as e:
             return {"ok": False, "status": "error", "message": f"写入 config.yml 失败：{e}"}
 
@@ -137,13 +154,34 @@ def check_login(qrcode_key=None):
         return {
             "ok": True,
             "status": "success",
-            "message": f"登录成功（UID {dedeuserid or ''}）",
+            "message": f"登录成功（UID {mid or dedeuserid or ''}）",
             "dedeuserid": dedeuserid,
+            "mid": mid,
             "sessdata": sessdata,
             "bili_jct": bili_jct,
+            "target": write_target,
         }
 
     return {"ok": True, "status": "waiting", "message": f"状态码 {code}"}
+
+
+def fetch_mid(sessdata):
+    """用 SESSDATA 调 B站 nav 接口获取当前账号 mid（UID），失败返回 None"""
+    if not sessdata:
+        return None
+    try:
+        r = requests.get(
+            "https://api.bilibili.com/x/web-interface/nav",
+            cookies={"SESSDATA": sessdata},
+            headers=HEADERS,
+            timeout=10,
+        )
+        j = r.json()
+        if j.get("code") == 0 and (j.get("data") or {}).get("isLogin"):
+            return int((j.get("data") or {}).get("mid") or 0) or None
+    except Exception:
+        pass
+    return None
 
 
 def parse_credential(cred_url):
@@ -251,14 +289,25 @@ def _pick_cookie(session, name):
     return candidates[-1][1]
 
 
-def update_config(sessdata, bili_jct):
-    """把 SESSDATA / bili_jct 写回 config.yml 的 danmaku.blivedm 节点"""
+def update_config(sessdata, bili_jct, target="danmaku", mid=None):
+    """把 SESSDATA / bili_jct / mid 写回 config.yml。
+
+    target=danmaku      → danmaku.blivedm.sessdata / bili_jct（弹幕兜底通道）
+    target=web_browse   → llm_active.web_browse.sessdata / bili_jct / mid（主动回复 B站浏览）
+    """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
 
-    cfg.setdefault("danmaku", {}).setdefault("blivedm", {})
-    cfg["danmaku"]["blivedm"]["sessdata"] = sessdata
-    cfg["danmaku"]["blivedm"]["bili_jct"] = bili_jct
+    if target == "web_browse":
+        cfg.setdefault("llm_active", {}).setdefault("web_browse", {})
+        cfg["llm_active"]["web_browse"]["sessdata"] = sessdata
+        cfg["llm_active"]["web_browse"]["bili_jct"] = bili_jct
+        if mid:
+            cfg["llm_active"]["web_browse"]["mid"] = int(mid)
+    else:
+        cfg.setdefault("danmaku", {}).setdefault("blivedm", {})
+        cfg["danmaku"]["blivedm"]["sessdata"] = sessdata
+        cfg["danmaku"]["blivedm"]["bili_jct"] = bili_jct
 
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         yaml.dump(cfg, f, allow_unicode=True, sort_keys=False)

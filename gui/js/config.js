@@ -39,11 +39,11 @@ const Config = {
             ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
     },
 
-    _select(label, path, options, def, help) {
+    _select(label, path, options, def, help, extraAttr) {
         const v = this._val(path, def);
         const opts = options.map(o => `<option value="${o.value}" ${String(o.value) === String(v) ? 'selected' : ''}>${o.label}</option>`).join('');
         return `<div class="form-group"><label>${label}</label>
-            <select data-path="${path}">${opts}</select>
+            <select data-path="${path}" ${extraAttr || ''}>${opts}</select>
             ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
     },
 
@@ -98,7 +98,7 @@ const Config = {
         const obj = this._val(path, {}) || {};
         const rows = Object.keys(obj).map(k => this._kvRow(k, obj[k], keyLabel, valueLabel)).join('');
         return `<div class="form-group"><label>${label}</label>
-            <div class="kv-editor" data-kv-editor="${path}">
+            <div class="kv-editor" data-kv-editor="${path}" data-kv-key-label="${keyLabel}" data-kv-value-label="${valueLabel}">
                 ${rows || '<div class="help-text">暂无条目，点击下方按钮添加</div>'}
             </div>
             <button type="button" class="btn btn-secondary" data-kv-add="${path}">添加条目</button>
@@ -688,7 +688,7 @@ const Config = {
                 <div class="verify-row">
                     <input type="text" data-path="danmaku.blivedm.sessdata" value="${this._esc(sessdata)}">
                     <button type="button" class="btn btn-secondary sessdata-verify-btn">验证</button>
-                    <button type="button" class="btn btn-primary bili-login-btn">扫码登录</button>
+                    <button type="button" class="btn btn-primary bili-login-btn" data-target="danmaku">扫码登录</button>
                 </div>
                 <div class="sessdata-verify-result help-text"></div>
             </div>` +
@@ -730,14 +730,136 @@ const Config = {
             this._num('主动发弹幕冷却(秒)', 'danmaku.active_send.cooldown', 60, 0, 600, 1);
     },
 
-    // ============ VTuber (emote 节点) ============
-    vtuber() {
-        return this._section('VTuber / VTube Studio') +
+    // ============ VTuber / VTS 子球：配置（连接 + 身体 + 嘴部） ============
+    vts_config() {
+        let h = this._section('VTuber / VTube Studio 连接') +
             this._check('启用 VTuber 控制', 'emote.switch', false) +
             this._text('WebSocket 地址', 'emote.vtuber_websocket', '127.0.0.1:8001') +
             this._text('插件名称', 'emote.vtuber_pluginName', '') +
             this._text('插件开发者', 'emote.vtuber_pluginDeveloper', '') +
             this._text('认证令牌', 'emote.vtuber_authenticationToken', '');
+
+        h += this._section('身体左右摆动（说话时随机抖动，活泼跳跃感）') +
+            this._check('启用身体摆动', 'emote.body_sway.enabled', true) +
+            this._text('摆动参数名', 'emote.body_sway.parameter', 'FaceAngleX') +
+            this._num('基准值', 'emote.body_sway.base', 0.0, -1, 1, 0.01) +
+            this._num('常规幅度', 'emote.body_sway.amplitude', 0.18, 0, 1, 0.01) +
+            this._num('跳跃峰值幅度', 'emote.body_sway.jump_amplitude', 0.6, 0, 1, 0.01) +
+            this._num('跳跃概率(0~1)', 'emote.body_sway.jump_probability', 0.2, 0, 1, 0.05) +
+            this._num('刷新周期(ms)', 'emote.body_sway.interval_ms', 100, 20, 500, 10);
+
+        h += this._section('嘴部同步（仅由 TTS 播放器驱动）') +
+            this._check('启用嘴部同步', 'emote.mouth_sync.enabled', true) +
+            this._text('嘴部参数名', 'emote.mouth_sync.parameter', 'MouthOpen') +
+            this._num('张嘴下限', 'emote.mouth_sync.min', 0.25, 0, 1, 0.01) +
+            this._num('张嘴上限', 'emote.mouth_sync.max', 1.0, 0, 1, 0.01) +
+            this._num('闭嘴值', 'emote.mouth_sync.close', 0.0, 0, 1, 0.01) +
+            this._num('刷新周期(ms)', 'emote.mouth_sync.interval_ms', 90, 20, 500, 10);
+
+        return h;
+    },
+
+    // ============ VTuber / VTS 子球：表情绑定（左右：左id右内容） ============
+    vts_emotion() {
+        const slots = this._val('emote.emotion_slots', {}) || {};
+        const emotions = ['happy', 'sad', 'call', 'angry', 'blush', 'approve', 'sweat', 'blood', 'love', 'wordless'];
+        const tiers = [
+            { key: 'weak', label: '弱' },
+            { key: 'strong', label: '强' }
+        ];
+        let rows = '';
+        emotions.forEach(emo => {
+            tiers.forEach(tier => {
+                const key = `${emo}_${tier.key}`;
+                rows += this._emotionSlotRow(key, slots[key]);
+            });
+        });
+        return this._section('表情绑定（左：槽位ID，右：VTS 热键ID）') +
+            '<div class="emotion-slots">' +
+                '<div class="emotion-slots-head"><span>槽位 ID</span><span>VTS 热键 ID</span></div>' +
+                rows +
+            '</div>' +
+            '<div class="help-text">槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填 VTS 里配置的热键 ID。</div>';
+    },
+
+    _emotionSlotRow(key, val) {
+        return `<div class="emotion-slot-row">
+            <span class="emotion-slot-id">${key}</span>
+            <input type="text" data-path="emote.emotion_slots.${key}" value="${this._esc(val || '')}" placeholder="VTS hotkeyID">
+        </div>`;
+    },
+
+    // ============ VTuber / VTS 子球：窗口（含全屏预览） ============
+    vts_window() {
+        let h = this._section('置顶窗口（绿幕抠像，保存后重启生效）') +
+            this._check('启动时打开置顶窗口', 'emote.window.enabled', false) +
+            this._check('窗口置顶', 'emote.window.always_on_top', true);
+
+        h += this._windowPreview();
+
+        h += this._text('绿幕颜色', 'emote.window.green', '#00FF00') +
+            this._num('绿幕容差(0~255)', 'emote.window.tolerance', 40, 0, 255, 1) +
+            this._num('刷新帧率', 'emote.window.fps', 30, 1, 60, 1);
+
+        return h;
+    },
+
+    _windowPreview() {
+        const w = this._val('emote.window.width', 400);
+        const h = this._val('emote.window.height', 600);
+        const x = this._val('emote.window.x', 0);
+        const y = this._val('emote.window.y', 0);
+        return `<div class="form-group"><label>窗口位置与大小（拖拽窗口移动，拖拽四角等比缩放，或直接输入像素）</label>
+            <div class="window-preview" data-window-preview>
+                <div class="window-preview-screen" data-window-screen>
+                    <div class="window-preview-window selected" data-window-box>
+                        <span class="window-preview-size" data-window-size></span>
+                        <span class="wp-handle wp-handle-ne" data-handle="ne"></span>
+                        <span class="wp-handle wp-handle-nw" data-handle="nw"></span>
+                        <span class="wp-handle wp-handle-se" data-handle="se"></span>
+                        <span class="wp-handle wp-handle-sw" data-handle="sw"></span>
+                    </div>
+                </div>
+            </div>
+            <div class="window-preview-fields">
+                <div class="window-field"><label>X</label><input type="number" data-path="emote.window.x" data-window-field="x" value="${x}" min="0"></div>
+                <div class="window-field"><label>Y</label><input type="number" data-path="emote.window.y" data-window-field="y" value="${y}" min="0"></div>
+                <div class="window-field"><label>宽</label><input type="number" data-path="emote.window.width" data-window-field="w" value="${w}" min="50"></div>
+                <div class="window-field"><label>高</label><input type="number" data-path="emote.window.height" data-window-field="h" value="${h}" min="50"></div>
+            </div>
+            <div class="help-text" data-screen-info>当前屏幕分辨率：${window.screen.width}×${window.screen.height}（窗口按屏幕比例等比缩放）</div>
+        </div>`;
+    },
+
+    // ============ VTuber / VTS 子球：参数查询 ============
+    vts_params() {
+        return this._section('VTS 模型参数查询') +
+            '<div class="vts-params-toolbar">' +
+                '<button type="button" class="btn btn-primary" data-vts-query>查询模型参数</button>' +
+            '</div>' +
+            '<div class="vts-params-result" data-vts-params-result>' +
+                '<div class="help-text">点击上方按钮查询 VTS 当前模型的可用输入参数（含嘴部、身体角度等）。</div>' +
+            '</div>';
+    },
+
+    _vtsParamsTable(data, params) {
+        const model = (data && data.model_name) || '未知模型';
+        const live2d = (params && params.live2d_parameters) || [];
+        const tracking = (params && params.tracking_parameters) || [];
+        const row = (p, source) => {
+            const val = p.value != null ? p.value : '-';
+            const min = p.min != null ? p.min : '-';
+            const max = p.max != null ? p.max : '-';
+            const def = p.default != null ? p.default : '-';
+            return `<tr><td>${this._esc(p.name)}</td><td>${this._esc(source)}</td><td>${this._esc(val)}</td><td>${this._esc(min)}</td><td>${this._esc(max)}</td><td>${this._esc(def)}</td></tr>`;
+        };
+        const rows = live2d.map(p => row(p, 'Live2D模型')).join('') +
+                     tracking.map(p => row(p, '追踪参数')).join('');
+        return `<div class="vts-params-model">模型：${this._esc(model)}（Live2D参数 ${live2d.length} 个，追踪参数 ${tracking.length} 个）</div>
+            <table class="vts-params-table">
+                <thead><tr><th>参数名</th><th>来源</th><th>当前值</th><th>最小值</th><th>最大值</th><th>默认值</th></tr></thead>
+                <tbody>${rows || '<tr><td colspan="6">未返回参数</td></tr>'}</tbody>
+            </table>`;
     },
 
     // ============ NapCat（QQ 机器人）子球 ============
@@ -872,7 +994,11 @@ const Config = {
             this._check('禁止抽象视频', 'llm_active.web_browse.forbid_abstract', true,
                 'LLM 语义判断，默认禁止抽象/整活类视频') +
             this._num('UP主 mid', 'llm_active.web_browse.mid', 0, 0, 999999999, 1,
-                '0=自动用登录态抓自己账号首页视频；也可手动填指定 UP 主 mid');
+                '0=自动用登录态抓自己账号首页视频；也可手动填指定 UP 主 mid') +
+            this._text('SESSDATA', 'llm_active.web_browse.sessdata', '',
+                'B站登录态，可点下方「B站扫码登录」自动获取；与弹幕兜底通道独立') +
+            this._text('bili_jct', 'llm_active.web_browse.bili_jct', '',
+                'B站 csrf 令牌，扫码登录自动写入');
         return h;
     },
 
@@ -885,7 +1011,7 @@ const Config = {
 
         h += `<div class="speaker-actions">
             <button type="button" class="btn btn-secondary webbrowse-refresh-btn">刷新列表</button>
-            <button type="button" class="btn btn-primary bili-login-btn">B站扫码登录</button>
+            <button type="button" class="btn btn-primary bili-login-btn" data-target="web_browse">B站扫码登录</button>
         </div>`;
 
         h += this._section('待使用缓存（' + caches.length + '）');
@@ -1046,13 +1172,29 @@ const Config = {
     },
 
     meowsingerSong() {
-        return this._section('点歌模块') +
+        const mode = this._val('meowsinger.song.trigger_mode', 'both');
+        let h = this._section('点歌模块') +
             this._check('启用点歌', 'meowsinger.song.enabled', true) +
-            this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.song.prefix', ['Meowlisis点歌'],
-                '消息以该词开头时直接进入点歌，回车添加、点击 × 删除') +
-            this._wordTagEditor('意图触发词', 'meowsinger.song.intent', ['点歌', '放歌', '放首歌'],
-                '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
-            this._text('网易云服务地址', 'meowsinger.song.netease_url', 'http://127.0.0.1:5000');
+            this._select('触发模式', 'meowsinger.song.trigger_mode', [
+                { value: 'both', label: '前缀优先 + 意图兜底' },
+                { value: 'prefix', label: '仅前缀触发' },
+                { value: 'intent', label: '仅意图触发' },
+            ], 'both', '选择触发方式：both=两者都要，prefix=意图不生效，intent=前缀不生效',
+                'data-trigger-mode="meowsinger.song"');
+        if (mode !== 'intent') {
+            h += `<div class="trigger-mode-group" data-mode-group="meowsinger.song" data-mode-show="prefix">` +
+                this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.song.prefix', ['Meowlisis点歌'],
+                    '消息以该词开头时直接进入点歌，回车添加、点击 × 删除') +
+                `</div>`;
+        }
+        if (mode !== 'prefix') {
+            h += `<div class="trigger-mode-group" data-mode-group="meowsinger.song" data-mode-show="intent">` +
+                this._wordTagEditor('意图触发词', 'meowsinger.song.intent', ['点歌', '放歌', '放首歌'],
+                    '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
+                `</div>`;
+        }
+        h += this._text('网易云服务地址', 'meowsinger.song.netease_url', 'http://127.0.0.1:5000');
+        return h;
     },
 
     meowsingerCover(models, indices) {
@@ -1065,13 +1207,28 @@ const Config = {
         const indexOpts = [{ value: '', label: '（不使用索引）' }].concat(
             indices.map(i => ({ value: i, label: i }))
         );
-        return this._section('翻唱模块') +
+        const mode = this._val('meowsinger.cover.trigger_mode', 'both');
+        let h = this._section('翻唱模块') +
             this._check('启用翻唱', 'meowsinger.cover.enabled', true) +
-            this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.cover.prefix', ['Meowlisis唱歌'],
-                '消息以该词开头时直接进入翻唱，回车添加、点击 × 删除') +
-            this._wordTagEditor('意图触发词', 'meowsinger.cover.intent', ['唱首歌', '唱歌'],
-                '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
-            this._text('RVC 服务地址', 'meowsinger.cover.rvc_url', 'http://127.0.0.1:7865') +
+            this._select('触发模式', 'meowsinger.cover.trigger_mode', [
+                { value: 'both', label: '前缀优先 + 意图兜底' },
+                { value: 'prefix', label: '仅前缀触发' },
+                { value: 'intent', label: '仅意图触发' },
+            ], 'both', '选择触发方式：both=两者都要，prefix=意图不生效，intent=前缀不生效',
+                'data-trigger-mode="meowsinger.cover"');
+        if (mode !== 'intent') {
+            h += `<div class="trigger-mode-group" data-mode-group="meowsinger.cover" data-mode-show="prefix">` +
+                this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.cover.prefix', ['Meowlisis唱歌'],
+                    '消息以该词开头时直接进入翻唱，回车添加、点击 × 删除') +
+                `</div>`;
+        }
+        if (mode !== 'prefix') {
+            h += `<div class="trigger-mode-group" data-mode-group="meowsinger.cover" data-mode-show="intent">` +
+                this._wordTagEditor('意图触发词', 'meowsinger.cover.intent', ['唱首歌', '唱歌'],
+                    '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
+                `</div>`;
+        }
+        h += this._text('RVC 服务地址', 'meowsinger.cover.rvc_url', 'http://127.0.0.1:7865') +
             this._select('RVC 模型', 'meowsinger.cover.rvc_model', modelOpts, 'kikiV1.pth',
                 '从 .RVC/assets/weights 目录读取') +
             this._select('RVC 索引', 'meowsinger.cover.rvc_index', indexOpts, '',
@@ -1085,6 +1242,7 @@ const Config = {
             this._section('停止') +
             this._wordTagEditor('停止触发词', 'meowsinger.stop.keywords', ['停止唱歌', '停停停'],
                 '消息包含任一触发词即停止唱歌，回车添加、点击 × 删除');
+        return h;
     },
 
     meowsingerSentiment() {

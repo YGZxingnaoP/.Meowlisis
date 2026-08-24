@@ -29,7 +29,7 @@ class MeowIfStart:
             return self.MODE_LEARN, "", text
 
         # 点歌前缀触发（大小写敏感，必须在最前）
-        if self.config.song_enabled:
+        if self.config.song_enabled and self.config.song_trigger_mode in ("both", "prefix"):
             for prefix in self.config.song_prefix:
                 if text.startswith(prefix):
                     original = text[len(prefix):].strip()
@@ -37,7 +37,7 @@ class MeowIfStart:
                     return self.MODE_SONG, title or "", original
 
         # 翻唱前缀触发
-        if self.config.cover_enabled:
+        if self.config.cover_enabled and self.config.cover_trigger_mode in ("both", "prefix"):
             for prefix in self.config.cover_prefix:
                 if text.startswith(prefix):
                     original = text[len(prefix):].strip()
@@ -45,13 +45,17 @@ class MeowIfStart:
                     return self.MODE_COVER, title or "", original
 
         # 点歌关键词意图
-        if self.config.song_enabled and self._hit(self.config.song_intent, text):
+        if (self.config.song_enabled
+                and self.config.song_trigger_mode in ("both", "intent")
+                and self._hit(self.config.song_intent, text)):
             title = self._extract_title(text)
             if title:
                 return self.MODE_SONG, title, text
 
         # 翻唱关键词意图
-        if self.config.cover_enabled and self._hit(self.config.cover_intent, text):
+        if (self.config.cover_enabled
+                and self.config.cover_trigger_mode in ("both", "intent")
+                and self._hit(self.config.cover_intent, text)):
             title = self._extract_title(text)
             if title:
                 return self.MODE_COVER, title, text

@@ -8,6 +8,8 @@ import traceback
 
 RVC_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, RVC_DIR)
+# pymss 兜底依赖 pymss_core（位于 .RVC/tools/pymss_core），需要把 tools 加入 sys.path
+sys.path.insert(0, os.path.join(RVC_DIR, "tools"))
 
 # RVC 推理代码通过环境变量定位模型/索引/音高模型（统一用绝对路径，避免 cwd 依赖）
 os.environ.setdefault("weight_root", os.path.join(RVC_DIR, "assets", "weights"))
@@ -82,6 +84,14 @@ def _separate_uvr(input_path, output_dir):
     model_dir = os.path.join(RVC_DIR, "assets", "uvr5_weights", "UVR_onnx")
     base = os.path.splitext(os.path.basename(input_path))[0]
 
+    # audio_separator 返回的是相对文件名（相对 output_dir），转成绝对路径，避免第二步在 cwd 下找不到
+    def _abs(p):
+        if not p:
+            return ""
+        if os.path.isabs(p):
+            return p
+        return os.path.join(output_dir, os.path.basename(p))
+
     # 第一步：伴奏 / 人声（含和声）
     sep1 = Separator(model_file_dir=model_dir, output_dir=output_dir, output_format="WAV")
     sep1.load_model("UVR-MDX-NET-Inst_HQ_3.onnx")
@@ -91,9 +101,9 @@ def _separate_uvr(input_path, output_dir):
     for f in files1:
         kind = _classify_stem(f)
         if kind == "accomp":
-            accomp_path = f
+            accomp_path = _abs(f)
         elif kind == "vocal":
-            vocal_mix_path = f
+            vocal_mix_path = _abs(f)
 
     if not accomp_path or not vocal_mix_path:
         raise RuntimeError("Inst_HQ_3 分离结果缺少伴奏或人声轨")
@@ -107,15 +117,15 @@ def _separate_uvr(input_path, output_dir):
     for f in files2:
         kind = _classify_stem(f)
         if kind == "vocal":
-            lead_path = f
+            lead_path = _abs(f)
         elif kind == "harmony":
-            harmony_path = f
+            harmony_path = _abs(f)
 
     if not lead_path:
         # 没有和声轨也至少要有主唱；和声可为空
         for f in files2:
             if _classify_stem(f) == "vocal":
-                lead_path = f
+                lead_path = _abs(f)
         if not lead_path:
             raise RuntimeError("KARA_2 分离结果缺少主唱轨")
 
