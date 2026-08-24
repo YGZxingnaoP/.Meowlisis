@@ -1,9 +1,13 @@
-# browser_subtitle_server.py 修复版本
+# -*- coding: utf-8 -*-
+# func/subtitle/subtitle_server.py
+# 浏览器字幕服务：HTTP 提供字幕页 + WebSocket 推送字幕文本
 import asyncio
-import websockets
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 import os
+
+import websockets
+
 
 class SubtitleServer:
     def __init__(self, http_port=8080, ws_port=8765, html_path=None):
@@ -27,8 +31,8 @@ class SubtitleServer:
     async def _run_websocket_server(self):
         """启动 WebSocket 服务器"""
         self._ws_server = await websockets.serve(
-            self._websocket_handler, 
-            "127.0.0.1", 
+            self._websocket_handler,
+            "127.0.0.1",
             self.ws_port
         )
         print(f"WebSocket 服务器已启动，监听端口 {self.ws_port}")
@@ -45,12 +49,12 @@ class SubtitleServer:
     def start(self):
         """启动服务"""
         self._start_http_server()
-        
+
         # 创建并启动新的事件循环来运行 WebSocket 服务器
         self._loop = asyncio.new_event_loop()
         thread = threading.Thread(target=self._run_event_loop, daemon=True)
         thread.start()
-        
+
         print(f"✅ 字幕服务器已启动 | HTTP: {self.http_port} | WebSocket: {self.ws_port}")
 
     def _run_event_loop(self):
@@ -62,12 +66,12 @@ class SubtitleServer:
         """向所有连接的客户端发送字幕"""
         if not self.websocket_clients or self._loop is None:
             return
-        
+
         async def _send_all():
             """向所有客户端发送消息的协程"""
             if not self.websocket_clients:
                 return
-                
+
             # 复制客户端列表，避免在迭代时修改
             clients = list(self.websocket_clients)
             for client in clients:
@@ -78,12 +82,14 @@ class SubtitleServer:
                     # 如果出错，尝试从集合中移除
                     if client in self.websocket_clients:
                         self.websocket_clients.remove(client)
-        
+
         # 安全地将协程提交到事件循环
         asyncio.run_coroutine_threadsafe(_send_all(), self._loop)
 
+
 # 全局单例
 _subtitle_server = None
+
 
 def get_subtitle_server():
     global _subtitle_server

@@ -710,6 +710,32 @@ class TBNapCatCore:
             "message": [{"type": "file", "data": {"file": file_path}}],
         }, "群文件")
 
+    def send_private_voice(self, user_id, file_path: str):
+        """发送私聊语音（record 段，线程安全）"""
+        if not file_path or not self.enabled:
+            return
+        if not self._wait_loop_ready():
+            self.log.warning("NapCat 事件循环未就绪，跳过私聊语音发送")
+            return
+        self.log.info(f"[NapCat] 发送私聊语音 → {user_id}: {file_path}")
+        self._submit_send("send_private_msg", {
+            "user_id": int(user_id),
+            "message": [{"type": "record", "data": {"file": self._to_file_uri(file_path)}}],
+        }, "私聊语音")
+
+    def send_group_voice(self, group_id, file_path: str):
+        """发送群聊语音（record 段，线程安全）"""
+        if not file_path or not self.enabled:
+            return
+        if not self._wait_loop_ready():
+            self.log.warning("NapCat 事件循环未就绪，跳过群语音发送")
+            return
+        self.log.info(f"[NapCat] 发送群语音 → {group_id}: {file_path}")
+        self._submit_send("send_group_msg", {
+            "group_id": int(group_id),
+            "message": [{"type": "record", "data": {"file": self._to_file_uri(file_path)}}],
+        }, "群语音")
+
     def _submit_send(self, action: str, params: dict, label: str):
         """提交发送协程到事件循环，异常与结果在协程内部记录（避免静默吞掉）"""
         try:

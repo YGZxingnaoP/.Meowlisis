@@ -24,21 +24,23 @@ const Orbit = {
         { id: 'catbrain', label: 'CatBrain', tooltip: '角色灵魂配置' },
         { id: 'database', label: '数据库', tooltip: '数据库知识库配置' },
         { id: 'tts', label: 'TTS', tooltip: '语音合成与 SoVITS 配置' },
-        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/OBS/VTS）' },
+        { id: 'subtitle', label: '字幕', tooltip: '字幕模块配置' },
+        { id: 'toolbox', label: '工具箱', tooltip: '工具箱（Minecraft/VTS）' },
+        { id: 'meowsinger', label: '歌曲', tooltip: '点歌翻唱与感想配置' },
         { id: 'calendar', label: '待办', tooltip: '待办提醒' }
     ],
 
     // Toolbox 子视图外围行星球（父级模型中心球 + 工具球）
     toolboxPlanets: [
         { id: 'minecraft', label: 'Minecraft', tooltip: 'Minecraft 日志读取配置' },
-        { id: 'obs', label: 'OBS', tooltip: 'OBS 字幕模块（占位）' },
         { id: 'vts', label: 'VTS', tooltip: 'VTuber / VTS 配置' },
         { id: 'meowvision', label: '视觉', tooltip: 'MeowVision 视觉模块配置' },
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat QQ 机器人配置' },
         { id: 'weather', label: '天气', tooltip: '天气查询配置' },
         { id: 'news', label: '新闻', tooltip: '新闻查询配置' },
         { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' },
-        { id: 'add_backlog', label: '提醒', tooltip: '新建待办触发工具配置' }
+        { id: 'add_backlog', label: '提醒', tooltip: '新建待办触发工具配置' },
+        { id: 'meowsongs', label: '哼唱', tooltip: '即兴哼唱配置' }
     ],
 
     rotation: 0,
@@ -67,6 +69,9 @@ const Orbit = {
     napcatSubEls: [],
     napcatOpen: false,
     napcatEl: null,
+    meowsingerSubEls: [],
+    meowsingerOpen: false,
+    meowsingerEl: null,
 
     init() {
         const orbitOuter = document.getElementById('orbitOuter');
@@ -218,6 +223,64 @@ const Orbit = {
         this.napcatSubEls.forEach(el => this._applyNapcatSub(el, this.napcatOpen));
     },
 
+    // MeowSinger 子球（模型/歌曲/翻唱/感想，位于主界面外层）
+    createMeowsingerSubs(parent) {
+        const subs = [
+            { id: 'meowsinger_model', label: '模型', tooltip: '点歌翻唱 LLM 模型配置' },
+            { id: 'meowsinger_song', label: '歌曲', tooltip: '点歌触发与设置' },
+            { id: 'meowsinger_cover', label: '翻唱', tooltip: '翻唱触发与设置' },
+            { id: 'meowsinger_sentiment', label: '感想', tooltip: '唱歌感想配置' }
+        ];
+        const offsets = [
+            { x: 82, y: -82 },
+            { x: 115, y: -27 },
+            { x: 115, y: 27 },
+            { x: 82, y: 82 }
+        ];
+        this.meowsingerSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applyMeowsingerSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.meowsingerSubEls.push(el);
+        });
+    },
+
+    _applyMeowsingerSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleMeowsingerSubs() {
+        this.meowsingerOpen = !this.meowsingerOpen;
+        if (this.meowsingerEl) {
+            this.meowsingerEl.classList.toggle('active', this.meowsingerOpen);
+        }
+        this.meowsingerSubEls.forEach(el => this._applyMeowsingerSub(el, this.meowsingerOpen));
+    },
+
     updateToolboxPlanetPosition(el, rotationDeg) {
         const baseAngle = parseFloat(el.dataset.baseAngle);
         const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
@@ -312,8 +375,8 @@ const Orbit = {
         // 目标偏移：按角度均匀分布在主球右侧弧线上（从右下到右上）
         const total = this.launcherPlanets.length;
         const radius = 210;
-        const startAngle = 45;   // 最下方（右下）角度
-        const endAngle = -45;    // 最上方（右上）角度
+        const startAngle = 75;   // 最下方（右下）角度
+        const endAngle = -75;    // 最上方（右上）角度
         const angle = total <= 1
             ? 0
             : startAngle + (endAngle - startAngle) * index / (total - 1);
@@ -414,6 +477,15 @@ const Orbit = {
                 e.stopPropagation();
                 if (this.suppressClick) return;
                 this.toggleActiveSubs();
+            });
+        } else if (p.id === 'meowsinger') {
+            // 歌曲球：点击分裂出 3 个子球（模型/歌曲/翻唱）
+            this.meowsingerEl = el;
+            this.createMeowsingerSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleMeowsingerSubs();
             });
         } else {
             el.addEventListener('click', (e) => {

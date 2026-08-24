@@ -17,7 +17,7 @@ from func.tts.gpt_sovits import GptSovits
 from func.tts.player import AudioPlayer
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
-from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
+from func.pipeline.get_subtitle import GetSubtitleBridge
 from func.tools.singleton_mode import singleton
 from func.tts.state import TTsState
 from func.llm.state import LLmState
@@ -31,11 +31,14 @@ class StreamSource:
 
     _END = object()
 
-    def __init__(self, generator, cancel_func=None, traceid="", seg_index=0):
+    def __init__(self, generator, cancel_func=None, traceid="", seg_index=0,
+                 sample_rate=None, channels=1):
         self.generator = generator
         self.cancel_func = cancel_func
         self.traceid = traceid
         self.seg_index = seg_index
+        self.sample_rate = sample_rate
+        self.channels = channels
         self.buffer = queue.Queue()
         self.cancelled = False
         self.finished = False
@@ -111,7 +114,6 @@ class TTsCore:
         # 字幕独立线程
         self.subtitle = SubtitleWorker(
             self.ttsData,
-            get_subtitle_server(),
             is_paused=self._is_paused,
         )
 
@@ -332,19 +334,37 @@ class TTsCore:
             # 仅在完整回复首次出现时推送浏览器字幕
             full_text = subtitle_json.get("text", "") if subtitle_json else ""
             if full_text:
-                self.subtitle.send_full_text(full_text)
+                GetSubtitleBridge().send_tts(full_text)
+
+            # 歌词字幕同步（预合成音频如即兴哼唱片段，随播放开始逐句刷新）
+            lyric_syncer = None
+            lyric_info = getattr(source, "lyric", None)
+            if lyric_info:
+                try:
+                    from func.meowsinger.subtitle.lyric_syncer import MeowLyricSyncer
+                    lyric_syncer = MeowLyricSyncer()
+                    lyric_syncer.start(
+                        lyric_info.get("lines") or [],
+                        start_idx=lyric_info.get("start_idx", 0),
+                        end_idx=lyric_info.get("end_idx"),
+                    )
+                except Exception:
+                    self.log.exception("启动歌词字幕同步失败")
+                    lyric_syncer = None
 
             try:
                 self._play_stream_source(source)
             finally:
+                if lyric_syncer:
+                    lyric_syncer.stop()
                 with self.priority_lock:
                     self._playing_priority = 0
                 source.cancel()
 
     def _play_stream_source(self, source: StreamSource):
         """阻塞播放一个流式源：先攒初始缓冲再开流，边收边播直到结束/打断"""
-        samplerate = self.config.sample_rate
-        channels = 1
+        samplerate = source.sample_rate or self.config.sample_rate
+        channels = source.channels or 1
         # 初始缓冲字节数（int16 / 单声道）
         buffer_bytes = int(samplerate * channels * 2 * self.config.stream_buffer_ms / 1000)
 
@@ -442,6 +462,38 @@ class TTsCore:
                     if tracker["traceid"] in self.pending_segments:
                         del self.pending_segments[tracker["traceid"]]
                 return
+
+    def play_audio(self, audio, sr, source="meowsongs", traceid=None,
+                   lyric_lines=None, lyric_start_idx=0, lyric_end_idx=None):
+        """播放预合成音频（如哼唱片段），走 TTS 播放队列，可打断、后续回复排队"""
+        try:
+            import numpy as np
+            audio = np.asarray(audio)
+            channels = 1 if audio.ndim == 1 else audio.shape[1]
+            if audio.dtype != np.int16:
+                audio = np.clip(audio, -1.0, 1.0)
+                audio = (audio * 32767.0).astype(np.int16)
+            raw = audio.tobytes()
+
+            traceid = traceid or str(uuid.uuid4())
+            source = StreamSource(None, None, traceid, 0,
+                                  sample_rate=int(sr), channels=channels)
+            chunk = 1024 * channels * 2
+            for i in range(0, len(raw), chunk):
+                source.push(raw[i:i + chunk])
+            source.finish()
+
+            priority = self._priority_of("meowsongs")
+            if lyric_lines:
+                source.lyric = {
+                    "lines": lyric_lines,
+                    "start_idx": lyric_start_idx,
+                    "end_idx": lyric_end_idx,
+                }
+            reply_json = {"traceid": traceid, "chatStatus": "end", "text": ""}
+            self.play_queue.put((source, reply_json, True, priority))
+        except Exception:
+            self.log.exception("【play_audio】播放预合成音频异常：")
 
     def tts_say(self, text):
         """直接合成并播放一段语音（复读/欢迎语）"""

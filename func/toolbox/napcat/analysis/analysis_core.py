@@ -39,10 +39,11 @@ class TBNapcatAnalysis:
         system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
         system = (
             f"{system}\n\n"
-            f"【工具调用】请判断用户这条 QQ 消息是否需要查询天气、查看新闻或新建待办：\n"
+            f"【工具调用】请判断用户这条 QQ 消息是否需要查询天气、查看新闻、新建待办或即兴哼唱：\n"
             f"- 询问天气/气温/是否下雨/要不要带伞 → 调用 query_weather；\n"
             f"- 询问新闻/热点/最近发生了什么/有什么大事 → 调用 read_news；\n"
             f"- 明确要新建/记录待办或提醒事项（如提醒我几点做什么）→ 调用 add_backlog；\n"
+            f"- 想让角色即兴哼唱一小段歌（如 哼两句、唱一句）→ 调用 impromptu_sing；\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
         )
         messages: List[dict] = [{"role": "system", "content": system}]
@@ -93,6 +94,11 @@ class TBNapcatAnalysis:
                 result = TBAddBacklogTool().dispatch_qq(name, args, qq_context)
                 if isinstance(result, tuple) and result and result[0] == "redeliver":
                     self._redeliver(result[1], username, qq_context, short_memory)
+                handled = True
+            elif name == "impromptu_sing":
+                from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
+                TBMeowSongsCore().set_username(username)
+                TBMeowSongsCore().dispatch_qq(name, args, qq_context)
                 handled = True
             else:
                 self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
@@ -153,6 +159,11 @@ class TBNapcatAnalysis:
                 tools.extend(TBAddBacklogTool().build_tools())
         except Exception:
             self.log.exception("构建 add_backlog 工具失败")
+        try:
+            from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
+            tools.extend(TBMeowSongsCore().build_tools())
+        except Exception:
+            self.log.exception("构建 meowsongs 工具失败")
         return tools
 
     # ==================== LLM（复用 napcat 现有配置 func/llm） ====================

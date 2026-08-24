@@ -109,6 +109,13 @@ class SenseVoiceCore:
             while self.running:
                 frame = self.audio.next_frame()
 
+                # 音频旁路：分发到哼唱检测与落盘缓存（原 SenseVoice 链路不变）
+                try:
+                    from func.pipeline.toolbox_audio import ToolboxAudioBridge
+                    ToolboxAudioBridge().dispatch_frame(frame)
+                except Exception:
+                    pass
+
                 # 检测说话状态（VAD）与打断状态，分别上报/传递
                 vad_event, interrupt_event = self.interrupt.update(frame)
                 if vad_event:

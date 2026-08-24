@@ -92,6 +92,28 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册新建待办模块失败")
 
+        # 即兴哼唱模块
+        try:
+            from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
+            meowsongs = TBMeowSongsCore()
+            for tool_schema in meowsongs.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, meowsongs)
+        except Exception:
+            self.log.exception("注册即兴哼唱模块失败")
+
+        # 听歌识曲接龙模块
+        try:
+            from func.toolbox.meowsongs.pass_the_baton.pass_the_baton import TBPassTheBaton
+            pass_the_baton = TBPassTheBaton()
+            for tool_schema in pass_the_baton.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, pass_the_baton)
+        except Exception:
+            self.log.exception("注册听歌识曲接龙模块失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -144,6 +166,7 @@ class TBoxAnalysis:
             f"- 所有可能和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"
             f"- 明确要看新闻/热点/头条 → read_news；\n"
+            f"- 有**听歌**需求，提到了**歌曲相关内容**，需要哼唱歌曲缓和气氛，→ impromptu_sing；\n"
             f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send；\n"
             f"- 有让你提醒TA事情，需要新建/记录待办或提醒事项（如提醒我几点做什么）→ add_backlog。\n"
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"

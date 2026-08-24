@@ -8,7 +8,7 @@ from threading import Thread
 from flask import Flask, jsonify, request
 from flask_apscheduler import APScheduler
 
-from func.toolbox.obs.browser_subtitle_server import get_subtitle_server
+from func.subtitle.subtitle_server import get_subtitle_server
 from func.log.default_log import DefaultLog
 from func.toolbox.vtuber.emote_oper import EmoteOper
 from func.tts.tts_core import TTsCore
@@ -137,6 +137,13 @@ def input_msg():
             return jsonify({"status": "成功", "excuse": True})
     except Exception:
         pass
+    # meowsinger 点歌/翻唱/唱歌中拦截
+    try:
+        from func.pipeline.msg_singer import MsgSingerBridge
+        if MsgSingerBridge().send_to_singer(query, user_name, "msg"):
+            return jsonify({"status": "成功", "singer": True})
+    except Exception:
+        pass
     traceid = str(uuid.uuid4())
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, query, user_name)
@@ -182,6 +189,13 @@ def chat():
             return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     except Exception:
         pass
+    # meowsinger 点歌/翻唱/唱歌中拦截
+    try:
+        from func.pipeline.msg_singer import MsgSingerBridge
+        if MsgSingerBridge().send_to_singer(text, username, "chat"):
+            return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
+    except Exception:
+        pass
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, text, username)
     try:
@@ -219,10 +233,24 @@ def main():
         sensevoice_bridge = SenseVoiceLLMBridge()
 
         def sensevoice_callback(text, username):
+            # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
+            try:
+                from func.pipeline.toolbox_audio import ToolboxAudioBridge
+                if ToolboxAudioBridge().should_discard_next_asr():
+                    return
+            except Exception:
+                pass
             # excuse 询问链路优先：正在等待用户补充需求时，拦截并阻塞 sensevoice_llm
             try:
                 from func.toolbox.excuse import TBExcuse
                 if TBExcuse().route_text(text, username):
+                    return
+            except Exception:
+                pass
+            # meowsinger 点歌/翻唱/唱歌中拦截
+            try:
+                from func.pipeline.msg_singer import MsgSingerBridge
+                if MsgSingerBridge().send_to_singer(text, username, "sensevoice"):
                     return
             except Exception:
                 pass

@@ -1,5 +1,5 @@
 # func/tts/subtitle.py
-# 字幕处理线程：消费字幕队列 + 推送浏览器完整字幕
+# 字幕处理线程：消费字幕队列，转入回复文本队列供前端轮询
 import queue
 import threading
 
@@ -9,13 +9,11 @@ from func.log.default_log import DefaultLog
 class SubtitleWorker:
     """独立字幕线程，负责回复文本队列与浏览器字幕推送"""
 
-    def __init__(self, tts_data, subtitle_server, is_paused=None):
+    def __init__(self, tts_data, is_paused=None):
         self.log = DefaultLog().getLogger()
         self.tts_data = tts_data
-        self.subtitle_server = subtitle_server
         self.is_paused = is_paused or (lambda: False)
         self.queue = queue.Queue()
-        self.current_full_subtitle = None
         self._thread = None
 
     def start(self):
@@ -34,16 +32,6 @@ class SubtitleWorker:
                 self.queue.get_nowait()
             except queue.Empty:
                 break
-
-    def send_full_text(self, text):
-        """推送完整回复字幕到浏览器（同文本去重）"""
-        if not text or text == self.current_full_subtitle:
-            return
-        self.current_full_subtitle = text
-        try:
-            self.subtitle_server.send_subtitle(text)
-        except Exception as e:
-            self.log.error(f"发送字幕失败: {e}")
 
     def _worker(self):
         """字幕消费线程：转入回复文本队列供前端轮询"""

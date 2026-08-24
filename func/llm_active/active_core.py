@@ -58,6 +58,14 @@ class AutoActiveCore:
         """llm 完成回复：重置计时"""
         self.timer.reset()
 
+    def pause(self):
+        """暂停主动回复计时（唱歌期间调用）"""
+        self.timer.pause()
+
+    def resume(self):
+        """恢复主动回复计时（唱歌结束后调用）"""
+        self.timer.resume()
+
     def check_active(self):
         """周期轮询：计时到期则异步触发主动回复"""
         if self._running or not self.timer.is_due():

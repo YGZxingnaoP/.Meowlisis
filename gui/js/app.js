@@ -75,6 +75,12 @@ const App = {
         if (id === 'active_config') { await this.openActiveConfigPanel(); return; }
         if (id === 'active_browse') { await this.openActiveBrowsePanel(); return; }
 
+        // 歌曲子球（模型/歌曲/翻唱/感想）
+        if (id === 'meowsinger_model') { this._openConfigPanel('歌曲模型设置', () => Config.meowsingerModel()); return; }
+        if (id === 'meowsinger_song') { this._openConfigPanel('点歌设置', () => Config.meowsingerSong()); return; }
+        if (id === 'meowsinger_cover') { await this.openMeowsingerCoverPanel(); return; }
+        if (id === 'meowsinger_sentiment') { this._openConfigPanel('感想设置', () => Config.meowsingerSentiment()); return; }
+
         // CatBrain 子球
         const catbrainSubMap = {
             'ltmem': { title: '长期记忆', fn: () => Config.catbrain_ltmem() },
@@ -101,6 +107,7 @@ const App = {
 
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic() },
+            'subtitle': { title: '字幕设置', fn: () => Config.subtitle() },
             'active': { title: '主动回复设置', fn: () => Config.llm_active() }
         };
 
@@ -128,6 +135,7 @@ const App = {
         setTimeout(() => {
             this.bindTabs();
             this.bindSplitFlagEditor();
+            this.bindWordTagEditor();
             this.bindDictEditors();
             this.bindSessdataVerify();
             this.bindBiliLogin();
@@ -396,7 +404,6 @@ const App = {
         const map = {
             'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
-            'obs': { title: 'OBS 设置', fn: () => Config.obs() },
             'vts': { title: 'VTuber / VTS 设置', fn: () => Config.vtuber() },
             'meowvision': { title: 'MeowVision 视觉设置', fn: () => Config.meowvision() },
             'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() },
@@ -407,7 +414,8 @@ const App = {
             'weather': { title: '天气查询设置', fn: () => Config.weather() },
             'news': { title: '新闻查询设置', fn: () => Config.news() },
             'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
-            'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() }
+            'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() },
+            'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() }
         };
         const panel = map[id];
         if (!panel) {
@@ -438,6 +446,7 @@ const App = {
         setTimeout(() => {
             this.bindTabs();
             this.bindSplitFlagEditor();
+            this.bindWordTagEditor();
             this.bindDictEditors();
             this.bindSessdataVerify();
             this.bindBiliLogin();
@@ -836,6 +845,19 @@ const App = {
                 });
             }
         });
+    },
+
+    // ============ 歌曲翻唱面板（RVC 模型/索引下拉） ============
+    async openMeowsingerCoverPanel() {
+        let models = [], indices = [];
+        try {
+            const r = await API.getRvcModels();
+            models = r.models || [];
+            indices = r.indices || [];
+        } catch (e) {
+            console.warn('加载 RVC 模型列表失败:', e);
+        }
+        this._openConfigPanel('翻唱设置', () => Config.meowsingerCover(models, indices));
     },
 
     // ============ LLM 面板（含前置词/后置词） ============
@@ -1392,6 +1414,50 @@ const App = {
             tagsEl.appendChild(tag);
             addInput.value = '';
             sync();
+        });
+    },
+
+    bindWordTagEditor() {
+        document.querySelectorAll('[data-word-tag-editor]').forEach(editor => {
+            const hidden = editor.querySelector('input[data-path]');
+            const tagsEl = editor.querySelector('.split-tags');
+            const addInput = editor.querySelector('.split-add-input');
+            if (!hidden || !tagsEl || !addInput) return;
+
+            const sync = () => {
+                const words = [];
+                tagsEl.querySelectorAll('.split-tag').forEach(t => {
+                    const w = t.dataset.word;
+                    if (w != null && w !== '') words.push(w);
+                });
+                hidden.value = JSON.stringify(words);
+            };
+
+            tagsEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('.split-tag-remove');
+                if (btn) {
+                    btn.closest('.split-tag').remove();
+                    sync();
+                }
+            });
+
+            addInput.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter') return;
+                e.preventDefault();
+                const w = addInput.value.trim();
+                if (!w) return;
+                if (tagsEl.querySelector(`[data-word="${this._escAttr(w)}"]`)) {
+                    addInput.value = '';
+                    return;
+                }
+                const tag = document.createElement('span');
+                tag.className = 'split-tag';
+                tag.dataset.word = w;
+                tag.innerHTML = `${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button>`;
+                tagsEl.appendChild(tag);
+                addInput.value = '';
+                sync();
+            });
         });
     },
 

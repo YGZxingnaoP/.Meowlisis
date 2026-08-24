@@ -30,7 +30,7 @@ class ShortMemory:
     """短期记忆桥接：负责 .temp/public_short_mem.json 的读取、保存与裁剪"""
 
     # 插播类消息：挂靠到其后第一条 llm_fast_response，随该条快回淘汰而连带删除
-    ACTIVE_TYPES = ("llm_active_response", "vision_response")
+    ACTIVE_TYPES = ("llm_active_response", "vision_response", "hum_song")
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -144,15 +144,16 @@ class ShortMemory:
         return links
 
     def _trim_active_orphans(self, data: list) -> list:
-        """插播兜底：llm_active_response 保留最近 N 条，避免尾部孤立无限堆积"""
+        """插播兜底：对 ACTIVE_TYPES 各类型保留最近 N 条，避免尾部孤立无限堆积"""
         limit = self._active_mem_limit()
         if limit <= 0:
             return data
-        indices = [i for i, m in enumerate(data) if m.get("type") == "llm_active_response"]
-        remove_n = max(0, len(indices) - limit)
-        if remove_n > 0:
-            for idx in sorted(indices[:remove_n], reverse=True):
-                data.pop(idx)
+        for active_type in self.ACTIVE_TYPES:
+            indices = [i for i, m in enumerate(data) if m.get("type") == active_type]
+            remove_n = max(0, len(indices) - limit)
+            if remove_n > 0:
+                for idx in sorted(indices[:remove_n], reverse=True):
+                    data.pop(idx)
         return data
 
     def _active_mem_limit(self) -> int:

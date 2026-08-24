@@ -43,11 +43,12 @@ class TBNapCatVisionActive:
 
     def run(self, image_paths: List[str], user_message: str, username: str = "",
             need_description: bool = True) -> str:
-        """主动看图：转交 meowvision，返回角色回复（meowvision 内部回传 TTS，napcat 侧不清缓存）"""
-        return self.vision.run(
+        """主动看图：转交 meowvision，只取回复（不触发 TTS，napcat 自行决定发送方式）"""
+        result = self.vision.process(
             image_paths or [], user_message, username or self._username,
             need_description=need_description,
         )
+        return (result.get("reply") or "").strip()
 
     # ==================== 主动视觉工具（供 napcat LLM toolcalls） ====================
     def build_tools(self) -> List[Dict]:

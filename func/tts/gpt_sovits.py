@@ -5,6 +5,7 @@ import os
 import requests
 
 from func.tts.config import TTSConfig
+from func.tts.lan_judge import LanguageJudge
 from func.tools.singleton_mode import singleton
 
 
@@ -17,6 +18,12 @@ class GptSovits:
         if not self.api_base_url.endswith('/'):
             self.api_base_url += '/'
         self.tts_endpoint = self.api_base_url + "tts"
+
+    def _resolve_text_lang(self, text: str) -> str:
+        """按配置决定合成语言：启用整段语言判定时，仅整段 en/ja 覆盖默认，否则用配置默认。"""
+        if not getattr(self.config, "lang_judge_enabled", True):
+            return self.config.text_lang
+        return LanguageJudge(self.config.text_lang).judge(text)
 
     def get_sovits(self, filename: str, text: str, ref_audio_config: dict = None) -> int:
         """合成语音并保存为 wav，返回 1 成功 0 失败（参考音频配置来自角色卡绑定）"""
@@ -38,7 +45,7 @@ class GptSovits:
         # 构造 GPT-SoVITS v2 API 请求体
         payload = {
             "text": text,
-            "text_lang": "auto",
+            "text_lang": self._resolve_text_lang(text),
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
@@ -83,7 +90,7 @@ class GptSovits:
 
         payload = {
             "text": text,
-            "text_lang": "auto",
+            "text_lang": self._resolve_text_lang(text),
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,

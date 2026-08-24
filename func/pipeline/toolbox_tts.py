@@ -76,6 +76,18 @@ class ToolboxTtsBridge:
             self.log.exception("检测 TTS 忙状态失败")
             return False
 
+    def play_audio(self, audio, sr, source="meowsongs",
+                   lyric_lines=None, lyric_start_idx=0, lyric_end_idx=None):
+        """把预合成音频送入 TTS 播放队列（可打断、后续回复排队），可选携带歌词字幕同步"""
+        try:
+            from func.tts.tts_core import TTsCore
+            TTsCore().play_audio(audio, sr, source=source,
+                                 lyric_lines=lyric_lines,
+                                 lyric_start_idx=lyric_start_idx,
+                                 lyric_end_idx=lyric_end_idx)
+        except Exception:
+            self.log.exception("toolbox → TTS 播放预合成音频异常")
+
     @classmethod
     def _split(cls, text: str) -> list:
         """按标点切分文本为多个片段（保留标点，过滤空段）"""

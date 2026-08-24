@@ -131,6 +131,13 @@ class SenseVoiceManager:
 
         self.log.info(f"✅ 通过说话人验证: {spk_name} (score={spk_score:.3f})")
 
+        # 记录最近一次通过声纹验证的说话人（供哼唱识别绑定用户名）
+        try:
+            from func.pipeline.toolbox_audio import ToolboxAudioBridge
+            ToolboxAudioBridge().set_last_speaker(spk_name)
+        except Exception:
+            self.log.exception("写入最后声纹说话人失败")
+
         key = spk_name
         # 取消旧任务并立即移除，防止旧 finally 误删新任务
         old_task = self.pending_tasks.pop(key, None)

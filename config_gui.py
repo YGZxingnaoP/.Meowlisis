@@ -340,12 +340,11 @@ def post_ref_audio():
 
 @app.route('/api/sovits_models', methods=['GET'])
 def get_sovits_models():
-    """扫描 .Sovits 下可用的 ckpt 与 pth 权重文件"""
+    """扫描 .Sovits 下可用的 ckpt 与 pth 权重文件（仅用户模型，不含底模）"""
     sovits_dir = BASE_DIR / ".Sovits"
     search_dirs = [
         sovits_dir / "GPT_weights_v2Pro",
         sovits_dir / "SoVITS_weights_v2Pro",
-        sovits_dir / "GPT_SoVITS" / "pretrained_models",
     ]
     ckpts = []
     pths = []
@@ -357,6 +356,23 @@ def get_sovits_models():
         for p in d.rglob('*.pth'):
             pths.append(str(p.relative_to(sovits_dir)).replace('\\', '/'))
     return jsonify({'ckpt': sorted(set(ckpts)), 'pth': sorted(set(pths))})
+
+
+@app.route('/api/rvc_models', methods=['GET'])
+def get_rvc_models():
+    """扫描 .RVC 下可用的翻唱模型（weights）与特征索引（indices）"""
+    rvc_dir = BASE_DIR / ".RVC"
+    weight_dir = rvc_dir / "assets" / "weights"
+    index_dir = rvc_dir / "assets" / "indices"
+    models = []
+    indices = []
+    if weight_dir.exists():
+        for p in sorted(weight_dir.rglob('*.pth')):
+            models.append(p.name)
+    if index_dir.exists():
+        for p in sorted(index_dir.rglob('*.index')):
+            indices.append(p.name)
+    return jsonify({'models': sorted(set(models)), 'indices': sorted(set(indices))})
 
 
 @app.route('/api/verify_site', methods=['POST'])

@@ -91,11 +91,19 @@ class TBDanmakuCore:
         tts_bridge = ToolboxTtsBridge()
         while self._running:
             try:
-                if not tts_bridge.is_busy():
+                if not tts_bridge.is_busy() and not self._is_singing():
                     self.reply.consume()
             except Exception:
                 self.log.exception("弹幕消费轮询异常")
             time.sleep(self.POLL_INTERVAL)
+
+    @staticmethod
+    def _is_singing():
+        try:
+            from func.pipeline.singing_state import SingingStateBridge
+            return SingingStateBridge().is_singing()
+        except Exception:
+            return False
 
     # ==================== 礼物/舰长感谢 ====================
     def thank_gift(self, username: str, gift_name: str, gift_num: int, price: int):

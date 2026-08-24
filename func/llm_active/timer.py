@@ -12,6 +12,8 @@ class AutoTimer:
     def __init__(self, cold_time):
         self.cold_time = cold_time
         self._deadline = 0.0
+        self._paused = False
+        self._pause_start = 0.0
         self.reset()
 
     def reset(self):
@@ -20,5 +22,22 @@ class AutoTimer:
         self._deadline = time.time() + wait
 
     def is_due(self):
-        """是否已到期"""
+        """是否已到期（暂停期间永不到期）"""
+        if self._paused:
+            return False
         return time.time() >= self._deadline
+
+    def pause(self):
+        """暂停计时：记录暂停起点"""
+        if self._paused:
+            return
+        self._paused = True
+        self._pause_start = time.time()
+
+    def resume(self):
+        """恢复计时：把暂停时长顺延到到期时间"""
+        if not self._paused:
+            return
+        elapsed = time.time() - self._pause_start
+        self._deadline += elapsed
+        self._paused = False

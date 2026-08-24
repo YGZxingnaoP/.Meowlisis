@@ -116,6 +116,12 @@ const API = {
         return res.json();
     },
 
+    async getRvcModels() {
+        const res = await fetch('/api/rvc_models');
+        if (!res.ok) return { models: [], indices: [] };
+        return res.json();
+    },
+
     async getFrontPrompt() {
         const res = await fetch('/api/front_prompt');
         if (!res.ok) return {};

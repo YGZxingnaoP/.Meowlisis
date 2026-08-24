@@ -62,6 +62,30 @@ const Config = {
             ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
     },
 
+    _area(label, path, def, help) {
+        const v = this._val(path, def);
+        return `<div class="form-group"><label>${label}</label>
+            <textarea class="auto-grow" rows="3" data-path="${path}">${this._esc(v == null ? '' : v)}</textarea>
+            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+    },
+
+    _wordTagEditor(label, path, def, help, placeholder) {
+        const list = (this._val(path, def) || []).filter(x => x != null && String(x).trim());
+        const tags = list.map(w =>
+            `<span class="split-tag" data-word="${this._escAttr(w)}">${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button></span>`
+        ).join('');
+        const json = JSON.stringify(list);
+        return `<div class="form-group"><label>${label}</label>
+            <div class="split-flag-editor" data-word-tag-editor="${path}">
+                <div class="split-tags">${tags}</div>
+                <div class="split-add-row">
+                    <input type="text" class="split-add-input" placeholder="${placeholder || '输入后回车添加'}">
+                </div>
+                <input type="hidden" data-path="${path}" value='${this._escAttr(json)}'>
+            </div>
+            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+    },
+
     // ============ 键值对（dict）可视化编辑器 ============
     _dictHidden(path, obj) {
         const json = JSON.stringify(obj || {});
@@ -569,6 +593,13 @@ const Config = {
             ], 'raw', '流式推荐 raw，避免每块 wav 头解析') +
             this._num('段尾静音(秒)', 'tts.gpt-sovits.fragment_interval', 0, 0, 2, 0.1,
                 '流式下必须为 0，否则段尾会有静音') +
+            this._select('合成文本语言', 'tts.gpt-sovits.text_lang', [
+                { value: 'zh', label: '中文 zh（最稳，可读短英文词）' },
+                { value: 'auto', label: '自动 auto（中英混合，可能误判成日文）' },
+                { value: 'en', label: '英文 en' }
+            ], 'zh', '中文为主建议 zh，避免 auto 误判成日语出现伪日文') +
+            this._check('整段语言自动切换', 'tts.gpt-sovits.lang_judge_enabled', true,
+                '仅当整段是英文/日文时自动切换语言，其余仍用上方默认语言') +
             this._section('打断') +
             this._select('打断模式', 'tts.interrupt.mode', [
                 { value: 'pipeline', label: 'pipeline（说话打断）' },
@@ -893,10 +924,10 @@ const Config = {
         </div>`;
     },
 
-    // ============ OBS（占位） ============
-    obs() {
-        return this._section('OBS 直播控制') +
-            `<div class="help-text">OBS 直播控制功能已移除，当前仅保留 TTS 浏览器字幕模块（暂无配置项）。</div>`;
+    // ============ 字幕 ============
+    subtitle() {
+        return this._section('字幕模块') +
+            `<div class="help-text">浏览器字幕模块：TTS 播放字幕与歌词字幕统一输出（HTTP 8080 / WebSocket 8765，暂无配置项）。</div>`;
     },
 
     // ============ Toolbox 父级模型 ============
@@ -984,6 +1015,124 @@ const Config = {
                 'AI 根据用户「记一下 / 提醒我几点做什么」触发，深度思考后写入 character/backlog（受 toolcalls 控制）') +
             this._check('QQ 对接', 'add_backlog.qq_enabled', true,
                 '开启后 QQ 私聊 / 群聊@ 也可触发新建待办，且待办 qq 提醒强制开启');
+    },
+
+    // ============ 歌曲（meowsinger）子球 ============
+    meowsingerModel() {
+        const type = this._val('meowsinger.llm_type', 'deepseek');
+        let h = this._section('点歌翻唱 LLM 模型') +
+            this._check('启用点歌翻唱', 'meowsinger.enabled', true) +
+            this._llmTypeSelect('LLM 类型', 'meowsinger.llm_type', type);
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="meowsinger_ds">DeepSeek</button>
+            <button class="modal-tab" data-tab="meowsinger_aliyun">阿里云</button>
+        </div>`;
+        h += `<div class="tab-content active" data-tab-content="meowsinger_ds">` +
+            this._password('API Key', 'meowsinger.deepseek.api_key', '') +
+            this._text('Base URL', 'meowsinger.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'meowsinger.deepseek.model', 'deepseek-chat') +
+            this._num('max_tokens', 'meowsinger.deepseek.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="meowsinger_aliyun">` +
+            this._password('API Key', 'meowsinger.aliyun.api_key', '') +
+            this._text('Base URL', 'meowsinger.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'meowsinger.aliyun.model', 'qwen-plus') +
+            this._num('max_tokens', 'meowsinger.aliyun.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += this._section('回复引导词') +
+            this._area('回复引导词', 'meowsinger.prompt.reply', '',
+                '用于把「不会唱这首歌/没找到歌名」等内部信息转成角色口吻回复，{content}=内部信息');
+        return h;
+    },
+
+    meowsingerSong() {
+        return this._section('点歌模块') +
+            this._check('启用点歌', 'meowsinger.song.enabled', true) +
+            this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.song.prefix', ['Meowlisis点歌'],
+                '消息以该词开头时直接进入点歌，回车添加、点击 × 删除') +
+            this._wordTagEditor('意图触发词', 'meowsinger.song.intent', ['点歌', '放歌', '放首歌'],
+                '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
+            this._text('网易云服务地址', 'meowsinger.song.netease_url', 'http://127.0.0.1:5000');
+    },
+
+    meowsingerCover(models, indices) {
+        models = models || [];
+        indices = indices || [];
+        const modelOpts = models.map(m => ({ value: m, label: m }));
+        if (modelOpts.length === 0) {
+            modelOpts.push({ value: 'kikiV1.pth', label: 'kikiV1.pth' });
+        }
+        const indexOpts = [{ value: '', label: '（不使用索引）' }].concat(
+            indices.map(i => ({ value: i, label: i }))
+        );
+        return this._section('翻唱模块') +
+            this._check('启用翻唱', 'meowsinger.cover.enabled', true) +
+            this._wordTagEditor('前缀触发词（大小写敏感，必须最前）', 'meowsinger.cover.prefix', ['Meowlisis唱歌'],
+                '消息以该词开头时直接进入翻唱，回车添加、点击 × 删除') +
+            this._wordTagEditor('意图触发词', 'meowsinger.cover.intent', ['唱首歌', '唱歌'],
+                '消息包含该词时结合歌名意图分析，回车添加、点击 × 删除') +
+            this._text('RVC 服务地址', 'meowsinger.cover.rvc_url', 'http://127.0.0.1:7865') +
+            this._select('RVC 模型', 'meowsinger.cover.rvc_model', modelOpts, 'kikiV1.pth',
+                '从 .RVC/assets/weights 目录读取') +
+            this._select('RVC 索引', 'meowsinger.cover.rvc_index', indexOpts, '',
+                '从 .RVC/assets/indices 目录读取，留空则自动匹配') +
+            this._select('学歌模式', 'meowsinger.cover.learn_mode', [
+                {value:'idle', label:'空闲时学习'}, {value:'immediate', label:'立刻学习'}
+            ], 'idle') +
+            this._wordTagEditor('学歌授权用户', 'meowsinger.cover.learn_users', [],
+                '仅这些用户发送学歌指令可触发，回车添加、点击 × 删除') +
+            this._text('学歌触发语', 'meowsinger.cover.learn_trigger', '喵利呜西斯，可以开始学歌啦') +
+            this._section('停止') +
+            this._wordTagEditor('停止触发词', 'meowsinger.stop.keywords', ['停止唱歌', '停停停'],
+                '消息包含任一触发词即停止唱歌，回车添加、点击 × 删除');
+    },
+
+    meowsingerSentiment() {
+        return this._section('唱歌感想') +
+            this._check('启用感想', 'meowsinger.sentiment.enabled', true,
+                '完整唱完一首歌后，AI 结合歌词与歌曲信息发表感想') +
+            this._num('感想 max_tokens', 'meowsinger.sentiment.max_tokens', 2048, 1, 32768, 16,
+                '感想生成的最大 token 数') +
+            this._num('感想字数', 'meowsinger.sentiment.word_count', 300, 50, 2000, 10,
+                '感想引导词中要求的字数（默认 300）') +
+            this._area('感想引导词', 'meowsinger.sentiment.prompt', '',
+                '唱完整首歌后生成感想的引导词，{verb}/{song_title}/{lrc}/{result_text}/{word_count}=占位符') +
+            this._area('汇总回复引导词', 'meowsinger.prompt.summary', '',
+                '唱歌期间收到的观众消息汇总后统一回复的引导词，{lines}=观众消息列表') +
+            this._area('歌曲搜索引导词', 'meowsinger.search.prompt', '',
+                '唱歌开始/结束时搜索歌曲资料的引导词，{song_title}=歌名');
+    },
+
+    // ============ 即兴哼唱（meowsongs） ============
+    meowsongs() {
+        return this._section('即兴哼唱（触发型工具）') +
+            this._check('启用即兴哼唱', 'meowsongs.enabled', true,
+                'AI 根据用户消息判断是否即兴哼唱已学歌曲片段（不带伴奏，只播放翻唱人声）') +
+            this._num('播放长度上限（秒）', 'meowsongs.max_duration', 180, 1, 600, 1,
+                '单次即兴哼唱的最长播放秒数，默认 180（整首歌）') +
+            this._section('听歌识曲接龙') +
+            this._check('启用听歌识曲接龙', 'meowsongs.pass_the_baton.enabled', false,
+                '用户哼唱一段后，AI 识别歌曲并接着往下唱（依赖哼唱检测与本地曲库）') +
+            this._num('往后唱几句', 'meowsongs.pass_the_baton.hum_lines', 2, 1, 10, 1,
+                '识别命中后接着唱的歌词句数，默认 2') +
+            this._num('哼唱能量阈值', 'meowsongs.pass_the_baton.energy_threshold', 300, 0, 2000, 10,
+                '判定哼唱的最小 RMS 能量，默认 300') +
+            this._num('音高发声占比', 'meowsongs.pass_the_baton.f0_voiced_ratio', 0.6, 0.1, 1, 0.05,
+                'pyin 有声帧占比阈值，越高要求哼唱越稳定') +
+            this._num('音高稳定性', 'meowsongs.pass_the_baton.f0_stability', 0.15, 0.01, 2, 0.01,
+                '音高半音方差阈值，越小越稳定') +
+            this._num('有效语音累积时长（秒）', 'meowsongs.pass_the_baton.hum_collect_sec', 7.0, 3, 30, 0.5,
+                '持续有效语音达到该时长才开始判断哼唱（静音/触发阈值读 SenseVoice 配置）') +
+            this._num('最少不同音符数', 'meowsongs.pass_the_baton.f0_unique_notes', 3, 1, 10, 1,
+                '哼唱至少出现的不同半音数量（过滤单调拖长音）') +
+            this._num('匹配得分阈值', 'meowsongs.pass_the_baton.match_threshold', 0.55, 0.1, 1, 0.05,
+                'QBH 匹配最低得分，默认 0.55') +
+            this._num('缓存时长（秒）', 'meowsongs.pass_the_baton.cache_seconds', 30, 5, 120, 1,
+                '哼唱检测环形缓冲时长，默认 30') +
+            this._area('匹配失败询问引导词', 'meowsongs.pass_the_baton.ask_prompt', '',
+                '哼唱匹配不到歌曲时，用于让 AI 问用户是不是在唱歌的引导词') +
+            this._area('接龙感想引导词', 'meowsongs.pass_the_baton.feeling_prompt', '',
+                '接龙命中后发表感想的引导词，{title}=歌名、{lyric}=歌词');
     },
 
     // ============ 数据库（database）子球 ============
@@ -1381,6 +1530,16 @@ const Config = {
                 path === 'llm_active.web_browse.allow_topics'
             )) {
                 current[last] = value.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+            } else if (typeof value === 'string' && (
+                path === 'meowsinger.song.prefix' ||
+                path === 'meowsinger.song.intent' ||
+                path === 'meowsinger.cover.prefix' ||
+                path === 'meowsinger.cover.intent' ||
+                path === 'meowsinger.cover.learn_users' ||
+                path === 'meowsinger.stop.keywords'
+            )) {
+                try { current[last] = JSON.parse(value); }
+                catch (e) { current[last] = value.split(/\n/).map(s => s.trim()).filter(Boolean); }
             } else if (path === 'napcat.group_bots' || path === 'napcat.group_per_group') {
                 // dict 编辑器：隐藏 input 存 JSON 字符串，这里解析回对象
                 try { current[last] = JSON.parse(value); }

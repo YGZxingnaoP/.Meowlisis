@@ -91,6 +91,13 @@
             animation: bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
         }
 
+        /* 收到字幕：单行不换行，超长由 JS 动态缩小字号 */
+        .subtitle-text.single-line {
+            white-space: nowrap;
+            overflow: hidden;
+            word-break: normal;
+        }
+
         /* 弹跳动画 */
         @keyframes bounceGlow {
             0% {
@@ -197,9 +204,41 @@
 
     <script>
         const subtitleEl = document.getElementById('subtitle');
+        const IDLE_HTML = '✨ ฅ^•ﻌ•^ฅ ✨<br>✨ AI 待机中 ✨';
+        const BASE_FONT = 44;
+        const MIN_FONT = 20;
         let ws = null;
         let reconnectAttempts = 0;
         const MAX_RECONNECT = 5;
+
+        function showIdle() {
+            subtitleEl.classList.remove('single-line');
+            subtitleEl.style.fontSize = '';
+            subtitleEl.innerHTML = IDLE_HTML;
+        }
+
+        function fitText() {
+            subtitleEl.style.fontSize = BASE_FONT + 'px';
+            let size = BASE_FONT;
+            while (size > MIN_FONT && subtitleEl.scrollWidth > subtitleEl.clientWidth) {
+                size -= 2;
+                subtitleEl.style.fontSize = size + 'px';
+            }
+        }
+
+        function showText(text) {
+            subtitleEl.classList.add('single-line');
+            subtitleEl.textContent = text;
+            fitText();
+        }
+
+        function triggerAnimation() {
+            const textDiv = subtitleEl;
+            if (!textDiv) return;
+            textDiv.style.animation = 'none';
+            void textDiv.offsetHeight;
+            textDiv.style.animation = 'bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1)';
+        }
 
         function connectWebSocket() {
         if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -212,15 +251,20 @@
         reconnectAttempts = 0;
         const currentText = subtitleEl.innerText;
         if (currentText.includes('断开') || currentText.includes('💔') || currentText.includes('无法连接')) {
-        subtitleEl.innerText = '🌸 连接恢复啦 🌸';
+        showIdle();
         triggerAnimation();
         }
         };
         ws.onmessage = (event) => {
         if (event.data && typeof event.data === 'string') {
         let newText = event.data.trim();
-        if (newText === "") newText = "🐾 ฅ(ﾐ・ﻌ・ﾐ)ฅ 🐾";
-        subtitleEl.innerText = newText;
+        if (newText === "" || newText === "__CLEAR__") {
+            showIdle();
+        } else {
+            newText = newText.replace(/\n+/g, ' ');
+            if (newText === "") newText = "🐾 ฅ(ﾐ・ﻌ・ﾐ)ฅ 🐾";
+            showText(newText);
+        }
         triggerAnimation();
         }
         };
@@ -229,7 +273,7 @@
         setTimeout(() => {
         if (ws && ws.readyState !== WebSocket.OPEN) {
         if (!subtitleEl.innerText.includes('连接断开')) {
-        subtitleEl.innerText = '💔 字幕连接断开 重试中 💔';
+        showText('💔 字幕连接断开 重试中 💔');
         triggerAnimation();
         }
         }
@@ -237,30 +281,22 @@
         };
         ws.onclose = (event) => {
         console.log(`WebSocket 关闭, code: ${event.code}`);
-        subtitleEl.innerText = '🦋 字幕连接断开 · 正在重连 🦋';
+        showText('🦋 字幕连接断开 · 正在重连 🦋');
         triggerAnimation();
         if (reconnectAttempts < MAX_RECONNECT) {
         const delay = Math.min(2000 * (reconnectAttempts + 1), 10000);
         reconnectAttempts++;
         setTimeout(() => { connectWebSocket(); }, delay);
         } else {
-        subtitleEl.innerText = '💧 无法连接 AI 服务端 请检查程序 💧';
+        showText('💧 无法连接 AI 服务端 请检查程序 💧');
         triggerAnimation();
         }
         };
         } catch (err) {
         console.error("创建WebSocket失败", err);
-        subtitleEl.innerText = '⚠️ 初始化连接失败 ⚠️\n请确认后端服务运行中';
+        showText('⚠️ 初始化连接失败 ⚠️\n请确认后端服务运行中');
         triggerAnimation();
         }
-        }
-
-        function triggerAnimation() {
-        const textDiv = subtitleEl;
-        if (!textDiv) return;
-        textDiv.style.animation = 'none';
-        void textDiv.offsetHeight;
-        textDiv.style.animation = 'bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1)';
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -271,11 +307,11 @@
         butterflyImg.addEventListener('click', (e) => {
         e.stopPropagation();
         const tempMsg = '🦋 蓝蝶扑翅 · 好运来袭 ✨ 喵～ ✨';
-        subtitleEl.innerText = tempMsg;
+        showText(tempMsg);
         triggerAnimation();
         setTimeout(() => {
-        if (subtitleEl.innerText === tempMsg) {
-        subtitleEl.innerText = '✨ AI 待机中 ✨';
+        if (subtitleEl.textContent === tempMsg) {
+        showIdle();
         triggerAnimation();
         }
         }, 1800);
