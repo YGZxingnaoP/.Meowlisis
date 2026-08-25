@@ -19,6 +19,21 @@ chardet
 requests
 dashscope
 
+# 知识库 / 视觉 / 弹幕 / B站 / 文档解析
+chromadb
+Pillow
+bilibili-api-python
+brotli
+yarl
+qrcode
+lxml
+trafilatura
+tiktoken
+Markdown
+python-docx
+pymupdf
+samplerate
+
 # ---------- SenseVoice 语音识别服务 ----------
 torch
 torchaudio
@@ -44,3 +59,10 @@ jieba
 jieba-fast
 sentencepiece
 lunar-python
+
+# ---------- RVC 翻唱服务（.RVC） ----------
+av
+faiss-cpu
+praat-parselmouth
+torchfcpe
+audio-separator
