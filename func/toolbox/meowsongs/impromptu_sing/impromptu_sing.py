@@ -50,7 +50,7 @@ class TBImpromptuSing:
     def run(self, text, username="", with_lyric=True):
         """入口：LLM function_calling 提取歌名与歌词后播放"""
         song_title, start_lrc, end_lrc = self.decide(text, username)
-        return self.sing(song_title, start_lrc, end_lrc, with_lyric=with_lyric)
+        return self.sing(song_title, start_lrc, end_lrc, username=username, with_lyric=with_lyric)
 
     def decide(self, text, username=""):
         """用 toolbox LLM 决定唱哪首歌哪段，不确定返回 random"""
@@ -87,7 +87,7 @@ class TBImpromptuSing:
             self.log.exception("[MeowSongs] 参数决策异常")
         return song_title, start_lrc, end_lrc
 
-    def sing(self, song_title, start_lrc, end_lrc, with_lyric=True):
+    def sing(self, song_title, start_lrc, end_lrc, username="", with_lyric=True):
         """按歌名/歌词确定片段并播放，返回播放结果文本"""
         if not self.config.enabled:
             return "即兴哼唱未启用"
@@ -107,6 +107,7 @@ class TBImpromptuSing:
 
         start_idx, end_idx = self._resolve_range(lrc, start_lrc, end_lrc)
         self._play_slice(title, lrc, start_idx, end_idx, with_lyric=with_lyric)
+        self._record_hum_song(username, lrc, start_idx, end_idx)
         return f"哼唱《{title}》"
 
     def _resolve_title_by_lyric(self, lyric, titles):
@@ -170,6 +171,31 @@ class TBImpromptuSing:
             )
         except Exception:
             self.log.exception("[MeowSongs] 片段播放异常")
+
+    def _record_hum_song(self, username, lrc, start_idx, end_idx):
+        """把即兴哼唱片段对应歌词以 hum_song 形式写入短期/长期/摘要/用户记忆"""
+        lyrics = " ".join(
+            (lrc[i].get("text") or "").strip()
+            for i in range(start_idx, end_idx + 1)
+            if (lrc[i].get("text") or "").strip()
+        )
+        if not lyrics:
+            return
+        username = username or "用户"
+        try:
+            from func.pipeline.short_memory import ShortMemory
+            ShortMemory().save(
+                {"role": "assistant", "content": lyrics, "type": "hum_song"},
+                50, trim_mode="items",
+            )
+        except Exception:
+            self.log.exception("[MeowSongs] 短期记忆保存异常")
+        try:
+            from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+            from func.config.app_config import AppConfig
+            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, lyrics)
+        except Exception:
+            self.log.exception("[MeowSongs] 长期/用户记忆保存异常")
 
     def _match_line(self, lrc, lyric):
         best_idx, best_score = 0, 0.0

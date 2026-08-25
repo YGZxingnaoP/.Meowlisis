@@ -87,6 +87,12 @@ from func.pipeline.emotion_vts import EmotionVtsBridge
 EmotionVtsBridge()
 # ========================================
 
+# ============= 桌宠操作 =====================
+# 情绪 → 桌宠表情桥接（订阅 LLM 情绪更新，触发桌宠热键）
+from func.pipeline.emotion_desktopet import EmotionDesktopetBridge
+EmotionDesktopetBridge()
+# ========================================
+
 log.info("--------------------")
 log.info("AI虚拟主播-启动成功！")
 log.info("--------------------")
@@ -224,10 +230,6 @@ def main():
     vtsOper.emote_ws(1, 0.2, "初始化")  # 解除当前衣服
     vtsOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
     vtsState.now_clothes = "便衣"
-
-    # VTS 置顶透明窗口（按配置决定是否启动）
-    from func.vts.vts_window import VtsWindow
-    VtsWindow().start()
 
     # 获取全局配置
     config = ConfigReader().get()

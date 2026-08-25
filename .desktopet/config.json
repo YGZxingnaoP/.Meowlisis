@@ -1,0 +1,26 @@
+{
+  "api": {
+    "host": "127.0.0.1",
+    "port": 8002
+  },
+  "model": {
+    "dir": "Live2d_resource/Meowlisis",
+    "model3": "MiaoWu-l2d.model3.json",
+    "vtube": "MiaoWu-l2d.vtube.json",
+    "cdi3": "MiaoWu-l2d.cdi3.json"
+  },
+  "window": {
+    "defaultScale": 1.0,
+    "minScale": 0.3,
+    "maxScale": 3.0,
+    "alwaysOnTop": true,
+    "transparent": true,
+    "clickThrough": true,
+    "padding": 1.15
+  },
+  "paramFix": {
+    "swapAngleXY": false,
+    "flipAngleX": false,
+    "flipAngleY": false
+  }
+}

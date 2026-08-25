@@ -1,0 +1,15 @@
+{
+  "name": "desktopet",
+  "version": "1.0.0",
+  "description": "VTube Studio API 兼容的无背景 Live2D 桌宠（透明 + 鼠标穿透 + 可缩放）",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

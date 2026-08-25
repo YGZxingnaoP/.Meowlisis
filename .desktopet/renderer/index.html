@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>喵呜桌宠</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: transparent;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <!-- Live2D 渲染依赖（本地 libs） -->
+  <script src="../libs/pixi.min.js"></script>
+  <script src="../libs/live2dcubismcore.min.js"></script>
+  <script src="../libs/pixi-live2d-display.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -8,6 +8,13 @@ import pyaudio
 import soundfile as sf
 
 from func.pipeline.tts_vts import TtsVtsBridge
+from func.pipeline.tts_desktopet import TtsDesktopetBridge
+
+
+def _set_playing(playing):
+    """同时驱动 VTS 与桌宠的表现桥接（嘴部开合/身体摆动）"""
+    TtsVtsBridge().set_playing(playing)
+    TtsDesktopetBridge().set_playing(playing)
 
 
 class AudioPlayer:
@@ -61,7 +68,7 @@ class AudioPlayer:
                 print(f"打开音频流失败: {e}")
                 return False
             self._stream = stream
-            TtsVtsBridge().set_playing(True)
+            _set_playing(True)
 
         try:
             # 分块写入，期间响应打断
@@ -88,7 +95,7 @@ class AudioPlayer:
                 except Exception:
                     pass
                 self._stream = None
-            TtsVtsBridge().set_playing(False)
+            _set_playing(False)
 
     def stop(self):
         """立即停止当前播放"""
@@ -118,7 +125,7 @@ class AudioPlayer:
                 print(f"打开音频流失败: {e}")
                 return False
             self._stream = stream
-            TtsVtsBridge().set_playing(True)
+            _set_playing(True)
         return True
 
     def write(self, data: bytes, volume: float = 1.0) -> bool:
@@ -158,7 +165,7 @@ class AudioPlayer:
                 except Exception:
                     pass
                 self._stream = None
-        TtsVtsBridge().set_playing(False)
+        _set_playing(False)
 
     def is_playing(self) -> bool:
         """返回当前是否有音频正在播放"""

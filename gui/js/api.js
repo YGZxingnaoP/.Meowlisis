@@ -10,18 +10,6 @@ const API = {
         return res.json();
     },
 
-    async getScreenInfo() {
-        try {
-            const res = await fetch('/api/screen');
-            if (!res.ok) return null;
-            const data = await res.json();
-            if (data && data.width > 0 && data.height > 0) return data;
-            return null;
-        } catch {
-            return null;
-        }
-    },
-
     async saveConfig(config) {
         const res = await fetch('/api/config', {
             method: 'POST',
@@ -81,6 +69,12 @@ const API = {
     async startRvc() {
         const res = await fetch('/api/start_rvc', { method: 'POST' });
         if (!res.ok) throw new Error('Failed to start RVC');
+        return res.json();
+    },
+
+    async startDesktopet() {
+        const res = await fetch('/api/start_desktopet', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start desktopet');
         return res.json();
     },
 

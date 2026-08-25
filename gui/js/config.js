@@ -759,6 +759,62 @@ const Config = {
         return h;
     },
 
+    // ============ 桌宠子球：配置（连接 + 身体 + 嘴部 + 表情） ============
+    desktopet_config() {
+        let h = this._section('桌宠连接（Live2D 桌宠，复用 VTS 协议）') +
+            this._check('启用桌宠控制', 'desktopet_emote.switch', false) +
+            this._text('WebSocket 地址', 'desktopet_emote.vtuber_websocket', '127.0.0.1:8002') +
+            this._text('插件名称', 'desktopet_emote.vtuber_pluginName', '') +
+            this._text('插件开发者', 'desktopet_emote.vtuber_pluginDeveloper', '') +
+            this._text('认证令牌', 'desktopet_emote.vtuber_authenticationToken', '');
+
+        h += this._section('身体左右摆动（说话时随机抖动，活泼跳跃感）') +
+            this._check('启用身体摆动', 'desktopet_emote.body_sway.enabled', true) +
+            this._text('摆动参数名', 'desktopet_emote.body_sway.parameter', 'FaceAngleX') +
+            this._num('基准值', 'desktopet_emote.body_sway.base', 0.0, -1, 1, 0.01) +
+            this._num('常规幅度', 'desktopet_emote.body_sway.amplitude', 0.18, 0, 1, 0.01) +
+            this._num('跳跃峰值幅度', 'desktopet_emote.body_sway.jump_amplitude', 0.6, 0, 1, 0.01) +
+            this._num('跳跃概率(0~1)', 'desktopet_emote.body_sway.jump_probability', 0.2, 0, 1, 0.05) +
+            this._num('刷新周期(ms)', 'desktopet_emote.body_sway.interval_ms', 100, 20, 500, 10);
+
+        h += this._section('嘴部同步（仅由 TTS 播放器驱动）') +
+            this._check('启用嘴部同步', 'desktopet_emote.mouth_sync.enabled', true) +
+            this._text('嘴部参数名', 'desktopet_emote.mouth_sync.parameter', 'MouthOpen') +
+            this._num('张嘴下限', 'desktopet_emote.mouth_sync.min', 0.25, 0, 1, 0.01) +
+            this._num('张嘴上限', 'desktopet_emote.mouth_sync.max', 1.0, 0, 1, 0.01) +
+            this._num('闭嘴值', 'desktopet_emote.mouth_sync.close', 0.0, 0, 1, 0.01) +
+            this._num('刷新周期(ms)', 'desktopet_emote.mouth_sync.interval_ms', 90, 20, 500, 10);
+
+        const slots = this._val('desktopet_emote.emotion_slots', {}) || {};
+        const emotions = ['happy', 'sad', 'call', 'angry', 'blush', 'approve', 'sweat', 'blood', 'love', 'wordless'];
+        const tiers = [
+            { key: 'weak', label: '弱' },
+            { key: 'strong', label: '强' }
+        ];
+        let rows = '';
+        emotions.forEach(emo => {
+            tiers.forEach(tier => {
+                const key = `${emo}_${tier.key}`;
+                rows += this._desktopetEmotionSlotRow(key, slots[key]);
+            });
+        });
+        h += this._section('表情绑定（左：槽位ID，右：桌宠热键ID）') +
+            '<div class="emotion-slots">' +
+                '<div class="emotion-slots-head"><span>槽位 ID</span><span>桌宠热键 ID</span></div>' +
+                rows +
+            '</div>' +
+            '<div class="help-text">槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填桌宠（模型 vtube.json）里配置的热键 ID。</div>';
+
+        return h;
+    },
+
+    _desktopetEmotionSlotRow(key, val) {
+        return `<div class="emotion-slot-row">
+            <span class="emotion-slot-id">${key}</span>
+            <input type="text" data-path="desktopet_emote.emotion_slots.${key}" value="${this._esc(val || '')}" placeholder="桌宠 hotkeyID">
+        </div>`;
+    },
+
     // ============ VTuber / VTS 子球：表情绑定（左右：左id右内容） ============
     vts_emotion() {
         const slots = this._val('emote.emotion_slots', {}) || {};
@@ -786,48 +842,6 @@ const Config = {
         return `<div class="emotion-slot-row">
             <span class="emotion-slot-id">${key}</span>
             <input type="text" data-path="emote.emotion_slots.${key}" value="${this._esc(val || '')}" placeholder="VTS hotkeyID">
-        </div>`;
-    },
-
-    // ============ VTuber / VTS 子球：窗口（含全屏预览） ============
-    vts_window() {
-        let h = this._section('置顶窗口（绿幕抠像，保存后重启生效）') +
-            this._check('启动时打开置顶窗口', 'emote.window.enabled', false) +
-            this._check('窗口置顶', 'emote.window.always_on_top', true);
-
-        h += this._windowPreview();
-
-        h += this._text('绿幕颜色', 'emote.window.green', '#00FF00') +
-            this._num('绿幕容差(0~255)', 'emote.window.tolerance', 40, 0, 255, 1) +
-            this._num('刷新帧率', 'emote.window.fps', 30, 1, 60, 1);
-
-        return h;
-    },
-
-    _windowPreview() {
-        const w = this._val('emote.window.width', 400);
-        const h = this._val('emote.window.height', 600);
-        const x = this._val('emote.window.x', 0);
-        const y = this._val('emote.window.y', 0);
-        return `<div class="form-group"><label>窗口位置与大小（拖拽窗口移动，拖拽四角等比缩放，或直接输入像素）</label>
-            <div class="window-preview" data-window-preview>
-                <div class="window-preview-screen" data-window-screen>
-                    <div class="window-preview-window selected" data-window-box>
-                        <span class="window-preview-size" data-window-size></span>
-                        <span class="wp-handle wp-handle-ne" data-handle="ne"></span>
-                        <span class="wp-handle wp-handle-nw" data-handle="nw"></span>
-                        <span class="wp-handle wp-handle-se" data-handle="se"></span>
-                        <span class="wp-handle wp-handle-sw" data-handle="sw"></span>
-                    </div>
-                </div>
-            </div>
-            <div class="window-preview-fields">
-                <div class="window-field"><label>X</label><input type="number" data-path="emote.window.x" data-window-field="x" value="${x}" min="0"></div>
-                <div class="window-field"><label>Y</label><input type="number" data-path="emote.window.y" data-window-field="y" value="${y}" min="0"></div>
-                <div class="window-field"><label>宽</label><input type="number" data-path="emote.window.width" data-window-field="w" value="${w}" min="50"></div>
-                <div class="window-field"><label>高</label><input type="number" data-path="emote.window.height" data-window-field="h" value="${h}" min="50"></div>
-            </div>
-            <div class="help-text" data-screen-info>当前屏幕分辨率：${window.screen.width}×${window.screen.height}（窗口按屏幕比例等比缩放）</div>
         </div>`;
     },
 

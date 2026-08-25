@@ -67,3 +67,7 @@ character/info/
 #音频文件
 character/songs/meow_list
 character/songs/raw_list
+
+#桌宠相关
+.desktopet/Live2d_resource
+.desktopet/node_modules

@@ -96,16 +96,6 @@ def post_config():
     return jsonify({'status': 'ok'})
 
 
-@app.route('/api/screen', methods=['GET'])
-def screen_info():
-    """返回当前屏幕（主显示器）真实分辨率，供 VTS 窗口预览按屏幕比例等比缩放。"""
-    try:
-        from gui.tools.screen_info import get_screen_info
-        return jsonify(get_screen_info())
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/tts_config', methods=['GET'])
 def get_tts_config():
     return jsonify(load_tts_config())
@@ -234,6 +224,23 @@ def start_rvc():
             subprocess.Popen([python, str(server_path)], cwd=str(rvc_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             subprocess.Popen([python, str(server_path)], cwd=str(rvc_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/start_desktopet', methods=['POST'])
+def start_desktopet():
+    """启动桌宠（.desktopet/start.bat）"""
+    try:
+        desktopet_dir = BASE_DIR / ".desktopet"
+        start_bat = desktopet_dir / "start.bat"
+        if not start_bat.exists():
+            return jsonify({'status': 'error', 'message': 'start.bat not found'}), 400
+        if sys.platform == "win32":
+            subprocess.Popen([str(start_bat)], cwd=str(desktopet_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            subprocess.Popen([str(start_bat)], cwd=str(desktopet_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

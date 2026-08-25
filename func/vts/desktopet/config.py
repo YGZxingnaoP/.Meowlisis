@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
-# func/vts/config.py
-# VTS（VTube Studio）配置项统一管理
-# 注意：为兼容历史配置，仍读取 config.yml 的 emote 节点，字段名保持原名不变。
+# func/vts/desktopet/config.py
+# 桌宠控制配置项统一管理
+# 读取 config.yml 的 desktopet_emote 节点，字段结构与 emote（VTS）一致，端口默认 8002。
 
 from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
 
 @singleton
-class VtsConfig:
-    """集中管理 emote 节点下 VTube Studio 连接参数与默认值"""
+class DesktopetConfig:
+    """集中管理 desktopet_emote 节点下桌宠连接参数与默认值"""
 
     # 情绪强度分档阈值：intensity < 3 为 weak，>= 3 为 strong（固定）
     EMOTION_INTENSITY_SPLIT = 3
@@ -18,26 +18,21 @@ class VtsConfig:
     EMOTIONS = ["happy", "sad", "call", "angry", "blush", "approve", "sweat", "blood", "love", "wordless"]
 
     def __init__(self):
-        cfg = ConfigReader().get('emote', {})
+        cfg = ConfigReader().get('desktopet_emote', {})
 
-        # ========== 连接与开关（字段名保留历史） ==========
-        # 是否启用 VTube Studio 控制
+        # ========== 连接与开关（字段名与 VTS 保持一致） ==========
         self.switch = cfg.get('switch', False)
 
-        # VTube Studio WebSocket 地址
-        self.vtuber_websocket = cfg.get('vtuber_websocket', '127.0.0.1:8001')
+        # 桌宠 WebSocket 地址（桌宠默认 8002，与真 VTS 8001 区分）
+        self.vtuber_websocket = cfg.get('vtuber_websocket', '127.0.0.1:8002')
 
-        # 插件名（与 VTS 授权信息保持一致）
         self.vtuber_pluginName = cfg.get('vtuber_pluginName', '')
 
-        # 插件开发者
         self.vtuber_pluginDeveloper = cfg.get('vtuber_pluginDeveloper', '')
 
-        # VTS 认证 token
         self.vtuber_authenticationToken = cfg.get('vtuber_authenticationToken', '')
 
         # ========== 情绪表情槽位映射 ==========
-        # 槽位 id（{emotion}_{weak|strong}）→ VTS hotkeyID
         self.emotion_slots = cfg.get('emotion_slots', {}) or {}
 
         # ========== 身体摆动 ==========
@@ -61,7 +56,7 @@ class VtsConfig:
 
     # ==================== 情绪槽位解析 ====================
     def resolve_hotkey(self, emotion: str, intensity: float) -> str:
-        """根据情绪与强度解析出 VTS hotkeyID。
+        """根据情绪与强度解析出桌宠热键ID。
 
         - 强度分档固定：< 3 → weak，>= 3 → strong；
         - 缺省依次回退：同情绪 strong → 同情绪 weak → happy_weak；

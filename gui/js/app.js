@@ -38,7 +38,8 @@ const App = {
             main: { fn: () => API.startMain(), name: '主程序' },
             napcat: { fn: () => API.startNapcat(), name: 'NapCat' },
             netease: { fn: () => API.startNetease(), name: '网易云' },
-            rvc: { fn: () => API.startRvc(), name: 'RVC' }
+            rvc: { fn: () => API.startRvc(), name: 'RVC' },
+            desktopet: { fn: () => API.startDesktopet(), name: '桌宠' }
         };
         const item = map[id];
         if (!item) return;
@@ -81,10 +82,10 @@ const App = {
         if (id === 'meowsinger_cover') { await this.openMeowsingerCoverPanel(); return; }
         if (id === 'meowsinger_sentiment') { this._openConfigPanel('感想设置', () => Config.meowsingerSentiment()); return; }
 
-        // VTS 子球（配置/表情/窗口/参数）
+        // VTS 子球（配置/表情/桌宠/参数）
         if (id === 'vts_config') { this._openConfigPanel('VTS 配置', () => Config.vts_config()); return; }
         if (id === 'vts_emotion') { this._openConfigPanel('VTS 表情绑定', () => Config.vts_emotion()); return; }
-        if (id === 'vts_window') { this._openConfigPanel('VTS 窗口', () => Config.vts_window()); return; }
+        if (id === 'desktopet') { this._openConfigPanel('桌宠配置', () => Config.desktopet_config()); return; }
         if (id === 'vts_params') { this._openConfigPanel('VTS 模型参数', () => Config.vts_params()); return; }
 
         // CatBrain 子球
@@ -456,7 +457,6 @@ const App = {
             this.bindDictEditors();
             this.bindSessdataVerify();
             this.bindBiliLogin();
-            this.bindVtsWindowPreview();
             this.bindVtsParamsQuery();
         }, 10);
     },
@@ -871,210 +871,6 @@ const App = {
                 });
             }
         });
-    },
-
-    // ============ VTS 窗口全屏预览（拖拽/等比缩放） ============
-    bindVtsWindowPreview() {
-        const preview = document.querySelector('[data-window-preview]');
-        if (!preview) return;
-        const screenEl = preview.querySelector('[data-window-screen]');
-        const box = preview.querySelector('[data-window-box]');
-        const sizeLabel = preview.querySelector('[data-window-size]');
-        // 像素输入框位于 .window-preview-fields，它是 data-window-preview 的兄弟节点，
-        // 必须在父容器（.form-group）内查找，否则这里拿不到输入框会导致函数提前 return、
-        // 拖拽事件从未绑定（症状：光标变成拖拽符号但完全拖不动）。
-        const scope = preview.closest('.form-group') || preview.parentElement || document;
-        const fieldX = scope.querySelector('input[data-window-field="x"]');
-        const fieldY = scope.querySelector('input[data-window-field="y"]');
-        const fieldW = scope.querySelector('input[data-window-field="w"]');
-        const fieldH = scope.querySelector('input[data-window-field="h"]');
-        if (!screenEl || !box || !fieldX || !fieldY || !fieldW || !fieldH) return;
-
-        const MIN = 50;
-        const infoLabel = (preview.closest('.form-group') || document).querySelector('[data-screen-info]');
-
-        // 先用浏览器 window.screen 兜底，随后用后端真实屏幕信息覆盖（与 tkinter 置顶窗口坐标一致）
-        let screenW = window.screen.width || 1920;
-        let screenH = window.screen.height || 1080;
-        let screenRatio = screenW / screenH;
-
-        let winW = parseFloat(fieldW.value) || 400;
-        let winH = parseFloat(fieldH.value) || 600;
-        let winX = parseFloat(fieldX.value) || 0;
-        let winY = parseFloat(fieldY.value) || 0;
-        // 用户手动改过像素后，不再被异步到达的屏幕信息强制等比重置
-        let userEdited = false;
-
-        // 按当前屏幕比例等比缩放（保持宽度，调整高度）
-        const normalizeRatio = () => {
-            if (screenRatio > 0 && Math.abs(winW / winH - screenRatio) > 0.01) {
-                winH = Math.round(winW / screenRatio);
-            }
-        };
-
-        // 让预览「屏幕」画布也按真实屏幕比例显示高度（限制在合理区间，避免竖屏/带鱼屏过高过矮）
-        const applyScreenAspect = () => {
-            if (!(screenW > 0) || !(screenH > 0)) return;
-            const cw = screenEl.clientWidth || 1;
-            const targetH = cw / (screenW / screenH);
-            const clamped = Math.max(180, Math.min(420, targetH));
-            screenEl.style.height = clamped + 'px';
-        };
-
-        const updateScreenInfo = () => {
-            if (infoLabel) {
-                infoLabel.textContent = `当前屏幕分辨率：${screenW}×${screenH}（窗口按屏幕比例等比缩放）`;
-            }
-        };
-
-        const scaleOf = () => {
-            const cw = screenEl.clientWidth || 1;
-            const ch = screenEl.clientHeight || 1;
-            return { sx: cw / screenW, sy: ch / screenH };
-        };
-
-        const render = () => {
-            const { sx, sy } = scaleOf();
-            box.style.left = (winX * sx) + 'px';
-            box.style.top = (winY * sy) + 'px';
-            box.style.width = (winW * sx) + 'px';
-            box.style.height = (winH * sy) + 'px';
-            if (sizeLabel) sizeLabel.textContent = `${Math.round(winW)}×${Math.round(winH)}`;
-        };
-
-        const sync = () => {
-            winW = Math.max(MIN, Math.min(winW, screenW));
-            winH = Math.max(MIN, Math.min(winH, screenH));
-            winX = Math.max(0, Math.min(screenW - winW, winX));
-            winY = Math.max(0, Math.min(screenH - winH, winY));
-            fieldX.value = Math.round(winX);
-            fieldY.value = Math.round(winY);
-            fieldW.value = Math.round(winW);
-            fieldH.value = Math.round(winH);
-            render();
-        };
-
-        const select = () => box.classList.add('selected');
-        const deselect = () => box.classList.remove('selected');
-
-        // ---- 最兼容拖拽：onmousedown + document mousemove/mouseup ----
-        let drag = null;
-
-        const startDrag = (e, mode) => {
-            if (e.button !== 0) return; // 仅左键
-            e.preventDefault();
-            drag = {
-                mode,
-                startX: e.clientX,
-                startY: e.clientY,
-                origX: winX,
-                origY: winY,
-                origW: winW,
-                origH: winH,
-                ratio: winW / winH,
-            };
-            select();
-            console.log('[VTS窗口] 开始拖拽', mode);
-            document.addEventListener('mousemove', onDragMove);
-            document.addEventListener('mouseup', onDragEnd);
-        };
-
-        const onDragMove = (e) => {
-            if (!drag) return;
-            const { sx, sy } = scaleOf();
-            const dx = (e.clientX - drag.startX) / sx;
-            const dy = (e.clientY - drag.startY) / sy;
-
-            if (drag.mode === 'move') {
-                winX = drag.origX + dx;
-                winY = drag.origY + dy;
-                sync();
-                return;
-            }
-
-            const dir = drag.mode;
-            const hx = dir.includes('w') ? -1 : 1;
-            const vy = dir.includes('n') ? -1 : 1;
-            const dw = dx * hx;
-            const dh = dy * vy;
-            const ratio = drag.ratio;
-
-            let nw, nh;
-            if (Math.abs(dw / drag.origW) > Math.abs(dh / drag.origH)) {
-                nw = drag.origW + dw;
-                nh = nw / ratio;
-            } else {
-                nh = drag.origH + dh;
-                nw = nh * ratio;
-            }
-            if (nw < MIN) { nw = MIN; nh = nw / ratio; }
-            if (nh < MIN) { nh = MIN; nw = nh * ratio; }
-
-            if (hx === 1) winX = drag.origX; else winX = drag.origX + drag.origW - nw;
-            if (vy === 1) winY = drag.origY; else winY = drag.origY + drag.origH - nh;
-            winW = nw;
-            winH = nh;
-            sync();
-        };
-
-        const onDragEnd = () => {
-            drag = null;
-            document.removeEventListener('mousemove', onDragMove);
-            document.removeEventListener('mouseup', onDragEnd);
-            console.log('[VTS窗口] 结束拖拽');
-        };
-
-        // 直接用 onmousedown 属性（最可靠），不用 addEventListener
-        box.onmousedown = (e) => {
-            if (e.target.closest('[data-handle]')) return;
-            startDrag(e, 'move');
-        };
-
-        preview.querySelectorAll('[data-handle]').forEach(h => {
-            h.onmousedown = (e) => {
-                startDrag(e, h.dataset.handle);
-            };
-        });
-
-        // 点空白取消选中
-        screenEl.onmousedown = (e) => {
-            if (e.target === screenEl) deselect();
-        };
-
-        // 手动输入像素时同步预览
-        const onFieldInput = () => {
-            winW = parseFloat(fieldW.value) || MIN;
-            winH = parseFloat(fieldH.value) || MIN;
-            winX = parseFloat(fieldX.value) || 0;
-            winY = parseFloat(fieldY.value) || 0;
-            userEdited = true;
-            sync();
-        };
-        fieldX.addEventListener('input', onFieldInput);
-        fieldY.addEventListener('input', onFieldInput);
-        fieldW.addEventListener('input', onFieldInput);
-        fieldH.addEventListener('input', onFieldInput);
-
-        // 初始渲染（先用 window.screen 兜底，保证面板打开即可见、可拖拽）
-        normalizeRatio();
-        applyScreenAspect();
-        updateScreenInfo();
-        sync();
-
-        // 异步获取后端真实屏幕信息（与 tkinter 置顶窗口同一坐标系统），按真实屏幕比例重新缩放
-        if (typeof API !== 'undefined' && typeof API.getScreenInfo === 'function') {
-            API.getScreenInfo().then((info) => {
-                if (!info || !(info.width > 0) || !(info.height > 0)) return;
-                screenW = info.width;
-                screenH = info.height;
-                screenRatio = screenW / screenH;
-                // 用户尚未手动调整时，按真实屏幕比例重新等比缩放
-                if (!userEdited) normalizeRatio();
-                applyScreenAspect();
-                updateScreenInfo();
-                sync();
-            }).catch(() => {});
-        }
     },
 
     // ============ VTS 参数查询 ============
