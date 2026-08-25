@@ -24,6 +24,14 @@ class VtsServer {
 
   start(host, port) {
     this.wss = new WebSocketServer({ host, port });
+    // 端口被占用时优雅降级，避免未捕获异常导致进程闪退
+    this.wss.on('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        console.error(`[vts] 端口 ${port} 已被占用（桌宠可能已在运行），VTS 服务本次未启动`);
+      } else {
+        console.error('[vts] WebSocket 服务错误:', err && err.message ? err.message : err);
+      }
+    });
     this.wss.on('connection', (ws) => {
       ws.on('message', (raw) => {
         try {
@@ -34,7 +42,9 @@ class VtsServer {
         }
       });
     });
-    console.log(`[vts] VTS API server listening on ws://${host}:${port}`);
+    this.wss.on('listening', () => {
+      console.log(`[vts] VTS API server listening on ws://${host}:${port}`);
+    });
   }
 
   stop() {

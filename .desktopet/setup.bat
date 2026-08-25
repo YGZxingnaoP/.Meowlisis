@@ -38,7 +38,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -Path '.e
 if exist .electron.zip del /q .electron.zip
 
 :WRITEPATH
-echo electron.exe> "%EDIR%\path.txt"
+powershell -NoProfile -Command "[System.IO.File]::WriteAllText('%EDIR%\path.txt','electron.exe')"
 
 :: ---- 3. 启动桌宠 ----
 :START
