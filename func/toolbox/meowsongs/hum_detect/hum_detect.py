@@ -92,15 +92,18 @@ class TBHumDetect:
                 sr=SAMPLE_RATE, frame_length=1024,
             )
             valid = f0[voiced]
-            if valid.size == 0:
+            if valid.size < 3:
                 return False
             ratio = valid.size / float(f0.size)
             midi = 12.0 * np.log2(valid / 440.0) + 69.0
-            var = float(np.var(midi))
+            # 稳定帧占比：相邻帧音高差 < 阈值半音的帧占比
+            # （哼唱音符内音高稳定、占比高；说话音高连续乱飘、占比低）
+            abs_diff = np.abs(np.diff(midi))
+            stable_ratio = float(np.mean(abs_diff < self.config.f0_stable_half_step))
             unique_notes = len(np.unique(np.round(midi).astype(int)))
             return (
                 ratio >= self.config.f0_voiced_ratio
-                and var <= self.config.f0_stability
+                and stable_ratio >= self.config.f0_stable_ratio
                 and unique_notes >= self.config.f0_unique_notes
             )
         except Exception:

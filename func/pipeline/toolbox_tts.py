@@ -76,6 +76,20 @@ class ToolboxTtsBridge:
             self.log.exception("检测 TTS 忙状态失败")
             return False
 
+    def interrupt(self):
+        """立即打断当前 TTS 说话并清空排队任务（翻唱等场景立即接管音频输出）。
+
+        打断后立即恢复 TTS 打断标志：这里属于「程序主动打断」而非「用户说话打断」，
+        不应让 TTS 停留在打断状态，否则后续报歌名/感想会因 _interrupt_flag 卡死而无法合成。
+        """
+        try:
+            from func.tts.tts_core import TTsCore
+            core = TTsCore()
+            core._interrupt_playback()
+            core._resume_after_interrupt()
+        except Exception:
+            self.log.exception("打断 TTS 异常")
+
     def play_audio(self, audio, sr, source="meowsongs",
                    lyric_lines=None, lyric_start_idx=0, lyric_end_idx=None):
         """把预合成音频送入 TTS 播放队列（可打断、后续回复排队），可选携带歌词字幕同步"""

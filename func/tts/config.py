@@ -33,8 +33,6 @@ class TTSConfig:
         self.overlap_length = int(gpt.get("overlap_length", 2))
         # v2Pro 流式输出采样率
         self.sample_rate = int(gpt.get("sample_rate", 32000))
-        # 播放前初始缓冲时长(毫秒), 避免 GPU 生成慢导致 underrun 爆音
-        self.stream_buffer_ms = int(gpt.get("stream_buffer_ms", 200))
         # 合成文本语言：zh 最稳（中文 g2p 可读短英文词），auto 中英混合但可能误判成日文
         self.text_lang = gpt.get("text_lang", "zh")
         # 是否启用「整段语言自动切换」：整段英文/日文时覆盖 text_lang，其余落回 text_lang

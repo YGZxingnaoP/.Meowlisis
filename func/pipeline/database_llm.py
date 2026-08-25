@@ -36,8 +36,19 @@ class DatabaseLLMBridge:
                 content = (resp.choices[0].message.content or "").strip()
             if not content:
                 return ""
-            ToolboxTtsBridge().send_stream(content, source="meowsinger_sentiment")
-            self._record_memory(content)
+            from func.llm.output import clean_and_split
+            cleaned_content, segments = clean_and_split(content)
+            if not segments:
+                return ""
+            import uuid as _uuid
+            traceid = str(_uuid.uuid4())
+            for i, seg in enumerate(segments):
+                chat_status = "end" if i == len(segments) - 1 else ""
+                ToolboxTtsBridge().send_to_answer_queue(
+                    seg, traceid=traceid, seg_index=i,
+                    chat_status=chat_status, source="meowsinger_sentiment",
+                )
+            self._record_memory(cleaned_content)
             self._trigger_summary()
             return content
         except Exception:

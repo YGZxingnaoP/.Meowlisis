@@ -2,6 +2,7 @@
 # func/tts/lan_judge.py
 # 轻量级「整段语言」判定：仅在明显是整段英文/整段日文时切换合成语言，其余落回默认语言。
 # 与 SoVITS 内置 auto 的 fast_langdetect 不同，这里用可控的正则统计，避免中文短句被误判成日文。
+# 日文判定规则：假名（平假名/片假名）占「有效文字」比例 >= 1/3 才判为整段日文。
 
 import re
 
@@ -24,13 +25,24 @@ class LanguageJudge:
         if not text or not text.strip():
             return self.default_lang
 
-        # 1. 假名是日文独有特征，出现即按整段日文处理
-        if _KANA_RE.search(text):
+        text = text.strip()
+
+        # 统计三类「有效文字」：假名 / 中文汉字 / 拉丁字母（标点、空格、数字不计入分母）
+        kana = len(_KANA_RE.findall(text))
+        cjk = len(_CJK_RE.findall(text))
+        latin = len(_LATIN_RE.findall(text))
+        total = kana + cjk + latin
+
+        if total == 0:
+            # 纯符号 / 数字 / 空白，交给默认语言
+            return self.default_lang
+
+        # 1. 日文：假名占有效文字 1/3 及以上才判为整段日文
+        #    （避免夹一两个日文词「です/か/ね」就把整句中文误判成日文）
+        if kana * 3 >= total:
             return "ja"
 
-        # 2. 整段英文：不含中文汉字、且含拉丁字母
-        latin = len(_LATIN_RE.findall(text))
-        cjk = len(_CJK_RE.findall(text))
+        # 2. 整段英文：无中文汉字、且有拉丁字母
         if cjk == 0 and latin > 0:
             return "en"
 

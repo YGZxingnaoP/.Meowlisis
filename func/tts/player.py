@@ -1,14 +1,18 @@
 # func/tts/player.py
-# 音频播放器：soundfile 解码 + pyaudio 流式播放，替代 mpv 子进程
+# 音频播放器：mpv 子进程播放（替代 pyaudio），支持立即打断
 import os
+import subprocess
 import threading
+import time
+from pathlib import Path
 
 import numpy as np
-import pyaudio
-import soundfile as sf
 
 from func.pipeline.tts_vts import TtsVtsBridge
 from func.pipeline.tts_desktopet import TtsDesktopetBridge
+
+# 项目根目录下的 mpv.exe
+MPV_PATH = str(Path(__file__).resolve().parents[2] / "mpv.exe")
 
 
 def _set_playing(playing):
@@ -18,124 +22,146 @@ def _set_playing(playing):
 
 
 class AudioPlayer:
-    """库内流式音频播放器，支持立即打断"""
+    """mpv 子进程音频播放器，支持立即打断
 
-    CHUNK = 1024  # 每次写入的音频帧数
+    - 流式播放（open_stream/write）会复用同采样率/声道的常驻 mpv 进程，
+      短句之间不再反复启停进程，避免长间隔；
+    - 空闲时由调用方（TTsCore）调 shutdown() 真正关闭常驻进程。
+    """
 
     def __init__(self):
-        # 初始化 PortAudio 实例（失败时置空，播放时降级处理）
-        try:
-            self._pa = pyaudio.PyAudio()
-        except Exception as e:
-            self._pa = None
-            print(f"初始化音频播放器失败: {e}")
-        self._stream = None
+        self._proc = None
+        self._sr = None
+        self._channels = None
         self._lock = threading.Lock()
-        self._stop_flag = threading.Event()
+
+    @staticmethod
+    def _exists():
+        return os.path.exists(MPV_PATH)
+
+    @staticmethod
+    def _base_cmd():
+        return [
+            MPV_PATH,
+            "--no-config",
+            "--no-video",
+            "--no-terminal",
+            "--idle=no",
+            "--force-window=no",
+        ]
+
+    def _close_locked(self):
+        """硬关闭并清空当前 mpv 进程（打断用，调用方需持有锁）"""
+        proc = self._proc
+        self._proc = None
+        self._sr = None
+        self._channels = None
+        if proc is not None:
+            try:
+                if proc.stdin:
+                    proc.stdin.close()
+            except Exception:
+                pass
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+
+    def _graceful_close_locked(self):
+        """优雅关闭：关闭 stdin 让 mpv 播完剩余缓冲后自然退出（调用方需持有锁）"""
+        proc = self._proc
+        self._proc = None
+        self._sr = None
+        self._channels = None
+        if proc is None:
+            return
+        try:
+            if proc.stdin:
+                proc.stdin.close()
+        except Exception:
+            pass
+        if proc.poll() is None:
+            try:
+                proc.wait(timeout=3)
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                try:
+                    proc.wait(timeout=1)
+                except Exception:
+                    pass
 
     def play_file(self, file_path: str, volume: float = 1.0) -> bool:
-        """阻塞播放音频文件，返回 True 表示自然播完，False 表示被打断"""
-        # 播放器不可用或文件不存在时直接返回
-        if self._pa is None or not os.path.exists(file_path):
+        """阻塞播放音频文件，返回 True 表示自然播完，False 表示被打断/失败"""
+        if not self._exists() or not os.path.exists(file_path):
             return False
-        try:
-            data, samplerate = sf.read(file_path, dtype="int16")
-        except Exception as e:
-            print(f"读取音频失败: {file_path} - {e}")
-            return False
-        if data is None or data.size == 0:
-            return False
-
-        # 单声道/双声道统一处理
-        channels = 1 if data.ndim == 1 else data.shape[1]
-        # 音量调节（float 数组缩放后转回 int16）
-        if volume != 1.0:
-            data = (data * volume).astype("int16")
-        raw = data.tobytes()
-        frame_bytes = self.CHUNK * channels * 2  # int16 每帧 2 字节
-
-        # 开始新播放：清除旧的停止标志（新播放任务应能正常开始）
-        self._stop_flag.clear()
+        cmd = self._base_cmd() + [f"--volume={int(volume * 100)}", os.path.abspath(file_path)]
         with self._lock:
+            self._close_locked()
             try:
-                stream = self._pa.open(
-                    format=pyaudio.paInt16,
-                    channels=channels,
-                    rate=int(samplerate),
-                    output=True,
-                )
+                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as e:
-                print(f"打开音频流失败: {e}")
+                print(f"启动 mpv 失败: {e}")
                 return False
-            self._stream = stream
-            _set_playing(True)
-
+            self._proc = proc
+        _set_playing(True)
         try:
-            # 分块写入，期间响应打断
-            for i in range(0, len(raw), frame_bytes):
-                if self._stop_flag.is_set():
-                    return False
-                chunk = raw[i:i + frame_bytes]
-                if chunk:
-                    stream.write(chunk)
-            return True
+            proc.wait()
         except Exception:
-            # 被 stop 打断时 write 会抛异常，视为正常打断
-            if self._stop_flag.is_set():
-                return False
-            raise
+            pass
         finally:
             with self._lock:
-                try:
-                    stream.stop_stream()
-                except Exception:
-                    pass
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-                self._stream = None
+                if self._proc is proc:
+                    self._proc = None
+                    self._sr = None
+                    self._channels = None
             _set_playing(False)
-
-    def stop(self):
-        """立即停止当前播放"""
-        self._stop_flag.set()
-        with self._lock:
-            if self._stream is not None:
-                try:
-                    self._stream.stop_stream()
-                except Exception:
-                    pass
+        return proc.returncode == 0
 
     def open_stream(self, samplerate: int = 32000, channels: int = 1) -> bool:
-        """打开常驻输出流（供流式播放反复写入），返回是否成功"""
-        if self._pa is None:
+        """打开（或复用）mpv 裸 PCM 流式播放，从 stdin 读，返回是否成功"""
+        if not self._exists():
             return False
-        # 开始新播放：清除旧的停止标志
-        self._stop_flag.clear()
+        samplerate = int(samplerate)
+        channels = int(channels)
         with self._lock:
+            proc = self._proc
+            # 已有同参数常驻进程则直接复用，避免短句之间反复启停
+            if proc is not None and proc.poll() is None \
+                    and self._sr == samplerate and self._channels == channels:
+                return True
+            self._close_locked()
+            cmd = self._base_cmd() + [
+                "--demuxer=rawaudio",
+                "--demuxer-rawaudio-format=s16le",
+                f"--demuxer-rawaudio-channels={channels}",
+                f"--demuxer-rawaudio-rate={samplerate}",
+                "--audio-buffer=0.2",
+                "--demuxer-readahead-secs=0.5",
+                "--cache=no",
+                "-",
+            ]
             try:
-                stream = self._pa.open(
-                    format=pyaudio.paInt16,
-                    channels=channels,
-                    rate=int(samplerate),
-                    output=True,
-                )
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception as e:
-                print(f"打开音频流失败: {e}")
+                print(f"启动 mpv 失败: {e}")
                 return False
-            self._stream = stream
-            _set_playing(True)
+            self._proc = proc
+            self._sr = samplerate
+            self._channels = channels
+        _set_playing(True)
         return True
 
     def write(self, data: bytes, volume: float = 1.0) -> bool:
-        """向常驻流写入 PCM 字节，返回 False 表示已停止/失败"""
+        """向 mpv stdin 写入 PCM 字节，返回 False 表示已停止/失败"""
         if not data:
             return True
-        if self._stop_flag.is_set():
-            return False
-        stream = self._stream
-        if stream is None:
+        proc = self._proc
+        if proc is None or proc.stdin is None or proc.poll() is not None:
             return False
         # 音量调节（int16 缩放）
         if volume != 1.0:
@@ -146,28 +172,42 @@ class AudioPlayer:
             except Exception:
                 pass
         try:
-            stream.write(data)
+            proc.stdin.write(data)
+            proc.stdin.flush()
             return True
-        except Exception:
-            # 被 stop 打断时 write 会抛异常，视为正常打断
+        except (BrokenPipeError, OSError, ValueError):
+            # 被 stop 打断时 mpv 进程已终止，写入失败视为正常停止
             return False
 
     def close_stream(self):
-        """关闭常驻输出流"""
+        """软关闭：保留常驻 mpv 进程，供下个短句复用（不真正退出）"""
+        pass
+
+    def shutdown(self):
+        """正常关闭常驻 mpv 进程：拖延 0.5 秒再播完剩余缓冲后退出（空闲时调用）"""
         with self._lock:
-            if self._stream is not None:
-                try:
-                    self._stream.stop_stream()
-                except Exception:
-                    pass
-                try:
-                    self._stream.close()
-                except Exception:
-                    pass
-                self._stream = None
-        _set_playing(False)
+            if self._proc is None:
+                return
+        # 拖延 0.5 秒，让 mpv 边读边播、多消费 stdin 数据后再收尾
+        time.sleep(0.5)
+        with self._lock:
+            had = self._proc is not None
+            self._graceful_close_locked()
+        if had:
+            _set_playing(False)
+
+    def stop(self):
+        """立即停止当前播放并退出常驻进程"""
+        with self._lock:
+            had = self._proc is not None and self._proc.poll() is None
+            self._close_locked()
+        # 仅在确实停掉了本实例的进程时同步停止嘴部/身体表现，
+        # 避免多播放器实例下误停其它实例正在播放的嘴部动画
+        if had:
+            _set_playing(False)
 
     def is_playing(self) -> bool:
         """返回当前是否有音频正在播放"""
         with self._lock:
-            return self._stream is not None
+            proc = self._proc
+        return proc is not None and proc.poll() is None

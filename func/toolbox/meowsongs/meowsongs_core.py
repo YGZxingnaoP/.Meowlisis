@@ -29,8 +29,8 @@ class TBMeowSongsCore:
             "function": {
                 "name": self.TOOL_NAME,
                 "description": (
-                    "用户想听角色即兴哼唱一小段已学歌曲时调用。"
-                    "普通聊天、点歌、翻唱完整歌曲等场景不要调用。"
+                    "用户想听角色即兴哼唱一小段已学歌曲时调用。用户想听角色唱歌的时候调用。"
+                    "普通聊天、点歌、翻唱**明确歌曲**的时候完整歌曲等场景不要调用。"
                 ),
                 "parameters": {
                     "type": "object",

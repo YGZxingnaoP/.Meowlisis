@@ -31,7 +31,7 @@ class MeowCoverCore:
             resp = requests.post(
                 f"{self.config.rvc_url}/api/separate",
                 json={"input_path": input_path, "output_dir": output_dir},
-                timeout=600,
+                timeout=3600,
             )
             data = resp.json()
             if data.get("code") != 200:
@@ -64,7 +64,7 @@ class MeowCoverCore:
                     "index_rate": 0.75,
                     "protect": 0.33,
                 },
-                timeout=600,
+                timeout=3600,
             )
             data = resp.json()
             if data.get("code") != 200:
@@ -95,15 +95,21 @@ class MeowCoverCore:
             shutil.move(converted, cover_path)
 
         if separated.get("accomp"):
-            try:
-                shutil.copy(separated["accomp"], os.path.join(folder, f"{title}_accomp.wav"))
-            except Exception:
-                self.log.exception("[Cover] 复制伴奏失败")
+            _src = separated["accomp"]
+            _dst = os.path.join(folder, f"{title}_accomp.wav")
+            if os.path.abspath(_src) != os.path.abspath(_dst):
+                try:
+                    shutil.copy(_src, _dst)
+                except Exception:
+                    self.log.exception("[Cover] 复制伴奏失败")
         if separated.get("harmony"):
-            try:
-                shutil.copy(separated["harmony"], os.path.join(folder, f"{title}_harmony.wav"))
-            except Exception:
-                self.log.exception("[Cover] 复制和声失败")
+            _src = separated["harmony"]
+            _dst = os.path.join(folder, f"{title}_harmony.wav")
+            if os.path.abspath(_src) != os.path.abspath(_dst):
+                try:
+                    shutil.copy(_src, _dst)
+                except Exception:
+                    self.log.exception("[Cover] 复制和声失败")
 
         lrc_src = os.path.join(RAW_DIR, title, f"{title}.lrc")
         if os.path.exists(lrc_src):
@@ -118,7 +124,30 @@ class MeowCoverCore:
             TBHumMatch().build_pitch_cache(title, cover_path)
         except Exception:
             self.log.exception("[Cover] 生成音高缓存失败")
+
+        # 学歌成功后清理中间产物（分离器带模型名的原始 wav、lead 等）
+        self._cleanup_intermediates(folder, title)
         return True
+
+    def _cleanup_intermediates(self, folder, title):
+        """学歌成功后删除中间 wav，只保留三轨（vocal/accomp/harmony）"""
+        keep = {
+            f"{title}_vocal.wav",
+            f"{title}_accomp.wav",
+            f"{title}_harmony.wav",
+        }
+        try:
+            for name in os.listdir(folder):
+                if not name.lower().endswith(".wav"):
+                    continue
+                if name in keep:
+                    continue
+                p = os.path.join(folder, name)
+                if os.path.isfile(p):
+                    os.remove(p)
+                    self.log.info(f"[Cover] 清理中间产物: {name}")
+        except Exception:
+            self.log.exception("[Cover] 清理中间产物失败")
 
     def mix_tracks(self, vocal_path, accomp_path, harmony_path):
         """把三轨对齐长度混音，返回 (audio, sr) 或 None"""
@@ -135,6 +164,8 @@ class MeowCoverCore:
                 return None
             min_len = min(t.shape[0] for t in tracks)
             mixed = sum(t[:min_len] for t in tracks)
+            # 整体音量：按配置轻一点（cover_volume，默认 0.85）
+            mixed = mixed * self.config.cover_volume
             mixed = np.clip(mixed, -1.0, 1.0)
             return mixed.astype(np.float32), sr
         except Exception:

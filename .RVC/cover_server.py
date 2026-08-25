@@ -74,7 +74,7 @@ def _classify_stem(filename):
 def _save_track(audio, sr, output_dir, base, stem):
     """保存单轨为标准命名 {base}_{stem}.wav，返回路径"""
     path = os.path.join(output_dir, f"{base}_{stem}.wav")
-    sf.write(path, audio.T if audio.ndim > 1 else audio, sr)
+    sf.write(path, audio, sr, format="WAV", subtype="PCM_16")
     return path
 
 
@@ -111,23 +111,23 @@ def _separate_uvr(input_path, output_dir):
     # 第二步：主唱 / 和声（对人声再分离）
     sep2 = Separator(model_file_dir=model_dir, output_dir=output_dir, output_format="WAV")
     sep2.load_model("UVR_MDXNET_KARA_2.onnx")
-    files2 = sep2.separate(vocal_mix_path)
+    # 用 custom_output_names 让 KARA_2 输出固定无歧义的名字，
+    # 避免第一步 "(Vocals)" 前缀残留在第二步文件名里干扰 stem 分类（人声/混音搞反）
+    files2 = sep2.separate(
+        vocal_mix_path,
+        custom_output_names={"vocals": f"{base}_lead", "instrumental": f"{base}_harmony"},
+    )
 
     lead_path = harmony_path = ""
     for f in files2:
-        kind = _classify_stem(f)
-        if kind == "vocal":
+        name = os.path.basename(f or "").lower()
+        if "lead" in name:
             lead_path = _abs(f)
-        elif kind == "harmony":
+        elif "harmony" in name:
             harmony_path = _abs(f)
 
     if not lead_path:
-        # 没有和声轨也至少要有主唱；和声可为空
-        for f in files2:
-            if _classify_stem(f) == "vocal":
-                lead_path = _abs(f)
-        if not lead_path:
-            raise RuntimeError("KARA_2 分离结果缺少主唱轨")
+        raise RuntimeError("KARA_2 分离结果缺少主唱轨")
 
     # 统一重命名为标准三轨
     result = {}
@@ -161,6 +161,9 @@ def _separate_pymss(input_path, output_dir):
     )
     try:
         audio, sr = sf.read(input_path, dtype="float32")
+        # soundfile 返回 [samples, channels]，pymss 期望 [channels, samples]，需转置
+        if audio.ndim == 2:
+            audio = audio.T
         results = separator.separate(audio, pbar=False)
         base = os.path.splitext(os.path.basename(input_path))[0]
         vocal_path = os.path.join(output_dir, f"{base}_vocal.wav")
@@ -168,9 +171,11 @@ def _separate_pymss(input_path, output_dir):
         for stem, arr in results.items():
             stem_l = stem.lower()
             if "karaoke" in stem_l or "instru" in stem_l:
-                sf.write(accomp_path, arr.T if arr.ndim > 1 else arr, sr)
+                sf.write(accomp_path, arr.T if arr.ndim > 1 else arr, sr,
+                         format="WAV", subtype="PCM_16")
             elif "voc" in stem_l or "other" in stem_l:
-                sf.write(vocal_path, arr.T if arr.ndim > 1 else arr, sr)
+                sf.write(vocal_path, arr.T if arr.ndim > 1 else arr, sr,
+                         format="WAV", subtype="PCM_16")
         if not os.path.exists(vocal_path) or not os.path.exists(accomp_path):
             raise RuntimeError("pymss 分离结果不完整")
         return {
@@ -288,7 +293,7 @@ def convert():
             output_path = os.path.splitext(input_path)[0] + '_cover.wav'
         output_path = os.path.abspath(output_path)
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        sf.write(output_path, audio_opt, tgt_sr)
+        sf.write(output_path, audio_opt, tgt_sr, format="WAV", subtype="PCM_16")
         return jsonify({
             'code': 200,
             'msg': 'ok',

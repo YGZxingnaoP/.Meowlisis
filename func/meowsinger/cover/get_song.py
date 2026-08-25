@@ -79,6 +79,7 @@ class MeowCoverSong:
         vocal = os.path.join(folder, f"{self._safe_name(title)}_vocal.wav")
         accomp = os.path.join(folder, f"{self._safe_name(title)}_accomp.wav")
         harmony = os.path.join(folder, f"{self._safe_name(title)}_harmony.wav")
+        self._interrupt_tts()
         self._announce(title)
         self._wait_tts_idle()
 
@@ -119,6 +120,13 @@ class MeowCoverSong:
         except Exception:
             self.log.exception("[翻唱] 下载原曲异常")
             return "", title
+
+    def _interrupt_tts(self):
+        try:
+            from func.pipeline.toolbox_tts import ToolboxTtsBridge
+            ToolboxTtsBridge().interrupt()
+        except Exception:
+            self.log.exception("[翻唱] 打断 TTS 异常")
 
     def _announce(self, title):
         try:

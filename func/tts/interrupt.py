@@ -23,12 +23,13 @@ class InterruptManager:
         "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
     }
 
-    def __init__(self, config, on_interrupt, sensevoice_tts=None, is_paused=None):
+    def __init__(self, config, on_interrupt, sensevoice_tts=None, is_paused=None, on_speech_end=None):
         self.config = config
         self.log = DefaultLog().getLogger()
         self.on_interrupt = on_interrupt
         self.sensevoice_tts = sensevoice_tts
         self.is_paused = is_paused or (lambda: False)
+        self.on_speech_end = on_speech_end
         self.vk = self._parse_key(config.interrupt_key)
         self._last_speaking = False
         self._last_key_down = False
@@ -61,15 +62,19 @@ class InterruptManager:
                 self._poll_pipeline()
 
     def _poll_keyboard(self):
-        """检测全局按键按下（上升沿触发一次）"""
+        """检测全局按键按下（上升沿打断，松开恢复）"""
         pressed = self._is_key_down()
         if pressed and not self._last_key_down:
             self.log.info("检测到打断按键，打断 AI 语音")
             self.on_interrupt()
+        elif not pressed and self._last_key_down:
+            self.log.info("检测到打断按键松开，恢复 AI 语音")
+            if self.on_speech_end:
+                self.on_speech_end()
         self._last_key_down = pressed
 
     def _poll_pipeline(self):
-        """检测用户说话状态（上升沿触发一次）"""
+        """检测用户说话状态（上升沿打断，下降沿恢复）"""
         speaking = False
         if self.sensevoice_tts is not None:
             try:
@@ -79,6 +84,10 @@ class InterruptManager:
         if speaking and not self._last_speaking:
             self.log.info("检测到用户开始说话，打断 AI 语音")
             self.on_interrupt()
+        elif not speaking and self._last_speaking:
+            self.log.info("检测到用户说话结束，恢复 AI 语音")
+            if self.on_speech_end:
+                self.on_speech_end()
         self._last_speaking = speaking
 
     def _is_key_down(self):

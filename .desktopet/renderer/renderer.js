@@ -33,6 +33,8 @@
   let model = null;
   let currentScale = 1.0;
   const activeExpressions = new Set();
+  // 表情自动消失定时器：触发后 N 秒自动清空表情
+  let expressionTimer = null;
 
   function recenter() {
     if (!model) return;
@@ -59,17 +61,19 @@
     if (!model) return;
     if (!file) return;
     try {
-      if (activeExpressions.has(file)) {
-        activeExpressions.delete(file);
-      } else {
-        activeExpressions.add(file);
-      }
-      if (activeExpressions.size > 0) {
-        model.expression(Array.from(activeExpressions)[0]);
-      } else {
+      // 清空旧表情，只显示当前表情（实现表情"更新"，不再叠加/停留在旧表情）
+      activeExpressions.clear();
+      activeExpressions.add(file);
+      model.expression(file);
+      console.log('[renderer] 触发表情', file);
+
+      // 触发后 10 秒自动消失
+      if (expressionTimer) clearTimeout(expressionTimer);
+      expressionTimer = setTimeout(() => {
+        activeExpressions.clear();
         model.expression();
-      }
-      console.log('[renderer] 切换表情', file, '当前激活', Array.from(activeExpressions).join(','));
+        console.log('[renderer] 表情自动消失');
+      }, 10000);
     } catch (e) {
       console.error('[renderer] 表情切换失败', file, e.message);
     }

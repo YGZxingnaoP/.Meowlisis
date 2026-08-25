@@ -121,6 +121,7 @@ class TTsCore:
             on_interrupt=self._interrupt_playback,
             sensevoice_tts=self.sensevoice_tts,
             is_paused=self._is_paused,
+            on_speech_end=self._resume_after_interrupt,
         )
 
         # 播放队列与分段顺序控制
@@ -319,6 +320,9 @@ class TTsCore:
             try:
                 source, subtitle_json, _, priority = self.play_queue.get(timeout=0.5)
             except queue.Empty:
+                # 完全空闲时关闭常驻 mpv 进程，避免进程挂着占资源
+                if not self.is_busy():
+                    self.player.shutdown()
                 continue
 
             if self._is_paused():
@@ -360,22 +364,10 @@ class TTsCore:
                 source.cancel()
 
     def _play_stream_source(self, source: StreamSource):
-        """阻塞播放一个流式源：先攒初始缓冲再开流，边收边播直到结束/打断"""
-        samplerate = source.sample_rate or self.config.sample_rate
+        """阻塞播放一个流式源：边收边播直到结束/打断"""
+        samplerate = int(source.sample_rate or self.config.sample_rate or 32000)
         channels = source.channels or 1
-        # 初始缓冲字节数（int16 / 单声道）
-        buffer_bytes = int(samplerate * channels * 2 * self.config.stream_buffer_ms / 1000)
 
-        # 先攒够初始缓冲，避免 GPU 生成慢导致 pyaudio underrun 爆音
-        initial = bytearray()
-        while len(initial) < buffer_bytes:
-            data, finished = source.pop(timeout=0.5)
-            if finished:
-                break
-            if data:
-                initial.extend(data)
-
-        # 攒缓冲期间若被取消/暂停，则不再开流，直接丢弃剩余
         if source.cancelled or self._is_paused():
             self._drain_stream(source)
             return
@@ -386,9 +378,6 @@ class TTsCore:
             return
 
         try:
-            if initial:
-                if not self.player.write(bytes(initial), self.config.volume):
-                    return
             while True:
                 data, finished = source.pop(timeout=0.5)
                 if finished:
@@ -427,6 +416,10 @@ class TTsCore:
         with self.priority_lock:
             self._playing_priority = 0
             self._synth_priority = 0
+
+    def _resume_after_interrupt(self):
+        """用户说话结束后恢复 TTS：解除打断标志，让 check_tts 重新取消息"""
+        self._interrupt_flag.clear()
 
     def _add_segment(self, traceid, seg_index, source, reply_json, is_end=False, priority=0):
         """将分段放入顺序缓冲，按序进入播放队列"""
@@ -468,6 +461,7 @@ class TTsCore:
             import numpy as np
             audio = np.asarray(audio)
             channels = 1 if audio.ndim == 1 else audio.shape[1]
+            sr = int(sr or self.config.sample_rate or 32000)
             if audio.dtype != np.int16:
                 audio = np.clip(audio, -1.0, 1.0)
                 audio = (audio * 32767.0).astype(np.int16)
@@ -475,10 +469,8 @@ class TTsCore:
 
             traceid = traceid or str(uuid.uuid4())
             source = StreamSource(None, None, traceid, 0,
-                                  sample_rate=int(sr), channels=channels)
-            chunk = 1024 * channels * 2
-            for i in range(0, len(raw), chunk):
-                source.push(raw[i:i + chunk])
+                                  sample_rate=sr, channels=channels)
+            source.push(raw)
             source.finish()
 
             priority = self._priority_of("meowsongs")
@@ -501,13 +493,6 @@ class TTsCore:
             self.tts_say_do(json, generation=self.ttsData.generation)
         except Exception:
             self.log.exception("【tts_say】发生异常：")
-
-    def tts_chat_say(self, json):
-        """聊天分段合成入口（线程池调用）"""
-        try:
-            self.tts_say_do(json, generation=self.ttsData.generation)
-        except Exception:
-            self.log.exception("【tts_chat_say】发生异常：")
 
     def tts_say_do(self, json, generation=None):
         """核心合成流程：文本清洗→选角色→合成→入队播放（串行加锁，代际不匹配时丢弃）"""
@@ -617,50 +602,42 @@ class TTsCore:
         """定时轮询回答队列，将合成请求按来源归组到任务队列"""
         if self._is_paused():
             return
+        # 打断状态中：消息保留在队列，等用户说话结束后恢复（_resume_after_interrupt 解除标志）
+        if self._interrupt_flag.is_set():
+            return
         if not self.llmData.AnswerList.empty():
             json = self.llmData.AnswerList.get()
-            # 有新的合成请求进入，解除此前的打断标志，让新代际任务正常处理
-            self._interrupt_flag.clear()
             self._assign_to_task(json)
 
     # ==================== 任务队列（按来源分组串行） ====================
     def _assign_to_task(self, json: dict):
-        """把一条合成请求归入任务：按 traceid 归组（一句话一个任务）。
+        """把一条合成请求立即入队（边收边发：收到小句即合成，不等整句 end）。
 
-        - 同一 traceid 的所有分段 → 同一个任务（一句话不拆）；
-        - 不同 traceid → 不同任务（不同话不混）；
-        - 收到 chatStatus=end 时，该句话完整，打包任务按 end 到达顺序入队。
-        - source 仅作归属标记，不作为分组键。
+        - 每个非空小句独立成一个任务，收到即入队；
+        - 空文本 + end 是结束标记，同样入队（仅用于清理顺序缓冲，不入播放队列）；
+        - 同一 traceid 的小句仍由 _add_segment 按 seg_index 保证字幕/播放有序。
         """
         traceid = json.get("traceid", "")
         source = json.get("source", "other")
+        text = (json.get("text") or "").strip()
         is_end = (json.get("chatStatus") == "end")
-        new_task = None
-        with self.ttsData.task_lock:
-            cur = self.ttsData.pending_tasks.get(traceid)
-            if cur is None:
-                # 新句子：建新任务，登记 traceid
-                self.ttsData.task_counter += 1
-                cur = {
-                    "task_id": self.ttsData.task_counter,
-                    "traceid": traceid,
-                    "source": source,
-                    "segments": [],
-                    "generation": self.ttsData.generation,
-                    "priority": self._priority_of(source),
-                }
-                self.ttsData.pending_tasks[traceid] = cur
-            # 同 traceid：并入当前任务
-            cur["segments"].append(json)
-            if is_end:
-                # 一句话完整：先从缓冲移除
-                self.ttsData.pending_tasks.pop(traceid, None)
-                new_task = cur
 
-        # 锁外：抢占判断（内部会获取 task_lock，避免嵌套死锁）+ 入队
-        if new_task is not None:
-            self._maybe_preempt(new_task)
-            self.ttsData.task_queue.put(new_task)
+        # 空文本且非 end：无效请求，忽略
+        if not text and not is_end:
+            return
+
+        with self.ttsData.task_lock:
+            self.ttsData.task_counter += 1
+            task = {
+                "task_id": self.ttsData.task_counter,
+                "traceid": traceid,
+                "source": source,
+                "segments": [json],
+                "generation": self.ttsData.generation,
+                "priority": self._priority_of(source),
+            }
+        self._maybe_preempt(task)
+        self.ttsData.task_queue.put(task)
 
     def _maybe_preempt(self, new_task: dict):
         """高优先级抢占：新任务优先级严格高于「正在播放 + 正在合成」时，掐断低优先级内容。
@@ -692,6 +669,10 @@ class TTsCore:
         self._clear_task_queue()
         with self.pending_lock:
             self.pending_segments.clear()
+        # 抢占后立即重置优先级，避免残留导致后续同优先级任务连锁抢占
+        with self.priority_lock:
+            self._playing_priority = 0
+            self._synth_priority = 0
 
     def _task_worker(self):
         """串行处理任务队列：一个任务（一句话）合并为单个流式请求，流拉完才处理下一个任务"""
@@ -713,26 +694,19 @@ class TTsCore:
                     self._synth_priority = 0
 
     def _synth_task(self, task: dict, gen):
-        """合并一个任务的所有分段文本，发起单个流式请求（消除段间间隔）"""
+        """逐个小句单独合成（小句单发，字幕按小句分段）"""
         segments = task.get("segments", [])
-        merged_text = ""
         for seg in segments:
-            t = (seg.get("text") or "").strip()
-            if t:
-                merged_text += t
-
-        if not merged_text:
-            return
-
-        merged_json = {
-            "voiceType": "chat",
-            "source": task.get("source", "llm"),
-            "traceid": task.get("traceid", ""),
-            "chatStatus": "end",
-            "text": merged_text,
-            "language": "AutoChange",
-        }
-        self.tts_say_do(merged_json, gen)
+            seg_json = {
+                "voiceType": "chat",
+                "source": task.get("source", "llm"),
+                "traceid": task.get("traceid", ""),
+                "chatStatus": seg.get("chatStatus", ""),
+                "text": seg.get("text", ""),
+                "language": "AutoChange",
+                "seg_index": seg.get("seg_index", 0),
+            }
+            self.tts_say_do(seg_json, gen)
 
     def _clear_task_queue(self):
         """清空任务队列与未完成句子缓冲（暂停/打断时调用）"""

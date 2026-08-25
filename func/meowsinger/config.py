@@ -48,6 +48,11 @@ class MeowSingerConfig:
         self.learn_mode = cover.get('learn_mode', 'idle')
         self.learn_users = self._as_list(cover.get('learn_users', []))
         self.learn_trigger = cover.get('learn_trigger', '喵利呜西斯，可以开始学歌啦')
+        # 翻唱整体音量（0~1，默认 0.85，比原曲轻一点点）
+        try:
+            self.cover_volume = float(cover.get('volume', 0.85) or 0.85)
+        except (TypeError, ValueError):
+            self.cover_volume = 0.85
 
         # 停止触发
         stop = cfg.get('stop', {})

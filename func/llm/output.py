@@ -195,6 +195,40 @@ class Output:
         return text.strip()
 
     @staticmethod
+    def clean_text(text: str) -> str:
+        """一次性清洗完整回复文本：去 think 标签、方括号【】、圆括号（）() 内容"""
+        if not text:
+            return ""
+        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+        text = re.sub(r"</?think>", "", text)
+        text = re.sub(r"【[^】]*】", "", text)
+        text = re.sub(r"（[^）]*）", "", text)
+        text = re.sub(r"\([^)]*\)", "", text)
+        return text.strip()
+
+    @classmethod
+    def split_text(cls, text: str, split_chars, split_limit: int) -> list:
+        """一次性把完整文本切分为小句列表（与流式 _split_send 同规则）"""
+        segments = []
+        temp = ""
+        for ch in text:
+            temp += ch
+            if len(temp) >= split_limit:
+                last_punct_pos = -1
+                for punct in split_chars:
+                    pos = temp.rfind(punct)
+                    if pos > last_punct_pos:
+                        last_punct_pos = pos
+                if last_punct_pos != -1:
+                    seg = temp[:last_punct_pos + 1].strip()
+                    temp = temp[last_punct_pos + 1:]
+                    if seg:
+                        segments.append(seg)
+        if temp.strip():
+            segments.append(temp.strip())
+        return segments
+
+    @staticmethod
     def _collapse_punctuation(text: str) -> str:
         """连续标点合并：两个及以上连续标点替换为一个句号，单个标点保留"""
         if not text:
@@ -225,3 +259,17 @@ class Output:
             if ch not in Output.PUNCT_CHARS and not ch.isspace():
                 return False
         return True
+
+
+def clean_and_split(text: str):
+    """清洗完整回复文本并切分为小句，返回 (清洗后完整文本, 小句列表)。
+
+    供非流式 LLM 回复（感想/内部回复/汇总）复用：记忆记录用清洗后完整文本，
+    发送 TTS 用小句列表。
+    """
+    cleaned = Output.clean_text(text)
+    if not cleaned:
+        return "", []
+    from func.llm.config import LLMConfig
+    cfg = LLMConfig()
+    return cleaned, Output.split_text(cleaned, cfg.split_chars, cfg.split_limit)

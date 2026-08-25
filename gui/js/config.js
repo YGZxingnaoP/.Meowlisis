@@ -570,8 +570,6 @@ const Config = {
             '越大块间衔接越自然');
         h += this._num('输出采样率', 'tts.gpt-sovits.sample_rate', 32000, 8000, 48000, 1000,
             'v2Pro 流式输出固定 32000');
-        h += this._num('播放前初始缓冲(毫秒)', 'tts.gpt-sovits.stream_buffer_ms', 200, 0, 2000, 50,
-            '避免 GPU 生成慢导致 pyaudio 爆音');
 
         h += this._section('播放与合成 (config.yml)');
         h += this._num('音量', 'tts.volume', 1.0, 0, 2, 0.1);
@@ -1276,6 +1274,43 @@ const Config = {
     },
 
     // ============ 即兴哼唱（meowsongs） ============
+    _humDetectFormula() {
+        return `<div class="formula-box">
+            <div class="formula-box-title">哼唱检测算法</div>
+            <div class="formula-block">
+                <div class="formula-row">
+                    <span class="formula-name">有效语音</span>
+                    <span class="formula-expr">RMS ≥ 能量阈值，持续 ≥ 7 秒</span>
+                    <span class="formula-cond">静音 ≥ 2 秒判段结束（阈值读 SenseVoice）</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">音高发声占比</span>
+                    <span class="formula-expr">voiced_ratio = 有声帧 / 总帧 ≥ 0.6</span>
+                    <span class="formula-cond">pyin 提取 F0，过滤清辅音与停顿</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">稳定帧占比</span>
+                    <span class="formula-expr">stable_ratio = ( 相邻帧 |Δ半音| &lt; 0.5 ) 帧占比 ≥ 0.6</span>
+                    <span class="formula-cond">哼唱音符内稳定；说话音高连续乱飘</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">音符数量</span>
+                    <span class="formula-expr">unique_notes ≥ 3</span>
+                    <span class="formula-cond">过滤单调拖长音</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">最终判定</span>
+                    <span class="formula-expr">三项同时满足 → 判为哼唱</span>
+                    <span class="formula-cond">通过后才进入 QBH 歌曲匹配</span>
+                </div>
+            </div>
+            <div class="formula-params">
+                voiced_ratio 过滤纯语音；stable_ratio 区分哼唱与说话；unique_notes 过滤单调音。
+                判为哼唱后，再用 QBH 余弦相似度匹配歌曲（match_threshold）。
+            </div>
+        </div>`;
+    },
+
     meowsongs() {
         return this._section('即兴哼唱（触发型工具）') +
             this._check('启用即兴哼唱', 'meowsongs.enabled', true,
@@ -1283,6 +1318,7 @@ const Config = {
             this._num('播放长度上限（秒）', 'meowsongs.max_duration', 180, 1, 600, 1,
                 '单次即兴哼唱的最长播放秒数，默认 180（整首歌）') +
             this._section('听歌识曲接龙') +
+            this._humDetectFormula() +
             this._check('启用听歌识曲接龙', 'meowsongs.pass_the_baton.enabled', false,
                 '用户哼唱一段后，AI 识别歌曲并接着往下唱（依赖哼唱检测与本地曲库）') +
             this._num('往后唱几句', 'meowsongs.pass_the_baton.hum_lines', 2, 1, 10, 1,
@@ -1291,8 +1327,10 @@ const Config = {
                 '判定哼唱的最小 RMS 能量，默认 300') +
             this._num('音高发声占比', 'meowsongs.pass_the_baton.f0_voiced_ratio', 0.6, 0.1, 1, 0.05,
                 'pyin 有声帧占比阈值，越高要求哼唱越稳定') +
-            this._num('音高稳定性', 'meowsongs.pass_the_baton.f0_stability', 0.15, 0.01, 2, 0.01,
-                '音高半音方差阈值，越小越稳定') +
+            this._num('稳定帧占比', 'meowsongs.pass_the_baton.f0_stable_ratio', 0.6, 0.1, 1, 0.05,
+                '相邻帧音高差小于稳定半音阈值的帧占比，越高要求哼唱越稳定') +
+            this._num('稳定帧半音差', 'meowsongs.pass_the_baton.f0_stable_half_step', 0.5, 0.1, 3, 0.05,
+                '相邻帧音高差小于此半音数视为稳定帧') +
             this._num('有效语音累积时长（秒）', 'meowsongs.pass_the_baton.hum_collect_sec', 7.0, 3, 30, 0.5,
                 '持续有效语音达到该时长才开始判断哼唱（静音/触发阈值读 SenseVoice 配置）') +
             this._num('最少不同音符数', 'meowsongs.pass_the_baton.f0_unique_notes', 3, 1, 10, 1,
