@@ -32,6 +32,8 @@ class TBHumDetect:
         self._last_sound = 0.0
         # 哼唱段完成事件序号（每判定成功一段 +1，供 toolbox_audio 检测）
         self._hum_event_seq = 0
+        # 最近一次判定成功的哼唱音频（float32），供 toolbox_audio 落盘匹配
+        self._last_hum_audio = None
 
     def feed(self, frame: bytes):
         """喂一帧 16k 单声道 PCM：有效语音累积，段结束一次性分析"""
@@ -42,14 +44,6 @@ class TBHumDetect:
             rms = float(np.sqrt(np.mean(arr ** 2)))
 
             with self._lock:
-                self._buffer.append(arr)
-                self._buf_samples += arr.size
-                self._buf_seconds = self._buf_samples / SAMPLE_RATE
-                while self._buf_seconds > self.config.cache_seconds:
-                    old = self._buffer.popleft()
-                    self._buf_samples -= old.size
-                    self._buf_seconds = self._buf_samples / SAMPLE_RATE
-
                 now = time.time()
                 # 有效语音：能量 >= SenseVoice VAD 阈值
                 if rms >= self.sv_config.energy_threshold:
@@ -59,19 +53,28 @@ class TBHumDetect:
                 else:
                     # 静音超过 SenseVoice silence_threshold → 段结束，分析并清空重来
                     if self._speech_start > 0.0 and now - self._last_sound >= self.sv_config.silence_threshold:
-                        self._finish_segment(now)
+                        self._finish_segment()
                         self._speech_start = 0.0
                         self._last_sound = 0.0
+                        # 段结束清空缓冲，保证下一段分析的只有当前语音
+                        self._buffer.clear()
+                        self._buf_samples = 0
+                        self._buf_seconds = 0.0
+
+                # 语音段进行中才累积：只保留当前段的音频（有声 + 段内短静音）
+                if self._speech_start > 0.0:
+                    self._buffer.append(arr)
+                    self._buf_samples += arr.size
+                    self._buf_seconds = self._buf_samples / SAMPLE_RATE
         except Exception:
             self.log.exception("[HumDetect] 喂帧异常")
 
-    def _finish_segment(self, now):
-        """一段有效语音结束：攒够 hum_collect_sec 且音高旋律通过才产生哼唱事件"""
+    def _finish_segment(self):
+        """一段有效语音结束：当前段累积够 hum_collect_sec 且音高旋律通过才产生哼唱事件"""
         if self._speech_start == 0.0:
             return
-        duration = now - self._speech_start
-        if duration < self.config.hum_collect_sec:
-            # 不足 7 秒：只走 ASR，不算哼唱
+        # 用当前段累积的语音时长判断（不含段尾静音）
+        if self._buf_seconds < self.config.hum_collect_sec:
             return
         if self._analyze_buffer():
             self._hum_event_seq += 1
@@ -101,14 +104,24 @@ class TBHumDetect:
             abs_diff = np.abs(np.diff(midi))
             stable_ratio = float(np.mean(abs_diff < self.config.f0_stable_half_step))
             unique_notes = len(np.unique(np.round(midi).astype(int)))
-            return (
+            ok = (
                 ratio >= self.config.f0_voiced_ratio
                 and stable_ratio >= self.config.f0_stable_ratio
                 and unique_notes >= self.config.f0_unique_notes
             )
+            if ok:
+                self._last_hum_audio = audio
+            return ok
         except Exception:
             self.log.exception("[HumDetect] 完整分析异常")
             return False
+
+    def consume_hum_audio(self):
+        """取出最近一次判定成功的哼唱音频（float32 数组）并清除，供落盘匹配"""
+        with self._lock:
+            audio = self._last_hum_audio
+            self._last_hum_audio = None
+            return audio
 
     def get_hum_event_seq(self):
         """返回当前哼唱段完成事件序号（toolbox_audio 据此检测新事件）"""

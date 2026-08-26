@@ -15,16 +15,16 @@ class DatabaseLLMBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_guide(self, guide_msg):
-        """把感想引导词交给 LLM 生成感想，播报并记录记忆"""
+    def generate(self, guide_msg):
+        """只生成感想文本（不播报），返回 (cleaned_content, segments)，失败返回 (None, None)"""
         if not guide_msg or not guide_msg.strip():
-            return ""
+            return None, None
         try:
             from func.meowsinger.port import get_singer_llm
             llm = get_singer_llm()
             if llm is None or not llm.client:
                 self.log.error("[DatabaseLLM] meowsinger LLM 不可用")
-                return ""
+                return None, None
             system_prompt = SystemPromptBridge().get_persona_prompt()
             messages = [
                 {"role": "system", "content": system_prompt},
@@ -35,11 +35,21 @@ class DatabaseLLMBridge:
             if resp and getattr(resp, "choices", None):
                 content = (resp.choices[0].message.content or "").strip()
             if not content:
-                return ""
+                return None, None
             from func.llm.output import clean_and_split
             cleaned_content, segments = clean_and_split(content)
             if not segments:
-                return ""
+                return None, None
+            return cleaned_content, segments
+        except Exception:
+            self.log.exception("[DatabaseLLM] 感想生成异常")
+            return None, None
+
+    def broadcast(self, cleaned_content, segments):
+        """播报已生成的感想：TTS 播报 + 记忆 + 汇总"""
+        if not segments:
+            return ""
+        try:
             import uuid as _uuid
             traceid = str(_uuid.uuid4())
             for i, seg in enumerate(segments):
@@ -50,10 +60,17 @@ class DatabaseLLMBridge:
                 )
             self._record_memory(cleaned_content)
             self._trigger_summary()
-            return content
+            return cleaned_content
         except Exception:
-            self.log.exception("[DatabaseLLM] 感想合成异常")
+            self.log.exception("[DatabaseLLM] 感想播报异常")
             return ""
+
+    def send_guide(self, guide_msg):
+        """兼容入口：生成 + 播报（供需要一步到位的场景）"""
+        cleaned_content, segments = self.generate(guide_msg)
+        if not segments:
+            return ""
+        return self.broadcast(cleaned_content, segments)
 
     @staticmethod
     def _sentiment_max_tokens():

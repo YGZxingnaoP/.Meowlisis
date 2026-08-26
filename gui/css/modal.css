@@ -544,6 +544,18 @@
     line-height: 1.6;
 }
 
+.formula-name code,
+.formula-cond code {
+    font-family: Consolas, 'Courier New', monospace;
+    font-size: 11px;
+    color: var(--pink-main);
+    background: rgba(255, 150, 200, 0.14);
+    padding: 1px 6px;
+    border-radius: 5px;
+    margin-left: 3px;
+    white-space: nowrap;
+}
+
 /* B站内容浏览面板 */
 .webbrowse-status {
     display: flex;

@@ -308,7 +308,7 @@ def main():
     # 角色主动回复计时检测
     sched1.add_job(func=active_core.check_active, trigger="interval", seconds=1, id="active", max_instances=1)
     # tts语音合成
-    sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=0.1, id="tts", max_instances=1000)
+    sched1.add_job(func=ttsCore.check_tts, trigger="interval", seconds=0.1, id="tts", max_instances=1)
     sched1.start()
 
     # 开启web

@@ -15,12 +15,12 @@ class SingerDatabaseBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def start_search(self, song_title):
+    def start_search(self, song_title, mode="song"):
         if not song_title:
             return
         try:
             from func.database.song_review.review_core import MeowSongReview
-            MeowSongReview().start_search(song_title)
+            MeowSongReview().start_search(song_title, mode)
         except Exception:
             self.log.exception("singer → database 搜索触发异常")
 

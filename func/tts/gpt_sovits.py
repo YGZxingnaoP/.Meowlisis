@@ -121,6 +121,9 @@ class GptSovits:
                 for chunk in response.iter_content(chunk_size=4096):
                     if chunk:
                         yield chunk
+            except Exception:
+                # 被 cancel/打断时 response 可能已被关闭，静默结束
+                pass
             finally:
                 try:
                     response.close()

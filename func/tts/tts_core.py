@@ -140,6 +140,8 @@ class TTsCore:
 
         # 合成互斥锁（保证任意时刻只有一个合成在进行，配合任务串行）
         self.synth_lock = threading.Lock()
+        # 任务入队锁：串行化「创建任务 + 抢占判断 + 入队」，避免并发抢占重复触发
+        self._assign_lock = threading.Lock()
         # 打断标志：置位后丢弃后续待合成/待入队内容
         self._interrupt_flag = threading.Event()
 
@@ -626,18 +628,19 @@ class TTsCore:
         if not text and not is_end:
             return
 
-        with self.ttsData.task_lock:
-            self.ttsData.task_counter += 1
-            task = {
-                "task_id": self.ttsData.task_counter,
-                "traceid": traceid,
-                "source": source,
-                "segments": [json],
-                "generation": self.ttsData.generation,
-                "priority": self._priority_of(source),
-            }
-        self._maybe_preempt(task)
-        self.ttsData.task_queue.put(task)
+        with self._assign_lock:
+            with self.ttsData.task_lock:
+                self.ttsData.task_counter += 1
+                task = {
+                    "task_id": self.ttsData.task_counter,
+                    "traceid": traceid,
+                    "source": source,
+                    "segments": [json],
+                    "generation": self.ttsData.generation,
+                    "priority": self._priority_of(source),
+                }
+            self._maybe_preempt(task)
+            self.ttsData.task_queue.put(task)
 
     def _maybe_preempt(self, new_task: dict):
         """高优先级抢占：新任务优先级严格高于「正在播放 + 正在合成」时，掐断低优先级内容。

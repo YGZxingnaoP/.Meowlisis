@@ -5,7 +5,6 @@ import os
 import time
 import threading
 import wave
-from collections import deque
 
 import numpy as np
 
@@ -23,9 +22,6 @@ class ToolboxAudioBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBMeowSongsConfig()
-        self._cache = deque()
-        self._cache_samples = 0
-        self._cache_seconds = 0.0
         self._lock = threading.RLock()
         self._hum_end_lock = threading.Lock()
         self._last_hum_audio = None
@@ -45,7 +41,7 @@ class ToolboxAudioBridge:
             return self._last_speaker or ""
 
     def dispatch_frame(self, frame: bytes):
-        """接收一帧 16k 单声道 PCM：喂哼唱检测 + 累积落盘缓存 + 检测哼唱事件"""
+        """接收一帧 16k 单声道 PCM：喂哼唱检测 + 检测哼唱事件"""
         if not self.config.pbt_enabled:
             return
         try:
@@ -55,20 +51,10 @@ class ToolboxAudioBridge:
             self.log.exception("[ToolboxAudio] 哼唱检测分发异常")
 
         try:
-            arr = np.frombuffer(frame, dtype=np.int16).astype(np.float32)
-            with self._lock:
-                self._cache.append(arr)
-                self._cache_samples += arr.size
-                self._cache_seconds = self._cache_samples / SAMPLE_RATE
-                while self._cache_seconds > self.config.cache_seconds:
-                    old = self._cache.popleft()
-                    self._cache_samples -= old.size
-                    self._cache_seconds = self._cache_samples / SAMPLE_RATE
-
             # 检测哼唱段完成事件（事件序号变化 → 有新哼唱段）
             self._check_hum_event()
         except Exception:
-            self.log.exception("[ToolboxAudio] 落盘缓存异常")
+            self.log.exception("[ToolboxAudio] 哼唱事件检测异常")
 
     def _check_hum_event(self):
         """检测哼唱检测器是否产生新事件，有则落盘并触发匹配"""
@@ -96,27 +82,12 @@ class ToolboxAudioBridge:
             return p
 
     def _dump_hum_audio(self):
-        """把当前缓存裁剪前后静音后落盘为 wav，供匹配使用"""
+        """落盘检测器判定的当前段哼唱音频为 wav，供匹配使用"""
         try:
-            with self._lock:
-                if self._cache_seconds < self.config.hum_collect_sec:
-                    return
-                frames = list(self._cache)
-            energies = [float(np.sqrt(np.mean(f ** 2))) for f in frames]
-            thr = self.config.hum_energy_threshold
-            start_idx = 0
-            end_idx = len(frames) - 1
-            for i, e in enumerate(energies):
-                if e >= thr:
-                    start_idx = i
-                    break
-            for i in range(len(energies) - 1, -1, -1):
-                if energies[i] >= thr:
-                    end_idx = i
-                    break
-            if start_idx >= end_idx:
+            from func.toolbox.meowsongs.hum_detect.hum_detect import TBHumDetect
+            audio = TBHumDetect().consume_hum_audio()
+            if audio is None or audio.size == 0:
                 return
-            audio = np.concatenate(frames[start_idx:end_idx + 1])
 
             os.makedirs(os.path.join(".temp", "user_audio"), exist_ok=True)
             path = os.path.join(".temp", "user_audio", f"hum_{int(time.time()*1000)}.wav")
@@ -130,7 +101,7 @@ class ToolboxAudioBridge:
             # 设置丢弃标志：这段哼唱对应的 SenseVoice final 结果应丢弃
             with self._lock:
                 self._discard_next_asr = True
-            self.log.info(f"[ToolboxAudio] 哼唱音频已落盘（裁剪静音后）: {path}")
+            self.log.info(f"[ToolboxAudio] 哼唱音频已落盘: {path}")
             # 哼唱结束 → 自动触发接龙匹配（音频事件触发，不依赖文本 toolcalls）
             from threading import Thread
             Thread(target=self._trigger_baton, daemon=True).start()

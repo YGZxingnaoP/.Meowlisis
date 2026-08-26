@@ -79,7 +79,7 @@ class MeowNeteaseSong:
     def _send_start_signal(self, title):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().start_search(title)
+            SingerDatabaseBridge().start_search(title, "song")
         except Exception:
             self.log.exception("[点歌] 开始信号异常")
 

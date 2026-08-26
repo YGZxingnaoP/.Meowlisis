@@ -37,6 +37,16 @@ class TBNapcatAnalysis:
             return False
 
         system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+
+        # QQ 特定场景：命中哼唱关键词时，注入强制调用引导（仅 prompt 引导，不用 tool_choice 强制）
+        hum_force = ""
+        if text and ("哼唱" in text or "唱首歌" in text):
+            hum_force = (
+                "\n\n【最高优先级指令·覆盖前述所有要求】"
+                "用户这条消息明确包含「哼唱」或「唱首歌」关键词，属于明确的唱歌/哼唱需求。"
+                "你必须调用 impromptu_sing 工具（request 参数填用户原话），"
+            )
+
         system = (
             f"{system}\n\n"
             f"【工具调用】请判断用户这条 QQ 消息是否需要查询天气、查看新闻、新建待办或即兴哼唱：\n"
@@ -45,6 +55,7 @@ class TBNapcatAnalysis:
             f"- 明确要新建/记录待办或提醒事项（如提醒我几点做什么）→ 调用 add_backlog；\n"
             f"- 想让角色唱歌，想听角色唱歌→ 调用 impromptu_sing；\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
+            f"{hum_force}"
         )
         messages: List[dict] = [{"role": "system", "content": system}]
         for m in short_memory or []:

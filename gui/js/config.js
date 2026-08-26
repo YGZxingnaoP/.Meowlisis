@@ -1279,29 +1279,34 @@ const Config = {
             <div class="formula-box-title">哼唱检测算法</div>
             <div class="formula-block">
                 <div class="formula-row">
-                    <span class="formula-name">有效语音</span>
+                    <span class="formula-name">有效语音 <code>hum_collect_sec</code></span>
                     <span class="formula-expr">RMS ≥ 能量阈值，持续 ≥ 7 秒</span>
-                    <span class="formula-cond">静音 ≥ 2 秒判段结束（阈值读 SenseVoice）</span>
+                    <span class="formula-cond">静音 ≥ 2 秒判段结束（能量/静音阈值读 SenseVoice）</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">音高发声占比</span>
+                    <span class="formula-name">音高发声占比 <code>f0_voiced_ratio</code></span>
                     <span class="formula-expr">voiced_ratio = 有声帧 / 总帧 ≥ 0.6</span>
                     <span class="formula-cond">pyin 提取 F0，过滤清辅音与停顿</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">稳定帧占比</span>
+                    <span class="formula-name">稳定帧占比 <code>f0_stable_ratio</code></span>
                     <span class="formula-expr">stable_ratio = ( 相邻帧 |Δ半音| &lt; 0.5 ) 帧占比 ≥ 0.6</span>
                     <span class="formula-cond">哼唱音符内稳定；说话音高连续乱飘</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">音符数量</span>
+                    <span class="formula-name">稳定帧半音差 <code>f0_stable_half_step</code></span>
+                    <span class="formula-expr">|Δ半音| &lt; 0.5 视为稳定帧</span>
+                    <span class="formula-cond">相邻帧音高差阈值</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">音符数量 <code>f0_unique_notes</code></span>
                     <span class="formula-expr">unique_notes ≥ 3</span>
                     <span class="formula-cond">过滤单调拖长音</span>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">最终判定</span>
                     <span class="formula-expr">三项同时满足 → 判为哼唱</span>
-                    <span class="formula-cond">通过后才进入 QBH 歌曲匹配</span>
+                    <span class="formula-cond">通过后才进入 QBH 歌曲匹配 <code>match_threshold</code></span>
                 </div>
             </div>
             <div class="formula-params">
