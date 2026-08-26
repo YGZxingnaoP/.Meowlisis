@@ -76,7 +76,7 @@ class TBHumMatch:
         return seq
 
     def match(self, hum_wav):
-        """返回 (song_title, offset_sec, score) 或 (None, 0, 0)"""
+        """返回 (song_title, offset_sec, score)。未达阈值时 song_title 为 None，score 仍为最高分"""
         self._load_refs()
         if not self._refs:
             return None, 0.0, 0.0
@@ -92,7 +92,7 @@ class TBHumMatch:
             if score > best_score:
                 best_title, best_score, best_offset = title, score, offset
         if best_title is None or best_score < self.config.match_threshold:
-            return None, 0.0, 0.0
+            return None, best_offset, best_score
         return best_title, best_offset, best_score
 
     def _slide_cosine(self, ref, query):

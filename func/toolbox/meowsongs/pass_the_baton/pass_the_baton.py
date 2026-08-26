@@ -29,6 +29,9 @@ class TBPassTheBaton:
         self.next_line = TBNextLine()
         self._username = ""
         self._last_slice_path = ""
+        # 7 秒定歌锁定的结果（段结束接唱时使用）
+        self._locked_title = None
+        self._locked_offset = 0.0
 
     def set_username(self, username):
         self._username = username or ""
@@ -63,26 +66,74 @@ class TBPassTheBaton:
             self._send_qq_voice(qq_context, self._last_slice_path)
         return result
 
-    def run(self):
-        """主流程：取哼唱音频 → 匹配 → 接唱 + 记忆 / 匹配失败询问"""
+    def run(self, event_type=None, hum_path=None):
+        """入口：按事件类型分发（lock=7秒定歌，sing=段结束接唱）"""
         from func.pipeline.toolbox_audio import ToolboxAudioBridge
         bridge = ToolboxAudioBridge()
-        hum_wav = bridge.consume_hum_audio()
         username = bridge.get_last_speaker() or self._username or "用户"
 
-        if not hum_wav or not os.path.exists(hum_wav):
+        # 事件类型/路径优先用触发时绑定的值；无参数调用（LLM 工具）则回退读共享值
+        if event_type is None:
+            event_type = bridge.get_hum_event_type()
+        if hum_path is None:
+            hum_path = bridge.consume_hum_audio()
+
+        if event_type == "lock":
+            return self._run_lock(hum_path, username)
+        return self._run_sing(bridge, hum_path, username)
+
+    def _run_lock(self, hum_path, username):
+        """7 秒定歌：匹配 + 锁定，不接唱"""
+        if not hum_path or not os.path.exists(hum_path):
+            # 拿不到音频也要清锁定，避免残留到下一次
+            self._locked_title = None
+            self._locked_offset = 0.0
             return "没有检测到哼唱音频"
 
-        # 定位用完整哼唱时长 T（hum_wav 是 7 秒定歌快照，不能用它算时长）
-        hum_duration = bridge.get_hum_duration()
-        if hum_duration <= 0:
-            hum_duration = self._audio_duration(hum_wav)
-        title, offset, score = self.match.match(hum_wav)
-
+        title, offset, score = self.match.match(hum_path)
         try:
-            os.remove(hum_wav)
+            os.remove(hum_path)
         except Exception:
             pass
+
+        if not title:
+            self.log.info(
+                f"[PassTheBaton] 7秒定歌未达阈值：最高分 {score:.3f}（阈值 {self.config.match_threshold}）"
+            )
+            self._locked_title = None
+            self._locked_offset = 0.0
+            return "没有识别出这首歌"
+
+        self.log.info(f"[PassTheBaton] 7秒定歌：《{title}》 score={score:.3f} offset={offset:.1f}s")
+        self._locked_title = title
+        self._locked_offset = offset
+        return f"识别到《{title}》，等你唱完"
+
+    def _run_sing(self, bridge, hum_path, username):
+        """段结束接唱：用锁定结果 + 完整时长定位接唱；未锁定则兜底匹配"""
+        hum_duration = bridge.get_hum_duration()
+        if hum_duration <= 0:
+            hum_duration = 7.0
+
+        # 取出并立即重置锁定结果（本次用完即清，避免残留到下一次）
+        title = self._locked_title
+        offset = self._locked_offset
+        self._locked_title = None
+        self._locked_offset = 0.0
+
+        # 未锁定则用完整音频兜底匹配
+        if not title and hum_path and os.path.exists(hum_path):
+            title, offset, score = self.match.match(hum_path)
+            self.log.info(
+                f"[PassTheBaton] 段结束兜底匹配：《{title}》 score={score:.3f} offset={offset:.1f}s"
+            )
+
+        # 清理临时音频（无论是否用到，用完即删）
+        if hum_path and os.path.exists(hum_path):
+            try:
+                os.remove(hum_path)
+            except Exception:
+                pass
 
         if not title:
             self._ask_hum(username)
@@ -93,7 +144,7 @@ class TBPassTheBaton:
             self._ask_hum(username)
             return f"识别到《{title}》，但没有可接的歌词"
 
-        # 匹配成功 → 进入唱歌状态（利用唱歌中拦截，屏蔽后续 ASR 乱码）
+        # 匹配成功 → 进入唱歌状态（唱歌状态只覆盖接唱，感想播报不拦截用户语音）
         from func.pipeline.singing_state import SingingStateBridge
         SingingStateBridge().start_singing("cover", title)
         try:
@@ -109,13 +160,14 @@ class TBPassTheBaton:
             if ai_lyric:
                 self._record_hum_song(username, "assistant", ai_lyric)
 
-            # 感想（LLM 回复单独保存）
-            self._send_feeling(title, next_lines, username)
-
-            # 等待接唱与感想播报完成
+            # 等待接唱播完
             self._wait_tts_idle()
         finally:
             SingingStateBridge().end_singing()
+
+        # 感想播报（唱歌状态外，接唱结束后用户说话可正常发 LLM）
+        self._send_feeling(title, next_lines, username)
+        self._wait_tts_idle()
         return f"识别到《{title}》，接着唱"
 
     def _play_from(self, title, start_sec, end_sec=None):

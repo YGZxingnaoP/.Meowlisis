@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # func/toolbox/meowsongs/hum_detect/hum_detect.py
-# 哼唱检测：有效语音累积满 hum_collect_sec 后立即判定（不等段结束），段结束用 7 秒快照定歌 + 完整时长定位接唱
+# 哼唱检测：有效语音累积满 hum_collect_sec 后立即判定并定歌（lock 事件），段结束触发接唱（sing 事件）
 import time
 import threading
 from collections import deque
@@ -17,7 +17,7 @@ SAMPLE_RATE = 16000
 
 @singleton
 class TBHumDetect:
-    """哼唱检测器（单例）：满 hum_collect_sec 立即判定（不等静音段结束），段结束用完整音频触发匹配"""
+    """哼唱检测器（单例）：满 hum_collect_sec 判定并定歌（lock），段结束触发接唱（sing）"""
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -38,10 +38,12 @@ class TBHumDetect:
         self._checked_at_collect = False
         # 本段是否已判定为哼唱（满 7 秒时通过）；段结束据此触发匹配
         self._segment_triggered = False
-        # 满 7 秒判定通过时的音频快照（用于匹配定歌，避免完整音频稀释匹配分）
-        self._last_7s_audio = None
         # 最近一段哼唱的完整时长（秒），供接唱定位 offset+时长
         self._last_hum_duration = 0.0
+        # 最近一次触发的事件类型："lock"=7秒定歌, "sing"=段结束接唱
+        self._last_event_type = ""
+        # 判定成功时置位，供 toolbox_audio 落盘时决定是否丢弃哼唱对应的 ASR final（只丢弃一次）
+        self._need_discard = False
 
     def feed(self, frame: bytes):
         """喂一帧 16k 单声道 PCM：有效语音累积，满 hum_collect_sec 立即判定，段结束兜底"""
@@ -70,39 +72,44 @@ class TBHumDetect:
                         self._buf_seconds = 0.0
                         self._checked_at_collect = False
                         self._segment_triggered = False
-                        self._last_7s_audio = None
-                        self._last_hum_duration = 0.0
+                        # 注意：_last_hum_duration / _last_event_type / _need_discard 不在此清空，
+                        # 需保留给 toolbox_audio 在 seq 变化后异步读取（否则 sing 事件的时长/类型/丢弃标志会丢失）
 
                 # 语音段进行中才累积：只保留当前段的音频（有声 + 段内短静音）
                 if self._speech_start > 0.0:
                     self._buffer.append(arr)
                     self._buf_samples += arr.size
                     self._buf_seconds = self._buf_samples / SAMPLE_RATE
-                    # 满 hum_collect_sec 立即判定（不等静音段结束），只判一次
-                    # 通过仅标记本段为哼唱，并保存 7 秒快照——段结束用 7 秒快照定歌
+                    # 满 hum_collect_sec 立即判定 + 定歌（不等静音段结束），只判一次
                     if (not self._checked_at_collect
                             and self._buf_seconds >= self.config.hum_collect_sec):
                         self._checked_at_collect = True
                         if self._analyze_buffer():
                             self._segment_triggered = True
-                            self._last_7s_audio = np.concatenate(list(self._buffer))
+                            self._need_discard = True
+                            self._last_event_type = "lock"
+                            self._trigger_lock()
         except Exception:
             self.log.exception("[HumDetect] 喂帧异常")
 
     def _finish_segment(self):
-        """一段有效语音结束：用完整段音频触发匹配（后续语音已加入），或兜底判定"""
+        """一段有效语音结束：触发接唱事件（已定歌则只定位，未定歌则兜底匹配）"""
         if self._speech_start == 0.0:
             return
         # 用当前段累积的语音时长判断（不含段尾静音）
         if self._buf_seconds < self.config.hum_collect_sec:
             return
-        # 满 7 秒已确认是哼唱 → 直接用完整段触发匹配
+        # 满 7 秒已定歌 → 段结束触发接唱（携带完整音频，供未锁定时兜底匹配）
         if self._segment_triggered:
-            self._trigger_match()
+            self._last_event_type = "sing"
+            self._trigger_sing(need_match=True)
             return
-        # 满 7 秒未通过 → 段结束用完整段兜底判定
+        # 满 7 秒未通过 → 段结束兜底判定 + 接唱（无锁定结果，需匹配）
         if self._analyze_buffer():
-            self._trigger_match()
+            self._segment_triggered = True
+            self._need_discard = True
+            self._last_event_type = "sing"
+            self._trigger_sing(need_match=True)
 
     def _analyze_buffer(self):
         """判定当前累积缓冲是否为哼唱（yin fl1024），返回 bool，不触发匹配"""
@@ -138,19 +145,26 @@ class TBHumDetect:
             self.log.exception("[HumDetect] 完整分析异常")
             return False
 
-    def _trigger_match(self):
-        """触发匹配：定歌用 7 秒快照，定位用完整时长（供 toolbox_audio 落盘匹配）"""
+    def _trigger_lock(self):
+        """7 秒定歌：用 7 秒快照触发匹配事件（供 toolbox_audio 落盘匹配）"""
         with self._lock:
-            if self._buf_seconds < self.config.hum_collect_sec:
-                return
-            # 定歌音频：优先 7 秒快照（准确）；兜底路径无快照则用完整音频
-            audio = self._last_7s_audio
-            if audio is None or audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
-                audio = np.concatenate(list(self._buffer))
+            audio = np.concatenate(list(self._buffer))
             if audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
                 return
             self._last_hum_audio = audio
-            self._last_hum_duration = self._buf_seconds  # 完整哼唱时长
+            self._last_hum_duration = self._buf_seconds
+            self._hum_event_seq += 1
+
+    def _trigger_sing(self, need_match=False):
+        """段结束接唱：触发接唱事件（need_match=True 时携带完整音频供兜底匹配）"""
+        with self._lock:
+            audio = None
+            if need_match:
+                audio = np.concatenate(list(self._buffer))
+                if audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
+                    return
+            self._last_hum_audio = audio
+            self._last_hum_duration = self._buf_seconds  # 完整时长 T
             self._hum_event_seq += 1
 
     def consume_hum_audio(self):
@@ -169,3 +183,15 @@ class TBHumDetect:
         """返回最近一段哼唱的完整时长（秒），供接唱定位 offset+时长"""
         with self._lock:
             return self._last_hum_duration
+
+    def get_last_event_type(self):
+        """返回最近一次触发的事件类型（"lock" 或 "sing"）"""
+        with self._lock:
+            return self._last_event_type
+
+    def get_and_clear_need_discard(self):
+        """读取并复位「需要丢弃哼唱 ASR final」标志（toolbox_audio 落盘时调用）"""
+        with self._lock:
+            v = self._need_discard
+            self._need_discard = False
+            return v
