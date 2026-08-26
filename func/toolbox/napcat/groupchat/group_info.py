@@ -23,8 +23,10 @@ class TBGroupInfo:
         self.log = DefaultLog().getLogger()
         self.config = TBNapCatConfig()
         self.dir = os.path.join(".NapCat", "group_info")
-        # 群名 -> AI 已发送条数（内存计数）
-        self._sent_count: Dict[str, int] = {}
+        # 群名 -> AI 已发送条数（持久化到 .temp/group_records，重启不重置）
+        self._count_dir = os.path.join(".temp", "group_records")
+        self._count_path = os.path.join(self._count_dir, "group_sent_count.json")
+        self._sent_count: Dict[str, int] = self._load_count()
         self._lock = threading.Lock()
 
     # ==================== 计数 ====================
@@ -34,10 +36,34 @@ class TBGroupInfo:
         with self._lock:
             self._sent_count[key] = self._sent_count.get(key, 0) + 1
             count = self._sent_count[key]
+            self._save_count()
         if count >= self.config.group_info_interval:
             with self._lock:
                 self._sent_count[key] = 0
+                self._save_count()
             threading.Thread(target=self.update, args=(group_id, group_name), daemon=True).start()
+
+    # ==================== 计次持久化 ====================
+    def _load_count(self) -> Dict[str, int]:
+        """启动时加载计次缓存（缺失/损坏返回空 dict）"""
+        if not os.path.exists(self._count_path):
+            return {}
+        try:
+            with open(self._count_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            self.log.exception(f"读取群性质计次缓存失败: {self._count_path}")
+            return {}
+
+    def _save_count(self):
+        """把计次缓存写盘（需在持有 self._lock 时调用）"""
+        try:
+            os.makedirs(self._count_dir, exist_ok=True)
+            with open(self._count_path, "w", encoding="utf-8") as f:
+                json.dump(self._sent_count, f, ensure_ascii=False, indent=2)
+        except Exception:
+            self.log.exception(f"保存群性质计次缓存失败: {self._count_path}")
 
     @staticmethod
     def _key(group_id: str, group_name: str) -> str:

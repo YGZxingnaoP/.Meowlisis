@@ -2,6 +2,7 @@
 # func/toolbox/toolbox_core.py
 # Toolbox 核心调度：整合 pipeline 桥接，统一分发输入与输出
 
+import random
 from threading import Thread
 
 from func.log.default_log import DefaultLog
@@ -21,6 +22,10 @@ from func.toolbox.napcat.napcat_core import TBNapCatCore
 @singleton
 class TBoxCore:
     """Toolbox 总入口：持有各 pipeline 桥接与父级分析器，统一分发"""
+
+    # 幻梦被动触发概率（硬编码）：群聊 decide 时，只要幻梦在该群发过言，
+    # 就有该概率直接随机调它（替代 LLM 的「冷场」判断，冷场与累计消息矛盾）。
+    BOT_TRIGGER_PROB = 0.5
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -270,7 +275,25 @@ class TBoxCore:
                 self._maybe_send_group_emote(parsed, text, final, short_memory)
             return
 
-        # action == "decide"：AI 判断是否插话 / 是否调用 ask_group_bot / 输出 pass
+        # action == "decide"：先硬编码概率触发幻梦（替代 LLM 的「冷场」判断）
+        # 只要幻梦在该群发过言，就有 BOT_TRIGGER_PROB 概率随机调它；未命中才走原 decide
+        try:
+            from func.toolbox.napcat.groupchat.ask_group_bot import TBAskGroupBot
+            _prob_bot = TBAskGroupBot()
+            _prob_qq = _prob_bot.resolve_bot_qq("幻梦")
+            if _prob_qq and _prob_bot.was_used(group_id, _prob_qq) \
+                    and random.random() < self.BOT_TRIGGER_PROB:
+                _cmds = _prob_bot.merged_commands().get("幻梦") or []
+                if _cmds:
+                    _cmd = random.choice(_cmds)
+                    _res = _prob_bot.execute_forced(group_id, "幻梦", _cmd)
+                    self.log.info(f"[NapCat群聊] 概率触发幻梦: {_res}")
+                    active.record_reply(group_id)
+                    return
+        except Exception:
+            self.log.exception("概率触发幻梦失败")
+
+        # AI 判断是否插话 / 是否调用 ask_group_bot / 输出 pass
         # ask_group_bot 是 napcat 独有工具，挂群聊 LLM，不进 toolbox
         ask_bot_tools = None
         try:
@@ -286,6 +309,7 @@ class TBoxCore:
         # AI 选择调用群机器人发指令：工具已执行，不再文本回复
         if final.startswith("ASK_BOT:"):
             self.log.info(f"[NapCat群聊] AI 主动调用群机器人: {final}")
+            active.record_reply(group_id)
             return
         if self._is_pass(final):
             active.record_pass(group_id)

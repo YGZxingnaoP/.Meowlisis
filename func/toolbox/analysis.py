@@ -125,6 +125,17 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册海龟汤模块失败")
 
+        # 群机器人指令入口（如幻梦）
+        try:
+            from func.toolbox.napcat.groupchat.ask_group_bot_entry import TBAskGroupBotEntry
+            bot_entry = TBAskGroupBotEntry()
+            for tool_schema in bot_entry.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, bot_entry)
+        except Exception:
+            self.log.exception("注册群机器人指令入口失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -174,6 +185,7 @@ class TBoxAnalysis:
             f"【工具调用】根据用户消息判断是否需要调用工具箱工具。\n"
             f"只有用户「明确」表达以下操作意图时，才调用对应工具：\n"
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
+            f"- 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。\n"
             f"- 所有可能和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"
             f"- 明确要看新闻/热点/头条 → read_news；\n"

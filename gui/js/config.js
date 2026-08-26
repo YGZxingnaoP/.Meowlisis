@@ -916,6 +916,8 @@ const Config = {
     napcat_group() {
         return this._section('NapCat 群聊回复') +
             this._check('启用群聊回复', 'napcat.group_reply_enabled', true) +
+            this._num('回复字数', 'napcat.group_reply_word_count', 10, 1, 100, 1,
+                '群聊每次回复约该字数，严格上限 = 该值 + 10（独立于私聊回复字数）') +
             this._list('群聊名称黑名单（逗号分隔，空=不拦截）', 'napcat.group_blacklist', []) +
             this._num('群聊历史拉取条数', 'napcat.group_history_limit', 50, 1, 500, 1,
                 'get_group_record 向上获取的群聊历史条数（content 标注【用户名】:内容）') +

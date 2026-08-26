@@ -12,6 +12,13 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.napcat.config import TBNapCatConfig
 
+# 静态默认指令名单：幻梦「娱乐菜单」的可执行 command（AI 一开始就知道能玩什么）。
+# 与 observe 动态缓存的指令合并后展示给 LLM，避免 AI 卡在「先发 /菜单」却拿不到指令。
+DEFAULT_COMMANDS = {
+    "幻梦": ["剧情模式", "homo", "打卡", "运势", "今日老婆", "今日梦境",
+             "今日属性", "今日超能力", "随机图", "智慧之书", "随机Say"],
+}
+
 
 @singleton
 class TBAskGroupBot:
@@ -86,6 +93,21 @@ class TBAskGroupBot:
                     result[str(name)] = sorted(cmds)
         return result
 
+    def merged_commands(self) -> Dict[str, List[str]]:
+        """静态默认名单 ∪ observe 动态缓存（跨群汇总，按机器人名）。"""
+        bots = self.config.group_bots or {}
+        dynamic = self.all_known_commands()
+        result = {}
+        for name in bots:
+            cmds = []
+            seen = set()
+            for c in list(DEFAULT_COMMANDS.get(name, [])) + list(dynamic.get(name, [])):
+                if c and c not in seen:
+                    seen.add(c)
+                    cmds.append(c)
+            result[str(name)] = cmds
+        return result
+
     @classmethod
     def _extract_commands(cls, raw_message) -> List[str]:
         """从消息段（含 markdown）里提取 command=XXX 指令名单"""
@@ -120,11 +142,11 @@ class TBAskGroupBot:
     # ==================== tool schema ====================
     def build_tools(self) -> List[dict]:
         """构建 ask_group_bot 工具 schema（供 napcat 群聊 LLM 使用，不进 toolbox）"""
-        # 动态拼接已知指令名单，让 AI 知道有哪些指令可用
+        # 已知指令名单 = 静态默认名单 ∪ observe 动态缓存，让 AI 知道有哪些指令可用
         cmd_hint = ""
-        all_cmds = self.all_known_commands()
-        if all_cmds:
-            lines = [f"- {name}: {'、'.join(cmds)}" for name, cmds in all_cmds.items()]
+        merged = self.merged_commands()
+        if merged:
+            lines = [f"- {name}: {'、'.join(cmds)}" for name, cmds in merged.items()]
             cmd_hint = "\n已知指令名单（可从中选择）：\n" + "\n".join(lines)
         else:
             cmd_hint = "\n暂无已知指令名单，可先发送 /菜单 获取。"
@@ -135,7 +157,7 @@ class TBAskGroupBot:
                 "name": self.TOOL_NAME,
                 "description": (
                     "向群里的机器人（如幻梦）发送指令，触发它回复，用于活跃气氛或提供娱乐内容。"
-                    "指令格式为「@机器人名 空格 /指令」，例如「@幻梦 /菜单」（注意 @ 与 /指令 之间有空格）。"
+                    "指令格式为「@机器人名 空格 指令」，例如「@幻梦 今日老婆」（注意 @ 与指令之间有空格，指令不加斜杠）。"
                     "仅在同时满足以下两个条件时才使用本工具："
                     "1) 之前群里已经有其它用户用过该机器人（即该机器人之前发过言）；"
                     "2) 当前群聊没有明显话题（大家只是在闲聊或冷场）。"
@@ -146,7 +168,7 @@ class TBAskGroupBot:
                     "properties": {
                         "group_id": {"type": "string", "description": "群号"},
                         "bot_name": {"type": "string", "description": "机器人名，如 幻梦"},
-                        "command": {"type": "string", "description": "要执行的指令，如 /菜单、/今日老婆"},
+                        "command": {"type": "string", "description": "要执行的指令，如 菜单、今日老婆（不加斜杠）"},
                     },
                     "required": ["group_id", "bot_name", "command"],
                 },
@@ -177,8 +199,6 @@ class TBAskGroupBot:
             )
 
         cmd = str(command).strip()
-        if not cmd.startswith("/"):
-            cmd = "/" + cmd
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             TBNapCatCore().call_action_sync("send_group_msg", {
@@ -189,6 +209,33 @@ class TBAskGroupBot:
                 ],
             })
             self.log.info(f"[ask_group_bot] 已 @{bot_name}({bot_qq}) 发送指令：{cmd}")
+            return f"已向「{bot_name}」发送指令：{cmd}（等待它在群里回复）"
+        except Exception:
+            self.log.exception("发送群机器人指令失败")
+            return "发送群机器人指令失败"
+
+    def execute_forced(self, group_id: str, bot_name: str, command: str) -> str:
+        """父级主动触发：用户明确要求时，不校验 was_used（幻梦没发过言也发）。
+
+        指令不加斜杠前缀，与幻梦菜单里的 command（如 今日老婆）保持一致。
+        """
+        if not group_id or not bot_name or not command:
+            return "发送失败：缺少群号 / 机器人名 / 指令"
+        bot_qq = self.resolve_bot_qq(bot_name)
+        if not bot_qq:
+            return f"未找到机器人「{bot_name}」，请先在 napcat.group_bots 配置其 QQ 号"
+
+        cmd = str(command).strip()
+        try:
+            from func.toolbox.napcat.napcat_core import TBNapCatCore
+            TBNapCatCore().call_action_sync("send_group_msg", {
+                "group_id": int(group_id),
+                "message": [
+                    {"type": "at", "data": {"qq": bot_qq}},
+                    {"type": "text", "data": {"text": " " + cmd}},
+                ],
+            })
+            self.log.info(f"[ask_group_bot:forced] 已 @{bot_name}({bot_qq}) 发送指令：{cmd}")
             return f"已向「{bot_name}」发送指令：{cmd}（等待它在群里回复）"
         except Exception:
             self.log.exception("发送群机器人指令失败")

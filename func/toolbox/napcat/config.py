@@ -68,6 +68,8 @@ class TBNapCatConfig:
         self.emote_dir = cfg.get('emote_dir', '.NapCat/EmoteLab')
 
         # ========== 群聊模块（接口型，自发进行） ==========
+        # 群聊回复字数（独立于私聊 reply_word_count，默认10，严格上限 = 该值 + 10）
+        self.group_reply_word_count = cfg.get('group_reply_word_count', 10)
         # 群聊名称黑名单（命中则不接收该群消息，默认空）
         self.group_blacklist = cfg.get('group_blacklist', []) or []
         # 群聊历史拉取条数（get_group_record 向上获取，默认 50）

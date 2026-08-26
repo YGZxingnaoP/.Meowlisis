@@ -194,7 +194,7 @@ class SystemPromptBridge:
         if front:
             try:
                 from func.toolbox.napcat.config import TBNapCatConfig
-                word_count = int(TBNapCatConfig().reply_word_count or 10)
+                word_count = int(TBNapCatConfig().group_reply_word_count or 10)
             except Exception:
                 word_count = 10
             front = (
