@@ -5,6 +5,7 @@
 import json
 import os
 import re
+import threading
 from typing import Dict, List
 
 from func.log.default_log import DefaultLog
@@ -30,13 +31,19 @@ class TBTurtleSoupCore:
         self.log = DefaultLog().getLogger()
         self.config = TBTurtleSoupConfig()
         self.state = TBTurtleSoupState()
-        self._username = ""
+        # 用户名用 thread-local 存储，避免 QQ / live 多线程并发触发开新局时串线
+        self._local = threading.local()
         # 启动（首次实例化）时清理残留的进行中缓存，避免崩溃后残留游戏态
         self._cleanup_cache()
 
     # ==================== 工具注册 ====================
     def set_username(self, username):
-        self._username = username or ""
+        self._local.username = username or ""
+
+    @property
+    def _username(self):
+        """当前线程注入的用户名（thread-local，多线程互不干扰）"""
+        return getattr(self._local, "username", "")
 
     def build_tools(self) -> List[Dict]:
         return [{

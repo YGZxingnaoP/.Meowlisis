@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-hum_detect_sim.py —— 独立哼唱检测 + 歌曲匹配模拟脚本（与项目算法完全一致，不依赖项目模块）
+hum_detect_sim.py —— 独立哼唱检测 + 歌曲匹配模拟脚本（与项目算法一致，不依赖项目模块）
 
-与项目对齐的算法：
+流程（与最终方案一致）：
     1. VAD 分段：能量阈值 + 连续静音分段（与 hum_detect 一致）；
-    2. 满 HUM_COLLECT_SEC 秒立即判定（yin frame_length=1024，与 hum_detect 一致）；
-    3. 判定通过后【不立即匹配】，继续累积，段结束时用【完整音频】匹配；
-    4. 匹配前用 yin frame_length=2048 重新提取音高（与 hum_match 一致，两次提取）；
-    5. QBH 滑动余弦匹配曲库 *_pitch.npy。
+    2. 满 HUM_COLLECT_SEC 秒判定（yin frame_length=1024，与 hum_detect 一致）；
+    3. 判定通过后【只用这 7 秒匹配一次，锁定歌名 + 起始点 offset】，不接唱、不重匹配；
+    4. 继续累积，停唱后静音 SILENCE_THRESHOLD 秒段结束；
+    5. 段结束用 offset + 实际哼唱时长 T 推算接唱点，在 *.lrc 里找最近的歌词句首；
+    6. 打印：定到了哪首歌、从哪句歌词开始接唱（项目后续据此播放 accomp）。
 
 用法：
     runtime\\python.exe hum_detect_sim.py
@@ -20,6 +21,7 @@ hum_detect_sim.py —— 独立哼唱检测 + 歌曲匹配模拟脚本（与项�
 """
 
 import os
+import re
 import time
 from collections import deque
 
@@ -33,7 +35,7 @@ CHUNK = int(SAMPLE_RATE * CHUNK_MS / 1000)
 ENERGY_THRESHOLD = 400         # VAD 能量阈值（RMS，int16 幅度）。越大越不敏感
 SILENCE_THRESHOLD = 2.0        # 段结束静音阈值（秒）。连续静音超过此值即分段
 
-HUM_COLLECT_SEC = 7.0          # 哼唱最少累积时长（秒）。满此值立即判定
+HUM_COLLECT_SEC = 7.0          # 哼唱最少累积时长（秒）。满此值立即判定并定歌
 
 F0_MIN = 80                    # yin 最低基频（Hz）
 F0_MAX = 800                   # yin 最高基频（Hz）
@@ -47,7 +49,7 @@ F0_STABLE_HALF_STEP = 0.5      # 相邻帧音高差 < 此半音数视为稳定�
 F0_UNIQUE_NOTES = 3            # 唯一音符数阈值（越高要求旋律变化越多）
 
 MEOW_DIR = os.path.join("character", "songs", "meow_list")  # 曲库目录
-MATCH_THRESHOLD = 0.55         # QBH 匹配余弦相似度阈值
+MATCH_THRESHOLD = 0.45         # 定歌余弦阈值（哼唱 vs vocal 正常区间约 0.4~0.6）
 
 VERBOSE_FRAME = False          # True 时打印每帧能量（很刷屏，调试用）
 # ============================================================
@@ -133,8 +135,52 @@ def load_refs():
     return refs
 
 
+def _read_text(path):
+    """按 utf-8 / gbk 依次尝试读取文本（兼容 lrc 不同编码）"""
+    for enc in ("utf-8", "gbk", "utf-8-sig"):
+        try:
+            with open(path, "r", encoding=enc) as f:
+                return f.read()
+        except (UnicodeDecodeError, LookupError):
+            continue
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        return f.read()
+
+
+def load_lrc(title):
+    """解析 {title}.lrc → [(time_sec, text), ...]，按时间升序"""
+    path = os.path.join(MEOW_DIR, title, f"{title}.lrc")
+    if not os.path.exists(path):
+        return []
+    items = []
+    for line in _read_text(path).splitlines():
+        line = line.strip()
+        if not line.startswith("["):
+            continue
+        m = re.match(r"\[(\d{1,3}):(\d{1,2}(?:\.\d+)?)\](.*)", line)
+        if not m:
+            continue
+        sec = int(m.group(1)) * 60 + float(m.group(2))
+        text = m.group(3).strip()
+        if text:
+            items.append((sec, text))
+    items.sort(key=lambda x: x[0])
+    return items
+
+
+def find_lyric_start(title, sec):
+    """在 title.lrc 里找 sec 之后（含，容差 0.05s）最近的歌词句首，返回 (time_sec, text) 或 None"""
+    items = load_lrc(title)
+    if not items:
+        return None
+    for t, text in items:
+        if t >= sec - 0.05:
+            return (t, text)
+    return items[-1]
+
+
 def match_song(refs, query):
-    """QBH 滑动窗口余弦相似度，返回 (命中歌名, 最高分, 偏移秒)。低于阈值返回 (None, 分, 偏移)"""
+    """QBH 滑动窗口余弦相似度，返回 (最高分歌名, 最高分, 偏移秒)。无候选返回 (None, 分, 偏移)"""
     if not refs or query is None or query.size < 3:
         return None, 0.0, 0.0
 
@@ -151,25 +197,26 @@ def match_song(refs, query):
         i = int(np.argmax(scores))
         if scores[i] > best_score:
             best_title, best_score, best_offset = title, float(scores[i]), i * HOP / SAMPLE_RATE
-
-    if best_score < MATCH_THRESHOLD:
-        return None, best_score, best_offset
     return best_title, best_score, best_offset
 
 
 class HumDetector:
-    """复刻项目 hum_detect：VAD 分段 + 满 7 秒判定 + 段结束用完整音频匹配"""
+    """复刻项目 hum_detect：VAD 分段 + 满 7 秒定歌（锁定） + 段结束 offset+T 定位句首"""
 
     def __init__(self, refs):
+        self.refs = refs
         self.buffer = deque()
         self.buf_samples = 0
         self.buf_seconds = 0.0
         self.speech_start = 0.0
         self.last_sound = 0.0
         self._last_progress = 0.0
-        self.checked_at_collect = False   # 满 7 秒是否已判过（无论成败）
-        self.segment_triggered = False    # 本段是否已判定为哼唱
-        self.refs = refs
+        self.checked_at_collect = False    # 满 7 秒是否已判定过
+        self.segment_triggered = False     # 本段是否已判定为哼唱
+        # 7 秒定歌锁定结果
+        self.locked_title = None
+        self.locked_offset = 0.0
+        self.locked_score = 0.0
 
     def feed(self, arr: np.ndarray):
         rms = float(np.sqrt(np.mean(arr ** 2)))
@@ -191,6 +238,9 @@ class HumDetector:
                 self.buf_seconds = 0.0
                 self.checked_at_collect = False
                 self.segment_triggered = False
+                self.locked_title = None
+                self.locked_offset = 0.0
+                self.locked_score = 0.0
 
         if self.speech_start > 0.0:
             self.buffer.append(arr)
@@ -200,52 +250,94 @@ class HumDetector:
                 self._last_progress = now
                 print(f"[{_ts()}]   ... 已累积 {self.buf_seconds:.1f}s")
 
-            # 满 7 秒立即判定（只判一次，不匹配；段结束才用完整音频匹配）
+            # 满 7 秒：判定 + 定歌（只一次，不接唱、不重匹配）
             if not self.checked_at_collect and self.buf_seconds >= HUM_COLLECT_SEC:
                 self.checked_at_collect = True
-                self._judge_at_collect()
+                self._lock_song_at_7s()
 
-    def _judge_at_collect(self):
+    def _lock_song_at_7s(self):
         audio = np.concatenate(list(self.buffer))
         ok, m = judge(audio)
         print(f"[{_ts()}] ⚡ 满 7 秒判定（时长 {self.buf_seconds:.2f}s，fl{JUDGE_FRAME_LENGTH}）")
         self._print_metrics(m)
-        if ok:
-            self.segment_triggered = True
-            print("        判定：✅ 哼唱 → 继续收集，段结束用完整音频匹配")
+        if not ok:
+            print("        判定：❌ 非哼唱 → 段结束用完整音频兜底")
+            return
+
+        self.segment_triggered = True
+        midi = extract_match_midi(audio)
+        title, score, offset = match_song(self.refs, midi)
+        if title and score >= MATCH_THRESHOLD:
+            self.locked_title = title
+            self.locked_offset = offset
+            self.locked_score = score
+            print(f"        🎯 定歌：《{title}》 score={score:.3f} offset={offset:.1f}s ✅")
+            print("            （已锁定，继续收集，段结束用 offset+时长 定位接唱点）")
+        elif title:
+            print(f"        🎯 候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}，未锁定，段结束兜底）")
         else:
-            print("        判定：❌ 非哼唱 → 段结束兜底再判")
+            print("        🎯 无候选歌曲，段结束兜底")
 
     def _finish(self):
         if self.buf_seconds < HUM_COLLECT_SEC:
             print(f"[{_ts()}] ⏹ 段结束，时长 {self.buf_seconds:.2f}s < {HUM_COLLECT_SEC}s，丢弃（未分析）")
             return
 
-        audio = np.concatenate(list(self.buffer))
-        print(f"[{_ts()}] ⏹ 段结束（时长 {self.buf_seconds:.2f}s）")
+        T = self.buf_seconds
+        print(f"[{_ts()}] ⏹ 段结束（实际哼唱时长 T = {T:.2f}s）")
 
-        if self.segment_triggered:
-            print("        满 7 秒已判定为哼唱，用完整音频匹配（后续语音已加入）")
-            self._match_full(audio)
+        # 已定歌 → 用 offset + T 找句首
+        if self.locked_title:
+            P = self.locked_offset + T
+            lyric = find_lyric_start(self.locked_title, P)
+            print(f"        接唱点 ≈ offset({self.locked_offset:.1f}s) + T({T:.2f}s) = {P:.1f}s")
+            if lyric:
+                t, text = lyric
+                print(f"        → 从《{self.locked_title}》 [{self._fmt(t)}] \"{text}\" 接唱")
+            else:
+                print(f"        → 《{self.locked_title}》 无歌词，从 {P:.1f}s 播放")
             return
 
-        # 满 7 秒未通过 → 段结束用完整音频兜底判定
-        print("        满 7 秒未通过，段结束用完整音频兜底判定")
+        # 7 秒判定通过但未锁定 → 完整音频兜底匹配
+        if self.segment_triggered:
+            print("        满 7 秒未定歌，段结束用完整音频兜底匹配")
+            audio = np.concatenate(list(self.buffer))
+            midi = extract_match_midi(audio)
+            title, score, offset = match_song(self.refs, midi)
+            if title and score >= MATCH_THRESHOLD:
+                P = offset + T
+                lyric = find_lyric_start(title, P)
+                print(f"        🎯 兜底：《{title}》 score={score:.3f} offset={offset:.1f}s")
+                if lyric:
+                    t, text = lyric
+                    print(f"        → 从《{title}》 [{self._fmt(t)}] \"{text}\" 接唱")
+            elif title:
+                print(f"        🎯 兜底候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}）")
+            else:
+                print("        🎯 兜底无候选")
+            return
+
+        # 7 秒判定未通过 → 完整音频兜底判定
+        print("        满 7 秒未判定为哼唱，段结束用完整音频兜底判定")
+        audio = np.concatenate(list(self.buffer))
         ok, m = judge(audio)
         self._print_metrics(m)
         if not ok:
             print("        判定：❌ 非哼唱")
             return
-        self.segment_triggered = True
-        self._match_full(audio)
-
-    def _match_full(self, audio):
         midi = extract_match_midi(audio)
         title, score, offset = match_song(self.refs, midi)
-        if title:
-            print(f"        匹配：✅ 《{title}》 分数={score:.3f} 偏移={offset:.1f}s")
+        if title and score >= MATCH_THRESHOLD:
+            P = offset + T
+            lyric = find_lyric_start(title, P)
+            print(f"        🎯 兜底：《{title}》 score={score:.3f} offset={offset:.1f}s")
+            if lyric:
+                t, text = lyric
+                print(f"        → 从《{title}》 [{self._fmt(t)}] \"{text}\" 接唱")
+        elif title:
+            print(f"        🎯 兜底候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}）")
         else:
-            print(f"        匹配：❌ 未达阈值（最高分 {score:.3f} < {MATCH_THRESHOLD}）")
+            print("        🎯 兜底无候选")
 
     def _print_metrics(self, m):
         def mark(cond):
@@ -255,22 +347,26 @@ class HumDetector:
         print(f"        unique_notes = {m['unique_notes']}  (阈值 {F0_UNIQUE_NOTES}) {mark(m['unique_notes'] >= F0_UNIQUE_NOTES)}")
         print(f"        voiced_frames = {m['voiced_frames']} / {m['total_frames']}")
 
+    @staticmethod
+    def _fmt(sec):
+        return f"{int(sec // 60):02d}:{sec % 60:05.2f}"
+
 
 def main():
-    print("=" * 60)
-    print("独立哼唱检测 + 歌曲匹配模拟（与项目算法一致）")
-    print("=" * 60)
+    print("=" * 64)
+    print("独立哼唱检测 + 定歌 + 接唱点定位模拟（与项目算法一致）")
+    print("=" * 64)
     print(f"采样率            : {SAMPLE_RATE} Hz / 帧 {CHUNK_MS}ms")
     print(f"VAD 能量阈值      : {ENERGY_THRESHOLD}")
     print(f"段结束静音阈值    : {SILENCE_THRESHOLD}s")
-    print(f"哼唱最少时长      : {HUM_COLLECT_SEC}s（满此值立即判定）")
+    print(f"哼唱最少时长      : {HUM_COLLECT_SEC}s（满此值定歌，不接唱）")
     print(f"判定 yin          : fl={JUDGE_FRAME_LENGTH}, hop={HOP}")
     print(f"匹配 yin          : fl={MATCH_FRAME_LENGTH}, hop={HOP}")
     print(f"voiced_ratio 阈值 : {F0_VOICED_RATIO}")
     print(f"stable_ratio 阈值 : {F0_STABLE_RATIO} (half_step={F0_STABLE_HALF_STEP})")
     print(f"unique_notes 阈值 : {F0_UNIQUE_NOTES}")
-    print(f"匹配余弦阈值      : {MATCH_THRESHOLD}")
-    print("=" * 60)
+    print(f"定歌余弦阈值      : {MATCH_THRESHOLD}")
+    print("=" * 64)
 
     refs = load_refs()
     print(f"曲库已加载 {len(refs)} 首: {list(refs.keys())}")

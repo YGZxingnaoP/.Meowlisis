@@ -73,7 +73,10 @@ class TBPassTheBaton:
         if not hum_wav or not os.path.exists(hum_wav):
             return "没有检测到哼唱音频"
 
-        hum_duration = self._audio_duration(hum_wav)
+        # 定位用完整哼唱时长 T（hum_wav 是 7 秒定歌快照，不能用它算时长）
+        hum_duration = bridge.get_hum_duration()
+        if hum_duration <= 0:
+            hum_duration = self._audio_duration(hum_wav)
         title, offset, score = self.match.match(hum_wav)
 
         try:

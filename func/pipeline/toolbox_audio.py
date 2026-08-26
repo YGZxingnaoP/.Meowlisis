@@ -40,6 +40,14 @@ class ToolboxAudioBridge:
         with self._lock:
             return self._last_speaker or ""
 
+    def get_hum_duration(self):
+        """读取最近一段哼唱的完整时长（秒），供接唱定位 offset+时长"""
+        try:
+            from func.toolbox.meowsongs.hum_detect.hum_detect import TBHumDetect
+            return TBHumDetect().get_last_hum_duration()
+        except Exception:
+            return 0.0
+
     def dispatch_frame(self, frame: bytes):
         """接收一帧 16k 单声道 PCM：喂哼唱检测 + 检测哼唱事件"""
         if not self.config.pbt_enabled:
