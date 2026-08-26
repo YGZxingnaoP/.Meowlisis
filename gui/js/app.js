@@ -421,7 +421,8 @@ const App = {
             'news': { title: '新闻查询设置', fn: () => Config.news() },
             'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
             'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() },
-            'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() }
+            'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() },
+            'turtle_soup': { title: '海龟汤设置', fn: () => Config.turtle_soup() }
         };
         const panel = map[id];
         if (!panel) {

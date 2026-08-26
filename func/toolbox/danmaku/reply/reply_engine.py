@@ -35,6 +35,9 @@ class TBDanmakuReply:
     def consume(self):
         """消费一次：SC 优先，否则消费普通弹幕队列"""
         try:
+            # 海龟汤游戏激活时：弹幕猜测优先走游戏（live 会话）
+            if self._route_turtle_soup():
+                return
             # 1. SC 优先
             sc = self.receiver.pop_sc()
             if sc:
@@ -54,6 +57,44 @@ class TBDanmakuReply:
             self.receiver.clear_danmaku()  # 每次回复清空弹幕队列
         except Exception:
             self.log.exception("[DanmakuReply] 消费弹幕异常")
+
+    # ==================== 海龟汤路由 ====================
+    def _route_turtle_soup(self) -> bool:
+        """游戏激活时逐条路由弹幕（SC 优先，再普通弹幕）：consumed=游戏已处理，pass=走弹幕单条回复主持"""
+        try:
+            from func.pipeline.turtle_soup_state import TurtleSoupStateBridge
+            if not TurtleSoupStateBridge().is_active("live"):
+                return False
+            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+            core = TBTurtleSoupCore()
+
+            # SC 优先
+            sc = self.receiver.pop_sc()
+            if sc:
+                self._route_one(core, sc)
+                self.receiver.remove_sc(sc)
+                return True
+
+            # 普通弹幕
+            danmaku_list = self.receiver.snapshot_danmaku()
+            if not danmaku_list:
+                return False
+            for d in danmaku_list:
+                self._route_one(core, d)
+            self.receiver.clear_danmaku()
+            return True
+        except Exception:
+            self.log.exception("[DanmakuReply] 海龟汤路由异常")
+            return False
+
+    def _route_one(self, core, d):
+        content = (d.get("content") or "").strip()
+        if not content:
+            return
+        r = core.route_text(content, d.get("username", "用户"), channel="live")
+        if r == "pass":
+            # 普通猜测：走弹幕单条回复（主 LLM 用 danmaku 提示词，已注入游戏块）
+            self._reply_single(d)
 
     # ==================== 选取算法 ====================
     def _pick(self, danmaku_list: list) -> list:

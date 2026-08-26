@@ -114,6 +114,17 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册听歌识曲接龙模块失败")
 
+        # 海龟汤模块
+        try:
+            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+            turtle_soup = TBTurtleSoupCore()
+            for tool_schema in turtle_soup.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, turtle_soup)
+        except Exception:
+            self.log.exception("注册海龟汤模块失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -169,6 +180,7 @@ class TBoxAnalysis:
             f"- 用户想听歌/听你唱歌/有听歌需求/即兴哼唱/唱一小段 → 必须调用impromptu_sing；\n"
             f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send；\n"
             f"- 有让你提醒TA事情，需要新建/记录待办或提醒事项（如提醒我几点做什么）→ add_backlog。\n"
+            f"- 用户明确想玩海龟汤/情境猜谜/猜谜游戏 → turtle_soup。\n"
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
             f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
             f"- 用户明确「点歌」「放歌」且指定了歌名/要完整唱（属于点歌工具，不属于本工具箱）；\n"

@@ -184,6 +184,11 @@ class TBNapCatCore:
                     if _router.route(_router.private_key(str(_uid or "")), _text.strip()):
                         self.log.info(f"[NapCat] 私聊 excuse 等待命中，消费: {_text[:20]}")
                         return
+                    # 海龟汤拦截（游戏激活时全权处理，缓冲前）
+                    from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+                    if TBTurtleSoupCore().route_qq_private(str(_uid or ""), _text.strip()):
+                        self.log.info(f"[NapCat] 海龟汤拦截命中，消费: {_text[:20]}")
+                        return
             except Exception:
                 pass
             # 私聊回复开关
@@ -337,6 +342,11 @@ class TBNapCatCore:
                     _key = _router.group_key(str(_gid), str(_uid))
                     if _router.route(_key, _text.strip()):
                         self.log.info(f"[NapCat] 群聊 excuse 等待命中，消费: {_text[:20]}")
+                        return
+                    # 海龟汤拦截（群聊，游戏激活时全权处理，缓冲前）
+                    from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+                    if TBTurtleSoupCore().route_qq_group(str(_gid), str(_uid), _text.strip()):
+                        self.log.info(f"[NapCat] 海龟汤群聊拦截命中，消费: {_text[:20]}")
                         return
             except Exception:
                 pass

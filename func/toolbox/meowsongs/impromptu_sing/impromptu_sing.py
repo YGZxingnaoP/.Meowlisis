@@ -47,10 +47,10 @@ class TBImpromptuSing:
             },
         }
 
-    def run(self, text, username="", with_lyric=True):
-        """入口：LLM function_calling 提取歌名与歌词后播放"""
+    def run(self, text, username="", with_lyric=True, play_local=True):
+        """入口：LLM function_calling 提取歌名与歌词后播放（play_local=False 时只落盘不本机播放）"""
         song_title, start_lrc, end_lrc = self.decide(text, username)
-        return self.sing(song_title, start_lrc, end_lrc, username=username, with_lyric=with_lyric)
+        return self.sing(song_title, start_lrc, end_lrc, username=username, with_lyric=with_lyric, play_local=play_local)
 
     def decide(self, text, username=""):
         """用 toolbox LLM 决定唱哪首歌哪段，不确定返回 random"""
@@ -87,7 +87,7 @@ class TBImpromptuSing:
             self.log.exception("[MeowSongs] 参数决策异常")
         return song_title, start_lrc, end_lrc
 
-    def sing(self, song_title, start_lrc, end_lrc, username="", with_lyric=True):
+    def sing(self, song_title, start_lrc, end_lrc, username="", with_lyric=True, play_local=True):
         """按歌名/歌词确定片段并播放，返回播放结果文本"""
         if not self.config.enabled:
             return "即兴哼唱未启用"
@@ -106,7 +106,7 @@ class TBImpromptuSing:
             return f"没有找到《{title}》的歌词"
 
         start_idx, end_idx = self._resolve_range(lrc, start_lrc, end_lrc)
-        self._play_slice(title, lrc, start_idx, end_idx, with_lyric=with_lyric)
+        self._play_slice(title, lrc, start_idx, end_idx, with_lyric=with_lyric, play_local=play_local)
         self._record_hum_song(username, lrc, start_idx, end_idx)
         return f"哼唱《{title}》"
 
@@ -144,7 +144,7 @@ class TBImpromptuSing:
             span = lrc[end_idx]["time"] - lrc[start_idx]["time"]
         return start_idx, end_idx
 
-    def _play_slice(self, title, lrc, start_idx, end_idx, with_lyric=True):
+    def _play_slice(self, title, lrc, start_idx, end_idx, with_lyric=True, play_local=True):
         try:
             vocal_path = os.path.join(MEOW_DIR, title, f"{title}_vocal.wav")
             if not os.path.exists(vocal_path):
@@ -162,13 +162,14 @@ class TBImpromptuSing:
             os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
             sf.write(tmp_path, audio, sr)
             self.last_slice_path = tmp_path
-            from func.pipeline.toolbox_tts import ToolboxTtsBridge
-            ToolboxTtsBridge().play_audio(
-                audio, sr, source="meowsongs",
-                lyric_lines=lrc if with_lyric else None,
-                lyric_start_idx=start_idx,
-                lyric_end_idx=end_idx,
-            )
+            if play_local:
+                from func.pipeline.toolbox_tts import ToolboxTtsBridge
+                ToolboxTtsBridge().play_audio(
+                    audio, sr, source="meowsongs",
+                    lyric_lines=lrc if with_lyric else None,
+                    lyric_start_idx=start_idx,
+                    lyric_end_idx=end_idx,
+                )
         except Exception:
             self.log.exception("[MeowSongs] 片段播放异常")
 

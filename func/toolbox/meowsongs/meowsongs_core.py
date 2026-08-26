@@ -57,7 +57,7 @@ class TBMeowSongsCore:
         if name != self.TOOL_NAME or not self.config.enabled:
             return None
         request = (arguments or {}).get("request", "") or ""
-        result = TBImpromptuSing().run(request, self._username, with_lyric=False)
+        result = TBImpromptuSing().run(request, self._username, with_lyric=False, play_local=False)
         slice_path = TBImpromptuSing().last_slice_path
         if slice_path and qq_context:
             self._send_qq_voice(qq_context, slice_path, result)

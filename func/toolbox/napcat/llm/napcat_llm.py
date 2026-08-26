@@ -41,11 +41,11 @@ class TBNapCatLLM:
         from func.toolbox.port.deepseek import TBoxDeepSeekLLM
         return TBoxDeepSeekLLM(self.cfg), self.cfg.deepseek_max_tokens
 
-    def _system_prompt(self, username: str, current_message: str) -> str:
+    def _system_prompt(self, username: str, current_message: str, user_id: str = "") -> str:
         """获取 napcat 专用系统提示词（前置词 + 你在QQ里回复）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            return SystemPromptBridge().get_napcat_prompt(username, current_message)
+            return SystemPromptBridge().get_napcat_prompt(username, current_message, user_id=user_id)
         except Exception:
             self.log.exception("获取 napcat 系统提示词失败")
             return ""
@@ -108,7 +108,7 @@ class TBNapCatLLM:
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
               on_segment: Optional[Callable[[str], None]] = None) -> str:
         """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息"""
-        system_prompt = self._system_prompt(username, text)
+        system_prompt = self._system_prompt(username, text, user_id)
         messages = []
         for m in short_memory or []:
             if m.get("role") in ("user", "assistant") and m.get("content"):

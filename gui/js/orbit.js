@@ -41,7 +41,8 @@ const Orbit = {
         { id: 'news', label: '新闻', tooltip: '新闻查询配置' },
         { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' },
         { id: 'add_backlog', label: '提醒', tooltip: '新建待办触发工具配置' },
-        { id: 'meowsongs', label: '哼唱', tooltip: '即兴哼唱配置' }
+        { id: 'meowsongs', label: '哼唱', tooltip: '即兴哼唱配置' },
+        { id: 'turtle_soup', label: '海龟汤', tooltip: '海龟汤触发工具配置' }
     ],
 
     rotation: 0,

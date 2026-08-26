@@ -54,6 +54,7 @@ class TBNapcatAnalysis:
             f"- 询问新闻/热点/最近发生了什么/有什么大事 → 调用 read_news；\n"
             f"- 明确要新建/记录待办或提醒事项（如提醒我几点做什么）→ 调用 add_backlog；\n"
             f"- 想让角色唱歌，想听角色唱歌→ 调用 impromptu_sing；\n"
+            f"- 明确想玩海龟汤/情境猜谜/猜谜游戏 → 调用 turtle_soup；\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
             f"{hum_force}"
         )
@@ -110,6 +111,11 @@ class TBNapcatAnalysis:
                 from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
                 TBMeowSongsCore().set_username(username)
                 TBMeowSongsCore().dispatch_qq(name, args, qq_context)
+                handled = True
+            elif name == "turtle_soup":
+                from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+                TBTurtleSoupCore().set_username(username)
+                TBTurtleSoupCore().dispatch_qq(name, args, qq_context)
                 handled = True
             else:
                 self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
@@ -175,6 +181,11 @@ class TBNapcatAnalysis:
             tools.extend(TBMeowSongsCore().build_tools())
         except Exception:
             self.log.exception("构建 meowsongs 工具失败")
+        try:
+            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+            tools.extend(TBTurtleSoupCore().build_tools())
+        except Exception:
+            self.log.exception("构建 turtle_soup 工具失败")
         return tools
 
     # ==================== LLM（复用 napcat 现有配置 func/llm） ====================

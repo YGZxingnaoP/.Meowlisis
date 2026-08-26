@@ -67,6 +67,20 @@ class SystemPromptBridge:
         data = self._read_front()
         return str(data.get("post_prompt", self.DEFAULT_POST) or "").strip()
 
+    @staticmethod
+    def _append_turtle_soup(prompt: str, session_key: str = "") -> str:
+        """把海龟汤游戏块追加到系统提示词最下方（游戏块由 toolbox 生成并经状态桥接传递）"""
+        if not prompt or not session_key:
+            return prompt
+        try:
+            from func.pipeline.turtle_soup_state import TurtleSoupStateBridge
+            block = TurtleSoupStateBridge().get_game_block(session_key)
+            if block:
+                return f"{prompt}\n\n{block}"
+        except Exception:
+            pass
+        return prompt
+
     # ==================== 各场景完整提示词 ====================
     def get_poke_prompt(self) -> str:
         """戳一戳发牢骚专用提示词：仅前置词 + 自定义后置词（不含角色卡、用户记忆、日期、摘要）"""
@@ -109,7 +123,8 @@ class SystemPromptBridge:
             name = username or "用户"
             post = f"{post}\n你现在在和{name}说话"
         parts = [p for p in (front, body, post) if p]
-        return "\n\n".join(parts)
+        prompt = "\n\n".join(parts)
+        return self._append_turtle_soup(prompt, "live")
 
     def get_danmaku_prompt(self, username=None, current_message: str = "",
                            multi_user: bool = False) -> str:
@@ -134,9 +149,11 @@ class SystemPromptBridge:
             name = username or "用户"
             post = f"{post}\n你在回复{name}的弹幕"
         parts = [p for p in (front, body, post) if p]
-        return "\n\n".join(parts)
+        prompt = "\n\n".join(parts)
+        return self._append_turtle_soup(prompt, "live")
 
-    def get_napcat_prompt(self, username=None, current_message: str = "") -> str:
+    def get_napcat_prompt(self, username=None, current_message: str = "",
+                          user_id: str = "") -> str:
         """NapCat 提示词：前置词(行为约束+QQ指令) + body + 后置词(人设+说话人)"""
         body = ""
         if self._builder:
@@ -158,10 +175,13 @@ class SystemPromptBridge:
             name = username or "用户"
             post = f"{post}\n你现在在和{name}说话"
         parts = [p for p in (front, body, post) if p]
-        return "\n\n".join(parts)
+        prompt = "\n\n".join(parts)
+        session_key = f"qq_private:{user_id}" if user_id else ""
+        return self._append_turtle_soup(prompt, session_key)
 
     def get_napcat_group_prompt(self, username=None, group_name: str = "",
-                                group_info_text: str = "", current_message: str = "") -> str:
+                                group_info_text: str = "", current_message: str = "",
+                                group_id: str = "") -> str:
         """NapCat 群聊提示词：前置词(行为约束+QQ群聊指令) + body(用户档案或群聊档案) + 后置词(在群内聊天)"""
         body = ""
         if self._builder and hasattr(self._builder, "build_group"):
@@ -185,7 +205,9 @@ class SystemPromptBridge:
         if post:
             post = f"{post}\n你现在在QQ群【{group_name}】内和大家聊天"
         parts = [p for p in (front, body, post) if p]
-        return "\n\n".join(parts)
+        prompt = "\n\n".join(parts)
+        session_key = f"qq_group:{group_id}" if group_id else ""
+        return self._append_turtle_soup(prompt, session_key)
 
     def get_watching_prompt(self, username=None, current_message: str = "",
                             front_note: str = "") -> str:

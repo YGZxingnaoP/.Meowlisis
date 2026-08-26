@@ -1155,6 +1155,23 @@ const Config = {
                 '开启后 QQ 私聊 / 群聊@ 也可触发新建待办，且待办 qq 提醒强制开启');
     },
 
+    // ============ 海龟汤 (turtle_soup) ============
+    turtle_soup() {
+        return this._section('海龟汤（触发型工具）') +
+            this._check('启用海龟汤', 'turtle_soup.enabled', true,
+                'AI 根据用户「玩海龟汤 / 情境猜谜」触发，生成谜题并主持游戏（受 toolcalls 控制）') +
+            this._check('QQ 对接', 'turtle_soup.qq_enabled', true,
+                '开启后 QQ 私聊 / 群聊@ 也可触发海龟汤，QQ 线仅发文本、不播语音') +
+            this._text('题库归档目录', 'turtle_soup.bank_dir', './character/turtle_soup',
+                '结束的局会归档到这里，供以后复用') +
+            this._text('运行时缓存目录', 'turtle_soup.cache_dir', './.temp/turtle_soup',
+                '进行中的局缓存到这里（含谜底谜面），结束或启动时清理') +
+            this._num('低难度汤面字数', 'turtle_soup.surface_len.easy', 20, 10, 60, 1,
+                '低难度（easy）汤面目标字数') +
+            this._num('高难度汤面字数', 'turtle_soup.surface_len.hard', 40, 20, 100, 1,
+                '高难度（hard）汤面目标字数');
+    },
+
     // ============ 歌曲（meowsinger）子球 ============
     meowsingerModel() {
         const type = this._val('meowsinger.llm_type', 'deepseek');

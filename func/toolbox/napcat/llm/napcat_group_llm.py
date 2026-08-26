@@ -38,13 +38,14 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         return segs
 
     def _system_prompt(self, username, group_name, group_info_text, current_message,
-                       decide: bool = False, with_bot_tool: bool = False) -> str:
+                       group_id: str = "", decide: bool = False, with_bot_tool: bool = False) -> str:
         """获取群聊系统提示词；decide=True 时追加回复决策指令"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
             prompt = SystemPromptBridge().get_napcat_group_prompt(
                 username=username, group_name=group_name,
                 group_info_text=group_info_text, current_message=current_message,
+                group_id=group_id,
             )
             if decide:
                 if with_bot_tool:
@@ -68,9 +69,9 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             return ""
 
     def _messages(self, username, group_name, group_info_text, text, short_memory, decide,
-                  with_bot_tool: bool = False):
+                  group_id: str = "", with_bot_tool: bool = False):
         system_prompt = self._system_prompt(username, group_name, group_info_text, text,
-                                           decide, with_bot_tool)
+                                           group_id, decide, with_bot_tool)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -85,7 +86,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
               on_segment: Optional[Callable[[str], None]] = None) -> str:
         """@ 触发或强制回复：流式生成并回传短句，返回完整回复"""
         return self._run(username, group_name, group_info_text, text, short_memory,
-                         decide=False, on_segment=on_segment)
+                         group_id=group_id, decide=False, on_segment=on_segment)
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,
                short_memory: List[dict], group_info_text: str = "",
@@ -99,20 +100,20 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         # 带 ask_group_bot 工具时用非流式（可稳定拿到 tool_calls）
         if ask_bot_tools:
             return self._decide_with_tools(
-                username, group_name, group_info_text, text, short_memory, ask_bot_tools
+                username, group_name, group_info_text, text, short_memory, group_id, ask_bot_tools
             )
         return self._run(username, group_name, group_info_text, text, short_memory,
-                         decide=True, on_segment=None)
+                         group_id=group_id, decide=True, on_segment=None)
 
     def _decide_with_tools(self, username, group_name, group_info_text, text,
-                           short_memory, ask_bot_tools) -> str:
+                           short_memory, group_id: str = "", ask_bot_tools=None) -> str:
         """非流式 decide：支持 ask_group_bot 工具调用"""
         llm, base_max_tokens = self._llm()
         if llm is None or not llm.client:
             self.log.error("NapCat 群聊回复 LLM 不可用")
             return ""
         messages = self._messages(username, group_name, group_info_text, text, short_memory,
-                                  decide=True, with_bot_tool=True)
+                                  decide=True, group_id=group_id, with_bot_tool=True)
         old_max = getattr(llm, "max_tokens", None)
         try:
             llm.max_tokens = max(512, int(base_max_tokens) + 256)
@@ -138,7 +139,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         return self.remove_analysis(content).strip()
 
     def _run(self, username, group_name, group_info_text, text, short_memory,
-             decide: bool, on_segment) -> str:
+             decide: bool, on_segment, group_id: str = "") -> str:
         llm, base_max_tokens = self._llm()
         if llm is None or not llm.client:
             self.log.error("NapCat 群聊回复 LLM 不可用")
@@ -147,7 +148,8 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             self._max_tokens = max(8, int(base_max_tokens) + 128)
         self._reset_filter()
 
-        messages = self._messages(username, group_name, group_info_text, text, short_memory, decide)
+        messages = self._messages(username, group_name, group_info_text, text, short_memory,
+                                  decide, group_id=group_id)
         stream = llm.chat_stream(
             messages,
             options={"max_tokens": self._max_tokens},

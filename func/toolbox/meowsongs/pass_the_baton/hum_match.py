@@ -110,15 +110,15 @@ class TBHumMatch:
         return best, offset
 
     def _extract_midi(self, path):
-        """提取音频 F0 序列并转为去均值半音"""
+        """提取音频 F0 序列并转为去均值半音（yin，无 Viterbi 平滑，速度快）"""
         try:
             import librosa
             audio, sr = librosa.load(path, sr=SR, mono=True)
-            f0, voiced, _ = librosa.pyin(
+            f0 = librosa.yin(
                 audio, fmin=80, fmax=800,
                 sr=SR, frame_length=2048, hop_length=HOP,
             )
-            valid = f0[voiced]
+            valid = f0[~np.isnan(f0)]
             if valid.size < 3:
                 return None
             midi = 12.0 * np.log2(valid / 440.0) + 69.0

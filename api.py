@@ -153,20 +153,30 @@ def input_msg():
             return jsonify({"status": "成功", "singer": True})
     except Exception:
         pass
+    # 海龟汤游戏拦截
+    turtle_route = None
+    try:
+        from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+        turtle_route = TBTurtleSoupCore().route_text(query, user_name)
+    except Exception:
+        pass
+    if turtle_route == "consumed":
+        return jsonify({"status": "成功", "turtle_soup": True})
     traceid = str(uuid.uuid4())
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, query, user_name)
-    try:
-        from func.pipeline.msg_toolbox import MsgToolboxBridge
-        MsgToolboxBridge().send_to_toolbox(query, user_name)
-    except Exception:
-        pass
-    # 数据库关键词匹配
-    try:
-        from func.pipeline.msg_database import MsgDatabaseBridge
-        MsgDatabaseBridge().send_to_database(query, user_name)
-    except Exception:
-        pass
+    if turtle_route != "pass":
+        try:
+            from func.pipeline.msg_toolbox import MsgToolboxBridge
+            MsgToolboxBridge().send_to_toolbox(query, user_name)
+        except Exception:
+            pass
+        # 数据库关键词匹配
+        try:
+            from func.pipeline.msg_database import MsgDatabaseBridge
+            MsgDatabaseBridge().send_to_database(query, user_name)
+        except Exception:
+            pass
     return jsonify({"status": "成功"})
 
 
@@ -205,19 +215,29 @@ def chat():
             return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     except Exception:
         pass
+    # 海龟汤游戏拦截
+    turtle_route = None
+    try:
+        from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+        turtle_route = TBTurtleSoupCore().route_text(text, username)
+    except Exception:
+        pass
+    if turtle_route == "consumed":
+        return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, text, username)
-    try:
-        from func.pipeline.msg_toolbox import MsgToolboxBridge
-        MsgToolboxBridge().send_to_toolbox(text, username)
-    except Exception:
-        pass
-    # 数据库关键词匹配
-    try:
-        from func.pipeline.msg_database import MsgDatabaseBridge
-        MsgDatabaseBridge().send_to_database(text, username)
-    except Exception:
-        pass
+    if turtle_route != "pass":
+        try:
+            from func.pipeline.msg_toolbox import MsgToolboxBridge
+            MsgToolboxBridge().send_to_toolbox(text, username)
+        except Exception:
+            pass
+        # 数据库关键词匹配
+        try:
+            from func.pipeline.msg_database import MsgDatabaseBridge
+            MsgDatabaseBridge().send_to_database(text, username)
+        except Exception:
+            pass
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
     # =========end========
     if CallBackForTest is not None:
@@ -263,19 +283,29 @@ def main():
                     return
             except Exception:
                 pass
+            # 海龟汤游戏拦截
+            turtle_route = None
+            try:
+                from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+                turtle_route = TBTurtleSoupCore().route_text(text, username)
+            except Exception:
+                pass
+            if turtle_route == "consumed":
+                return
             # 双通道：主 LLM 快速回复 + toolbox 工具分析
             sensevoice_bridge.send_to_llm(text, username)
-            try:
-                from func.pipeline.msg_toolbox import MsgToolboxBridge
-                MsgToolboxBridge().send_to_toolbox(text, username)
-            except Exception:
-                pass
-            # 数据库关键词匹配
-            try:
-                from func.pipeline.msg_database import MsgDatabaseBridge
-                MsgDatabaseBridge().send_to_database(text, username)
-            except Exception:
-                pass
+            if turtle_route != "pass":
+                try:
+                    from func.pipeline.msg_toolbox import MsgToolboxBridge
+                    MsgToolboxBridge().send_to_toolbox(text, username)
+                except Exception:
+                    pass
+                # 数据库关键词匹配
+                try:
+                    from func.pipeline.msg_database import MsgDatabaseBridge
+                    MsgDatabaseBridge().send_to_database(text, username)
+                except Exception:
+                    pass
 
         asr_core = SenseVoiceCore(callback=sensevoice_callback)
         asr_core.start()
