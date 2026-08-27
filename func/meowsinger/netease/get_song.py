@@ -20,17 +20,17 @@ class MeowNeteaseSong:
         self.ncm = MeowNeteaseMusic()
         self.player = MeowSingerPlayer()
 
-    def play(self, title, username):
+    def play(self, title, artist="", username=""):
         """点歌入口：异步执行下载与播放"""
-        Thread(target=self._play_async, args=(title, username), daemon=True).start()
+        Thread(target=self._play_async, args=(title, artist, username), daemon=True).start()
 
-    def _play_async(self, title, username):
+    def _play_async(self, title, artist, username):
         if not title or not title.strip():
             self._reply_no_title(username)
             return
         title = title.strip()
 
-        info = self.ncm.search_and_download(title)
+        info = self.ncm.search_and_download(title, artist)
         if not info:
             self._reply_fail(title, username)
             return

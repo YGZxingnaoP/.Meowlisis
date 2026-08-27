@@ -22,11 +22,11 @@ class MeowCoverSong:
         self.core = MeowCoverCore()
         self.player = MeowSingerPlayer()
 
-    def cover(self, title, username):
+    def cover(self, title, artist="", username=""):
         """翻唱入口：异步执行判断与播放/学习"""
-        Thread(target=self._cover_async, args=(title, username), daemon=True).start()
+        Thread(target=self._cover_async, args=(title, artist, username), daemon=True).start()
 
-    def _cover_async(self, title, username):
+    def _cover_async(self, title, artist, username):
         if not title or not title.strip():
             self._reply_no_title(username)
             return
@@ -39,7 +39,7 @@ class MeowCoverSong:
         # 未学过：确保 raw_list 有原曲
         mp3_path = self.core.raw_mp3_path(title)
         if not os.path.exists(mp3_path):
-            mp3_path, title = self._download_raw(title)
+            mp3_path, title = self._download_raw(title, artist)
         if not mp3_path or not os.path.exists(mp3_path):
             self._reply_fail(title, username)
             return
@@ -106,12 +106,12 @@ class MeowCoverSong:
             self._send_end_signal(title)
         self.log.info(f"[翻唱] 播放结束: {title} finished={finished}")
 
-    def _download_raw(self, title):
+    def _download_raw(self, title, artist=""):
         """下载原曲，返回 (mp3路径, 实际歌名)"""
         try:
             from func.meowsinger.netease.netease_music import MeowNeteaseMusic
             ncm = MeowNeteaseMusic()
-            info = ncm.search_and_download(title)
+            info = ncm.search_and_download(title, artist)
             if not info:
                 return "", title
             songname = info.get("songname", title)

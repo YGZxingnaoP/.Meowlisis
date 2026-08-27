@@ -63,6 +63,26 @@ def judge(puzzle: dict, username: str, text: str, history: list) -> dict:
             messages.append({"role": m.get("role", "user"), "content": str(m["content"])})
     messages.append({"role": "user", "content": text})
 
+    # ① 先深度分析（开启思考，不强制工具），产出分析文本作为下一步上下文
+    analysis = ""
+    try:
+        a_messages = messages + [{
+            "role": "user",
+            "content": "请先不要给出最终判定，而是深入分析：用户这条消息是否命中了汤底的核心真相？"
+                       "具体指出命中了或缺失了哪个关键点（不要向用户透露汤底）。",
+        }]
+        a_resp = llm.chat(a_messages, enable_thinking=True)
+        if a_resp and a_resp.choices:
+            analysis = (a_resp.choices[0].message.content or "").strip()
+    except Exception:
+        analysis = ""
+
+    # ② 再强制工具判定（带上分析），保持结构化输出稳定
+    if analysis:
+        messages = messages + [
+            {"role": "assistant", "content": analysis},
+            {"role": "user", "content": "基于以上分析，请调用工具给出最终判定。"},
+        ]
     resp = llm.chat(
         messages,
         tools=tools,

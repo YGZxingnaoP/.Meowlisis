@@ -28,12 +28,15 @@ class MeowNeteaseMusic:
         self.log = DefaultLog().getLogger()
         self.config = MeowSingerConfig()
 
-    def search_and_download(self, title):
+    def search_and_download(self, title, artist=None):
         """调网易云服务搜索并下载，返回歌曲信息 dict 或 None"""
         try:
+            payload = {"songname": title}
+            if artist:
+                payload["artist"] = artist
             resp = requests.post(
                 f"{self.config.netease_url}/api/sing",
-                json={"songname": title},
+                json=payload,
                 timeout=60,
             )
             data = resp.json()
@@ -44,6 +47,7 @@ class MeowNeteaseMusic:
                 "song_id": data.get("song_id"),
                 "songname": data.get("songname", title),
                 "artist": data.get("artist", ""),
+                "artists": data.get("artists", []),
                 "local_path": data.get("local_path", ""),
                 "duration": data.get("duration", 0),
             }

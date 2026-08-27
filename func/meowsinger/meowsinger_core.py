@@ -38,7 +38,7 @@ class MeowSingerCore:
             return True
 
         # 启动判断
-        mode, title, original = self.if_start.decide(text, username)
+        mode, title, artist, original = self.if_start.decide(text, username)
 
         # 空闲学歌指令
         if mode == MeowIfStart.MODE_LEARN:
@@ -49,28 +49,28 @@ class MeowSingerCore:
         # 点歌
         if mode == MeowIfStart.MODE_SONG:
             self._record_user(username, original)
-            self._dispatch_song(title, username)
+            self._dispatch_song(title, artist, username)
             return True
 
         # 翻唱
         if mode == MeowIfStart.MODE_COVER:
             self._record_user(username, original)
-            self._dispatch_cover(title, username)
+            self._dispatch_cover(title, artist, username)
             return True
 
         return False
 
-    def _dispatch_song(self, title, username):
+    def _dispatch_song(self, title, artist, username):
         try:
             from func.meowsinger.netease.get_song import MeowNeteaseSong
-            MeowNeteaseSong().play(title, username)
+            MeowNeteaseSong().play(title, artist, username)
         except Exception:
             self.log.exception("[MeowSinger] 点歌流程异常")
 
-    def _dispatch_cover(self, title, username):
+    def _dispatch_cover(self, title, artist, username):
         try:
             from func.meowsinger.cover.get_song import MeowCoverSong
-            MeowCoverSong().cover(title, username)
+            MeowCoverSong().cover(title, artist, username)
         except Exception:
             self.log.exception("[MeowSinger] 翻唱流程异常")
 

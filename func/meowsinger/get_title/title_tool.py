@@ -23,6 +23,7 @@ class MeowTitleTool:
                     "properties": {
                         "has_song": {"type": "boolean", "description": "是否包含确定的歌名"},
                         "song_title": {"type": "string", "description": "确定的歌名，如 浪人琵琶、Avid"},
+                        "artist": {"type": "string", "description": "用户提到的歌手/作者名（如 周杰伦、EGOIST），没提到则为空字符串"},
                     },
                     "required": ["has_song", "song_title"],
                 },
@@ -42,7 +43,10 @@ class MeowTitleTool:
                 if not args.get("has_song"):
                     return None
                 title = str(args.get("song_title") or "").strip()
-                return title or None
+                if not title:
+                    return None
+                artist = str(args.get("artist") or "").strip()
+                return {"title": title, "artist": artist}
         except Exception:
             pass
         return None

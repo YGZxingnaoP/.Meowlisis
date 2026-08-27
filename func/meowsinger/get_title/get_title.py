@@ -29,14 +29,14 @@ class MeowGetTitle:
         return sorted(cands)
 
     def extract(self, text, candidates=None):
-        """提取歌名：先本地匹配候选列表，未命中再让 AI 提取"""
+        """提取歌名与歌手：本地命中返回 (歌名, "")，否则 AI 提取返回 (歌名, 歌手)"""
         if not text or not text.strip():
-            return None
+            return None, ""
         candidates = candidates or self.list_candidates()
 
         local = self._local_match(text, candidates)
         if local:
-            return local
+            return local, ""
         return self._ai_extract(text, candidates)
 
     def _local_match(self, text, candidates):
@@ -72,10 +72,14 @@ class MeowGetTitle:
                 [{"role": "system", "content": system}, {"role": "user", "content": text}],
                 tools=[self.tool.build_tool()],
             )
-            title = self.tool.parse(resp)
+            parsed = self.tool.parse(resp)
+            if not parsed:
+                return None, ""
+            title = parsed.get("title") or ""
+            artist = parsed.get("artist") or ""
             if title:
-                return self._local_match(title, candidates) or title
-            return None
+                title = self._local_match(title, candidates) or title
+            return (title or None), artist
         except Exception:
             self.log.exception("[GetTitle] 歌名提取异常")
-            return None
+            return None, ""
