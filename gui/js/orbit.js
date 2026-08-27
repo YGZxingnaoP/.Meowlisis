@@ -578,15 +578,17 @@ const Orbit = {
         const subs = [
             { id: 'ltmem', label: '长期记忆', tooltip: '长期记忆配置' },
             { id: 'abstract', label: '记忆摘要', tooltip: '记忆摘要配置' },
+            { id: 'rulesbreak', label: '原则词', tooltip: '破甲原则词配置' },
             { id: 'values', label: '价值观', tooltip: '价值观配置' },
             { id: 'usermem', label: '用户记忆', tooltip: '用户记忆配置' }
         ];
-        // 目标偏移：4 个子球沿 CatBrain 球右侧弧线排列
+        // 目标偏移：5 个子球沿 CatBrain 球右侧弧线排列
         const offsets = [
-            { x: 82, y: -82 },    // ltmem 右上
-            { x: 115, y: -27 },   // abstract 右中上
-            { x: 115, y: 27 },    // values 右中下
-            { x: 82, y: 82 }      // usermem 右下
+            { x: 82, y: -100 },   // ltmem 右上
+            { x: 120, y: -50 },   // abstract 右中上
+            { x: 130, y: 0 },     // rulesbreak 右中
+            { x: 120, y: 50 },    // values 右中下
+            { x: 82, y: 100 }     // usermem 右下
         ];
         this.catbrainSubEls = [];
         subs.forEach((s, i) => {

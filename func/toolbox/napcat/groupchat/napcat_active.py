@@ -57,16 +57,20 @@ class TBNapCatActive:
         if not text:
             return {"action": "skip", "force": False, "at_self": False, "username": None}
 
-        # 普通消息：累计计数
+        # 普通消息：累计计数（同一用户连发只算一条，换人才 +1）
+        user_id = str(parsed.get("user_id") or "")
         with self._lock:
             st = self._state.setdefault(group_id, self._new_state(group_id))
-            st["count"] += 1
+            if st.get("last_user") != user_id:
+                st["count"] += 1
+                st["last_user"] = user_id
             if st["count"] < st["threshold"]:
                 return {"action": "skip", "force": False, "at_self": False, "username": None}
             # 达到阈值
             force = st["pass_count"] >= self.config.group_pass_rounds_for(group_id)
             st["count"] = 0
             st["threshold"] = self._new_threshold(group_id)
+            st["last_user"] = None
             if force:
                 st["pass_count"] = 0
             action = "reply" if force else "decide"
@@ -96,7 +100,8 @@ class TBNapCatActive:
             self._state[str(group_id)] = self._new_state(str(group_id))
 
     def _new_state(self, group_id: str) -> dict:
-        return {"count": 0, "threshold": self._new_threshold(group_id), "pass_count": 0}
+        return {"count": 0, "threshold": self._new_threshold(group_id), "pass_count": 0,
+                "last_user": None}
 
     def _new_threshold(self, group_id: str) -> int:
         """阈值 = 基数 ± jitter%，取整（随机）"""

@@ -49,14 +49,16 @@ class NapcatLLMBridge:
         self.log = DefaultLog().getLogger()
 
     def send_to_llm(self, username: str, user_id: str, text: str, short_memory: List[dict],
-                    on_segment: Optional[Callable[[str], None]] = None) -> str:
+                    on_segment: Optional[Callable[[str], None]] = None,
+                    nsfw: bool = False) -> str:
         """将 QQ 用户消息 + 短期记忆送入 napcat 独立 LLM 链路，返回完整回复。
 
         on_segment 回调用于流式短句回传（由 toolbox_core 提供，负责发送到 NapCat）。
+        nsfw=True 时切割减小（不按逗号切）。
         """
         from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
         self.log.info(f"NapCat → LLM: {username} {text[:30]}...")
-        return TBNapCatLLM().reply(username, user_id, text, short_memory, on_segment)
+        return TBNapCatLLM().reply(username, user_id, text, short_memory, on_segment, nsfw=nsfw)
 
 
 class NapcatGroupLLMBridge:
@@ -67,12 +69,17 @@ class NapcatGroupLLMBridge:
 
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
-              on_segment: Optional[Callable[[str], None]] = None) -> str:
-        """@ 触发/强制回复：流式生成，on_segment 回调短句发送到群"""
+              on_segment: Optional[Callable[[str], None]] = None,
+              nsfw: bool = False) -> str:
+        """@ 触发/强制回复：流式生成，on_segment 回调短句发送到群
+
+        nsfw=True 时切割减小（不按逗号切）。
+        """
         from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
         self.log.info(f"NapCat 群聊 → LLM: {group_name} {text[:30]}...")
         return TBNapCatGroupLLM().reply(
-            username, group_id, group_name, text, short_memory, group_info_text, on_segment
+            username, group_id, group_name, text, short_memory, group_info_text, on_segment,
+            nsfw=nsfw
         )
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,

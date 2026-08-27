@@ -19,6 +19,9 @@ class TBGetGroupMessage:
         "redbag", "poke", "gift", "markdown", "keyboard", "node",
     }
 
+    # markdown mention 链接：mqqapi://markdown/mention?at_type=1&at_tinyid=QQ号
+    MENTION_RE = re.compile(r"mqqapi://markdown/mention\?[^)\s]*at_tinyid=(\d+)")
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBNapCatConfig()
@@ -80,6 +83,20 @@ class TBGetGroupMessage:
                     result.append(qq)
         return result
 
+    @staticmethod
+    def _markdown_mention_targets(segments) -> List[str]:
+        """从 markdown 段提取 mention 的 at_tinyid（被 @ 的 QQ 号列表，去重保持顺序）"""
+        result: List[str] = []
+        for seg in segments or []:
+            if not isinstance(seg, dict):
+                continue
+            if seg.get("type") == "markdown":
+                content = str((seg.get("data") or {}).get("content", "") or "")
+                for qq in TBGetGroupMessage.MENTION_RE.findall(content):
+                    if qq and qq not in result:
+                        result.append(qq)
+        return result
+
     def in_blacklist(self, group_name: str) -> bool:
         """判断群名是否命中黑名单（默认空，不拦截）"""
         blacklist = self.config.group_blacklist
@@ -131,5 +148,6 @@ class TBGetGroupMessage:
             "at_list": at_list,
             "at_self": at_self,
             "is_self": str(user_id) == str(self_id or ""),
+            "mention_self": str(self_id or "") in self._markdown_mention_targets(raw_message),
             "raw_message": raw_message,
         }

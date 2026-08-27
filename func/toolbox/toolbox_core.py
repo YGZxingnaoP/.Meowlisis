@@ -87,6 +87,14 @@ class TBoxCore:
                     return
             except Exception:
                 self.log.exception("QQ 私聊意图分析异常")
+        # 0.9 QQ 私聊破甲审查：命中色情则写 toolbox_rulebreak 桥接（仅真实用户消息）
+        nsfw_triggered = False
+        if not is_bot:
+            try:
+                from func.catbrain.rules_break.rules_break import TBRulesBreak
+                nsfw_triggered = TBRulesBreak().check_and_store_qq(f"qq_private:{user_id}", username, text, short_memory)
+            except Exception:
+                self.log.exception("QQ 私聊破甲审查异常")
         # 1. 记录用户消息短期记忆（qq_response，加前缀）
         if self.napcat_config.short_mem_enabled and not is_bot:
             self.short_memory.save({
@@ -101,6 +109,7 @@ class TBoxCore:
         final_text = self.napcat_llm.send_to_llm(
             username, user_id, text, short_memory,
             on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg),
+            nsfw=nsfw_triggered,
         )
         # 4. 记录 AI 回复短期记忆
         if final_text and self.napcat_config.short_mem_enabled and not is_bot:
@@ -154,6 +163,16 @@ class TBoxCore:
         # 1. 群聊回复总开关（先于图片检测，关闭时不做任何处理）
         if not self.napcat_config.group_reply_enabled:
             return
+
+        # 1.1 幻梦回复角色（markdown mention 提到角色 + 刚触发过）：必回复，消费式防重复
+        if is_bot and parsed.get("mention_self"):
+            try:
+                from func.toolbox.napcat.groupchat.ask_group_bot import TBAskGroupBot
+                if TBAskGroupBot().consume_trigger(group_id):
+                    self._reply_bot_reply(parsed)
+                    return
+            except Exception:
+                self.log.exception("幻梦回复评价处理异常")
 
         # 提前提取图片（供 @ 缓冲协调与后续普通图片检测复用）
         from func.toolbox.napcat.image.image_search import TBImageSearch
@@ -394,10 +413,19 @@ class TBoxCore:
         except Exception:
             self.log.exception("群聊 @ 意图分析异常")
 
+        # QQ 群聊 @ 破甲审查：命中色情则写 toolbox_rulebreak 桥接（仅 @ 内容，普通群聊不检测）
+        nsfw_triggered = False
+        try:
+            from func.catbrain.rules_break.rules_break import TBRulesBreak
+            nsfw_triggered = TBRulesBreak().check_and_store_qq(f"qq_group:{group_id}", reply_username, text, short_memory)
+        except Exception:
+            self.log.exception("QQ 群聊破甲审查异常")
+
         # 流式回复
         final = self.napcat_group_llm.reply(
             reply_username, group_id, group_name, text, short_memory, group_info_text,
             on_segment=lambda seg: self.napcat_core.send_group_text(group_id, seg),
+            nsfw=nsfw_triggered,
         )
         if final and final.strip().lower() != "pass":
             self._after_group_reply(parsed, final, True)
@@ -444,6 +472,70 @@ class TBoxCore:
                 for seg in TBNapCatGroupLLM.split_segments(vision_reply):
                     self.napcat_core.send_group_text(group_id, seg)
                 self.log.info(f"[视觉] 群图片视觉回复已发群 {group_name}: {vision_reply[:30]}")
+
+    # ==================== 幻梦回复评价 ====================
+    def _reply_bot_reply(self, parsed: dict):
+        """幻梦回复角色：基于图 + 幻梦文字，简短评价/接话，发群一次（10~20 字）"""
+        group_id = str(parsed.get("group_id", "") or "")
+        group_name = str(parsed.get("group_name", "") or "")
+        username = str(parsed.get("username", "") or "")
+        self_id = str(parsed.get("self_id", "") or "")
+        text = str(parsed.get("text", "") or "").strip()
+        raw_message = parsed.get("raw_message") or []
+
+        from func.toolbox.napcat.image.image_search import TBImageSearch
+        from func.toolbox.meowvision.config import TBVisionConfig
+
+        # 1. 提取幻梦的图（markdown 图 + image 段图）并落地本地（含压缩/抽帧/大小限制保护）
+        images = TBImageSearch.extract_markdown_images(raw_message) + TBImageSearch.extract_images(raw_message)
+        image_paths = []
+        if images:
+            try:
+                image_paths = TBImageSearch.prepare_for_vision(images, TBVisionConfig().cache_dir)
+            except Exception:
+                self.log.exception("幻梦图片落地本地失败")
+
+        reply = ""
+        if image_paths:
+            # 2. 有图：视觉看图（图 + 幻梦文字），简短评价
+            from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
+            if text:
+                user_message = (
+                    f"幻梦回复：{text}\n"
+                    f"请结合图片和这段文字，用你的角色口吻给出简短评价，字数控制在10到20字之间。"
+                )
+            else:
+                user_message = "幻梦发来了一张图，请用你的角色口吻给出简短评价，字数严格控制在10到20字之间。"
+            try:
+                result = TBNapCatVisionActive().process(
+                    image_paths, user_message, username,
+                    need_description=False, write_memory=False,
+                )
+                reply = (result.get("reply") or "").strip()
+            except Exception:
+                self.log.exception("幻梦图片视觉回复失败")
+        else:
+            # 3. 无图：基于幻梦文字简短接话
+            try:
+                from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+                from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
+                short_memory = TBGetGroupRecord().fetch(group_id, self_id)
+                group_info_text = TBGroupInfo().build_prompt(group_name)
+                prompt_text = f"幻梦机器人回复了：{text}\n请用你的角色口吻简短接话或评价，字数严格控制在10到20字之间。"
+                reply = self.napcat_group_llm.reply(
+                    username, group_id, group_name, prompt_text, short_memory, group_info_text,
+                )
+            except Exception:
+                self.log.exception("幻梦文字回复失败")
+
+        # 4. 发群（字数由提示词约束为 10~20 字，不做截断）
+        reply = (reply or "").strip()
+        if not reply:
+            return
+        from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
+        for seg in TBNapCatGroupLLM.split_segments(reply):
+            self.napcat_core.send_group_text(group_id, seg)
+        self.log.info(f"[幻梦评价] 已回复 {group_name}: {reply[:30]}")
 
     @staticmethod
     def _extract_emote_text(segments) -> str:

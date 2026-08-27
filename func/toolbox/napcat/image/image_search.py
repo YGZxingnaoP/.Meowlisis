@@ -4,6 +4,7 @@
 # 并提供图片落地到本地缓存区的能力（避免直接使用带鉴权的 url）
 
 import os
+import re
 import uuid
 import urllib.request
 from typing import List, Dict
@@ -36,6 +37,23 @@ class TBImageSearch:
             file = str(data.get("file", "") or "").strip()
             if url or file:
                 result.append({"url": url, "file": file})
+        return result
+
+    # markdown 图片：![...](url)
+    IMG_RE = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+
+    @classmethod
+    def extract_markdown_images(cls, segments) -> List[Dict]:
+        """从 markdown 段提取图片链接 [{url, file}]，供本地落地（幻梦等机器人发图走 markdown）"""
+        result: List[Dict] = []
+        for seg in segments or []:
+            if not isinstance(seg, dict) or seg.get("type") != "markdown":
+                continue
+            content = str((seg.get("data") or {}).get("content", "") or "")
+            for m in cls.IMG_RE.findall(content):
+                url = m.strip()
+                if url.startswith(("http://", "https://")):
+                    result.append({"url": url, "file": ""})
         return result
 
     @classmethod

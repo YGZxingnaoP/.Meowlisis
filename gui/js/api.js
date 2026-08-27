@@ -144,6 +144,22 @@ const API = {
         return res.json();
     },
 
+    async getArmorPrompt() {
+        const res = await fetch('/api/armor_prompt');
+        if (!res.ok) return {};
+        return res.json();
+    },
+
+    async saveArmorPrompt(data) {
+        const res = await fetch('/api/armor_prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed to save armor prompt');
+        return res.json();
+    },
+
     async getSpeakers() {
         const res = await fetch('/api/speakers');
         if (!res.ok) return [];

@@ -19,12 +19,16 @@ class TBNapCatLLM:
 
     # 切分并忽略的标点（逗号、句号、问号）
     SPLIT_IGNORE = "，。？,.?"
+    # nsfw 模式切割减小：不按逗号切，一段容纳更多小句
+    SPLIT_IGNORE_NSFW = "。？.?"
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.cfg = LLMConfig()
         self.napcat_cfg = TBNapCatConfig()
         self._max_tokens = None
+        # nsfw 切割模式（本次回复是否减少切割点）
+        self._nsfw_split = False
         # 流式过滤状态（与 TTS 一致的 think/括号剥离）
         self._in_think = False
         self._paren_depth = 0
@@ -106,17 +110,25 @@ class TBNapCatLLM:
         return final
 
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
-              on_segment: Optional[Callable[[str], None]] = None) -> str:
-        """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息"""
-        system_prompt = self._system_prompt(username, text, user_id)
-        messages = []
-        for m in short_memory or []:
-            if m.get("role") in ("user", "assistant") and m.get("content"):
-                messages.append({"role": m["role"], "content": m["content"]})
-        messages.append({"role": "user", "content": text})
-        final = self.reply_stream(system_prompt, messages, on_segment)
-        self.log.info(f"[NapCat] 回复 {username}: {final[:50]}...")
-        return final
+              on_segment: Optional[Callable[[str], None]] = None,
+              nsfw: bool = False) -> str:
+        """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息
+
+        nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
+        """
+        self._nsfw_split = bool(nsfw)
+        try:
+            system_prompt = self._system_prompt(username, text, user_id)
+            messages = []
+            for m in short_memory or []:
+                if m.get("role") in ("user", "assistant") and m.get("content"):
+                    messages.append({"role": m["role"], "content": m["content"]})
+            messages.append({"role": "user", "content": text})
+            final = self.reply_stream(system_prompt, messages, on_segment)
+            self.log.info(f"[NapCat] 回复 {username}: {final[:50]}...")
+            return final
+        finally:
+            self._nsfw_split = False
 
     # ==================== 过滤与切分 ====================
     def _reset_filter(self):
@@ -175,11 +187,15 @@ class TBNapCatLLM:
             self._filtered += ch
 
     def _split(self):
-        """按逗号/句号/问号切分并忽略标点，感叹号保留不切分"""
+        """按标点切分并忽略标点，感叹号保留不切分。
+
+        nsfw 模式使用 SPLIT_IGNORE_NSFW（不按逗号切），一段容纳更多小句。
+        """
+        ignore = self.SPLIT_IGNORE_NSFW if self._nsfw_split else self.SPLIT_IGNORE
         segs = []
         out = ""
         for ch in self._temp:
-            if ch in self.SPLIT_IGNORE:
+            if ch in ignore:
                 if out.strip():
                     segs.append(out.strip())
                 out = ""

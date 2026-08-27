@@ -40,6 +40,7 @@ class TBVisionDecide:
         messages = [
             {"role": "system", "content": (
                 f"{persona}\n\n"
+                f"【默认操作是不看图】没有极强需求绝对不触发。\n"
                 f"用户发来了一张图片。你需要深度思考，判断当前话题是否与图片强相关、"
                 f"是否需要调用视觉工具查看图片内容。调用 decide_view 工具输出判断。"
             )},

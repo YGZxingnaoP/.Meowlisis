@@ -639,6 +639,34 @@ def post_front_prompt():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/armor_prompt', methods=['GET'])
+def get_armor_prompt():
+    p = BASE_DIR / "character" / "front" / "armor-piercing-prompt.json"
+    if p.exists():
+        try:
+            with open(p, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return jsonify(data)
+        except Exception as e:
+            return jsonify({'status': 'error', 'message': str(e)}), 500
+    return jsonify({})
+
+
+@app.route('/api/armor_prompt', methods=['POST'])
+def post_armor_prompt():
+    data = request.get_json()
+    content = data if isinstance(data, dict) else {}
+    p = BASE_DIR / "character" / "front" / "armor-piercing-prompt.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(content, f, ensure_ascii=False, indent=2)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 # ============ 主动回复 B站浏览（web_browse） ============
 def _web_browse_cfg():
     """读取 llm_active.web_browse 节点（带默认值，与后端 AutoWebBrowseConfig 一致）"""

@@ -508,6 +508,52 @@ const Config = {
             </select></div>`;
     },
 
+    catbrain_rulesbreak(armor) {
+        const a = armor || {};
+        const armorPrompt = a.prompt || '';
+        const armorNapcat = a.prompt_napcat || '';
+        const armorNsfw = a.nsfw_personality || '';
+        const armorNsfwHobby = a.nsfw_hobby || '';
+        const armorNsfwFavorite = a.nsfw_favorite || '';
+        const armorNsfwWordNorm = a.nsfw_word_norm || '';
+        let h = this._section('原则词（破甲词）');
+        h += this._check('QQ 启用', 'rulebreak.enabled_qq', true) +
+            this._check('主线程启用', 'rulebreak.enabled_msg', false) +
+            this._num('触发好感度下限', 'rulebreak.affinity_min', 3, -10, 10, 1,
+                '仅好感度大于该值的用户才允许触发原则词注入');
+        h += `<div class="form-group"><label>主线程原则词</label>
+                <textarea id="armorPromptInput" class="auto-grow" rows="3" placeholder="守底线的原则词...">${this._esc(armorPrompt)}</textarea>
+                <div class="help-text">主线程检测到色情内容时，插入 system prompt 顶部</div>
+            </div>`;
+        h += `<div class="form-group"><label>QQ 原则词</label>
+                <textarea id="armorNapcatPromptInput" class="auto-grow" rows="3" placeholder="守底线的原则词...">${this._esc(armorNapcat)}</textarea>
+                <div class="help-text">QQ 私聊/群聊 @ 检测到色情内容时，插入 system prompt 顶部</div>
+            </div>`;
+        h += `<div class="form-group"><label>NSFW 性格（触发时覆盖角色性格）</label>
+                <textarea id="armorNsfwInput" class="auto-grow" rows="3" placeholder="触发破甲词时替换角色卡「角色性格」的内容...">${this._esc(armorNsfw)}</textarea>
+                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「角色性格」行，消除调皮/生气等性格冲突</div>
+            </div>`;
+        h += `<div class="form-group"><label>NSFW 爱好（触发时覆盖角色爱好）</label>
+                <textarea id="armorNsfwHobbyInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换角色卡「角色爱好」的内容...">${this._esc(armorNsfwHobby)}</textarea>
+                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「角色爱好」行</div>
+            </div>`;
+        h += `<div class="form-group"><label>NSFW 最喜欢的东西（触发时覆盖）</label>
+                <textarea id="armorNsfwFavoriteInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换角色卡「最喜欢的东西」的内容...">${this._esc(armorNsfwFavorite)}</textarea>
+                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「最喜欢的东西」行</div>
+            </div>`;
+        h += `<div class="form-group"><label>NSFW 字数规范（触发时覆盖字数限制）</label>
+                <textarea id="armorNsfwWordNormInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换默认字数限制，如：每次回复至少80字，详细描写...">${this._esc(armorNsfwWordNorm)}</textarea>
+                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换「每次回复10个字左右，严格控制在20字以内」</div>
+            </div>`;
+        h += this._section('审查端口（独立 DeepSeek）') +
+            this._password('API Key', 'rulebreak.deepseek.api_key', '') +
+            this._text('Base URL', 'rulebreak.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'rulebreak.deepseek.model', 'deepseek-chat') +
+            this._num('温度', 'rulebreak.deepseek.temperature', 0.3, 0, 2, 0.1) +
+            this._num('max_tokens', 'rulebreak.deepseek.max_tokens', 512, 1, 4096, 16);
+        return h;
+    },
+
     // ============ TTS（含 SoVITS 服务端 + 参考音频 + 模型配置） ============
     tts() {
         return this._section('TTS 语音合成') +

@@ -5,6 +5,7 @@
 
 import re
 import threading
+import time
 from typing import List, Dict, Optional
 from urllib.parse import unquote
 
@@ -46,6 +47,10 @@ class TBAskGroupBot:
         self._bot_used: Dict[tuple, bool] = {}
         # (group_id, bot_qq) -> set(指令名)
         self._bot_commands: Dict[tuple, set] = {}
+        # group_id -> 触发时间戳（角色刚触发幻梦，等待其回复后消费，防重复评价）
+        self._pending: Dict[str, float] = {}
+        # 幻梦回复等待窗口（秒），超过视为非本次触发
+        self.PENDING_WINDOW = 60
 
     # ==================== 观察：幻梦是否发过言 + 提取指令名单 ====================
     def observe(self, group_id: str, user_id: str, raw_message, is_bot: bool):
@@ -73,6 +78,22 @@ class TBAskGroupBot:
         """查询某群某机器人是否已发过言（= 已被其它用户用过）"""
         with self._lock:
             return self._bot_used.get((str(group_id or ""), str(bot_qq)), False)
+
+    # ==================== 触发状态：角色触发幻梦后等待回复 ====================
+    def mark_triggered(self, group_id: str):
+        """角色成功触发幻梦后调用，记录「待消费」时间戳"""
+        with self._lock:
+            self._pending[str(group_id or "")] = time.time()
+
+    def consume_trigger(self, group_id: str) -> bool:
+        """消费式查询：窗口内触发过则返回 True 并清除（一次触发只消费一次，防重复回复）"""
+        gid = str(group_id or "")
+        with self._lock:
+            ts = self._pending.get(gid)
+            if ts is not None:
+                self._pending.pop(gid, None)
+                return (time.time() - ts) <= self.PENDING_WINDOW
+            return False
 
     def known_commands(self, group_id: str, bot_qq: str) -> List[str]:
         """获取某群某机器人已知的指令名单（按提取顺序稳定返回）"""
@@ -209,6 +230,7 @@ class TBAskGroupBot:
                 ],
             })
             self.log.info(f"[ask_group_bot] 已 @{bot_name}({bot_qq}) 发送指令：{cmd}")
+            self.mark_triggered(group_id)
             return f"已向「{bot_name}」发送指令：{cmd}（等待它在群里回复）"
         except Exception:
             self.log.exception("发送群机器人指令失败")
@@ -236,6 +258,7 @@ class TBAskGroupBot:
                 ],
             })
             self.log.info(f"[ask_group_bot:forced] 已 @{bot_name}({bot_qq}) 发送指令：{cmd}")
+            self.mark_triggered(group_id)
             return f"已向「{bot_name}」发送指令：{cmd}（等待它在群里回复）"
         except Exception:
             self.log.exception("发送群机器人指令失败")

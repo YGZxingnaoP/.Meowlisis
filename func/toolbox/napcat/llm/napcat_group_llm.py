@@ -51,7 +51,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
                 if with_bot_tool:
                     prompt = (
                         f"{prompt}\n\n"
-                        f"【回复决策】当前群聊没有明显话题时，你可以选择：\n"
+                        f"【回复决策】你的默认动作是不说话（输出 pass）。\n"
                         f"1. 如果满足条件（群机器人之前发过言），调用 ask_group_bot 工具向群机器人发指令活跃气氛；\n"
                         f"2. 如果觉得需要直接插话，输出你的回复内容；\n"
                         f"3. 如果不需要任何动作，只输出一个词：pass。"
@@ -59,7 +59,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
                 else:
                     prompt = (
                         f"{prompt}\n\n"
-                        f"【回复决策】请判断当前群聊是否值得你插话回复。"
+                        f"【回复决策】你的默认动作是不说话（输出 pass）。"
                         f"如果你觉得不需要回复，只输出一个词：pass；"
                         f"如果需要回复，请直接输出你要回复的内容。"
                     )
@@ -83,10 +83,18 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
-              on_segment: Optional[Callable[[str], None]] = None) -> str:
-        """@ 触发或强制回复：流式生成并回传短句，返回完整回复"""
-        return self._run(username, group_name, group_info_text, text, short_memory,
-                         group_id=group_id, decide=False, on_segment=on_segment)
+              on_segment: Optional[Callable[[str], None]] = None,
+              nsfw: bool = False) -> str:
+        """@ 触发或强制回复：流式生成并回传短句，返回完整回复
+
+        nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
+        """
+        self._nsfw_split = bool(nsfw)
+        try:
+            return self._run(username, group_name, group_info_text, text, short_memory,
+                             group_id=group_id, decide=False, on_segment=on_segment)
+        finally:
+            self._nsfw_split = False
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,
                short_memory: List[dict], group_info_text: str = "",

@@ -88,7 +88,9 @@ const App = {
         if (id === 'desktopet') { this._openConfigPanel('桌宠配置', () => Config.desktopet_config()); return; }
         if (id === 'vts_params') { this._openConfigPanel('VTS 模型参数', () => Config.vts_params()); return; }
 
-        // CatBrain 子球
+        // CatBrain 子球（原则词需异步加载独立 json，单独处理）
+        if (id === 'rulesbreak') { await this.openRulesBreakPanel(); return; }
+
         const catbrainSubMap = {
             'ltmem': { title: '长期记忆', fn: () => Config.catbrain_ltmem() },
             'abstract': { title: '记忆摘要', fn: () => Config.catbrain_abstract() },
@@ -961,6 +963,42 @@ const App = {
             });
         } catch (e) {
             console.error('Error rendering llm prompt panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    async openRulesBreakPanel() {
+        try {
+            let armorData = {};
+            try {
+                armorData = await API.getArmorPrompt() || {};
+            } catch (e) {
+                console.warn('加载原则词失败:', e);
+            }
+            const html = Config.catbrain_rulesbreak(armorData);
+            Modal.show('原则词配置', html, async () => {
+                try {
+                    // 原则词内容（独立 json）
+                    const armor = {
+                        prompt: document.getElementById('armorPromptInput')?.value || '',
+                        prompt_napcat: document.getElementById('armorNapcatPromptInput')?.value || '',
+                        nsfw_personality: document.getElementById('armorNsfwInput')?.value || '',
+                        nsfw_hobby: document.getElementById('armorNsfwHobbyInput')?.value || '',
+                        nsfw_favorite: document.getElementById('armorNsfwFavoriteInput')?.value || '',
+                        nsfw_word_norm: document.getElementById('armorNsfwWordNormInput')?.value || ''
+                    };
+                    await API.saveArmorPrompt(armor);
+                    // config.yml 的 rulebreak 节点（开关 + 好感度下限 + API）
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    await API.saveConfig(this.config);
+                    this.showToast('原则词配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering rulesbreak panel:', e);
             this.showToast('面板渲染失败: ' + e.message, true);
         }
     },

@@ -138,6 +138,12 @@ class LLmCore:
         if is_danmaku:
             system_prompt = self.prompt_get.get_danmaku_prompt(username, prompt, multi_user)
         else:
+            # 主线程破甲审查：命中色情则写 msg_rulebreak 桥接，构建提示词时注入原则词
+            try:
+                from func.catbrain.rules_break.rules_break import TBRulesBreak
+                TBRulesBreak().check_and_store_msg(username, prompt, ShortMemory().load())
+            except Exception:
+                self.log.exception("主线程破甲审查异常")
             system_prompt = self.prompt_get.get_system_prompt(username, prompt)
 
         # 构建完整消息：系统提示词 + 短期记忆（历史）+ 当前消息

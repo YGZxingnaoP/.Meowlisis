@@ -4,6 +4,7 @@
 # 提示词顺序：前置词(行为约束) → 主体(角色卡/记忆) → 后置词(人设)
 
 import os
+import re
 import json
 
 from func.log.default_log import DefaultLog
@@ -44,6 +45,51 @@ class SystemPromptBridge:
         except Exception:
             self.log.exception("读取前置词/后置词失败")
         return {}
+
+    def _read_armor_piercing(self, key: str) -> str:
+        """读取破甲原则词（character/front/armor-piercing-prompt.json 的对应字段）"""
+        try:
+            path = os.path.join("character", "front", "armor-piercing-prompt.json")
+            if os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        return str(data.get(key, "") or "").strip()
+        except Exception:
+            self.log.exception("读取破甲原则词失败")
+        return ""
+
+    @staticmethod
+    def _inject_armor_piercing(prompt: str, armor_text: str) -> str:
+        """把破甲原则词插入系统提示词最顶部"""
+        if not armor_text or not armor_text.strip():
+            return prompt
+        return f"{armor_text.strip()}\n\n{prompt}"
+
+    def _apply_nsfw_settings(self, prompt: str) -> str:
+        """破甲词触发时，应用 nsfw 全套覆盖：替换性格/爱好/最喜欢的东西，并移除价值观整段。
+
+        所有 nsfw 内容均存在 armor-piercing-prompt.json 的对应字段，可前端配置；
+        破甲词命中即进入 nsfw 模式：价值观整段不传，其余字段按需替换。
+        """
+        if not prompt:
+            return prompt
+        nsfw_personality = self._read_armor_piercing("nsfw_personality")
+        nsfw_hobby = self._read_armor_piercing("nsfw_hobby")
+        nsfw_favorite = self._read_armor_piercing("nsfw_favorite")
+        if nsfw_personality:
+            prompt = re.sub(r"- 角色性格：[^\n]*", f"- 角色性格：{nsfw_personality}", prompt, count=1)
+        if nsfw_hobby:
+            prompt = re.sub(r"- 角色爱好：[^\n]*", f"- 角色爱好：{nsfw_hobby}", prompt, count=1)
+        if nsfw_favorite:
+            prompt = re.sub(r"- 最喜欢的东西：[^\n]*", f"- 最喜欢的东西：{nsfw_favorite}", prompt, count=1)
+        # nsfw 字数规范：替换默认的「每次回复N个字左右，严格控制在M字以内」
+        nsfw_word_norm = self._read_armor_piercing("nsfw_word_norm")
+        if nsfw_word_norm:
+            prompt = re.sub(r"每次回复\d+个字左右，严格控制在\d+字以内", nsfw_word_norm, prompt)
+        # nsfw 时不传价值观：移除「# xxx铭记在心」整段（到下一个 # 标题前）
+        prompt = re.sub(r"\n\n# [^\n]*铭记在心[\s\S]*?(?=\n\n# |\Z)", "", prompt)
+        return prompt
 
     # ==================== 前置词（行为约束，放最前） ====================
     def get_front_prompt(self) -> str:
@@ -124,6 +170,16 @@ class SystemPromptBridge:
             post = f"{post}\n你现在在和{name}说话"
         parts = [p for p in (front, body, post) if p]
         prompt = "\n\n".join(parts)
+        # 破甲原则词注入（主线程）：读 msg_rulebreak 桥接，读后即清
+        try:
+            from func.pipeline.msg_rulebreak import MsgRuleBreakBridge
+            bridge = MsgRuleBreakBridge()
+            if bridge.is_explicit():
+                prompt = self._inject_armor_piercing(prompt, self._read_armor_piercing("prompt"))
+                prompt = self._apply_nsfw_settings(prompt)
+            bridge.reset()
+        except Exception:
+            pass
         return self._append_turtle_soup(prompt, "live")
 
     def get_danmaku_prompt(self, username=None, current_message: str = "",
@@ -177,6 +233,17 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         prompt = "\n\n".join(parts)
         session_key = f"qq_private:{user_id}" if user_id else ""
+        # 破甲原则词注入（QQ 私聊）：读 toolbox_rulebreak 桥接，读后即清
+        try:
+            from func.pipeline.toolbox_rulebreak import ToolboxRuleBreakBridge
+            bridge = ToolboxRuleBreakBridge()
+            if session_key and bridge.is_explicit(session_key):
+                prompt = self._inject_armor_piercing(prompt, self._read_armor_piercing("prompt_napcat"))
+                prompt = self._apply_nsfw_settings(prompt)
+            if session_key:
+                bridge.reset(session_key)
+        except Exception:
+            pass
         return self._append_turtle_soup(prompt, session_key)
 
     def get_napcat_group_prompt(self, username=None, group_name: str = "",
@@ -207,6 +274,17 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         prompt = "\n\n".join(parts)
         session_key = f"qq_group:{group_id}" if group_id else ""
+        # 破甲原则词注入（QQ 群聊）：读 toolbox_rulebreak 桥接，读后即清
+        try:
+            from func.pipeline.toolbox_rulebreak import ToolboxRuleBreakBridge
+            bridge = ToolboxRuleBreakBridge()
+            if session_key and bridge.is_explicit(session_key):
+                prompt = self._inject_armor_piercing(prompt, self._read_armor_piercing("prompt_napcat"))
+                prompt = self._apply_nsfw_settings(prompt)
+            if session_key:
+                bridge.reset(session_key)
+        except Exception:
+            pass
         return self._append_turtle_soup(prompt, session_key)
 
     def get_watching_prompt(self, username=None, current_message: str = "",
