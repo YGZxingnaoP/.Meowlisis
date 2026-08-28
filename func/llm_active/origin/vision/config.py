@@ -15,6 +15,7 @@ class AutoVisionConfig:
         vision = cfg.get('vision', {}) if isinstance(cfg, dict) else {}
 
         # ========== 视觉理解模型（独立 api，不复用 meowvision） ==========
+        self.llm_type = vision.get('llm_type', 'aliyun')
         self.api_key = vision.get('api_key', '')
         self.base_url = vision.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
         # 默认 qwen3.7-flash（阿里云多模态）
@@ -23,3 +24,12 @@ class AutoVisionConfig:
         self.max_tokens = vision.get('max_tokens', 600)
         self.temperature = vision.get('temperature', 0.7)
         self.top_p = vision.get('top_p', 0.9)
+
+        # Gemini 视觉配置
+        gemini = vision.get('gemini', {})
+        self.gemini_api_key = gemini.get('api_key', '')
+        self.gemini_base_url = gemini.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.gemini_model = gemini.get('model', 'gemini-3.6-flash')
+        self.gemini_max_tokens = gemini.get('max_tokens', 600)
+        self.gemini_temperature = gemini.get('temperature', 0.7)
+        self.gemini_top_p = gemini.get('top_p', 0.9)

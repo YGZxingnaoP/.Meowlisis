@@ -32,6 +32,14 @@ class TBoxConfig:
         self.aliyun_temperature = al.get('temperature', 0.7)
         self.aliyun_max_tokens = al.get('max_tokens', 2048)
 
+        # Gemini 独立配置
+        gm = cfg.get('gemini', {})
+        self.gemini_api_key = gm.get('api_key', '')
+        self.gemini_base_url = gm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.gemini_model = gm.get('model', 'gemini-3.6-flash')
+        self.gemini_temperature = gm.get('temperature', 0.7)
+        self.gemini_max_tokens = gm.get('max_tokens', 2048)
+
         # ========== excuse 通用询问链路 ==========
         # 是否启用 excuse 阻塞等待（关闭则询问后不阻塞，直接返回）
         self.excuse_enabled = cfg.get('excuse_enabled', True)

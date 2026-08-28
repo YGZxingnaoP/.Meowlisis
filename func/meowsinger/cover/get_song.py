@@ -26,9 +26,18 @@ class MeowCoverSong:
         """翻唱入口：异步执行判断与播放/学习"""
         Thread(target=self._cover_async, args=(title, artist, username), daemon=True).start()
 
+    def _end_singing(self):
+        # 失败路径兜底清除唱歌占用
+        try:
+            from func.pipeline.singing_state import SingingStateBridge
+            SingingStateBridge().end_singing()
+        except Exception:
+            pass
+
     def _cover_async(self, title, artist, username):
         if not title or not title.strip():
             self._reply_no_title(username)
+            self._end_singing()
             return
         title = title.strip()
 
@@ -42,6 +51,7 @@ class MeowCoverSong:
             mp3_path, title = self._download_raw(title, artist)
         if not mp3_path or not os.path.exists(mp3_path):
             self._reply_fail(title, username)
+            self._end_singing()
             return
 
         if self.config.learn_mode == "immediate":
@@ -52,9 +62,11 @@ class MeowCoverSong:
                 self._play_learned(title)
             else:
                 self._reply_learn_fail(title, username)
+                self._end_singing()
         else:
             self.state.add_rvc_task({"title": title, "mp3_path": mp3_path})
             self._reply_need_learn(title, username)
+            self._end_singing()
 
     def start_learn(self, username):
         """学歌指令触发：依次串行执行 rvc 队列，不中断"""

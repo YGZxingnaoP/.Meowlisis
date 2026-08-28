@@ -49,16 +49,26 @@ class MeowSingerCore:
         # 点歌
         if mode == MeowIfStart.MODE_SONG:
             self._record_user(username, original)
+            self._mark_singing("song", title or "")
             self._dispatch_song(title, artist, username)
             return True
 
         # 翻唱
         if mode == MeowIfStart.MODE_COVER:
             self._record_user(username, original)
+            self._mark_singing("cover", title or "")
             self._dispatch_cover(title, artist, username)
             return True
 
         return False
+
+    def _mark_singing(self, mode, title):
+        # 命中点歌/翻唱即标记占用，避免下载/报歌名窗口内二次触发
+        try:
+            from func.pipeline.singing_state import SingingStateBridge
+            SingingStateBridge().start_singing(mode, title or "")
+        except Exception:
+            self.log.exception("[MeowSinger] 标记唱歌占用异常")
 
     def _dispatch_song(self, title, artist, username):
         try:

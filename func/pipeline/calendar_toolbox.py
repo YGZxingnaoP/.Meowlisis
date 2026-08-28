@@ -16,6 +16,9 @@ class DateCalendarToolbox:
         self.llm = self._create_llm()
 
     def _create_llm(self):
+        if self.config.llm_type == "gemini":
+            from func.toolbox.port.gemini import TBoxGeminiLLM
+            return TBoxGeminiLLM(self.config)
         if self.config.llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(self.config)

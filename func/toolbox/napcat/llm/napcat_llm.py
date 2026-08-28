@@ -39,6 +39,9 @@ class TBNapCatLLM:
 
     def _llm(self):
         """创建 toolbox port 流式客户端（复用 func/llm 配置，medium 思考由 thinking_level 控制）"""
+        if self.cfg.local_llm_type == "gemini":
+            from func.toolbox.port.gemini import TBoxGeminiLLM
+            return TBoxGeminiLLM(self.cfg), self.cfg.gemini_max_tokens
         if self.cfg.local_llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(self.cfg), self.cfg.aliyun_max_tokens
@@ -54,13 +57,8 @@ class TBNapCatLLM:
             self.log.exception("获取 napcat 系统提示词失败")
             return ""
 
-    def reply_stream(self, system_prompt: str, messages: List[dict],
-                     on_segment: Optional[Callable[[str], None]] = None) -> str:
-        """通用流式回复：自定义 system prompt 与历史消息，流式过滤/切分后回传。
-
-        - 返回清理后的完整回复文本；
-        - on_segment 回调逐段回传（供 napcat 发送、戳一戳发牢骚等复用）。
-        """
+    def _generate(self, messages: List[dict]) -> str:
+        # 流式生成并累积完整回复，不发送
         llm, base_max_tokens = self._llm()
         if llm is None or not llm.client:
             self.log.error("NapCat 回复 LLM 不可用")
@@ -69,13 +67,8 @@ class TBNapCatLLM:
             self._max_tokens = max(8, int(base_max_tokens) + 128)
         self._reset_filter()
 
-        full_messages = []
-        if system_prompt:
-            full_messages.append({"role": "system", "content": system_prompt})
-        full_messages.extend(messages or [])
-
         stream = llm.chat_stream(
-            full_messages,
+            messages,
             options={"max_tokens": self._max_tokens},
             thinking_level=self.napcat_cfg.thinking_level,
         )
@@ -90,16 +83,10 @@ class TBNapCatLLM:
                 continue
             for ch in delta.content:
                 self._feed(ch)
-            for seg in self._split():
-                if on_segment:
-                    on_segment(seg)
         if self._tag:
             self._flush_tag()
         if self._temp.strip():
-            seg = self._temp.strip()
             self._temp = ""
-            if on_segment:
-                on_segment(seg)
 
         final = self.remove_analysis(self._filtered).strip()
         if not final:
@@ -107,6 +94,36 @@ class TBNapCatLLM:
                 f"[NapCat] 回复为空！reasoning_content 长度={reasoning_len}，"
                 f"max_tokens={self._max_tokens}。若思考模式开启，可能是 max_tokens 太小被思考占满"
             )
+        return final
+
+    def _rewrite_if_too_long(self, messages: List[dict], final: str, word_count: int) -> str:
+        # 超长驳回重写：最多重写3次，仍超长直接发送不截断
+        limit = int(word_count or 10) + 10
+        for _ in range(3):
+            if len(final) <= limit:
+                break
+            messages.append({
+                "role": "user",
+                "content": "你上次的回复超过字数上限，被驳回了。最高准则：回复字数严格控制小于10字，请重新回复，只输出回复内容本身。",
+            })
+            final = self._generate(messages)
+        return final
+
+    def reply_stream(self, system_prompt: str, messages: List[dict],
+                     on_segment: Optional[Callable[[str], None]] = None) -> str:
+        """通用流式回复：自定义 system prompt 与历史消息，流式过滤/切分后回传。
+
+        - 返回清理后的完整回复文本；
+        - on_segment 回调逐段回传（供 napcat 发送、戳一戳发牢骚等复用）。
+        """
+        full_messages = []
+        if system_prompt:
+            full_messages.append({"role": "system", "content": system_prompt})
+        full_messages.extend(messages or [])
+        final = self._generate(full_messages)
+        for seg in self.split_segments(final):
+            if on_segment and seg:
+                on_segment(seg)
         return final
 
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
@@ -120,11 +137,17 @@ class TBNapCatLLM:
         try:
             system_prompt = self._system_prompt(username, text, user_id)
             messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
             for m in short_memory or []:
                 if m.get("role") in ("user", "assistant") and m.get("content"):
                     messages.append({"role": m["role"], "content": m["content"]})
             messages.append({"role": "user", "content": text})
-            final = self.reply_stream(system_prompt, messages, on_segment)
+            final = self._generate(messages)
+            final = self._rewrite_if_too_long(messages, final, int(self.napcat_cfg.reply_word_count or 10))
+            for seg in self.split_segments(final):
+                if on_segment and seg:
+                    on_segment(seg)
             self.log.info(f"[NapCat] 回复 {username}: {final[:50]}...")
             return final
         finally:
@@ -185,6 +208,24 @@ class TBNapCatLLM:
         if self._paren_depth == 0:
             self._temp += ch
             self._filtered += ch
+
+    @classmethod
+    def split_segments(cls, text: str) -> List[str]:
+        # 按逗号/句号/问号切分，忽略标点，感叹号保留
+        if not text:
+            return []
+        segs = []
+        out = ""
+        for ch in text:
+            if ch in cls.SPLIT_IGNORE:
+                if out.strip():
+                    segs.append(out.strip())
+                out = ""
+            else:
+                out += ch
+        if out.strip():
+            segs.append(out.strip())
+        return segs
 
     def _split(self):
         """按标点切分并忽略标点，感叹号保留不切分。

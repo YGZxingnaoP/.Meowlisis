@@ -6,6 +6,7 @@ from func.log.default_log import DefaultLog
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.CatValues.port.deepseek import MeowValuesDeepSeekLLM
 from func.catbrain.CatValues.port.aliyun import MeowValuesAliyunLLM
+from func.catbrain.CatValues.port.gemini import MeowValuesGeminiLLM
 
 
 class MeowValuesReviewLLM:
@@ -27,6 +28,11 @@ class MeowValuesReviewLLM:
             llm.api_key = self.config.val_sr_aliyun_api_key
             llm.base_url = self.config.val_sr_aliyun_base_url
             llm.model = self.config.val_sr_aliyun_model
+        elif llm_type == "gemini":
+            llm = MeowValuesGeminiLLM()
+            llm.api_key = self.config.val_sr_gemini_api_key
+            llm.base_url = self.config.val_sr_gemini_base_url
+            llm.model = self.config.val_sr_gemini_model
         else:
             llm = MeowValuesDeepSeekLLM()
             llm.api_key = self.config.val_sr_deepseek_api_key

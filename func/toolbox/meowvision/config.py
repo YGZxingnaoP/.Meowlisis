@@ -17,6 +17,7 @@ class TBVisionConfig:
 
         # ========== 视觉理解模型（阿里云百炼 / MaaS，OpenAI 兼容） ==========
         # 独立 apikey，不与其它模块共用
+        self.llm_type = cfg.get('llm_type', 'aliyun')
         self.api_key = cfg.get('api_key', '')
         # 默认使用百炼 dashscope；若为专属工作空间，可改为
         # https://[workspace-id].cn-beijing.maas.aliyuncs.com/compatible-mode/v1
@@ -27,6 +28,15 @@ class TBVisionConfig:
         self.max_tokens = cfg.get('max_tokens', 512)
         self.temperature = cfg.get('temperature', 0.7)
         self.top_p = cfg.get('top_p', 0.9)
+
+        # Gemini 视觉配置
+        gemini = cfg.get('gemini', {})
+        self.gemini_api_key = gemini.get('api_key', '')
+        self.gemini_base_url = gemini.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.gemini_model = gemini.get('model', 'gemini-3.6-flash')
+        self.gemini_max_tokens = gemini.get('max_tokens', 512)
+        self.gemini_temperature = gemini.get('temperature', 0.7)
+        self.gemini_top_p = gemini.get('top_p', 0.9)
 
         # ========== 图片缓存 ==========
         # image_handle 工具产生的截图/裁切/编码结果统一缓存目录

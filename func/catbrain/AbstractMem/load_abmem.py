@@ -36,7 +36,10 @@ class MeowLoadAbstractMemory:
     def _ensure_llm(self):
         """懒加载摘要独立 LLM 客户端（话题决策复用）"""
         if self._llm is None:
-            if self.config.abstract_llm_type == "aliyun":
+            if self.config.abstract_llm_type == "gemini":
+                from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
+                self._llm = MeowAbstractGeminiLLM()
+            elif self.config.abstract_llm_type == "aliyun":
                 from func.catbrain.AbstractMem.port.aliyun import MeowAbstractAliyunLLM
                 self._llm = MeowAbstractAliyunLLM()
             else:

@@ -38,7 +38,10 @@ class MeowUpdateValues:
     def _ensure_llm(self):
         """懒加载价值观独立 LLM 客户端"""
         if self.llm is None:
-            if self.config.values_llm_type == "aliyun":
+            if self.config.values_llm_type == "gemini":
+                from func.catbrain.CatValues.port.gemini import MeowValuesGeminiLLM
+                self.llm = MeowValuesGeminiLLM()
+            elif self.config.values_llm_type == "aliyun":
                 self.llm = MeowValuesAliyunLLM()
             else:
                 self.llm = MeowValuesDeepSeekLLM()

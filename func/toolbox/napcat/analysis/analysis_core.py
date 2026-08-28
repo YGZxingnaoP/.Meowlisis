@@ -76,49 +76,50 @@ class TBNapcatAnalysis:
             self.log.info(f"[NapcatAnalysis] 未命中工具，走正常回复: {text[:20]}")
             return False
 
-        self.log.info(f"[NapcatAnalysis] 命中工具 {[tc.function.name for tc in tool_calls]}: {text[:20]}")
-        handled = False
-        for tc in tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except Exception:
-                self.log.exception(f"[NapcatAnalysis] 解析工具参数失败: {name}")
-                args = {}
+        # 只取第一个工具，避免一次多工具并发冲突
+        tc = tool_calls[0]
+        self.log.info(f"[NapcatAnalysis] 命中工具 {tc.function.name}: {text[:20]}")
+        name = tc.function.name
+        try:
+            args = json.loads(tc.function.arguments or "{}")
+        except Exception:
+            self.log.exception(f"[NapcatAnalysis] 解析工具参数失败: {name}")
+            args = {}
 
-            if name == "query_weather":
-                from func.toolbox.weather.weather_core import TBWeatherCore
-                TBWeatherCore().set_username(username)
-                result = TBWeatherCore().dispatch_qq(name, args, qq_context)
-                if isinstance(result, tuple) and result and result[0] == "redeliver":
-                    self._redeliver(result[1], username, qq_context, short_memory)
-                handled = True
-            elif name == "read_news":
-                from func.toolbox.news.news_core import TBNewsCore
-                TBNewsCore().set_username(username)
-                result = TBNewsCore().dispatch_qq(name, args, qq_context)
-                if isinstance(result, tuple) and result and result[0] == "redeliver":
-                    self._redeliver(result[1], username, qq_context, short_memory)
-                handled = True
-            elif name == "add_backlog":
-                from func.toolbox.add_backlog.add_tool import TBAddBacklogTool
-                TBAddBacklogTool().set_username(username)
-                result = TBAddBacklogTool().dispatch_qq(name, args, qq_context)
-                if isinstance(result, tuple) and result and result[0] == "redeliver":
-                    self._redeliver(result[1], username, qq_context, short_memory)
-                handled = True
-            elif name == "impromptu_sing":
-                from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
-                TBMeowSongsCore().set_username(username)
-                TBMeowSongsCore().dispatch_qq(name, args, qq_context)
-                handled = True
-            elif name == "turtle_soup":
-                from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-                TBTurtleSoupCore().set_username(username)
-                TBTurtleSoupCore().dispatch_qq(name, args, qq_context)
-                handled = True
-            else:
-                self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
+        handled = False
+        if name == "query_weather":
+            from func.toolbox.weather.weather_core import TBWeatherCore
+            TBWeatherCore().set_username(username)
+            result = TBWeatherCore().dispatch_qq(name, args, qq_context)
+            if isinstance(result, tuple) and result and result[0] == "redeliver":
+                self._redeliver(result[1], username, qq_context, short_memory)
+            handled = True
+        elif name == "read_news":
+            from func.toolbox.news.news_core import TBNewsCore
+            TBNewsCore().set_username(username)
+            result = TBNewsCore().dispatch_qq(name, args, qq_context)
+            if isinstance(result, tuple) and result and result[0] == "redeliver":
+                self._redeliver(result[1], username, qq_context, short_memory)
+            handled = True
+        elif name == "add_backlog":
+            from func.toolbox.add_backlog.add_tool import TBAddBacklogTool
+            TBAddBacklogTool().set_username(username)
+            result = TBAddBacklogTool().dispatch_qq(name, args, qq_context)
+            if isinstance(result, tuple) and result and result[0] == "redeliver":
+                self._redeliver(result[1], username, qq_context, short_memory)
+            handled = True
+        elif name == "impromptu_sing":
+            from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
+            TBMeowSongsCore().set_username(username)
+            TBMeowSongsCore().dispatch_qq(name, args, qq_context)
+            handled = True
+        elif name == "turtle_soup":
+            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+            TBTurtleSoupCore().set_username(username)
+            TBTurtleSoupCore().dispatch_qq(name, args, qq_context)
+            handled = True
+        else:
+            self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
         return handled
 
     # ==================== 重新投递（另起话题） ====================
@@ -193,6 +194,9 @@ class TBNapcatAnalysis:
     def _llm():
         from func.llm.config import LLMConfig
         cfg = LLMConfig()
+        if cfg.local_llm_type == "gemini":
+            from func.toolbox.port.gemini import TBoxGeminiLLM
+            return TBoxGeminiLLM(cfg)
         if cfg.local_llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(cfg)

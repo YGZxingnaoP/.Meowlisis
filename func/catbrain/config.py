@@ -52,6 +52,14 @@ class MeowCatBrainConfig:
         self.ab_aliyun_temperature = qw.get('temperature', 0.7)
         self.ab_aliyun_max_tokens = qw.get('max_tokens', 2048)
 
+        # 摘要独立 Gemini 配置
+        gm = am.get('gemini', {})
+        self.ab_gemini_api_key = gm.get('api_key', '')
+        self.ab_gemini_base_url = gm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.ab_gemini_model = gm.get('model', 'gemini-3.6-flash')
+        self.ab_gemini_temperature = gm.get('temperature', 0.7)
+        self.ab_gemini_max_tokens = gm.get('max_tokens', 2048)
+
         # ========== 价值观 ==========
         vs = cfg.get('cat_values', cfg.get('values', {}))
         # 价值观独立后端类型：deepseek / aliyun（所有密钥独立配置，禁止混淆）
@@ -64,6 +72,11 @@ class MeowCatBrainConfig:
         self.val_aliyun_api_key = val.get('api_key', '')
         self.val_aliyun_base_url = val.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
         self.val_aliyun_model = val.get('model', 'qwen-plus')
+
+        vgm = vs.get('gemini', {})
+        self.val_gemini_api_key = vgm.get('api_key', '')
+        self.val_gemini_base_url = vgm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.val_gemini_model = vgm.get('model', 'gemini-3.6-flash')
         # 价值观硬编码参数：temperature 0.7，思考强度最高
         self.values_temperature = 0.7
         self.values_enable_thinking = True
@@ -89,6 +102,11 @@ class MeowCatBrainConfig:
         self.val_sr_aliyun_base_url = sra.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
         self.val_sr_aliyun_model = sra.get('model', 'qwen-plus')
 
+        srg = sr.get('gemini', {})
+        self.val_sr_gemini_api_key = srg.get('api_key', '')
+        self.val_sr_gemini_base_url = srg.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.val_sr_gemini_model = srg.get('model', 'gemini-3.6-flash')
+
         # ========== 用户记忆 ==========
         um = cfg.get('user_memory', {})
         # 用户信息更新轮数（该用户发送多少条消息后触发分析更新）
@@ -103,6 +121,11 @@ class MeowCatBrainConfig:
         self.user_aliyun_api_key = ual.get('api_key', '')
         self.user_aliyun_base_url = ual.get('base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1')
         self.user_aliyun_model = ual.get('model', 'qwen-plus')
+
+        ugm = um.get('gemini', {})
+        self.user_gemini_api_key = ugm.get('api_key', '')
+        self.user_gemini_base_url = ugm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.user_gemini_model = ugm.get('model', 'gemini-3.6-flash')
         # 用户记忆默认参数：temperature 0.7，思考强度高
         self.user_temperature = um.get('temperature', 0.7)
         self.user_enable_thinking = True

@@ -28,6 +28,13 @@ class MeowSingerConfig:
         self.aliyun_temperature = al.get('temperature', 0.7)
         self.aliyun_max_tokens = al.get('max_tokens', 2048)
 
+        gm = cfg.get('gemini', {})
+        self.gemini_api_key = gm.get('api_key', '')
+        self.gemini_base_url = gm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.gemini_model = gm.get('model', 'gemini-3.6-flash')
+        self.gemini_temperature = gm.get('temperature', 0.7)
+        self.gemini_max_tokens = gm.get('max_tokens', 2048)
+
         # 点歌模块
         song = cfg.get('song', {})
         self.song_enabled = bool(song.get('enabled', True))
@@ -45,6 +52,15 @@ class MeowSingerConfig:
         self.rvc_url = cover.get('rvc_url', 'http://127.0.0.1:7865')
         self.rvc_model = cover.get('rvc_model', 'kikiV1.pth')
         self.rvc_index = cover.get('rvc_index', '')
+        # RVC 变声参数（前端翻唱子球可配置，默认值与历史行为一致）
+        self.rvc_f0_method = cover.get('f0_method', 'rmvpe')
+        self.rvc_index_rate = float(cover.get('index_rate', 0.75) or 0.75)
+        self.rvc_protect = float(cover.get('protect', 0.33) or 0.33)
+        self.rvc_rms_mix_rate = float(cover.get('rms_mix_rate', 1) or 1)
+        self.rvc_resample_sr = int(cover.get('resample_sr', 0) or 0)
+        # 目标音高与音色偏移（动态变调 + 共振峰，默认 tangyuan 少女声线）
+        self.target_f0 = float(cover.get('target_f0', 325) or 325)
+        self.formant = float(cover.get('formant', 0) or 0)
         self.learn_mode = cover.get('learn_mode', 'idle')
         self.learn_users = self._as_list(cover.get('learn_users', []))
         self.learn_trigger = cover.get('learn_trigger', '喵利呜西斯，可以开始学歌啦')

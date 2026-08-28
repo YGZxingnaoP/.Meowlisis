@@ -91,8 +91,15 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         """
         self._nsfw_split = bool(nsfw)
         try:
-            return self._run(username, group_name, group_info_text, text, short_memory,
-                             group_id=group_id, decide=False, on_segment=on_segment)
+            messages = self._messages(username, group_name, group_info_text, text, short_memory,
+                                      decide=False, group_id=group_id)
+            final = self._generate(messages)
+            final = self._rewrite_if_too_long(messages, final, int(self.napcat_cfg.group_reply_word_count or 10))
+            for seg in self.split_segments(final):
+                if on_segment and seg:
+                    on_segment(seg)
+            self.log.info(f"[NapCat群聊] 回复 {group_name}: {final[:50]}...")
+            return final
         finally:
             self._nsfw_split = False
 
@@ -148,40 +155,11 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def _run(self, username, group_name, group_info_text, text, short_memory,
              decide: bool, on_segment, group_id: str = "") -> str:
-        llm, base_max_tokens = self._llm()
-        if llm is None or not llm.client:
-            self.log.error("NapCat 群聊回复 LLM 不可用")
-            return ""
-        if self._max_tokens is None:
-            self._max_tokens = max(8, int(base_max_tokens) + 128)
-        self._reset_filter()
-
         messages = self._messages(username, group_name, group_info_text, text, short_memory,
                                   decide, group_id=group_id)
-        stream = llm.chat_stream(
-            messages,
-            options={"max_tokens": self._max_tokens},
-            thinking_level=self.napcat_cfg.thinking_level,
-        )
-        for chunk in stream:
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            if not delta.content:
-                continue
-            for ch in delta.content:
-                self._feed(ch)
-            for seg in self._split():
-                if on_segment:
-                    on_segment(seg)
-        if self._tag:
-            self._flush_tag()
-        if self._temp.strip():
-            seg = self._temp.strip()
-            self._temp = ""
-            if on_segment:
+        final = self._generate(messages)
+        for seg in self.split_segments(final):
+            if on_segment and seg:
                 on_segment(seg)
-
-        final = self.remove_analysis(self._filtered).strip()
         self.log.info(f"[NapCat群聊] 回复 {group_name}: {final[:50]}...")
         return final

@@ -26,7 +26,11 @@ class TBVisionSender:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBVisionConfig()
-        self.llm = TBVisionAliyunLLM(self.config)
+        if self.config.llm_type == "gemini":
+            from func.toolbox.meowvision.port.gemini import TBVisionGeminiLLM
+            self.llm = TBVisionGeminiLLM(self.config)
+        else:
+            self.llm = TBVisionAliyunLLM(self.config)
 
     def send(self, images: List[str], user_message: str = "",
              system_prompt: str = "", history_messages: Optional[List[dict]] = None,

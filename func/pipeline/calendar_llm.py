@@ -28,6 +28,9 @@ class DateCalendarLLM:
         self.llm = self._create_llm()
 
     def _create_llm(self):
+        if self.config.local_llm_type == "gemini":
+            from func.llm.port.gemini import GeminiLLM
+            return GeminiLLM(self.config)
         if self.config.local_llm_type == "aliyun":
             return AliyunLLM(self.config)
         return DeepSeekLLM(self.config)

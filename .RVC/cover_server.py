@@ -243,7 +243,8 @@ def convert():
         "index_rate": 0.75,              # 检索特征占比
         "resample_sr": 0,                # 后处理重采样，0 不重采样
         "rms_mix_rate": 1,               # 音量包络融合比例
-        "protect": 0.33                  # 清辅音保护（0.5 不开启）
+        "protect": 0.33,                 # 清辅音保护（0.5 不开启）
+        "formant": 0                     # 共振峰/音色偏移（半音，正=更细更年轻，负=更粗更成熟）
     }
     """
     data = request.get_json(force=True, silent=True) or {}
@@ -257,6 +258,7 @@ def convert():
     resample_sr = int(data.get('resample_sr', 0) or 0)
     rms_mix_rate = float(data.get('rms_mix_rate', 1) or 1)
     protect = float(data.get('protect', 0.33) or 0.33)
+    formant = float(data.get('formant', 0) or 0)
 
     if not model or not input_path:
         return jsonify({'code': 400, 'msg': '缺少 model 或 input_path'}), 400
@@ -283,7 +285,7 @@ def convert():
 
         info, opt = vc.vc_single(
             0, input_path, f0_up_key, f0_method, index_path,
-            index_rate, resample_sr, rms_mix_rate, protect,
+            index_rate, resample_sr, rms_mix_rate, protect, formant,
         )
         if not opt or opt[0] is None or opt[1] is None:
             return jsonify({'code': 500, 'msg': info or '转换失败'}), 500

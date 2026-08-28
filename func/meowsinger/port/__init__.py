@@ -6,6 +6,9 @@ from func.meowsinger.config import MeowSingerConfig
 
 def get_singer_llm():
     cfg = MeowSingerConfig()
+    if cfg.llm_type == "gemini":
+        from func.meowsinger.port.gemini import MeowSingerGeminiLLM
+        return MeowSingerGeminiLLM(cfg)
     if cfg.llm_type == "aliyun":
         from func.meowsinger.port.aliyun import MeowSingerAliyunLLM
         return MeowSingerAliyunLLM(cfg)

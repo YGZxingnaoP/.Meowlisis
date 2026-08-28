@@ -37,7 +37,10 @@ class MeowUpdateUserInfo:
     def _ensure_llm(self):
         """懒加载用户记忆独立 LLM 客户端"""
         if self.llm is None:
-            if self.config.user_llm_type == "aliyun":
+            if self.config.user_llm_type == "gemini":
+                from func.catbrain.UserMemory.port.gemini import MeowUserMemoryGeminiLLM
+                self.llm = MeowUserMemoryGeminiLLM()
+            elif self.config.user_llm_type == "aliyun":
                 self.llm = MeowUserMemoryAliyunLLM()
             else:
                 self.llm = MeowUserMemoryDeepSeekLLM()

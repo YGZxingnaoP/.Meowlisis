@@ -26,7 +26,11 @@ class AutoVisionSender:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = AutoVisionConfig()
-        self.llm = AutoVisionAliyunLLM(self.config)
+        if self.config.llm_type == "gemini":
+            from func.llm_active.origin.vision.port.gemini import AutoVisionGeminiLLM
+            self.llm = AutoVisionGeminiLLM(self.config)
+        else:
+            self.llm = AutoVisionAliyunLLM(self.config)
 
     def send(self, images: List[str], text_prompt: str = "",
              system_prompt: str = "") -> Optional[str]:

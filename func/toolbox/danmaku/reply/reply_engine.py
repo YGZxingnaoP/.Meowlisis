@@ -33,19 +33,19 @@ class TBDanmakuReply:
 
     # ==================== 消费入口 ====================
     def consume(self):
-        """消费一次：SC 优先，否则消费普通弹幕队列"""
+        # 消费一次：SC 优先，普通弹幕先选取再分发
         try:
-            # 海龟汤游戏激活时：弹幕猜测优先走游戏（live 会话）
-            if self._route_turtle_soup():
-                return
             # 1. SC 优先
             sc = self.receiver.pop_sc()
             if sc:
-                self._reply_sc(sc)
-                self.receiver.remove_sc(sc)  # SC 只删除被回复的这条
+                if self._is_turtle_soup_active():
+                    self._route_turtle_soup_one(sc)
+                else:
+                    self._reply_sc(sc)
+                self.receiver.remove_sc(sc)
                 return
 
-            # 2. 普通弹幕
+            # 2. 普通弹幕：三种选取方案始终生效
             danmaku_list = self.receiver.snapshot_danmaku()
             if not danmaku_list:
                 return
@@ -53,48 +53,84 @@ class TBDanmakuReply:
             if not picked:
                 self.receiver.clear_danmaku()
                 return
-            self._reply_danmaku(picked)
-            self.receiver.clear_danmaku()  # 每次回复清空弹幕队列
+
+            # 3. 海龟汤游玩阶段：单条走判定，统一回复走主 LLM
+            if self._is_turtle_soup_active():
+                if len(picked) == 1:
+                    self._route_turtle_soup_one(picked[0])
+                else:
+                    self._reply_danmaku(picked)
+                self.receiver.clear_danmaku()
+                return
+
+            # 4. 正常阶段：单条先点歌，统一回复不点歌；两者都走 toolbox
+            if len(picked) == 1:
+                if not self._route_singer(picked[0]):
+                    self._reply_single(picked[0])
+                    self._send_to_toolbox(picked[0])
+            else:
+                self._reply_danmaku(picked)
+                self._send_multi_to_toolbox(picked)
+
+            self.receiver.clear_danmaku()
         except Exception:
             self.log.exception("[DanmakuReply] 消费弹幕异常")
 
-    # ==================== 海龟汤路由 ====================
-    def _route_turtle_soup(self) -> bool:
-        """游戏激活时逐条路由弹幕（SC 优先，再普通弹幕）：consumed=游戏已处理，pass=走弹幕单条回复主持"""
+    # ==================== 海龟汤 ====================
+    def _is_turtle_soup_active(self) -> bool:
+        # 海龟汤游玩阶段判断
         try:
             from func.pipeline.turtle_soup_state import TurtleSoupStateBridge
-            if not TurtleSoupStateBridge().is_active("live"):
-                return False
-            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-            core = TBTurtleSoupCore()
-
-            # SC 优先
-            sc = self.receiver.pop_sc()
-            if sc:
-                self._route_one(core, sc)
-                self.receiver.remove_sc(sc)
-                return True
-
-            # 普通弹幕
-            danmaku_list = self.receiver.snapshot_danmaku()
-            if not danmaku_list:
-                return False
-            for d in danmaku_list:
-                self._route_one(core, d)
-            self.receiver.clear_danmaku()
-            return True
+            return TurtleSoupStateBridge().is_active("live")
         except Exception:
-            self.log.exception("[DanmakuReply] 海龟汤路由异常")
             return False
 
-    def _route_one(self, core, d):
+    def _route_turtle_soup_one(self, d):
+        # 海龟汤游玩阶段：单条弹幕走判定
+        try:
+            from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+            content = (d.get("content") or "").strip()
+            if not content:
+                return
+            r = TBTurtleSoupCore().route_text(content, d.get("username", "用户"), channel="live")
+            if r == "pass":
+                self._reply_single(d)
+        except Exception:
+            self.log.exception("[DanmakuReply] 海龟汤判定异常")
+
+    # ==================== 点歌 / toolbox ====================
+    def _route_singer(self, d) -> bool:
+        # 单条弹幕走 meowsinger 点歌/翻唱拦截
+        content = (d.get("content") or "").strip()
+        if not content:
+            return False
+        try:
+            from func.pipeline.toolbox_singer import ToolboxSingerBridge
+            return ToolboxSingerBridge().send_to_singer(content, d.get("username", "用户"), "danmaku")
+        except Exception:
+            self.log.exception("[DanmakuReply] 弹幕→meowsinger 处理异常")
+            return False
+
+    def _send_to_toolbox(self, d):
+        # 单条弹幕走 toolbox 工具分析
         content = (d.get("content") or "").strip()
         if not content:
             return
-        r = core.route_text(content, d.get("username", "用户"), channel="live")
-        if r == "pass":
-            # 普通猜测：走弹幕单条回复（主 LLM 用 danmaku 提示词，已注入游戏块）
-            self._reply_single(d)
+        try:
+            from func.pipeline.msg_toolbox import MsgToolboxBridge
+            MsgToolboxBridge().send_to_toolbox(content, d.get("username", "用户"))
+        except Exception:
+            self.log.exception("[DanmakuReply] 弹幕→toolbox 分析异常")
+
+    def _send_multi_to_toolbox(self, picked):
+        # 统一回复也走 toolbox 工具分析
+        try:
+            lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
+            wrapped = "【弹幕】" + "；".join(lines)
+            from func.pipeline.msg_toolbox import MsgToolboxBridge
+            MsgToolboxBridge().send_to_toolbox(wrapped, picked[0].get("username", "用户") if picked else "")
+        except Exception:
+            self.log.exception("[DanmakuReply] 统一回复→toolbox 分析异常")
 
     # ==================== 选取算法 ====================
     def _pick(self, danmaku_list: list) -> list:

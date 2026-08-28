@@ -182,6 +182,9 @@ class TBWeatherNapcatPlugin:
     def _llm():
         from func.toolbox.config import TBoxConfig
         cfg = TBoxConfig()
+        if cfg.llm_type == "gemini":
+            from func.toolbox.port.gemini import TBoxGeminiLLM
+            return TBoxGeminiLLM(cfg)
         if cfg.llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(cfg)

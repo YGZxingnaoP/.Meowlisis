@@ -172,6 +172,7 @@ class VC:
         resample_sr,
         rms_mix_rate,
         protect,
+        formant=0,
     ):
         if input_audio_path is None:
             return inference_status("单次推理", "等待输入", i18n("请上传音频文件")), None
@@ -193,8 +194,12 @@ class VC:
                     .strip("\n")
                     .strip('"')
                     .strip(" ")
-                    .replace("trained", "added")
                 )
+                # 兼容历史命名：仅当原始路径不存在时，才尝试把 trained 前缀替换为 added
+                if not os.path.exists(file_index):
+                    added = file_index.replace("trained", "added")
+                    if os.path.exists(added):
+                        file_index = added
             else:
                 file_index = ""  # 防止小白写错，自动帮他替换掉
 
@@ -214,6 +219,7 @@ class VC:
                 rms_mix_rate,
                 self.version,
                 protect,
+                formant,
             )
             if self.tgt_sr != resample_sr >= 16000:
                 tgt_sr = resample_sr

@@ -59,7 +59,10 @@ class TBImpromptuSing:
             from func.toolbox.config import TBoxConfig
             from func.toolbox.get_prompt import TBoxGetPrompt
             cfg = TBoxConfig()
-            if cfg.llm_type == "aliyun":
+            if cfg.llm_type == "gemini":
+                from func.toolbox.port.gemini import TBoxGeminiLLM
+                llm = TBoxGeminiLLM(cfg)
+            elif cfg.llm_type == "aliyun":
                 from func.toolbox.port.aliyun import TBoxAliyunLLM
                 llm = TBoxAliyunLLM(cfg)
             else:

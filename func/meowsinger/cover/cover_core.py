@@ -46,11 +46,15 @@ class MeowCoverCore:
             self.log.exception("[Cover] 调 RVC 分离异常")
             return None
 
-    def convert(self, vocal_path, output_path):
+    def convert(self, vocal_path, output_path, f0_up_key=None, formant=None):
         """调 RVC 服务把分离出的人声变声，返回输出路径"""
         # RVC 服务是独立进程，cwd 不在项目根目录，必须传绝对路径
         vocal_path = os.path.abspath(vocal_path)
         output_path = os.path.abspath(output_path)
+        if f0_up_key is None:
+            f0_up_key = self._resolve_f0_up_key(vocal_path)
+        if formant is None:
+            formant = self._resolve_formant()
         try:
             resp = requests.post(
                 f"{self.config.rvc_url}/api/convert",
@@ -59,10 +63,13 @@ class MeowCoverCore:
                     "index": self.config.rvc_index,
                     "input_path": vocal_path,
                     "output_path": output_path,
-                    "f0_up_key": 0,
-                    "f0_method": "rmvpe",
-                    "index_rate": 0.75,
-                    "protect": 0.33,
+                    "f0_up_key": f0_up_key,
+                    "formant": formant,
+                    "f0_method": self.config.rvc_f0_method,
+                    "index_rate": self.config.rvc_index_rate,
+                    "protect": self.config.rvc_protect,
+                    "rms_mix_rate": self.config.rvc_rms_mix_rate,
+                    "resample_sr": self.config.rvc_resample_sr,
                 },
                 timeout=3600,
             )
@@ -74,6 +81,33 @@ class MeowCoverCore:
         except Exception:
             self.log.exception("[Cover] 调 RVC 变声异常")
             return ""
+
+    def _resolve_f0_up_key(self, vocal_path):
+        """动态变调：实测干声 F0 中位，向目标音高靠拢（不分男女，只认实际音高）"""
+        try:
+            import librosa
+            y, sr = librosa.load(vocal_path, sr=16000, mono=True)
+            f0, voiced_flag, _ = librosa.pyin(
+                y, fmin=60, fmax=800, sr=sr
+            )
+            if voiced_flag is None or not np.any(voiced_flag):
+                return 0
+            med = float(np.median(f0[voiced_flag]))
+            if med <= 0:
+                return 0
+            target = float(self.config.target_f0 or 325)
+            semitones = 12.0 * np.log2(target / med)
+            return int(round(np.clip(semitones, -24, 24)))
+        except Exception:
+            self.log.exception("[Cover] F0 检测失败，按不转调处理")
+            return 0
+
+    def _resolve_formant(self):
+        """音色偏移：直接取配置的 formant（半音，正=更细更年轻，负=更粗更成熟）"""
+        try:
+            return float(self.config.formant or 0)
+        except (TypeError, ValueError):
+            return 0.0
 
     def learn_song(self, title, mp3_path):
         """学习一首歌：分离 → 变声 → 三轨与歌词保存到 meow_list，返回是否成功"""

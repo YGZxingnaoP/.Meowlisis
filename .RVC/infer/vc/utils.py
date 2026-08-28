@@ -17,7 +17,7 @@ def get_index_path_from_model(sid):
             continue
         for root, _, files in os.walk(index_root, topdown=False):
             for name in files:
-                if not name.lower().endswith(".index") or "trained" in name.lower():
+                if not name.lower().endswith(".index"):
                     continue
                 index_stem = os.path.splitext(name)[0]
                 lower_index = index_stem.lower()

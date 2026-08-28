@@ -57,3 +57,14 @@ class LLMConfig:
         self.aliyun_top_p = aliyun_cfg.get('top_p', 0.9)
         self.aliyun_stream = aliyun_cfg.get('stream', True)
         self.aliyun_enable_thinking = aliyun_cfg.get('enable_thinking', False)
+
+        # ========== Gemini 配置 ==========
+        gemini_cfg = cfg.get('gemini', {})
+        self.gemini_api_key = gemini_cfg.get('api_key', '')
+        self.gemini_base_url = gemini_cfg.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.gemini_model = gemini_cfg.get('model', 'gemini-3.6-flash')
+        self.gemini_temperature = gemini_cfg.get('temperature', 0.7)
+        self.gemini_max_tokens = gemini_cfg.get('max_tokens', 1024)
+        self.gemini_top_p = gemini_cfg.get('top_p', 0.9)
+        self.gemini_stream = gemini_cfg.get('stream', True)
+        self.gemini_enable_thinking = gemini_cfg.get('enable_thinking', False)

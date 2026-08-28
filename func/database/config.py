@@ -44,6 +44,12 @@ class CatLearnConfig:
         self.search_aliyun_model = sal.get('model', 'qwen-plus')
         self.search_aliyun_max_tokens = sal.get('max_tokens', 2048)
 
+        sgm = s.get('gemini', {})
+        self.search_gemini_api_key = sgm.get('api_key', '')
+        self.search_gemini_base_url = sgm.get('base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/')
+        self.search_gemini_model = sgm.get('model', 'gemini-3.6-flash')
+        self.search_gemini_max_tokens = sgm.get('max_tokens', 2048)
+
         # ========== search Agent 配置 ==========
         agent = s.get('agent', {}) or {}
         # 单 task 工具调用最大轮数（AI 一直调工具时强制结束）

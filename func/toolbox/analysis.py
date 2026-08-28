@@ -139,7 +139,10 @@ class TBoxAnalysis:
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
-            if self.config.llm_type == "aliyun":
+            if self.config.llm_type == "gemini":
+                from func.toolbox.port.gemini import TBoxGeminiLLM
+                self.llm = TBoxGeminiLLM()
+            elif self.config.llm_type == "aliyun":
                 from func.toolbox.port.aliyun import TBoxAliyunLLM
                 self.llm = TBoxAliyunLLM()
             else:
@@ -186,7 +189,7 @@ class TBoxAnalysis:
             f"只有用户「明确」表达以下操作意图时，才调用对应工具：\n"
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
             f"- 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。\n"
-            f"- 所有可能和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
+            f"- 只要提到屏幕！所有和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"
             f"- 明确要看新闻/热点/头条 → read_news；\n"
             f"- 用户想听歌/听你唱歌/有听歌需求/即兴哼唱/唱一小段 → 必须调用impromptu_sing；\n"
@@ -214,16 +217,17 @@ class TBoxAnalysis:
             self.log.info("父级 toolcalls 未调用工具，静默")
             return
 
-        self.log.info(f"父级 toolcalls 命中工具 {[tc.function.name for tc in tool_calls]}: {text[:20]}")
-        for tc in tool_calls:
-            name = tc.function.name
-            try:
-                args = json.loads(tc.function.arguments or "{}")
-            except Exception:
-                self.log.exception(f"解析工具参数失败: {name}")
-                args = {}
-            result = self.dispatch(name, args, username)
-            self.log.info(f"父级工具 {name} 执行结果: {result}")
+        # 只取第一个工具，避免一次多工具并发冲突
+        tc = tool_calls[0]
+        self.log.info(f"父级 toolcalls 命中工具 {tc.function.name}: {text[:20]}")
+        name = tc.function.name
+        try:
+            args = json.loads(tc.function.arguments or "{}")
+        except Exception:
+            self.log.exception(f"解析工具参数失败: {name}")
+            args = {}
+        result = self.dispatch(name, args, username)
+        self.log.info(f"父级工具 {name} 执行结果: {result}")
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

@@ -13,6 +13,7 @@ import parselmouth
 import torch
 import torch.nn.functional as F
 from scipy import signal
+from torchaudio.transforms import Resample
 
 from infer.hubert import extract_hubert_features
 from tools.cuda_graph import cuda_graph_enabled, run_cuda_graph
@@ -53,6 +54,7 @@ class Pipeline(object):
         )
         self.sr = 16000  # hubert输入采样率
         self.window = 160  # 每帧点数
+        self.tgt_sr = tgt_sr  # 模型输出采样率（formant 重采样用）
         self.t_pad = self.sr * self.x_pad  # 每条前后pad时间
         self.t_pad_tgt = tgt_sr * self.x_pad
         self.t_pad2 = self.t_pad * 2
@@ -60,6 +62,7 @@ class Pipeline(object):
         self.t_center = self.sr * self.x_center  # 查询切点位置
         self.t_max = self.sr * self.x_max  # 免查询时长阈值
         self.device = config.device
+        self.resample_kernel = {}  # formant 重采样核缓存
 
     def get_f0(
         self,
@@ -152,6 +155,7 @@ class Pipeline(object):
         index_rate,
         version,
         protect,
+        formant_shift=0,
     ):
         feats = torch.from_numpy(audio0)
         if self.is_half:
@@ -184,16 +188,20 @@ class Pipeline(object):
                 npy = npy.astype("float32")
 
             score, ix = index.search(npy, k=8)
-            weight = np.square(1 / score)
-            weight /= weight.sum(axis=1, keepdims=True)
-            npy = np.sum(index_vectors[ix] * np.expand_dims(weight, axis=2), axis=1)
+            if ix.size == 0 or (ix < 0).any():
+                # 索引无有效结果（空索引/搜索失败），跳过融合，保持原始特征
+                pass
+            else:
+                weight = np.square(1 / score)
+                weight /= weight.sum(axis=1, keepdims=True)
+                npy = np.sum(index_vectors[ix] * np.expand_dims(weight, axis=2), axis=1)
 
-            if self.is_half:
-                npy = npy.astype("float16")
-            feats = (
-                torch.from_numpy(npy).unsqueeze(0).to(self.device) * index_rate
-                + (1 - index_rate) * feats
-            )
+                if self.is_half:
+                    npy = npy.astype("float16")
+                feats = (
+                    torch.from_numpy(npy).unsqueeze(0).to(self.device) * index_rate
+                    + (1 - index_rate) * feats
+                )
 
         feats = F.interpolate(feats.permute(0, 2, 1), scale_factor=2).permute(0, 2, 1)
         if protect < 0.5 and pitch is not None and pitchf is not None:
@@ -208,6 +216,11 @@ class Pipeline(object):
                 pitch = pitch[:, :p_len]
                 pitchf = pitchf[:, :p_len]
 
+        # formant：计算输出帧长度（照搬 rtrvc 的 return_length2 机制）
+        factor = pow(2, formant_shift / 12)
+        return_length = p_len
+        return_length2 = int(np.ceil(return_length * factor))
+
         if protect < 0.5 and pitch is not None and pitchf is not None:
             pitchff = pitchf.clone()
             pitchff[pitchf > 0] = 1
@@ -215,15 +228,21 @@ class Pipeline(object):
             pitchff = pitchff.unsqueeze(-1)
             feats = feats * pitchff + feats0 * (1 - pitchff)
             feats = feats.to(feats0.dtype)
+
+        # formant：音高缩放（protect 之后、送模型之前）
+        if formant_shift != 0 and pitchf is not None:
+            pitchf = pitchf * (return_length2 / return_length)
+
         p_len = torch.tensor([p_len], device=self.device).long()
         with torch.no_grad():
             hasp = pitch is not None and pitchf is not None
             if hasp:
                 synthesized = run_cuda_graph(
                     net_g,
-                    "rvc-synth-f0",
+                    "rvc-synth-f0-%d-%d" % (return_length, return_length2),
                     lambda phone, lengths, coarse, continuous, speaker: net_g.infer(
-                        phone, lengths, coarse, continuous, speaker
+                        phone, lengths, coarse, continuous, speaker,
+                        0, return_length, return_length2,
                     )[0],
                     feats,
                     p_len,
@@ -244,6 +263,20 @@ class Pipeline(object):
                 )
             audio1 = synthesized[0, 0].data.cpu().float().numpy()
             del hasp, synthesized
+
+        # formant：输出重采样，把 return_length2 帧压缩回 return_length 帧（保持时长不变）
+        if formant_shift != 0 and pitchf is not None:
+            upp_res = int(np.floor(factor * self.tgt_sr // 100))
+            if upp_res != self.tgt_sr // 100:
+                if upp_res not in self.resample_kernel:
+                    self.resample_kernel[upp_res] = Resample(
+                        orig_freq=upp_res,
+                        new_freq=self.tgt_sr // 100,
+                        dtype=torch.float32,
+                    ).to(self.device)
+                audio1 = self.resample_kernel[upp_res](
+                    torch.from_numpy(audio1)[: return_length * upp_res].to(self.device)
+                ).cpu().numpy()
         del feats, p_len, padding_mask
         if torch.cuda.is_available() and not cuda_graph_enabled(self.device):
             torch.cuda.empty_cache()
@@ -269,6 +302,7 @@ class Pipeline(object):
         rms_mix_rate,
         version,
         protect,
+        formant_shift=0,
     ):
         if (
             file_index != ""
@@ -277,7 +311,11 @@ class Pipeline(object):
         ):
             try:
                 index = faiss.read_index(file_index)
-                index_vectors = index.reconstruct_n(0, index.ntotal)
+                # 空索引（ntotal=0）会导致 search 返回 -1 并越界，直接视为无索引
+                if index.ntotal <= 0:
+                    index = index_vectors = None
+                else:
+                    index_vectors = index.reconstruct_n(0, index.ntotal)
             except:
                 traceback.print_exc()
                 index = index_vectors = None
@@ -311,7 +349,7 @@ class Pipeline(object):
             pitch, pitchf = self.get_f0(
                 audio_pad,
                 p_len,
-                f0_up_key,
+                f0_up_key - formant_shift,
                 f0_method,
             )
             pitch = pitch[:p_len]
@@ -338,6 +376,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
+                        formant_shift,
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             else:
@@ -355,6 +394,7 @@ class Pipeline(object):
                         index_rate,
                         version,
                         protect,
+                        formant_shift,
                     )[self.t_pad_tgt : -self.t_pad_tgt]
                 )
             s = t
@@ -373,6 +413,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
+                    formant_shift,
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         else:
@@ -390,6 +431,7 @@ class Pipeline(object):
                     index_rate,
                     version,
                     protect,
+                    formant_shift,
                 )[self.t_pad_tgt : -self.t_pad_tgt]
             )
         audio_opt = np.concatenate(audio_opt)

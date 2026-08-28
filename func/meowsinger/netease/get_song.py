@@ -24,15 +24,25 @@ class MeowNeteaseSong:
         """点歌入口：异步执行下载与播放"""
         Thread(target=self._play_async, args=(title, artist, username), daemon=True).start()
 
+    def _end_singing(self):
+        # 失败路径兜底清除唱歌占用
+        try:
+            from func.pipeline.singing_state import SingingStateBridge
+            SingingStateBridge().end_singing()
+        except Exception:
+            pass
+
     def _play_async(self, title, artist, username):
         if not title or not title.strip():
             self._reply_no_title(username)
+            self._end_singing()
             return
         title = title.strip()
 
         info = self.ncm.search_and_download(title, artist)
         if not info:
             self._reply_fail(title, username)
+            self._end_singing()
             return
         mp3_path = self.ncm.save_song(info.get("songname", title), info)
 

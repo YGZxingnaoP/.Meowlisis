@@ -262,11 +262,13 @@ const Config = {
             <select data-path="llm.local_llm_type">
                 <option value="deepseek" ${type === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                 <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
 
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="deepseek">DeepSeek</button>
             <button class="modal-tab" data-tab="aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="gemini">Gemini</button>
         </div>`;
 
         h += `<div class="tab-content active" data-tab-content="deepseek">` +
@@ -289,6 +291,17 @@ const Config = {
             this._num('Top P', 'llm.aliyun.top_p', 0.9, 0, 1, 0.05) +
             this._check('启用流式输出', 'llm.aliyun.stream', true) +
             this._check('启用思考模式', 'llm.aliyun.enable_thinking', false) +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="gemini">` +
+            this._password('API Key', 'llm.gemini.api_key', '') +
+            this._text('Base URL', 'llm.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'llm.gemini.model', 'gemini-3.6-flash') +
+            this._num('温度', 'llm.gemini.temperature', 0.7, 0, 2, 0.1) +
+            this._num('最大输出 tokens', 'llm.gemini.max_tokens', 1024, 1, 8192, 16) +
+            this._num('Top P', 'llm.gemini.top_p', 0.9, 0, 1, 0.05) +
+            this._check('启用流式输出', 'llm.gemini.stream', true) +
+            this._check('启用思考模式', 'llm.gemini.enable_thinking', false) +
             `</div>`;
 
         h += this._num('短期记忆轮数', 'llm.short_term_rounds', 5, 1, 60, 1) +
@@ -424,6 +437,7 @@ const Config = {
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="abstract_ds">DeepSeek</button>
             <button class="modal-tab" data-tab="abstract_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="abstract_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="abstract_ds">` +
             this._password('API Key', 'catbrain.abstract_mem.deepseek.api_key', '') +
@@ -439,6 +453,13 @@ const Config = {
             this._num('温度', 'catbrain.abstract_mem.aliyun.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'catbrain.abstract_mem.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
+        h += `<div class="tab-content" data-tab-content="abstract_gemini">` +
+            this._password('API Key', 'catbrain.abstract_mem.gemini.api_key', '') +
+            this._text('Base URL', 'catbrain.abstract_mem.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'catbrain.abstract_mem.gemini.model', 'gemini-3.6-flash') +
+            this._num('温度', 'catbrain.abstract_mem.gemini.temperature', 0.7, 0, 2, 0.1) +
+            this._num('max_tokens', 'catbrain.abstract_mem.gemini.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
         return h;
     },
 
@@ -450,6 +471,7 @@ const Config = {
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="values_ds">DeepSeek</button>
             <button class="modal-tab" data-tab="values_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="values_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="values_ds">` +
             this._password('API Key', 'catbrain.cat_values.deepseek.api_key', '') +
@@ -461,6 +483,11 @@ const Config = {
             this._text('Base URL', 'catbrain.cat_values.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.cat_values.aliyun.model', 'qwen-plus') +
             `</div>`;
+        h += `<div class="tab-content" data-tab-content="values_gemini">` +
+            this._password('API Key', 'catbrain.cat_values.gemini.api_key', '') +
+            this._text('Base URL', 'catbrain.cat_values.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'catbrain.cat_values.gemini.model', 'gemini-3.6-flash') +
+            `</div>`;
         h += this._num('价值观 max_tokens', 'catbrain.cat_values.max_tokens', 8192, 1, 65536, 16) +
             this._num('工具调用最大轮数', 'catbrain.cat_values.max_tool_rounds', 100, 1, 1000, 1) +
             this._num('计时检查间隔(秒)', 'catbrain.cat_values.timer_check_seconds', 300, 1, 86400, 1) +
@@ -471,6 +498,7 @@ const Config = {
             <select data-path="catbrain.cat_values.second_review.llm_type">
                 <option value="deepseek" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                 <option value="aliyun" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="gemini" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
         return h;
     },
@@ -484,6 +512,7 @@ const Config = {
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="usermem_ds">DeepSeek</button>
             <button class="modal-tab" data-tab="usermem_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="usermem_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="usermem_ds">` +
             this._password('API Key', 'catbrain.user_memory.deepseek.api_key', '') +
@@ -495,6 +524,11 @@ const Config = {
             this._text('Base URL', 'catbrain.user_memory.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.user_memory.aliyun.model', 'qwen-plus') +
             `</div>`;
+        h += `<div class="tab-content" data-tab-content="usermem_gemini">` +
+            this._password('API Key', 'catbrain.user_memory.gemini.api_key', '') +
+            this._text('Base URL', 'catbrain.user_memory.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'catbrain.user_memory.gemini.model', 'gemini-3.6-flash') +
+            `</div>`;
         h += this._num('用户记忆温度', 'catbrain.user_memory.temperature', 0.7, 0, 2, 0.1) +
             this._num('用户记忆 max_tokens', 'catbrain.user_memory.max_tokens', 2048, 1, 32768, 16);
         return h;
@@ -505,6 +539,7 @@ const Config = {
             <select data-path="${path}">
                 <option value="deepseek" ${current === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                 <option value="aliyun" ${current === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="gemini" ${current === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
     },
 
@@ -1026,7 +1061,13 @@ const Config = {
 
     // ============ B站浏览配置（视觉模型 + 内容收集） ============
     webBrowseConfig() {
+        const visionType = this._val('llm_active.vision.llm_type', 'aliyun');
         let h = this._section('B站浏览视觉模型 (llm_active.vision)') +
+            `<div class="form-group"><label>视觉 LLM 类型</label>
+            <select data-path="llm_active.vision.llm_type">
+                <option value="aliyun" ${visionType === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="gemini" ${visionType === 'gemini' ? 'selected' : ''}>Gemini</option>
+            </select></div>` +
             this._password('API Key', 'llm_active.vision.api_key', '',
                 '独立于 MeowVision，仅用于 B站视频截图的内容理解') +
             this._text('Base URL', 'llm_active.vision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
@@ -1034,7 +1075,14 @@ const Config = {
             this._num('温度', 'llm_active.vision.temperature', 0.7, 0, 2, 0.1) +
             this._num('最大输出 tokens', 'llm_active.vision.max_tokens', 600, 1, 8192, 16,
                 '内容描述(≤300字) + 话题 + tags 的输出预算') +
-            this._num('Top P', 'llm_active.vision.top_p', 0.9, 0, 1, 0.05);
+            this._num('Top P', 'llm_active.vision.top_p', 0.9, 0, 1, 0.05) +
+            this._section('Gemini 视觉') +
+            this._password('Gemini API Key', 'llm_active.vision.gemini.api_key', '') +
+            this._text('Gemini Base URL', 'llm_active.vision.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('Gemini 模型', 'llm_active.vision.gemini.model', 'gemini-3.6-flash') +
+            this._num('Gemini 温度', 'llm_active.vision.gemini.temperature', 0.7, 0, 2, 0.1) +
+            this._num('Gemini 最大输出 tokens', 'llm_active.vision.gemini.max_tokens', 600, 1, 8192, 16) +
+            this._num('Gemini Top P', 'llm_active.vision.gemini.top_p', 0.9, 0, 1, 0.05);
 
         h += this._section('B站内容收集 (llm_active.web_browse)') +
             this._check('启用 B站内容收集', 'llm_active.web_browse.enabled', true,
@@ -1124,6 +1172,7 @@ const Config = {
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="toolbox_ds">DeepSeek</button>
             <button class="modal-tab" data-tab="toolbox_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="toolbox_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="toolbox_ds">` +
             this._password('API Key', 'toolbox.deepseek.api_key', '') +
@@ -1139,6 +1188,13 @@ const Config = {
             this._num('温度', 'toolbox.aliyun.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'toolbox.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
+        h += `<div class="tab-content" data-tab-content="toolbox_gemini">` +
+            this._password('API Key', 'toolbox.gemini.api_key', '') +
+            this._text('Base URL', 'toolbox.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'toolbox.gemini.model', 'gemini-3.6-flash') +
+            this._num('温度', 'toolbox.gemini.temperature', 0.7, 0, 2, 0.1) +
+            this._num('max_tokens', 'toolbox.gemini.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
         h += this._section('excuse 通用询问链路') +
             this._check('启用 excuse 询问', 'toolbox.excuse_enabled', true,
                 'AI 有疑问时以角色口吻语音询问，并阻塞等待用户文本输入补充需求') +
@@ -1148,7 +1204,13 @@ const Config = {
 
     // ============ MeowVision 视觉模块 ============
     meowvision() {
-        return this._section('MeowVision 视觉理解（阿里云 qvq）') +
+        const type = this._val('meowvision.llm_type', 'aliyun');
+        return this._section('MeowVision 视觉理解') +
+            `<div class="form-group"><label>视觉 LLM 类型</label>
+            <select data-path="meowvision.llm_type">
+                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
+            </select></div>` +
             this._password('API Key', 'meowvision.api_key', '') +
             this._text('Base URL', 'meowvision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'meowvision.model', 'qvq-plus') +
@@ -1156,6 +1218,13 @@ const Config = {
             this._num('最大输出 tokens', 'meowvision.max_tokens', 512, 1, 8192, 16,
                 '视觉回复最大 token，默认 512') +
             this._num('Top P', 'meowvision.top_p', 0.9, 0, 1, 0.05) +
+            this._section('Gemini 视觉') +
+            this._password('Gemini API Key', 'meowvision.gemini.api_key', '') +
+            this._text('Gemini Base URL', 'meowvision.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('Gemini 模型', 'meowvision.gemini.model', 'gemini-3.6-flash') +
+            this._num('Gemini 温度', 'meowvision.gemini.temperature', 0.7, 0, 2, 0.1) +
+            this._num('Gemini 最大输出 tokens', 'meowvision.gemini.max_tokens', 512, 1, 8192, 16) +
+            this._num('Gemini Top P', 'meowvision.gemini.top_p', 0.9, 0, 1, 0.05) +
             this._text('图片缓存目录', 'meowvision.cache_dir', './.temp/vision_cache',
                 '截图/裁切/编码结果统一缓存目录；NapCat 收到的图片也会先落到此目录避免直接用 url') +
             this._section('Watching 长期观察') +
@@ -1229,6 +1298,7 @@ const Config = {
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="meowsinger_ds">DeepSeek</button>
             <button class="modal-tab" data-tab="meowsinger_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="meowsinger_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="meowsinger_ds">` +
             this._password('API Key', 'meowsinger.deepseek.api_key', '') +
@@ -1241,6 +1311,12 @@ const Config = {
             this._text('Base URL', 'meowsinger.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'meowsinger.aliyun.model', 'qwen-plus') +
             this._num('max_tokens', 'meowsinger.aliyun.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="meowsinger_gemini">` +
+            this._password('API Key', 'meowsinger.gemini.api_key', '') +
+            this._text('Base URL', 'meowsinger.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'meowsinger.gemini.model', 'gemini-3.6-flash') +
+            this._num('max_tokens', 'meowsinger.gemini.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
         h += this._section('回复引导词') +
             this._area('回复引导词', 'meowsinger.prompt.reply', '',
@@ -1310,6 +1386,23 @@ const Config = {
                 '从 .RVC/assets/weights 目录读取') +
             this._select('RVC 索引', 'meowsinger.cover.rvc_index', indexOpts, '',
                 '从 .RVC/assets/indices 目录读取，留空则自动匹配') +
+            this._section('变声参数') +
+            this._select('音高提取算法', 'meowsinger.cover.f0_method', [
+                {value:'rmvpe', label:'rmvpe'}, {value:'fcpe', label:'fcpe'}, {value:'pm', label:'pm'}
+            ], 'rmvpe', '变调方案暂定 rmvpe，可后续在面板调整') +
+            this._num('目标音高（Hz）', 'meowsinger.cover.target_f0', 325, 60, 800, 1,
+                '变调目标：实测原唱 F0 后动态向该音高靠拢，不分男女') +
+            this._num('音色偏移（半音）', 'meowsinger.cover.formant', 0, -12, 12, 0.1,
+                '共振峰偏移：正=更细更年轻，负=更粗更成熟，0=模型原声，支持小数如 0.8') +
+            this._num('索引占比', 'meowsinger.cover.index_rate', 0.75, 0, 1, 0.05,
+                '越高越像目标音色，越低越像原唱') +
+            this._num('清辅音保护', 'meowsinger.cover.protect', 0.33, 0, 0.5, 0.01,
+                '0.5=关闭保护，越低保护越强') +
+            this._num('音量包络融合', 'meowsinger.cover.rms_mix_rate', 1, 0, 1, 0.05,
+                '1=不融合，有爆音可调 0.5~0.9') +
+            this._select('输出采样率', 'meowsinger.cover.resample_sr', [
+                {value:0, label:'0（模型默认）'}, {value:44100, label:'44100'}, {value:48000, label:'48000'}
+            ], 0, '一般保持 0') +
             this._select('学歌模式', 'meowsinger.cover.learn_mode', [
                 {value:'idle', label:'空闲时学习'}, {value:'immediate', label:'立刻学习'}
             ], 'idle') +

@@ -119,6 +119,28 @@ class TBImageSearch:
                 final.append(cls._compress_if_needed(p, cache_dir))
         return final
 
+    @classmethod
+    def prepare_static_only(cls, images: List[Dict], cache_dir: str) -> List[str]:
+        # 落地图片后只保留静态图（跳过动图），再压缩返回
+        from func.toolbox.napcat.image.gif_frame import TBGifFrame
+        paths = cls.to_local_paths(images, cache_dir)
+
+        max_n = cls._max_images()
+        if max_n and max_n > 0 and len(paths) > max_n:
+            paths = paths[-max_n:]
+
+        final: List[str] = []
+        for p in paths:
+            if not p:
+                continue
+            if not os.path.exists(p):
+                final.append(p)
+                continue
+            if TBGifFrame.is_animated(p):
+                continue
+            final.append(cls._compress_if_needed(p, cache_dir))
+        return final
+
     @staticmethod
     def gather_text_context(current_text: str, history_messages: List[dict],
                             limit: int = 3) -> str:
