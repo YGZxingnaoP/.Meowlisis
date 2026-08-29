@@ -1,23 +1,20 @@
 # -*- coding: utf-8 -*-
 # func/sensevoice/sensevoice_core.py
-# SenseVoice 语音识别编排入口
+# SenseVoice 语音识别编排入口（多源独立会话）
 
 import asyncio
 import threading
 from typing import Optional, Callable
 
 from func.log.default_log import DefaultLog
+from func.audio import AudioHub
 from func.sensevoice.config import SenseVoiceConfig
-from func.sensevoice.port import SenseVoicePort
-from func.sensevoice.microphone import Microphone
-from func.sensevoice.audio import AudioProcessor
-from func.sensevoice.interrupt import InterruptDetector
-from func.sensevoice.manager import SenseVoiceManager
+from func.sensevoice.session import SenseVoiceSession
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
 
 class SenseVoiceCore:
-    """SenseVoice 客户端核心，编排各子组件完成识别链路"""
+    """SenseVoice 客户端核心：为每个启用的音频源创建独立识别会话"""
 
     def __init__(self, callback: Optional[Callable[[str, str], None]] = None):
         self.log = DefaultLog().getLogger()
@@ -32,12 +29,9 @@ class SenseVoiceCore:
             return
 
         self.callback = callback
-        self.port = SenseVoicePort(self.config, self.log)
-        self.microphone = Microphone(self.config, self.log)
-        self.audio = AudioProcessor(self.config, self.log, self.microphone)
-        self.interrupt = InterruptDetector(self.config, self.log)
-        self.manager = SenseVoiceManager(self.config, self.port, self.log, callback)
+        self.hub = AudioHub()
         self.sensevoice_tts = SenseVoiceTtsBridge()
+        self.sessions = {}  # sid -> asyncio.Task
 
     def start(self):
         """启动识别后台线程"""
@@ -48,6 +42,7 @@ class SenseVoiceCore:
             self.log.warning("SenseVoice 已在运行")
             return
         self.running = True
+        self.hub.open()
         self.thread = threading.Thread(target=self._run_async_loop, daemon=True)
         self.thread.start()
         self.log.info("SenseVoice 识别线程已启动")
@@ -57,14 +52,21 @@ class SenseVoiceCore:
         if not self.enabled:
             return
         self.running = False
-        for task in self.manager.pending_tasks.values():
-            task.cancel()
-        self.manager.pending_tasks.clear()
-        self.manager.pending_texts.clear()
+        self.hub.close()
         if self.loop and self.loop.is_running():
-            self.loop.call_soon_threadsafe(self.loop.stop)
+            async def _shutdown():
+                tasks = [t for t in self.sessions.values() if t is not None and not t.done()]
+                for t in tasks:
+                    t.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                self.loop.stop()
+            try:
+                asyncio.run_coroutine_threadsafe(_shutdown(), self.loop)
+            except Exception:
+                self.loop.call_soon_threadsafe(self.loop.stop)
         if self.thread:
-            self.thread.join(timeout=5)
+            self.thread.join(timeout=8)
         self.log.info("SenseVoice 识别线程已停止")
 
     def _run_async_loop(self):
@@ -76,59 +78,50 @@ class SenseVoiceCore:
         except Exception as e:
             self.log.error(f"SenseVoice 主协程异常: {e}")
         finally:
+            # 取消并等待残留任务，避免 Event loop is closed / Task destroyed
+            try:
+                pending = asyncio.all_tasks(self.loop)
+                for t in pending:
+                    t.cancel()
+                if pending:
+                    self.loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
             self.loop.close()
 
     async def _main(self):
-        """主循环：连接服务端并并行运行采集与接收"""
+        """主循环：按源开关动态创建/停止识别会话"""
         while self.running:
-            try:
-                async with self.port:
-                    self.log.info(f"已连接到 SenseVoice 服务器 {self.config.server_url}")
-                    await self.manager.send_config()
-                    capture_task = asyncio.create_task(self._capture_loop())
-                    recv_task = asyncio.create_task(self.manager.receive_loop())
-                    done, pending = await asyncio.wait(
-                        [capture_task, recv_task],
-                        return_when=asyncio.FIRST_COMPLETED
-                    )
-                    for task in pending:
-                        task.cancel()
-                    if self.running:
-                        await asyncio.sleep(1)
-            except Exception as e:
-                if self.running:
-                    self.log.error(f"SenseVoice 连接异常: {e}，1秒后重连")
-                    await asyncio.sleep(1)
-                else:
-                    break
+            self._sync_sessions()
+            await asyncio.sleep(1)
 
-    async def _capture_loop(self):
-        """采集循环：读取帧、检测说话状态、持续发送音频与控制信号"""
-        self.microphone.open()
-        try:
-            while self.running:
-                frame = self.audio.next_frame()
+    def _sync_sessions(self):
+        """同步会话：启用的源创建会话任务，停用的源取消任务"""
+        for sid in self.hub.source_ids():
+            enabled = self.hub.is_enabled(sid)
+            task = self.sessions.get(sid)
+            if enabled and (task is None or task.done()):
+                session = self._make_session(sid)
+                self.sessions[sid] = asyncio.create_task(session.run())
+                self.log.info(f"[{sid}] 识别会话已启动")
+            elif not enabled and task is not None and not task.done():
+                task.cancel()
+                self.sessions[sid] = None
+                self.log.info(f"[{sid}] 识别会话已停止")
 
-                # 音频旁路：分发到哼唱检测与落盘缓存（原 SenseVoice 链路不变）
-                try:
-                    from func.pipeline.toolbox_audio import ToolboxAudioBridge
-                    ToolboxAudioBridge().dispatch_frame(frame)
-                except Exception:
-                    pass
-
-                # 检测说话状态（VAD）与打断状态，分别上报/传递
-                vad_event, interrupt_event = self.interrupt.update(frame)
-                if vad_event:
-                    await self.manager.send_speaking(vad_event == 'started')
-                if interrupt_event:
-                    self.sensevoice_tts.set_speaking(interrupt_event == 'started')
-
-                # 持续发送音频帧，保持数据流连续不断
-                await self.manager.send_audio(frame)
-                await asyncio.sleep(self.audio.frame_duration)
-        except Exception as e:
-            self.log.error(f"音频采集循环异常: {e}", exc_info=True)
-            raise
-        finally:
-            self.microphone.close()
-            self.log.info("音频采集已停止")
+    def _make_session(self, sid):
+        scfg = self.hub.config.source_config(sid)
+        return SenseVoiceSession(
+            source_id=sid,
+            config=self.config,
+            log=self.log,
+            hub=self.hub,
+            callback=self.callback,
+            tts_bridge=self.sensevoice_tts,
+            allow_interrupt=scfg.get('allow_interrupt', True),
+            speaker_verify=scfg.get('speaker_verify', True),
+            username=scfg.get('username', '主人的电脑'),
+            is_running=lambda: self.running and self.hub.is_enabled(sid),
+        )

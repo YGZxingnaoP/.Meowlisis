@@ -68,6 +68,11 @@ class LLmCore:
         cleaned = self.message_get.clean(text)
         if not cleaned:
             return
+        # 静默状态：只记用户消息，不生成回复
+        from func.pipeline.silence_state import SilenceState
+        if SilenceState().muted:
+            self._record_silent(cleaned, username, source, memory_config)
+            return
         llm_json = {
             "traceid": traceid,
             "prompt": cleaned,
@@ -82,6 +87,43 @@ class LLmCore:
         from func.pipeline.llm_timer import LLMTimerBridge
         LLMTimerBridge().notify_user_message()
         self.log.info(f"[{traceid}] 消息入队: {cleaned}")
+
+    def _record_silent(self, text: str, username: str, source: str = "llm",
+                       memory_config: dict = None):
+        """静默期间：仅记录用户消息（短期+长期+用户档案），不生成回复、不更新情绪。
+
+        与 _ai_response 的记忆写入规则对齐：弹幕走弹幕记忆配置，其余走主链路记忆。
+        """
+        try:
+            is_danmaku = (source == "danmaku")
+            mc = memory_config or {}
+            if is_danmaku:
+                # 弹幕：长期记忆开关控制是否写长期+摘要+用户档案
+                if mc.get("record_ltmem", True):
+                    self.ltmem.record_user_message(username, text)
+                else:
+                    self.ltmem.record_user_profile(username, text)
+                # 弹幕短期记忆（独立 type，按条裁剪）
+                short_type = mc.get("short_type", "danmaku_response")
+                short_mode = mc.get("short_mode", "items")
+                short_limit = int(mc.get("short_limit", self.config.short_term_rounds))
+                from func.pipeline.short_memory import ShortMemory
+                ShortMemory().save(
+                    {"role": "user", "content": text, "type": short_type},
+                    short_limit, trim_mode=short_mode,
+                )
+            else:
+                # 非弹幕：长期记忆/摘要/用户档案 + 短期记忆（other_talks 直写 JSON）
+                self.ltmem.record_user_message(username, text)
+                from func.pipeline.short_memory import ShortMemory
+                formatted = self.message_builder.format_user_content(username, text)
+                ShortMemory().save(
+                    {"role": "user", "content": formatted, "type": "other_talks"},
+                    50, trim_mode="items",
+                )
+            self.log.info(f"[静默] 已记录用户消息（不回复）: {text[:30]}")
+        except Exception:
+            self.log.exception("静默记录用户消息异常")
 
     def add_system_message(self, text: str, username: str = "主人"):
         """系统主动消息入口：直接放入问题队列"""

@@ -39,6 +39,18 @@ class InterruptDetector:
         interrupt_event = self._update_interrupt(energy, now)
         return vad_event, interrupt_event
 
+    def update_vad(self, data: bytes) -> Optional[str]:
+        """仅更新说话状态（VAD），返回 vad_event"""
+        energy = self._compute_energy(data)
+        now = time.time()
+        return self._update_speaking(energy, now)
+
+    def update_interrupt(self, data: bytes) -> Optional[str]:
+        """仅更新打断状态，返回 interrupt_event"""
+        energy = self._compute_energy(data)
+        now = time.time()
+        return self._update_interrupt(energy, now)
+
     def _update_speaking(self, energy: float, now: float) -> Optional[str]:
         """说话状态（VAD）：energy >= energy_threshold"""
         is_speech = energy >= self.energy_threshold

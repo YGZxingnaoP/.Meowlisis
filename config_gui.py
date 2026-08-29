@@ -174,6 +174,62 @@ def start_sensevoice():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/mic', methods=['POST'])
+def mic_toggle():
+    """闭麦开关：转发到主程序 api.py（1800）的 /mic 接口"""
+    import requests
+    data = request.get_json() or {}
+    try:
+        r = requests.post('http://127.0.0.1:1800/mic', json=data, timeout=5)
+        try:
+            return jsonify(r.json())
+        except Exception:
+            return jsonify({'status': 'error', 'message': f'主程序返回异常: HTTP {r.status_code}'})
+    except Exception:
+        return jsonify({'status': 'error', 'message': '主程序未启动，请先启动主程序'})
+
+
+@app.route('/api/audio', methods=['GET'])
+def audio_config():
+    """音频采集配置 + 可用设备列表"""
+    audio = load_config().get('audio', {}) or {}
+    devices = []
+    try:
+        from func.audio import AudioHub
+        devices = AudioHub.list_devices()
+    except Exception:
+        pass
+    return jsonify({'config': audio, 'devices': devices})
+
+
+@app.route('/api/audio', methods=['POST'])
+def save_audio_config():
+    """保存音频采集配置，并尝试通知主程序运行时切换各源开关"""
+    import requests
+    data = request.get_json() or {}
+    cfg = load_config()
+    audio = dict(cfg.get('audio', {}) or {})
+
+    for k in ('rate', 'channels', 'chunk_size_ms'):
+        if k in data:
+            audio[k] = data[k]
+
+    if 'sources' in data and isinstance(data['sources'], dict):
+        audio['sources'] = data['sources']
+
+    cfg['audio'] = audio
+    save_config(cfg)
+
+    # 运行时切换各源开关（主程序未启动则忽略，配置下次启动生效）
+    try:
+        requests.post('http://127.0.0.1:1800/audio/apply',
+                      json={'sources': audio.get('sources', {})},
+                      timeout=5)
+    except Exception:
+        pass
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/start_napcat', methods=['POST'])
 def start_napcat():
     try:
@@ -241,6 +297,25 @@ def start_desktopet():
             subprocess.Popen([str(start_bat)], cwd=str(desktopet_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             subprocess.Popen([str(start_bat)], cwd=str(desktopet_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/start_phone', methods=['POST'])
+def start_phone():
+    """启动手机接口服务（.phone/serve.py）"""
+    try:
+        phone_dir = BASE_DIR / ".phone"
+        serve_path = phone_dir / "serve.py"
+        if not serve_path.exists():
+            return jsonify({'status': 'error', 'message': 'serve.py not found'}), 400
+        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        python = str(runtime_python) if runtime_python.exists() else sys.executable
+        if sys.platform == "win32":
+            subprocess.Popen([python, str(serve_path)], cwd=str(phone_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+        else:
+            subprocess.Popen([python, str(serve_path)], cwd=str(phone_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

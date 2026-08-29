@@ -38,7 +38,6 @@ class LanguageJudge:
             return self.default_lang
 
         # 1. 日文：假名占有效文字 1/3 及以上才判为整段日文
-        #    （避免夹一两个日文词「です/か/ね」就把整句中文误判成日文）
         if kana * 3 >= total:
             return "ja"
 

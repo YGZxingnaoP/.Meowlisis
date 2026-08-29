@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0f0f1a">
+  <title>喵呜 · 手机控制台</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- 桌宠画面（同源 iframe 加载 .desktopet 渲染层） -->
+  <div class="pet-wrap">
+    <iframe id="petFrame" src="/pet/renderer/index.html" title="桌宠"></iframe>
+  </div>
+
+  <!-- 对话消息区 -->
+  <div class="chat-box" id="chatBox">
+    <div class="msg sys">欢迎～按住「按住说话」或直接打字</div>
+  </div>
+
+  <!-- 底部控制栏 -->
+  <div class="controls">
+    <button id="holdBtn" class="hold-btn">按住说话</button>
+    <input id="textInput" type="text" placeholder="或打字发送…" autocomplete="off">
+    <button id="sendBtn" class="send-btn">发送</button>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

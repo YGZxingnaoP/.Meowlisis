@@ -37,6 +37,14 @@ class MeowSingerCore:
                 self.state.add_pending_message(username, text, source)
             return True
 
+        # 静默中：不触发新点歌/翻唱/学歌（正在唱歌的停止词不受影响）
+        try:
+            from func.pipeline.silence_state import SilenceState
+            if SilenceState().muted:
+                return False
+        except Exception:
+            pass
+
         # 启动判断
         mode, title, artist, original = self.if_start.decide(text, username)
 

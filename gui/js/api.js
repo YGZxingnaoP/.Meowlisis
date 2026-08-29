@@ -54,6 +54,32 @@ const API = {
         return res.json();
     },
 
+    async toggleMic() {
+        const res = await fetch('/api/mic', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        if (!res.ok) throw new Error('Failed to toggle mic');
+        return res.json();
+    },
+
+    async getAudioConfig() {
+        const res = await fetch('/api/audio');
+        if (!res.ok) return { config: {}, devices: [] };
+        return res.json();
+    },
+
+    async saveAudioConfig(cfg) {
+        const res = await fetch('/api/audio', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg)
+        });
+        if (!res.ok) throw new Error('Failed to save audio config');
+        return res.json();
+    },
+
     async startNapcat() {
         const res = await fetch('/api/start_napcat', { method: 'POST' });
         if (!res.ok) throw new Error('Failed to start NapCat');
@@ -75,6 +101,12 @@ const API = {
     async startDesktopet() {
         const res = await fetch('/api/start_desktopet', { method: 'POST' });
         if (!res.ok) throw new Error('Failed to start desktopet');
+        return res.json();
+    },
+
+    async startPhone() {
+        const res = await fetch('/api/start_phone', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start phone');
         return res.json();
     },
 

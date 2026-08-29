@@ -196,6 +196,41 @@ const Config = {
             <button class="btn btn-secondary" id="addReplaceRuleBtn">添加规则</button>`;
     },
 
+    // ============ 音频采集（多源，分别开关） ============
+    audio() {
+        return this._section('音频采集源') +
+            this._check('麦克风采集', 'audio.sources.mic.enabled', true) +
+            this._section('电脑扬声器行为') +
+            this._check('电脑扬声器采集（需安装 pyaudiowpatch）', 'audio.sources.loopback.enabled', false) +
+            this._check('允许打断', 'audio.sources.loopback.allow_interrupt', false,
+                '电脑声音是否触发 TTS 打断') +
+            this._check('声纹识别', 'audio.sources.loopback.speaker_verify', false,
+                '关闭后跳过声纹验证，识别结果用户名用下方固定用户名') +
+            this._text('固定用户名', 'audio.sources.loopback.username', '主人的电脑',
+                '声纹识别关闭时使用') +
+            this._section('接口注入行为') +
+            this._check('接口注入采集（/audio/send）', 'audio.sources.inject.enabled', true) +
+            this._check('允许打断', 'audio.sources.inject.allow_interrupt', false,
+                '注入音频是否触发 TTS 打断') +
+            this._check('声纹识别', 'audio.sources.inject.speaker_verify', false,
+                '关闭后跳过声纹验证，识别结果用户名用下方固定用户名') +
+            this._text('固定用户名', 'audio.sources.inject.username', '主人的电脑',
+                '声纹识别关闭时使用') +
+            this._num('采样率(Hz)', 'audio.rate', 16000, 8000, 48000, 1000) +
+            this._num('声道数', 'audio.channels', 1, 1, 2, 1) +
+            this._num('分块大小(ms)', 'audio.chunk_size_ms', 300, 50, 500, 10);
+    },
+
+    // ============ 静默（闭麦）配置 ============
+    silence() {
+        return this._section('静默（语音触发）') +
+            this._check('启用静默', 'silence.enabled', true) +
+            this._wordTagEditor('唤醒词（回车添加）', 'silence.wake_phrases', [],
+                '语音命中唤醒词即退出静默', '输入后回车添加') +
+            this._wordTagEditor('静默词（回车添加）', 'silence.mute_phrases', [],
+                '语音命中静默词即进入静默', '输入后回车添加');
+    },
+
     // 易错词替换编辑器：正确词 -> 多个错误词
     replaceRulesPanel(data) {
         const rules = data || {};
@@ -1909,7 +1944,9 @@ const Config = {
                 path === 'meowsinger.cover.prefix' ||
                 path === 'meowsinger.cover.intent' ||
                 path === 'meowsinger.cover.learn_users' ||
-                path === 'meowsinger.stop.keywords'
+                path === 'meowsinger.stop.keywords' ||
+                path === 'silence.wake_phrases' ||
+                path === 'silence.mute_phrases'
             )) {
                 try { current[last] = JSON.parse(value); }
                 catch (e) { current[last] = value.split(/\n/).map(s => s.trim()).filter(Boolean); }

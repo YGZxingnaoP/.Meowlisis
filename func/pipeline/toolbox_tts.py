@@ -31,6 +31,10 @@ class ToolboxTtsBridge:
 
         - source 仅作来源标注（如 toolbox / toolbox_watching），不作为 TTS 分组键。
         """
+        # 静默状态：不出声
+        from func.pipeline.silence_state import SilenceState
+        if SilenceState().muted:
+            return
         if not text and chat_status != "end":
             return
         json_msg = {

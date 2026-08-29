@@ -6,6 +6,7 @@
 const Orbit = {
     // 中心球分裂出的服务启动球
     launcherPlanets: [
+        { id: 'phone', label: '接口', tooltip: '启动手机接口服务', endpoint: 'https://127.0.0.1:8443' },
         { id: 'main', label: '主程序', tooltip: '启动主程序', endpoint: 'http://127.0.0.1:1800' },
         { id: 'sovits', label: 'SoVITS', tooltip: '启动 SoVITS 服务', endpoint: 'http://127.0.0.1:9880' },
         { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' },
@@ -77,6 +78,9 @@ const Orbit = {
     vtsSubEls: [],
     vtsOpen: false,
     vtsEl: null,
+    sensevoiceSubEls: [],
+    sensevoiceOpen: false,
+    sensevoiceEl: null,
 
     init() {
         const orbitOuter = document.getElementById('orbitOuter');
@@ -345,6 +349,63 @@ const Orbit = {
         this.vtsSubEls.forEach(el => this._applyVtsSub(el, this.vtsOpen));
     },
 
+    // SenseVoice 子球（配置/闭麦）
+    createSensevoiceSubs(parent) {
+        const subs = [
+            { id: 'sensevoice_config', label: '识别', tooltip: '语音识别配置' },
+            { id: 'sensevoice_mic', label: '闭麦', tooltip: '静默相关配置' },
+            { id: 'sensevoice_audio', label: '音频', tooltip: '音频采集配置' }
+        ];
+        // 目标偏移：3 个子球沿 SenseVoice 球右侧弧线排列（右上/右中/右下）
+        const offsets = [
+            { x: 82, y: -82 },   // 识别 右上
+            { x: 115, y: 0 },    // 闭麦 右中
+            { x: 82, y: 82 }     // 音频 右下
+        ];
+        this.sensevoiceSubEls = [];
+        subs.forEach((s, i) => {
+            const el = document.createElement('div');
+            el.className = 'catbrain-sub';
+            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
+            el.dataset.tooltip = s.tooltip;
+            el.dataset.subId = s.id;
+            el.dataset.offsetX = offsets[i].x;
+            el.dataset.offsetY = offsets[i].y;
+            this._applySensevoiceSub(el, false);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                if (window.App && typeof window.App.onPlanetClick === 'function') {
+                    window.App.onPlanetClick(s.id);
+                }
+            });
+            parent.appendChild(el);
+            this.sensevoiceSubEls.push(el);
+        });
+    },
+
+    _applySensevoiceSub(el, open) {
+        const x = parseFloat(el.dataset.offsetX);
+        const y = parseFloat(el.dataset.offsetY);
+        if (open) {
+            el.style.transform = `translate(-50%, -50%) translate(${x}px, ${y}px) scale(1)`;
+            el.style.opacity = '1';
+            el.style.pointerEvents = 'auto';
+        } else {
+            el.style.transform = `translate(-50%, -50%) translate(0px, 0px) scale(0)`;
+            el.style.opacity = '0';
+            el.style.pointerEvents = 'none';
+        }
+    },
+
+    toggleSensevoiceSubs() {
+        this.sensevoiceOpen = !this.sensevoiceOpen;
+        if (this.sensevoiceEl) {
+            this.sensevoiceEl.classList.toggle('active', this.sensevoiceOpen);
+        }
+        this.sensevoiceSubEls.forEach(el => this._applySensevoiceSub(el, this.sensevoiceOpen));
+    },
+
     updateToolboxPlanetPosition(el, rotationDeg) {
         const baseAngle = parseFloat(el.dataset.baseAngle);
         const currentAngle = baseAngle + (rotationDeg * Math.PI / 180);
@@ -559,6 +620,15 @@ const Orbit = {
                 e.stopPropagation();
                 if (this.suppressClick) return;
                 this.toggleVtsSubs();
+            });
+        } else if (p.id === 'sensevoice') {
+            // SenseVoice 球：点击分裂出 2 个子球（配置/闭麦）
+            this.sensevoiceEl = el;
+            this.createSensevoiceSubs(el);
+            el.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this.suppressClick) return;
+                this.toggleSensevoiceSubs();
             });
         } else {
             el.addEventListener('click', (e) => {

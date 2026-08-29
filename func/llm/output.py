@@ -162,7 +162,7 @@ class Output:
             self._send(tail_text, traceid, "end")
         elif self.segment_idx == 0:
             cleaned = self.cleaner.cleaned if self.cleaner is not None else self.filtered_content
-            cleaned_text = self._collapse_punctuation(cleaned.strip())
+            cleaned_text = self._clean_punctuation(cleaned)
             if cleaned_text and not self._is_punct_only(cleaned_text):
                 self._send(cleaned_text, traceid, "end")
         else:
@@ -174,9 +174,9 @@ class Output:
         if self.narration is not None:
             self.narration.update(self.filtered_content)
         if self.cleaner is not None:
-            result = self._collapse_punctuation(self.cleaner.cleaned.strip())
+            result = self._clean_punctuation(self.cleaner.cleaned)
         else:
-            result = self._collapse_punctuation(self.remove_analysis(self.filtered_content))
+            result = self._clean_punctuation(self.remove_analysis(self.filtered_content))
         return "" if self._is_punct_only(result) else result
 
     def _send(self, text: str, traceid: str, chat_status: str):
@@ -251,6 +251,17 @@ class Output:
                 out.append(ch)
                 i += 1
         return "".join(out)
+
+    @staticmethod
+    def _clean_punctuation(text: str) -> str:
+        """水词清洗后的标点整理：先合并相邻标点为句号，再去掉句首残留标点"""
+        if not text:
+            return ""
+        text = Output._collapse_punctuation(text.strip())
+        i = 0
+        while i < len(text) and text[i] in Output.PUNCT_CHARS:
+            i += 1
+        return text[i:]
 
     @staticmethod
     def _is_punct_only(text: str) -> bool:

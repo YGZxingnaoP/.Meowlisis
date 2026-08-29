@@ -10,15 +10,17 @@ import numpy as np
 
 from func.pipeline.tts_vts import TtsVtsBridge
 from func.pipeline.tts_desktopet import TtsDesktopetBridge
+from func.pipeline.audio_state import AudioState
 
 # 项目根目录下的 mpv.exe
 MPV_PATH = str(Path(__file__).resolve().parents[2] / "mpv.exe")
 
 
 def _set_playing(playing):
-    """同时驱动 VTS 与桌宠的表现桥接（嘴部开合/身体摆动）"""
+    """同时驱动 VTS 与桌宠的表现桥接（嘴部开合/身体摆动），并更新全局音频播放状态"""
     TtsVtsBridge().set_playing(playing)
     TtsDesktopetBridge().set_playing(playing)
+    AudioState().set_playing(playing)
 
 
 class AudioPlayer:

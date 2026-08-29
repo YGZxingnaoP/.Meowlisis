@@ -33,6 +33,7 @@ const App = {
     // ============ 服务启动球 ============
     async onLaunchClick(id) {
         const map = {
+            phone: { fn: () => API.startPhone(), name: '接口' },
             sensevoice: { fn: () => API.startSensevoice(), name: 'SenseVoice' },
             sovits: { fn: () => API.startSovits(), name: 'SoVITS' },
             main: { fn: () => API.startMain(), name: '主程序' },
@@ -51,6 +52,21 @@ const App = {
         }
     },
 
+    // ============ 闭麦切换 ============
+    async toggleMic() {
+        try {
+            const r = await API.toggleMic();
+            if (r && r.status === 'error') {
+                this.showToast(r.message || '闭麦操作失败', true);
+                return;
+            }
+            const enabled = !!(r && r.enabled);
+            this.showToast(enabled ? '麦克风已开启' : '已闭麦（麦克风关闭）');
+        } catch (e) {
+            this.showToast('闭麦操作失败: ' + e.message, true);
+        }
+    },
+
     // ============ 配置节点 ============
     async onPlanetClick(id) {
         console.log('App.onPlanetClick received:', id);
@@ -58,6 +74,9 @@ const App = {
         // 特殊面板
         if (id === 'character') { await this.openCharacterPanel(); return; }
         if (id === 'sensevoice') { await this.openSensevoicePanel(); return; }
+        if (id === 'sensevoice_config') { await this.openSensevoicePanel(); return; }
+        if (id === 'sensevoice_mic') { await this.openSilencePanel(); return; }
+        if (id === 'sensevoice_audio') { await this.openAudioPanel(); return; }
         if (id === 'tts') { await this.openTtsPanel(); return; }
         if (id === 'toolbox') { this.openToolbox(); return; }
         if (id === 'calendar') { await this.openCalendarPanel(); return; }
@@ -1102,6 +1121,49 @@ const App = {
                 this.config.character_card.card_file = cardSelect.value;
                 await this.openCharacterPanel();
             });
+        }
+    },
+
+    // ============ 音频采集面板 ============
+    async openAudioPanel() {
+        try {
+            const html = Config.audio();
+            Modal.show('音频采集设置', html, async () => {
+                const updates = Config.collectValues();
+                Config.applyUpdates(updates, this.config);
+                try {
+                    await API.saveAudioConfig(this.config.audio || {});
+                    this.showToast('配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering audio panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
+
+    // ============ 静默（闭麦）面板 ============
+    async openSilencePanel() {
+        try {
+            const html = Config.silence();
+            Modal.show('静默（闭麦）设置', html, async () => {
+                const updates = Config.collectValues();
+                Config.applyUpdates(updates, this.config);
+                try {
+                    await API.saveConfig(this.config);
+                    this.showToast('配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+            setTimeout(() => {
+                this.bindWordTagEditor();
+            }, 10);
+        } catch (e) {
+            console.error('Error rendering silence panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
         }
     },
 

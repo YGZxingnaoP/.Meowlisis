@@ -76,14 +76,19 @@ class MessageBuilder:
                     "type": item.get("type", "llm_fast_response"),
                 }, self.json_max_rounds)
 
+    @staticmethod
+    def format_user_content(username: str, content: str) -> str:
+        """把用户消息格式化为「时间+说话人+内容」的随机格式（与归档逻辑一致）"""
+        now = datetime.datetime.now().strftime("%H:%M")
+        name = str(username or "用户")
+        text = str(content or "")
+        fmt = random.choice(MessageBuilder.USER_FORMATS)
+        return fmt.format(time=now, name=name, content=text)
+
     def _format_item(self, item: Dict) -> str:
         """归档时仅用户消息做随机格式，助手消息原样保留内容"""
         if item.get("role") == "user":
-            name = item.get("speaker") or "用户"
-            time = item.get("time", "")
-            content = item.get("content", "")
-            fmt = random.choice(self.USER_FORMATS)
-            return fmt.format(time=time, name=name, content=content)
+            return self.format_user_content(item.get("speaker"), item.get("content"))
         return item.get("content", "")
 
     @staticmethod

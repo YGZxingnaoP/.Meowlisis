@@ -4,8 +4,10 @@ import sys
 import time
 import uuid
 import subprocess
+import io
+import wave
 from threading import Thread
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, Response
 from flask_apscheduler import APScheduler
 
 from func.subtitle.subtitle_server import get_subtitle_server
@@ -79,6 +81,10 @@ CatLearnCore().init()
 ttsCore = TTsCore() # 语音核心
 # ============================================
 
+# ============= 语音识别（闭麦控制） =====================
+asr_core = None  # SenseVoiceCore 实例（main 中赋值，供闭麦接口访问）
+# ============================================
+
 # ============= vtuber操作 =====================
 vtsState = VtsState()  # vts运行态
 vtsOper = VtsOper() # 表情初始化
@@ -105,6 +111,100 @@ def http_say():
     tts_say_thread = Thread(target=ttsCore.tts_say, args=(text,))
     tts_say_thread.start()
     return jsonify({"status": "成功"})
+
+
+# PCM(int16) → WAV 字节（供 /tts/audio 使用）
+def _pcm_to_wav(pcm: bytes, sample_rate: int = 32000,
+                channels: int = 1, sampwidth: int = 2) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as w:
+        w.setnchannels(channels)
+        w.setsampwidth(sampwidth)
+        w.setframerate(sample_rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
+# http 文本转语音（返回 WAV 音频，供手机端 / .phone 代理使用）
+@app.route("/tts/audio", methods=["POST", "GET"])
+def http_tts_audio():
+    text = ""
+    if request.method == "POST":
+        data = request.get_json(silent=True)
+        if isinstance(data, dict) and data.get("text"):
+            text = str(data["text"])
+        else:
+            text = request.data.decode("utf-8", errors="ignore")
+    else:
+        text = request.args.get("text", "")
+    text = (text or "").strip()
+    if not text:
+        return jsonify({"status": "error", "message": "缺少 text"}), 400
+
+    ref = ttsCore._resolve_ref_audio()
+    generator, cancel = ttsCore.sovits.get_sovits_stream(text, ref)
+    if generator is None:
+        return jsonify({"status": "error", "message": "TTS 合成失败（参考音频未配置或 GPT-SoVITS 未启动）"}), 500
+
+    chunks = []
+    try:
+        for chunk in generator:
+            chunks.append(chunk)
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"TTS 合成异常: {e}"}), 500
+    finally:
+        try:
+            cancel()
+        except Exception:
+            pass
+
+    pcm = b"".join(chunks)
+    if not pcm:
+        return jsonify({"status": "error", "message": "TTS 无音频输出"}), 500
+
+    sr = ttsCore.sovits.config.sample_rate
+    wav = _pcm_to_wav(pcm, sample_rate=sr, channels=1, sampwidth=2)
+    return Response(wav, content_type="audio/wav")
+
+# http闭麦控制【前端子球调用】
+@app.route("/mic", methods=["POST"])
+def http_mic():
+    if asr_core is None or getattr(asr_core, "hub", None) is None:
+        return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
+    data = request.json or {}
+    sid = data.get("source", "mic")
+    if "enabled" in data:
+        enabled = bool(data["enabled"])
+    else:
+        enabled = not asr_core.hub.is_enabled(sid)
+    asr_core.hub.set_enabled(sid, enabled)
+    return jsonify({"status": "ok", "source": sid, "enabled": enabled})
+
+
+@app.route("/audio/apply", methods=["POST"])
+def http_audio_apply():
+    """音频采集运行时切换：各源独立开关"""
+    if asr_core is None or getattr(asr_core, "hub", None) is None:
+        return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
+    data = request.json or {}
+    sources = data.get("sources")
+    if isinstance(sources, dict):
+        for sid, scfg in sources.items():
+            if isinstance(scfg, dict) and "enabled" in scfg:
+                asr_core.hub.set_enabled(sid, bool(scfg["enabled"]))
+    return jsonify({"status": "ok"})
+
+
+@app.route("/audio/send", methods=["POST"])
+def http_audio_send():
+    """远程端口：外部直接传递 16k 单声道 int16 PCM，注入 inject 源独立识别"""
+    if asr_core is None or getattr(asr_core, "hub", None) is None:
+        return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
+    data = request.get_data()
+    if not data:
+        return jsonify({"status": "error", "message": "空音频数据"}), 400
+    asr_core.hub.inject('inject', data)
+    return jsonify({"status": "ok", "bytes": len(data)})
 
 # http人物表情输出
 @app.route("/emote", methods=["POST"])
@@ -307,6 +407,7 @@ def main():
                 except Exception:
                     pass
 
+        global asr_core
         asr_core = SenseVoiceCore(callback=sensevoice_callback)
         asr_core.start()
         log.info("已启用 SenseVoice 语音识别后台线程（高精度流式+声纹）")

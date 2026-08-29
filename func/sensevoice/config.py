@@ -29,12 +29,6 @@ class SenseVoiceConfig:
         self.target_speakers = cfg.get('target_speakers', [])
         self.speaker_threshold = cfg.get('speaker_threshold', 0.2)
 
-        # 音频基础参数（固定 16k 单声道）
-        self.rate = 16000
-        self.channels = 1
-        self.chunk_size_ms = cfg.get('chunk_size_ms', 200)
-        self.chunk = int(self.rate * self.chunk_size_ms / 1000)
-
         # 说话状态检测阈值（VAD，用于上报服务端说话状态）
         self.energy_threshold = cfg.get('vad_energy_threshold', 400)
         # 打断阈值（独立于说话判断阈值，用于触发 TTS 打断；应比 vad 阈值更严格）

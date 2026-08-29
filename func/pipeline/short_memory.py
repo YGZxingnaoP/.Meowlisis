@@ -30,7 +30,7 @@ class ShortMemory:
     """短期记忆桥接：负责 .temp/public_short_mem.json 的读取、保存与裁剪"""
 
     # 插播类消息：挂靠到其后第一条 llm_fast_response，随该条快回淘汰而连带删除
-    ACTIVE_TYPES = ("llm_active_response", "vision_response", "hum_song")
+    ACTIVE_TYPES = ("llm_active_response", "vision_response", "hum_song", "other_talks")
 
     def __init__(self):
         self.log = DefaultLog().getLogger()

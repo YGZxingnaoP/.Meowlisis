@@ -423,14 +423,17 @@ class TBoxQQResponse:
                            images, is_bot, self_id, static_only=False):
         """群聊图片视觉回复：无文本向上检索 → 落地图片 → 视觉 → 发群"""
         from func.toolbox.napcat.image.image_search import TBImageSearch
+        from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+        # 拉取群聊短期记忆（一次拉取，两处复用：无文本补上下文 + 传给视觉模型）
+        group_history = None
+        try:
+            group_history = TBGetGroupRecord().fetch(group_id, self_id)
+        except Exception:
+            self.log.exception("群聊图片拉取历史失败")
+
         # 无文本 → 向上检索最近群历史用户文本作为看图上下文
         if not text.strip():
-            try:
-                from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
-                group_history = TBGetGroupRecord().fetch(group_id, self_id)
-                text = TBImageSearch.gather_text_context("", group_history)
-            except Exception:
-                self.log.exception("群聊图片向上检索文本失败")
+            text = TBImageSearch.gather_text_context("", group_history or [])
 
         # 图片落地本地缓存区 + 动图抽帧 + 张数/大小限制
         from func.toolbox.meowvision.config import TBVisionConfig
@@ -444,6 +447,7 @@ class TBoxQQResponse:
             result = TBNapCatVisionActive().process(
                 image_paths, text, username,
                 need_description=True, write_memory=not is_bot,
+                history_messages=group_history,
             )
             vision_reply = (result.get("reply") or "").strip()
             if vision_reply:

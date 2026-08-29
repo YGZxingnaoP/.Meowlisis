@@ -12,12 +12,13 @@ from func.tools.singleton_mode import singleton
 
 
 class _Node:
-    __slots__ = ("children", "is_word", "cats")
+    __slots__ = ("children", "is_word", "cats", "deletable")
 
     def __init__(self):
         self.children = {}
         self.is_word = False
         self.cats = set()
+        self.deletable = False
 
 
 @singleton
@@ -32,6 +33,7 @@ class NarrationCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.path = os.path.join("func", "llm", "narration", "adjunct_word.json")
+        self.score_only_path = os.path.join("func", "llm", "narration", "score_only_word.json")
         self.root = _Node()
         self._load()
         self._load_config()
@@ -61,8 +63,14 @@ class NarrationCore:
         self.score_log_enabled = bool(cfg.get("score_log_enabled", False))
 
     def _load(self):
+        # 可删除水词：参与打分，也参与过滤删除
+        self._load_words(self.path, deletable=True)
+        # 只打分不删除的词（人设语气等）：计入 W，但清洗时原样保留
+        self._load_words(self.score_only_path, deletable=False)
+
+    def _load_words(self, path, deletable):
         try:
-            with open(self.path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             for key, words in (data.items() if isinstance(data, dict) else []):
                 cat = int(key)
@@ -73,10 +81,15 @@ class NarrationCore:
                     for ch in w:
                         node = node.children.setdefault(ch, _Node())
                     node.is_word = True
-                    node.cats.add(cat)
+                    if deletable:
+                        node.cats.add(cat)
+                        node.deletable = True
+        except FileNotFoundError:
+            # score_only_word.json 允许不存在
+            if deletable:
+                self.log.exception("加载水词清单失败：%s", path)
         except Exception:
-            self.log.exception("加载水词清单失败")
-            self.root = _Node()
+            self.log.exception("加载水词清单失败：%s", path)
 
     def current_level(self):
         """读取当前平滑得分对应的清洗档位（本轮开始调用）"""
@@ -149,7 +162,7 @@ class NarrationCore:
 
     def _count_water(self, text):
         total = 0
-        for start, end, _cats in self._match_all(text):
+        for start, end, _cats, _deletable in self._match_all(text):
             total += end - start
         return total
 
@@ -165,10 +178,10 @@ class NarrationCore:
                 node = node.children[text[j]]
                 j += 1
                 if node.is_word:
-                    matched = (j, node.cats)
+                    matched = (j, node.cats, node.deletable)
             if matched:
-                end, cats = matched
-                result.append((i, end, cats))
+                end, cats, deletable = matched
+                result.append((i, end, cats, deletable))
                 i = end
             else:
                 i += 1
@@ -198,12 +211,12 @@ class NarrationCleaner:
                 node = node.children[self.buffer[i]]
                 i += 1
                 if node.is_word:
-                    matched = (i, node.cats)
+                    matched = (i, node.cats, node.deletable)
             if matched is not None:
-                length, cats = matched
+                length, cats, deletable = matched
                 if length == len(self.buffer) and node.children:
                     break
-                if not self._should_delete(cats):
+                if not self._should_delete(cats, deletable):
                     out.append(self.buffer[:length])
                 self.buffer = self.buffer[length:]
                 continue
@@ -227,10 +240,10 @@ class NarrationCleaner:
                 node = node.children[self.buffer[i]]
                 i += 1
                 if node.is_word:
-                    matched = (i, node.cats)
+                    matched = (i, node.cats, node.deletable)
             if matched is not None:
-                length, cats = matched
-                if not self._should_delete(cats):
+                length, cats, deletable = matched
+                if not self._should_delete(cats, deletable):
                     out.append(self.buffer[:length])
                 self.buffer = self.buffer[length:]
             else:
@@ -240,7 +253,9 @@ class NarrationCleaner:
         self.cleaned += result
         return result
 
-    def _should_delete(self, cats):
+    def _should_delete(self, cats, deletable):
+        if not deletable:
+            return False
         if self.level == NarrationCore.LEVEL_FULL:
             return False
         if self.level == NarrationCore.LEVEL_PART:
