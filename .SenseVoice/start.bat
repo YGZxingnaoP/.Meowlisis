@@ -81,9 +81,7 @@ echo.
     --worker_threads 4 ^
     --concurrent_asr 4 ^
     --concurrent_sv 2 ^
-    --sv_threshold 0.2 ^
-    --chunk_size 200 ^
-    --look_back 1000
+    --sv_threshold 0.2
 
 :: 如果服务异常退出，暂停以显示错误信息
 if errorlevel 1 (

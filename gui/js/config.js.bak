@@ -690,6 +690,7 @@ const Config = {
         h += this._section('播放与合成 (config.yml)');
         h += this._num('音量', 'tts.volume', 1.0, 0, 2, 0.1);
         h += this._num('合成线程数', 'tts.synth_workers', 2, 1, 8, 1);
+        h += this.emotionParamsPanel();
         return h;
     },
 
@@ -728,25 +729,78 @@ const Config = {
             this._text('输出目录', 'tts.output_dir', './output');
     },
 
+    // 情绪采样参数配置面板（emotion_params，每个情绪可覆盖基础采样参数）
+    emotionParamsPanel() {
+        const emotions = ['happy', 'sad', 'call', 'angry', 'blush', 'approve', 'sweat', 'blood', 'love', 'wordless'];
+        const labels = { happy: '开心', sad: '难过', call: '呼唤', angry: '生气', blush: '害羞', approve: '认可', sweat: '尴尬', blood: '震惊', love: '撒娇', wordless: '无语' };
+        const fields = [
+            { key: 'speed', label: '语速', step: 0.05, min: 0.5, max: 2.0 },
+            { key: 'temperature', label: '温度', step: 0.05, min: 0, max: 2.0 },
+            { key: 'noise_scale', label: '噪声缩放', step: 0.05, min: 0, max: 2.0 },
+            { key: 'top_k', label: 'Top K', step: 1, min: 1, max: 50 },
+            { key: 'top_p', label: 'Top P', step: 0.05, min: 0, max: 1.0 },
+            { key: 'repetition_penalty', label: '重复惩罚', step: 0.05, min: 1.0, max: 2.0 }
+        ];
+        let h = this._section('情绪采样参数（留空 = 继承基础采样参数）');
+        emotions.forEach((emo, i) => {
+            h += `<details class="ref-fold ref-fold-emotion"${i === 0 ? ' open' : ''}>
+                <summary class="ref-fold-summary"><span class="emotion-tag">${emo}</span><span class="emotion-cn">${labels[emo] || ''}</span><span class="ref-fold-arrow">▾</span></summary>
+                <div class="ref-fold-body emotion-param-grid">`;
+            fields.forEach(f => {
+                const path = `tts.gpt-sovits.emotion_params.${emo}.${f.key}`;
+                const v = this._val(path, '');
+                const shown = (v === '' || v == null) ? '' : v;
+                h += `<div class="form-group"><label>${f.label}</label>
+                    <input type="number" data-path="${path}" value="${shown}" step="${f.step}" min="${f.min}" max="${f.max}" placeholder="继承基础值"></div>`;
+            });
+            h += `</div></details>`;
+        });
+        return h;
+    },
+
     // 参考音频配置面板（异步加载 ref_audio/config.json 后填充）
+    // 支持多情绪格式：{角色名: {情绪: {audio, text, lang}}}，兼容旧单条格式 {角色名: {audio, text, lang}}
     refAudioPanel(data) {
         const map = data || {};
-        let h = this._section('参考音频配置（按角色名绑定）');
-        Object.keys(map).forEach(name => {
-            const item = map[name] || {};
-            h += `<div class="char-card">
-                <div class="char-card-title">${name}</div>
-                <div class="form-group"><label>音频路径</label>
-                    <input type="text" data-ref-audio-name="${name}" data-ref-audio-field="audio" value="${item.audio || ''}"></div>
-                <div class="form-group"><label>参考文本</label>
-                    <textarea class="auto-grow" rows="2" data-ref-audio-name="${name}" data-ref-audio-field="text">${this._esc(item.text || '')}</textarea></div>
-                <div class="form-group"><label>语言</label>
-                    <input type="text" data-ref-audio-name="${name}" data-ref-audio-field="lang" value="${item.lang || 'zh'}"></div>
-            </div>`;
-        });
+        let h = this._section('参考音频配置（按角色名绑定 · 多情绪）');
         if (!Object.keys(map).length) {
             h += `<div class="help-text">暂无参考音频配置</div>`;
+            return h;
         }
+        Object.keys(map).forEach((name, i) => {
+            const item = map[name] || {};
+            // 判断是否多情绪格式：任意 value 是含 audio 字段的对象
+            const isMulti = Object.values(item).some(v => v && typeof v === 'object' && 'audio' in v);
+            const subCount = isMulti ? Object.keys(item).length : 1;
+            h += `<details class="ref-fold"${i === 0 ? ' open' : ''}>
+                <summary class="ref-fold-summary"><span class="ref-fold-name">${this._esc(name)}</span><span class="ref-fold-meta">${subCount} 个情绪</span><span class="ref-fold-arrow">▾</span></summary>
+                <div class="ref-fold-body">`;
+            if (isMulti) {
+                Object.keys(item).forEach(emotion => {
+                    const e = item[emotion] || {};
+                    h += `<details class="ref-fold ref-fold-emotion">
+                        <summary class="ref-fold-summary ref-fold-sub"><span class="emotion-tag">${this._esc(emotion)}</span><span class="ref-fold-arrow">▾</span></summary>
+                        <div class="ref-fold-body">
+                            <div class="form-group"><label>音频路径</label>
+                                <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="audio" value="${this._escAttr(e.audio || '')}"></div>
+                            <div class="form-group"><label>参考文本</label>
+                                <textarea class="auto-grow" rows="2" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="text">${this._esc(e.text || '')}</textarea></div>
+                            <div class="form-group"><label>语言</label>
+                                <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="lang" value="${this._escAttr(e.lang || 'zh')}"></div>
+                        </div>
+                    </details>`;
+                });
+            } else {
+                // 旧单条格式兼容
+                h += `<div class="form-group"><label>音频路径</label>
+                    <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="audio" value="${this._escAttr(item.audio || '')}"></div>
+                <div class="form-group"><label>参考文本</label>
+                    <textarea class="auto-grow" rows="2" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="text">${this._esc(item.text || '')}</textarea></div>
+                <div class="form-group"><label>语言</label>
+                    <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="lang" value="${this._escAttr(item.lang || 'zh')}"></div>`;
+            }
+            h += `</div></details>`;
+        });
         return h;
     },
 
@@ -1827,8 +1881,11 @@ const Config = {
             const path = el.dataset.path;
             let value;
             if (el.type === 'checkbox') value = el.checked;
-            else if (el.type === 'number') value = parseFloat(el.value);
-            else value = el.value;
+            else if (el.type === 'number') {
+                // 情绪参数等「留空=不覆盖」的字段：空值跳过，避免写入 NaN/null
+                if (el.value === '' || el.value == null) return;
+                value = parseFloat(el.value);
+            } else value = el.value;
             updates.push({ path, value });
         });
         return updates;
@@ -1884,14 +1941,23 @@ const Config = {
         return { characters: [obj] };
     },
 
-    // 收集参考音频配置
+    // 收集参考音频配置（支持多情绪三层结构：角色名 → 情绪 → 字段）
     collectRefAudio() {
         const result = {};
         document.querySelectorAll('#refAudioPanel [data-ref-audio-name]').forEach(el => {
             const name = el.dataset.refAudioName;
+            const emotion = el.dataset.refAudioEmotion;
             const field = el.dataset.refAudioField;
-            if (!result[name]) result[name] = {};
-            result[name][field] = el.value;
+            if (emotion) {
+                // 多情绪格式
+                if (!result[name]) result[name] = {};
+                if (!result[name][emotion]) result[name][emotion] = {};
+                result[name][emotion][field] = el.value;
+            } else {
+                // 旧单条格式
+                if (!result[name]) result[name] = {};
+                result[name][field] = el.value;
+            }
         });
         return result;
     },

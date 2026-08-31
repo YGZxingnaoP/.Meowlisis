@@ -38,6 +38,20 @@ class TTSConfig:
         # 是否启用「整段语言自动切换」：整段英文/日文时覆盖 text_lang，其余落回 text_lang
         self.lang_judge_enabled = bool(gpt.get("lang_judge_enabled", True))
 
+        # ===== 采样参数（透传给 .Sovits API）=====
+        self.top_k = int(gpt.get("top_k", 15))
+        self.top_p = float(gpt.get("top_p", 1.0))
+        self.temperature = float(gpt.get("temperature", 1.0))
+        self.repetition_penalty = float(gpt.get("repetition_penalty", 1.35))
+        self.noise_scale = float(gpt.get("noise_scale", 0.5))
+        self.speed = float(gpt.get("speed", 1.0))
+
+        # ===== 情绪映射 =====
+        # 情绪 → 采样参数覆盖（如 happy 语速略快、sad 语速慢且 noise 更低）
+        self.emotion_params = gpt.get("emotion_params", {}) or {}
+        # 情绪 → 参考音频 key 映射（call→love、approve→happy 等归并）
+        self.emotion_audio = gpt.get("emotion_audio", {}) or {}
+
         self.output_dir = tts_cfg.get("output_dir", "./output")
         self.volume = float(tts_cfg.get("volume", 1.0))
 

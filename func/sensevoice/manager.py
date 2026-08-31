@@ -5,7 +5,6 @@
 import asyncio
 import json
 import re
-import time
 
 import aiohttp
 
@@ -31,8 +30,6 @@ class SenseVoiceManager:
         self.api_base = f"http://127.0.0.1:{AppConfig().port}"
 
         self._speaking = False
-        self.streaming_text = ""
-        self.stream_last_update = 0
         # 断句状态：累积文本 + VAD 驱动的 merge 计时
         self.pending_texts = {}        # key -> 累积文本
         self._merge_task = None        # merge_delay 计时任务
@@ -122,12 +119,7 @@ class SenseVoiceManager:
         if text:
             text = re.sub(r'<\|.*?\|>', '', text).strip()
 
-        if text and "online" in mode and not is_final:
-            # 流式中间结果：仅记录，不发送给 LLM
-            self.log.info(f"🔄 流式识别: {text}")
-            self.streaming_text = text
-            self.stream_last_update = time.time()
-        elif text and ("offline" in mode or is_final):
+        if text and ("offline" in mode or is_final):
             # 最终结果：进入说话人验证与断句合并
             self.log.info(f"✅ 识别到最终文本: {text} (mode={mode}, is_final={is_final})")
             spk_name = data.get("spk_name", "未知")

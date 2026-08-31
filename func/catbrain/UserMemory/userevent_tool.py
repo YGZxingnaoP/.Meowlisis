@@ -23,7 +23,7 @@ class MeowUserEventTool:
                     "properties": {
                         "recent_events": {
                             "type": "string",
-                            "description": "两三句话概括用户最近在忙什么、在研究什么；概括不出时填写 leisure"
+                            "description": "**两三句话**概括用户最近在忙什么、在研究什么；概括不出时填写 leisure"
                         }
                     },
                     "required": self.FIELDS

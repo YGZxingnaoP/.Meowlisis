@@ -141,8 +141,9 @@ def http_tts_audio():
     if not text:
         return jsonify({"status": "error", "message": "缺少 text"}), 400
 
-    ref = ttsCore._resolve_ref_audio()
-    generator, cancel = ttsCore.sovits.get_sovits_stream(text, ref)
+    emotion, intensity = ttsCore._resolve_emotion()
+    ref = ttsCore._resolve_ref_audio(emotion)
+    generator, cancel = ttsCore.sovits.get_sovits_stream(text, ref, emotion=emotion, intensity=intensity)
     if generator is None:
         return jsonify({"status": "error", "message": "TTS 合成失败（参考音频未配置或 GPT-SoVITS 未启动）"}), 500
 

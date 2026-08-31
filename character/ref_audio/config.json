@@ -1,7 +1,44 @@
 {
   "喵利呜西斯": {
-    "audio": "character/ref_audio/meowlisis.wav",
-    "text": "哈喽大家好，我是你们的汤圆妹妹。这次不是替身，也没有翻版。",
-    "lang": "zh"
+    "angry": {
+      "audio": "character/ref_audio/angry.wav",
+      "text": "然后就一下子全部跑掉了。唉？这么说拿上他就不用特意去安装连锁挖矿模组了。这个还是很实用的嘛。",
+      "lang": "zh"
+    },
+    "blush": {
+      "audio": "character/ref_audio/blush.wav",
+      "text": "在火焰部分，会有飘花的粒子效果。嗯~隔着屏幕都能闻到花香。",
+      "lang": "zh"
+    },
+    "happy": {
+      "audio": "character/ref_audio/happy.wav",
+      "text": "哈哈，这镐子也太好玩了吧，飘这么高也没有衰落伤害。",
+      "lang": "zh"
+    },
+    "love": {
+      "audio": "character/ref_audio/love.wav",
+      "text": "修剪过的花朵可以分解成新鲜花瓣，一朵花只能出一片花瓣。",
+      "lang": "zh"
+    },
+    "neutral": {
+      "audio": "character/ref_audio/happy.wav",
+      "text": "哈哈，这镐子也太好玩了吧，飘这么高也没有衰落伤害。",
+      "lang": "zh"
+    },
+    "sad": {
+      "audio": "character/ref_audio/sad.wav",
+      "text": "嗯？唉！我的箱子和工具台呢！",
+      "lang": "zh"
+    },
+    "sweat": {
+      "audio": "character/ref_audio/sweat.wav",
+      "text": "说麻烦吧，也不算麻烦吧，就是步骤很复杂。",
+      "lang": "zh"
+    },
+    "wordless": {
+      "audio": "character/ref_audio/wordless.wav",
+      "text": "今天是二零二零年二月十四日情人节，我知道，今天大家都不能出门",
+      "lang": "zh"
+    }
   }
 }

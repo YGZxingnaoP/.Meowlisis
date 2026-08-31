@@ -55,7 +55,7 @@ class TTS_Request(BaseModel):
     aux_ref_audio_paths: list = None
     prompt_lang: str = None
     prompt_text: str = ""
-    top_k: int = 5
+    top_k: int = 15
     top_p: float = 1
     temperature: float = 1
     text_split_method: str = "cut5"
@@ -63,6 +63,7 @@ class TTS_Request(BaseModel):
     batch_threshold: float = 0.75
     split_bucket: bool = True
     speed_factor: float = 1.0
+    noise_scale: float = 0.5
     fragment_interval: float = 0.3
     seed: int = -1
     media_type: str = "wav"
@@ -357,7 +358,7 @@ async def tts_get_endpoint(
     aux_ref_audio_paths: list = None,
     prompt_lang: str = None,
     prompt_text: str = "",
-    top_k: int = 5,
+    top_k: int = 15,
     top_p: float = 1,
     temperature: float = 1,
     text_split_method: str = "cut5",
@@ -365,6 +366,7 @@ async def tts_get_endpoint(
     batch_threshold: float = 0.75,
     split_bucket: bool = True,
     speed_factor: float = 1.0,
+    noise_scale: float = 0.5,
     fragment_interval: float = 0.3,
     seed: int = -1,
     media_type: str = "wav",
@@ -390,6 +392,7 @@ async def tts_get_endpoint(
         "batch_size": int(batch_size),
         "batch_threshold": float(batch_threshold),
         "speed_factor": float(speed_factor),
+        "noise_scale": float(noise_scale),
         "split_bucket": split_bucket,
         "fragment_interval": fragment_interval,
         "seed": seed,

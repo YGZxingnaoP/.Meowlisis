@@ -72,9 +72,25 @@
     <div class="toast" id="toast"></div>
 
     <script src="js/api.js"></script>
-    <script src="js/config.js"></script>
+    <!-- 配置面板生成器（Config 对象，按功能域拆分） -->
+    <script src="js/config/core.js"></script>
+    <script src="js/config/basic.js"></script>
+    <script src="js/config/llm.js"></script>
+    <script src="js/config/tts.js"></script>
+    <script src="js/config/media.js"></script>
+    <script src="js/config/toolbox.js"></script>
+    <script src="js/config/song.js"></script>
+    <script src="js/config/db.js"></script>
+    <script src="js/config/character.js"></script>
     <script src="js/orbit.js"></script>
     <script src="js/modal.js"></script>
-    <script src="js/app.js"></script>
+    <!-- 应用控制器（App 对象，按功能域拆分） -->
+    <script src="js/app/core.js"></script>
+    <script src="js/app/tts.js"></script>
+    <script src="js/app/llm.js"></script>
+    <script src="js/app/audio.js"></script>
+    <script src="js/app/toolbox.js"></script>
+    <script src="js/app/song.js"></script>
+    <script src="js/app/bind.js"></script>
 </body>
 </html>

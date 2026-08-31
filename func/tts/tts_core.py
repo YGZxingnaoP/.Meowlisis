@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from func.log.default_log import DefaultLog
 from func.tts.config import TTSConfig
+from func.tts.emotion import resolve_emotion, resolve_ref_audio
 from func.tts.gpt_sovits import GptSovits
 from func.tts.player import AudioPlayer
 from func.tts.subtitle import SubtitleWorker
@@ -536,11 +537,16 @@ class TTsCore:
         # 过滤影响合成的特殊字符
         text = re.sub(r"(《|》|（|）)", "", text)
 
-        # 获取当前角色卡绑定的参考音频配置
-        ref_audio = self._resolve_ref_audio()
+        # 获取当前情绪与强度（用于选择参考音频 + 采样参数）
+        emotion, intensity = self._resolve_emotion()
+
+        # 获取当前角色卡绑定的参考音频配置（按情绪选择）
+        ref_audio = self._resolve_ref_audio(emotion)
 
         # 流式合成：创建流式源（生成器 + 取消函数）
-        generator, cancel_func = self.sovits.get_sovits_stream(text, ref_audio)
+        generator, cancel_func = self.sovits.get_sovits_stream(
+            text, ref_audio, emotion=emotion, intensity=intensity
+        )
         if generator is None:
             return
 
@@ -592,13 +598,20 @@ class TTsCore:
             with self._streams_lock:
                 self._active_streams.pop(source, None)
 
-    def _resolve_ref_audio(self) -> dict:
-        """从 system_prompt 获取当前角色卡绑定的参考音频配置"""
+    def _resolve_emotion(self):
+        """读取当前情绪与强度（逻辑委托 func.tts.emotion.resolve_emotion）"""
+        return resolve_emotion()
+
+    def _resolve_ref_audio(self, emotion: str = "neutral") -> dict:
+        """按情绪选择参考音频（逻辑委托 func.tts.emotion.resolve_ref_audio）"""
         try:
-            return self.system_prompt.get_ref_audio() or {}
+            ref = self.system_prompt.get_ref_audio() or {}
         except Exception:
             self.log.exception("获取参考音频配置失败")
             return {}
+        if not ref:
+            return {}
+        return resolve_ref_audio(emotion, ref, getattr(self.config, "emotion_audio", {}))
 
     def check_tts(self):
         """定时轮询回答队列，将合成请求按来源归组到任务队列"""

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# SenseVoice WebSocket 流式识别服务端
-# 支持：流式识别、声纹识别、多语言识别
+# SenseVoice WebSocket 识别服务端
+# 支持：整段识别、声纹识别、多语言识别
 
 import asyncio
 import json
@@ -32,10 +32,6 @@ parser.add_argument("--model_dir", type=str,
 parser.add_argument("--device", type=str, default="cuda")
 parser.add_argument("--ngpu", type=int, default=1)
 parser.add_argument("--ncpu", type=int, default=4)
-
-parser.add_argument("--chunk_size", type=int, default=200)
-parser.add_argument("--look_back", type=int, default=500)
-parser.add_argument("--chunk_interval", type=int, default=10)
 
 parser.add_argument("--sv_model", type=str, 
     default=os.path.join(PROJECT_ROOT, "localmodels", "speech_campplus_sv_zh-cn_16k-common"))
@@ -85,8 +81,6 @@ sem_sv = asyncio.Semaphore(args.concurrent_sv)
 
 # 音频参数
 SAMPLE_RATE = 16000
-CHUNK_BYTES = int(SAMPLE_RATE * args.chunk_size / 1000) * 2  # 200ms = 6400 bytes @16kHz 16bit
-LOOK_BACK_BYTES = int(SAMPLE_RATE * max(args.look_back, 800) / 1000) * 2  # 确保至少 800ms 上下文
 
 # ==================== 辅助函数 ====================
 def to_python(obj):
@@ -243,12 +237,6 @@ class SenseVoiceSession:
         self.language = "auto"
         self.itn = True
         self.hotwords = {}
-        self.chunk_interval = args.chunk_interval
-        self.frame_count = 0
-        # 流式状态
-        self.stream_cache = {}
-        self.history_buffer = bytearray()
-        self.HISTORY_MAX_BYTES = LOOK_BACK_BYTES
 
     async def handle_text_message(self, message: dict):
         """处理文本配置消息"""
@@ -259,7 +247,6 @@ class SenseVoiceSession:
             if not was_speaking and self.is_speaking:
                 # 开始说话：重置缓冲区
                 self.audio_buffer = bytearray()
-                self.stream_cache = {}
                 print("客户端开始说话")
             elif was_speaking and not self.is_speaking:
                 # 结束说话：触发最终识别
@@ -334,56 +321,6 @@ class SenseVoiceSession:
     async def handle_audio(self, audio_chunk: bytes):
         if self.is_speaking:
             self.audio_buffer.extend(audio_chunk)
-            # 维护历史缓冲区，用于流式识别的上下文
-            self.history_buffer.extend(audio_chunk)
-            if len(self.history_buffer) > self.HISTORY_MAX_BYTES:
-                # 保留最近的历史音频，丢弃过旧的部分
-                self.history_buffer = self.history_buffer[-self.HISTORY_MAX_BYTES:]
-        
-            self.frame_count += 1
-            # 降低流式结果发送频率（原来每 chunk_interval 帧发一次，现改为每 2 帧发一次）
-            if self.frame_count % max(1, self.chunk_interval // 2) == 0:
-                await self._send_partial_result()
-            
-    async def _send_partial_result(self):
-        if len(self.audio_buffer) < CHUNK_BYTES:
-            return
-        # 取最近的一个完整块进行流式识别
-        current_chunk = self.audio_buffer[-CHUNK_BYTES:] if len(self.audio_buffer) >= CHUNK_BYTES else bytes(self.audio_buffer)
-    
-        # 关键优化：将历史上下文与当前块拼接，为模型提供更多语境信息，防止句子开头被遗漏
-        if len(self.history_buffer) > 0:
-            # 使用历史缓冲区作为上下文，当前块作为主体
-            chunk_with_context = bytes(self.history_buffer) + current_chunk
-        else:
-            chunk_with_context = current_chunk
-    
-        tmp_path = save_audio_to_wav(chunk_with_context)
-        try:
-            res = await run_blocking(
-                model_asr.generate,
-                input=tmp_path,
-                language=self.language,
-                use_itn=self.itn,
-                sem=sem_asr
-            )
-            if res and len(res) > 0:
-                text = res[0].get("text", "")
-                import re
-                text = re.sub(r'<\|.*?\|>', '', text)
-                if text.strip():
-                    message = {
-                        "mode": "online",
-                        "text": text,
-                        "wav_name": self.wav_name,
-                        "is_final": False,
-                    }
-                    await self.websocket.send(json.dumps(message, ensure_ascii=False))
-        except Exception as e:
-            pass
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
 
 # ==================== 辅助函数 ====================
 async def run_blocking(fn, *args, sem: Optional[asyncio.Semaphore] = None, **kwargs):
@@ -448,7 +385,6 @@ async def main():
     
     print(f"SenseVoice WebSocket 服务已启动")
     print(f"地址: ws://{args.host}:{args.port}")
-    print(f"配置: chunk_size={args.chunk_size}ms, look_back={args.look_back}ms")
     print(f"声纹识别: {args.sv_model}")
     await server.wait_closed()
 

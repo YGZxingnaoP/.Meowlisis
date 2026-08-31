@@ -193,6 +193,111 @@
     border-bottom: 1px dashed var(--pink-soft);
 }
 
+/* 多情绪参考音频配置块 */
+.ref-emotion-block {
+    border: 1px dashed var(--pink-soft);
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.ref-emotion-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--pink-main);
+    margin-bottom: 8px;
+    font-family: 'Consolas', 'Monaco', monospace;
+}
+
+/* ===== 折叠面板（参考音频 / 情绪参数） ===== */
+.ref-fold {
+    border: 1px solid var(--pink-soft);
+    border-radius: 12px;
+    margin-bottom: 10px;
+    background: rgba(255, 255, 255, 0.5);
+    overflow: hidden;
+}
+
+.ref-fold summary {
+    list-style: none;
+    cursor: pointer;
+}
+
+.ref-fold summary::-webkit-details-marker {
+    display: none;
+}
+
+.ref-fold-summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--pink-dark);
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.ref-fold-summary:hover {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+.ref-fold-name {
+    flex: 1;
+}
+
+.ref-fold-meta {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--pink-soft);
+}
+
+.ref-fold-arrow {
+    font-size: 12px;
+    color: var(--pink-main);
+    transition: transform 0.15s;
+}
+
+.ref-fold[open] > .ref-fold-summary .ref-fold-arrow {
+    transform: rotate(180deg);
+}
+
+.ref-fold-body {
+    padding: 4px 14px 12px;
+}
+
+.ref-fold-sub {
+    font-size: 13px;
+    padding: 8px 14px;
+}
+
+.ref-fold-emotion {
+    margin-bottom: 8px;
+    border-color: rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.35);
+}
+
+.emotion-tag {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-weight: 600;
+    color: var(--pink-main);
+}
+
+.emotion-cn {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--pink-soft);
+}
+
+/* 情绪参数网格布局 */
+.emotion-param-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+}
+
 /* 声纹列表与操作 */
 .speaker-list {
     display: flex;

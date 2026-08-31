@@ -772,3 +772,57 @@ Raw_t = \max(0, DensityScore - Penalty)
 - 2、往后唱两句（可以配置，默认为2）
 - 3、同时需要通过toolbox传递信息，引导词写用户刚刚唱了一首歌，{对应的歌词}，发表一下感想
 先分析问题并且提问，并告诉我，该怎么解决sensevoice和音乐识别冲突的问题
+
+
+# CatBrain的记忆模块修改
+## 仅修改abstract_mem模块
+### 保存格式的修改
+- 1、彻底重构原来的json数据格式，解决你内容混乱的问题
+- 2、json格式如下：
+```
+{
+'time': "2026-08-31-20-18",
+'joint': ['YGZ醒脑片', 'Hgeminizjy'],
+'event': "事件内容，50字以内，包括人物，具体事件内容"
+'accuracy': 5,（满分5，有疑问就3，有严重质疑就1，如果完全确定就5）
+'importance': 8,（事件重要程度）
+'tags': [xxx, xxx],
+'topics': [xxx, xxx],
+'evidence':{
+            'reinforcement'
+            xxxxx（参数和NEKO相同，沿用其计算公式）
+            }
+}
+```
+### 创建和去重逻辑改动
+- 1、保留原来的所有触发概括逻辑
+- 2、彻底改动function calling的工具
+- 2.1、工具增加记忆摘要格式如上
+- 2.2、工具可以多次调用，每次必须概括出一个事件，每个事件对应一次调用
+- 3、记录的时候就触发去重逻辑
+- 3.1、**此过程为新增**，即tool_calls完成记忆概括的内容，先保存至```.temp\abmem_temp```内部
+- 3.2、检索所有（all）相关的tags（首个命中）和topics，的文本内容，进行加强，弱化和确认
+- 3.3、需要整合为一个function_calling，让ai得到内容比对，并判断“相同”，“相反”，“无关”，例子如下
+```
+# event_1的内容去重检查
+传递所有相关文本text_1\text_2\text_3
+ai需要回复
+{
+'text_1': 'same',
+'text_2': 'opposite',
+'text_3': 'origin'
+... ...
+}
+# event_2的内容去重检查同上
+```
+- 3.4、如果ai一个same也没有输出，则在meow_{month}.json文件里新增条目
+- 3.5、ai输出的每一个same和opposite都用于对evidence进行调整更新
+- 3.6、origin参数判定为无关，则不做操作
+### 归档和更新逻辑
+- 1、evidence的去重和更新逻辑见上
+- 2、归档内容移动到character\abstract_memory下的wrong_mem.json里，不再使用
+- 3、归档逻辑不需要确认，直接从json删除
+### 调用逻辑增加记录
+- 1、调用摘要记忆构建提示词的时候，保留原来的importance，joint，topic等的匹配逻辑
+- 2、同时使用NEKO项目的计算参数，记忆强度和准确性的优先级排到最高
+## 原则

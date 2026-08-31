@@ -5,6 +5,7 @@ import os
 import requests
 
 from func.tts.config import TTSConfig
+from func.tts.emotion import build_sampling_params
 from func.tts.lan_judge import LanguageJudge
 from func.tools.singleton_mode import singleton
 
@@ -25,7 +26,20 @@ class GptSovits:
             return self.config.text_lang
         return LanguageJudge(self.config.text_lang).judge(text)
 
-    def get_sovits(self, filename: str, text: str, ref_audio_config: dict = None) -> int:
+    def _sampling_params(self, emotion: str = "neutral", intensity: float = 3.0) -> dict:
+        """基础采样参数 + 情绪覆盖（逻辑委托 func.tts.emotion.build_sampling_params）。"""
+        base = {
+            "top_k": getattr(self.config, "top_k", 15),
+            "top_p": getattr(self.config, "top_p", 1.0),
+            "temperature": getattr(self.config, "temperature", 1.0),
+            "repetition_penalty": getattr(self.config, "repetition_penalty", 1.35),
+            "noise_scale": getattr(self.config, "noise_scale", 0.5),
+            "speed": getattr(self.config, "speed", 1.0),
+        }
+        return build_sampling_params(emotion, intensity, base, self.config.emotion_params)
+
+    def get_sovits(self, filename: str, text: str, ref_audio_config: dict = None,
+                   emotion: str = "neutral", intensity: float = 3.0) -> int:
         """合成语音并保存为 wav，返回 1 成功 0 失败（参考音频配置来自角色卡绑定）"""
         ref_audio_config = ref_audio_config or {}
         ref_audio_path = ref_audio_config.get("audio", "")
@@ -42,6 +56,8 @@ class GptSovits:
         # SoVITS 服务进程的 cwd 与主程序不同，转为绝对路径避免找不到文件
         ref_audio_path = os.path.abspath(ref_audio_path)
 
+        params = self._sampling_params(emotion, intensity)
+
         # 构造 GPT-SoVITS v2 API 请求体
         payload = {
             "text": text,
@@ -51,6 +67,12 @@ class GptSovits:
             "prompt_lang": prompt_lang,
             "media_type": "wav",
             "streaming_mode": False,
+            "top_k": params["top_k"],
+            "top_p": params["top_p"],
+            "temperature": params["temperature"],
+            "repetition_penalty": params["repetition_penalty"],
+            "noise_scale": params["noise_scale"],
+            "speed_factor": params["speed"],
         }
 
         try:
@@ -66,7 +88,8 @@ class GptSovits:
             print(f"TTS 请求异常: {e}")
             return 0
 
-    def get_sovits_stream(self, text: str, ref_audio_config: dict = None):
+    def get_sovits_stream(self, text: str, ref_audio_config: dict = None,
+                          emotion: str = "neutral", intensity: float = 3.0):
         """流式合成，返回 (生成器, 取消函数)。
 
         生成器逐块 yield 裸 PCM 字节（int16 / 单声道 / self.config.sample_rate Hz）。
@@ -88,6 +111,8 @@ class GptSovits:
         # SoVITS 服务进程的 cwd 与主程序不同，转为绝对路径避免找不到文件
         ref_audio_path = os.path.abspath(ref_audio_path)
 
+        params = self._sampling_params(emotion, intensity)
+
         payload = {
             "text": text,
             "text_lang": self._resolve_text_lang(text),
@@ -99,6 +124,12 @@ class GptSovits:
             "fragment_interval": self.config.fragment_interval,
             "min_chunk_length": self.config.min_chunk_length,
             "overlap_length": self.config.overlap_length,
+            "top_k": params["top_k"],
+            "top_p": params["top_p"],
+            "temperature": params["temperature"],
+            "repetition_penalty": params["repetition_penalty"],
+            "noise_scale": params["noise_scale"],
+            "speed_factor": params["speed"],
         }
 
         try:
