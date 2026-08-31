@@ -46,22 +46,20 @@ class MeowAbstractDeepSeekLLM:
 
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None):
-        """非流式对话，返回完整响应对象（用于摘要工具调用）"""
+        """非流式对话，返回完整响应对象"""
         if not self.client:
             return None
         params = {
             "model": self.model,
             "messages": messages,
-            "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
         if tools:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        # DeepSeek thinking 模式不支持强制工具调用，需禁用
-        if tool_choice:
-            params["extra_body"] = {"thinking": {"type": "disabled"}}
+        params["extra_body"] = {"thinking": {"type": "enabled"}}
+        params["reasoning_effort"] = "high"
         try:
             resp = self.client.chat.completions.create(**params)
             return self._clean_resp_content(resp)

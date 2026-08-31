@@ -131,6 +131,15 @@ const Config = {
     _section(title) {
         return `<div class="form-section"><h4>${title}</h4></div>`;
     },
+    _fold(title, body) {
+        return `<details class="ref-fold">
+            <summary class="ref-fold-summary">
+                <span class="ref-fold-name">${title}</span>
+                <span class="ref-fold-arrow">▾</span>
+            </summary>
+            <div class="ref-fold-body">${body}</div>
+        </details>`;
+    },
     _esc(s) {
         return String(s == null ? '' : s)
             .replace(/&/g, '&amp;')

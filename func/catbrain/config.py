@@ -60,6 +60,47 @@ class MeowCatBrainConfig:
         self.ab_gemini_temperature = gm.get('temperature', 0.7)
         self.ab_gemini_max_tokens = gm.get('max_tokens', 2048)
 
+        # 摘要 tags 上限（事件概括的标签数量上限）
+        self.summary_tags_limit = am.get('tags_limit', 3)
+
+        # ========== 摘要证据 ==========
+        ev = am.get('evidence', {})
+        # 强化值半衰期（天）
+        self.evidence_rein_half_life_days = ev.get('rein_half_life_days', 30)
+        # 质疑值半衰期（天）
+        self.evidence_disp_half_life_days = ev.get('disp_half_life_days', 180)
+        # 净分数达到该值即 confirmed
+        self.evidence_confirmed_threshold = ev.get('confirmed_threshold', 1.0)
+        # 净分数低于该值即归档候选
+        self.evidence_archive_threshold = ev.get('archive_threshold', -2.0)
+        # 负分持续该天数后真正归档
+        self.evidence_archive_days = ev.get('archive_days', 14)
+        # same 判定的强化增量
+        self.evidence_same_delta = ev.get('same_delta', 0.5)
+        # opposite 判定的质疑增量
+        self.evidence_opposite_delta = ev.get('opposite_delta', 1.0)
+
+        # ========== 摘要去重 ==========
+        dd = am.get('dedup', {})
+        # 去重比对每批候选条数
+        self.dedup_batch_size = dd.get('batch_size', 20)
+        # 去重比对最大批次数
+        self.dedup_max_batches = dd.get('max_batches', 9)
+        # 检索匹配模式：strict 两元素相同 / broad 首 tag 匹配
+        self.dedup_match_mode = dd.get('match_mode', 'strict')
+
+        # ========== 摘要归档 ==========
+        ar = am.get('archive', {})
+        # 归档扫描间隔（秒）
+        self.archive_sweep_interval_seconds = ar.get('sweep_interval_seconds', 3600)
+
+        # ========== 摘要准确度 ==========
+        ac = am.get('accuracy', {})
+        # same 判定时 accuracy 增量
+        self.accuracy_same_increment = ac.get('same_increment', 1)
+        # opposite 判定时 accuracy 减量
+        self.accuracy_opposite_decrement = ac.get('opposite_decrement', 2)
+
         # ========== 价值观 ==========
         vs = cfg.get('cat_values', cfg.get('values', {}))
         # 价值观独立后端类型：deepseek / aliyun（所有密钥独立配置，禁止混淆）

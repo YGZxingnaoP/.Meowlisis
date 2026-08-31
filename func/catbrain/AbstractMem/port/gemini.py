@@ -59,9 +59,6 @@ class MeowAbstractGeminiLLM:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        # Gemini 强制工具调用时降到最低思考档（Gemini 3 无法完全关闭）
-        if tool_choice:
-            params["reasoning_effort"] = "low"
         try:
             resp = self.client.chat.completions.create(**params)
             return self._clean_resp_content(resp)

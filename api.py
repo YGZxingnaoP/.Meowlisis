@@ -66,6 +66,9 @@ SystemPromptBridge().register_builder(catbrain_builder)
 # 价值观 12 小时累计计时器（中断后从 .temp 恢复继续累计）
 from func.catbrain.CatValues.values_timer import MeowValuesTimer
 MeowValuesTimer().start()
+# 摘要归档启动扫描（负分条目累计与归档）
+from func.catbrain.AbstractMem.archive import MeowArchive
+MeowArchive().scan()
 # ============================================
 
 # ============= 角色主动回复 =====================

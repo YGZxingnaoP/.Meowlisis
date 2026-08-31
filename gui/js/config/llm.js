@@ -179,6 +179,15 @@ Object.assign(Config, {
             '这里指单条消息数（user/assistant 各算一条），与短期记忆的"轮数"不同：短期记忆一轮 = 用户 + AI 两条') +
             this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 20, 1, 200, 1) +
             this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);
+        h += this._fold('证据分数 (evidence)',
+            this._num('强化值半衰期(天)', 'catbrain.abstract_mem.evidence.rein_half_life_days', 30, 1, 3650, 1) +
+            this._num('质疑值半衰期(天)', 'catbrain.abstract_mem.evidence.disp_half_life_days', 180, 1, 3650, 1) +
+            this._num('confirmed 阈值', 'catbrain.abstract_mem.evidence.confirmed_threshold', 1.0, -10, 10, 0.1) +
+            this._num('归档候选阈值', 'catbrain.abstract_mem.evidence.archive_threshold', -2.0, -10, 10, 0.1) +
+            this._num('负分持续天数后归档', 'catbrain.abstract_mem.evidence.archive_days', 14, 1, 365, 1) +
+            this._num('same 强化增量', 'catbrain.abstract_mem.evidence.same_delta', 0.5, 0, 10, 0.1) +
+            this._num('opposite 质疑增量', 'catbrain.abstract_mem.evidence.opposite_delta', 1.0, 0, 10, 0.1)
+        );
         h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="abstract_ds">DeepSeek</button>
