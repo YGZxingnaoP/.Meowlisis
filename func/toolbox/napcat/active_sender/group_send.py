@@ -83,8 +83,28 @@ class TBGroupSend:
             text = str(target.get("text", "") or "").strip()
             if not group_id:
                 continue
-            if text:
+
+            # 解析要 @ 的 QQ 号：优先用 AI 已给出的 at_user_id，否则按 at_name 反查群成员列表
+            at_qq = str(target.get("at_user_id", "") or "").strip()
+            at_name = str(target.get("at_name", "") or "").strip()
+            if at_name and not at_qq:
+                try:
+                    from func.toolbox.napcat.active_sender.get_group_memberlist import TBGetGroupMemberList
+                    member = TBGetGroupMemberList().find_by_name(group_id, at_name)
+                    if member:
+                        at_qq = str(member.get("user_id", "") or "").strip()
+                    else:
+                        results.append(f"未在群 {group_id} 找到成员「{at_name}」，已改为普通文本发送")
+                except Exception:
+                    self.log.exception(f"反查群成员 QQ 失败: {at_name}")
+
+            if at_qq and text:
+                results.append(self.sender.send_group_at(group_id, at_qq, text))
+            elif at_qq:
+                results.append(self.sender.send_group_at(group_id, at_qq, ""))
+            elif text:
                 results.append(self.sender.send_text("group", group_id, text))
+
             file_path = str(target.get("file_path", "") or "").strip()
             if file_path:
                 results.append(self.sender.send_file("group", group_id, file_path))
@@ -107,7 +127,10 @@ class TBGroupSend:
             {"role": "system", "content": (
                 f"{system_prompt}\n\n"
                 f"根据群列表与用户需求，选定发送目标群并拟定消息。"
-                f"如需求涉及文件或链接，可填写文件路径或链接。调用 send_to_groups_plan 工具输出计划。"
+                f"如需求涉及文件或链接，可填写文件路径或链接。"
+                f"如果用户要求 @ 群里的某个成员：已知其 QQ 号时填 at_user_id；"
+                f"只知道昵称/群名片时填 at_name（由系统按名字反查 QQ 号，找不到会降级为普通文本发送）。"
+                f"不需要 @ 时两者都留空。调用 send_to_groups_plan 工具输出计划。"
                 f"只有在信息极度不全面、无法确定发到哪个群或发什么时，才把 need_clarify 设为 true 并给出询问问题；"
                 f"信息足够时果断输出计划，need_clarify 设为 false。"
             )},
@@ -148,6 +171,14 @@ class TBGroupSend:
                                 "properties": {
                                     "group_id": {"type": "string"},
                                     "text": {"type": "string"},
+                                    "at_name": {
+                                        "type": "string",
+                                        "description": "要 @ 的群成员昵称/群名片（按名字反查QQ号，可选）",
+                                    },
+                                    "at_user_id": {
+                                        "type": "string",
+                                        "description": "要 @ 的群成员QQ号（已知QQ号时直接填，可选）",
+                                    },
                                     "file_path": {"type": "string"},
                                     "url": {"type": "string"},
                                 },

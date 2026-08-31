@@ -242,6 +242,18 @@ class TBSender:
             self.log.exception("主动发送文本失败")
             return "发送失败"
 
+    def send_group_at(self, group_id, at_qq, text: str = "") -> str:
+        """主动 @ 群成员发送（at_qq 为目标 QQ 号，text 为空时仅 @）"""
+        if not group_id or not at_qq:
+            return "发送失败：缺少群号或 @ 目标"
+        try:
+            from func.toolbox.napcat.napcat_core import TBNapCatCore
+            TBNapCatCore().send_group_at_text(group_id, at_qq, text)
+            return f"已 @ 发送：{text[:30] if text else '(仅@)'}"
+        except Exception:
+            self.log.exception("主动 @ 发送失败")
+            return "发送失败"
+
     def send_link(self, target_type: str, target_id, url: str, desc: str = "") -> str:
         if not url or not target_id:
             return "发送失败：缺少目标或链接"

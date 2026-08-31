@@ -153,12 +153,12 @@ class TBWatchingStart:
                 f"用户指令：{instruction}\n\n"
                 f"当前可见窗口列表（用于绑定游戏窗口）：\n{window_lines}\n\n"
                 f"请调用 start_watching 工具。参数约束：\n"
-                f"- interval：截屏间隔秒数，范围 20~120；\n"
+                f"- interval：截屏间隔秒数，范围 20~300；\n"
                 f"- region_type：截屏区域，fullscreen(全屏) 或 bbox(坐标)；\n"
                 f"- bbox：region_type=bbox 时必填，屏幕绝对坐标 [left, top, right, bottom]；\n"
                 f"- need_change_check：是否开启前后画面变化检测。仅当判断游戏界面变化大"
                 f"（如第一人称射击、赛车、动作游戏）时填 true，否则 false；\n"
-                f"- duration：持续时间秒数，范围 1800~18000（30分钟~5小时），"
+                f"- duration：持续时间秒数，范围 300~18000（5分钟~5小时），"
                 f"从用户指令里提取，不确定填 0；\n"
                 f"- window_title：从窗口列表里选择要绑定的游戏窗口标题；\n"
                 f"- front_note：游戏场景说明（谁在玩什么、第一/第三人称、画面特征），用于提示词；\n"
@@ -202,7 +202,7 @@ class TBWatchingStart:
                             "description": "屏幕绝对坐标 [left, top, right, bottom]，region_type=bbox 时必填",
                         },
                         "need_change_check": {"type": "boolean", "description": "是否开启前后画面变化检测"},
-                        "duration": {"type": "integer", "description": "持续时间秒数，1800~18000，不确定填0"},
+                        "duration": {"type": "integer", "description": "持续时间秒数，300~18000，不确定填0"},
                         "window_title": {"type": "string", "description": "绑定的游戏窗口标题"},
                         "front_note": {"type": "string", "description": "游戏场景说明"},
                         "uncertain": {"type": "string", "description": "不确定需询问用户的问题，无则留空"},

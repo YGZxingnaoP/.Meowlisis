@@ -56,6 +56,26 @@ class TBNapCatApiClient:
             "message": [{"type": "text", "data": {"text": text}}],
         }, "群文本")
 
+    def send_group_at_text(self, group_id, at_qq, text: str):
+        """发送群聊 @ 某人文本（构造独立 at 段，线程安全）
+
+        at_qq 为目标 QQ 号；text 为空时仅 @ 不附带文字。
+        """
+        if not self.conn.enabled:
+            return
+        if not self.conn._wait_loop_ready():
+            self.log.warning("NapCat 事件循环未就绪，跳过群@发送")
+            return
+        message = [{"type": "at", "data": {"qq": str(at_qq)}}]
+        if text:
+            # @ 与文字之间留一个空格，避免客户端显示粘连
+            message.append({"type": "text", "data": {"text": " " + text}})
+        self.log.info(f"[NapCat] 发送群@文本 → {group_id} @{at_qq}: {(text or '')[:40]}")
+        self._submit_send("send_group_msg", {
+            "group_id": int(group_id),
+            "message": message,
+        }, "群@文本")
+
     def send_group_image(self, group_id, file_path: str):
         """发送群聊图片（线程安全）"""
         if not file_path or not self.conn.enabled:

@@ -106,6 +106,9 @@ class TBNapCatCore:
     def send_group_text(self, group_id, text: str):
         self.api_client.send_group_text(group_id, text)
 
+    def send_group_at_text(self, group_id, at_qq, text: str):
+        self.api_client.send_group_at_text(group_id, at_qq, text)
+
     def send_group_image(self, group_id, file_path: str):
         self.api_client.send_group_image(group_id, file_path)
 

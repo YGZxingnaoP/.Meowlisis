@@ -37,6 +37,17 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册 NapCat 主动发送模块失败")
 
+        # NapCat 群成员列表查询（用于 @ 特定成员时按名字反查 QQ 号）
+        try:
+            from func.toolbox.napcat.active_sender.get_group_memberlist import TBGetGroupMemberList
+            member_list = TBGetGroupMemberList()
+            for tool_schema in member_list.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, member_list)
+        except Exception:
+            self.log.exception("注册群成员列表查询工具失败")
+
         # 视觉模块触发
         try:
             from func.toolbox.meowvision.vision_core import TBVisionCore
@@ -188,6 +199,7 @@ class TBoxAnalysis:
             f"【工具调用】根据用户消息判断是否需要调用工具箱工具。\n"
             f"只有用户「明确」表达以下操作意图时，才调用对应工具：\n"
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
+            f"- 需要查询群成员列表、某人在群里的QQ号、或要@群里的某个人 → get_group_member_list；\n"
             f"- 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。\n"
             f"- 只要提到屏幕！所有和看屏幕相关的指令，如：看屏幕/截图/看图片/看我在做什么 → use_vision；\n"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"

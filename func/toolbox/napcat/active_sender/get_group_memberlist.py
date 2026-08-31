@@ -37,17 +37,25 @@ class TBGetGroupMemberList:
             return []
 
     def find_by_name(self, group_id, name: str) -> Optional[dict]:
-        """按昵称/群名片模糊匹配群成员，返回第一个匹配（识别机器人用）"""
+        """按昵称/群名片匹配群成员，返回第一个匹配（用于 @ 特定成员）。
+
+        匹配优先级：群名片 card / QQ 昵称 nickname 精确相等 → card 包含 → nickname 包含。
+        一次性拉取成员列表，避免重复调用 API。
+        """
         target = str(name or "").strip()
         if not target:
             return None
-        for m in self.get(group_id):
-            if target in (m.get("nickname", ""), m.get("card", "")):
-                return m
-        # 模糊包含匹配
-        for m in self.get(group_id):
-            if target in (m.get("nickname", "") or "") or target in (m.get("card", "") or ""):
-                return m
+        members = self.get(group_id)
+        # 1) 精确匹配（群名片 card 优先于 QQ 昵称 nickname）
+        for key in ("card", "nickname"):
+            for m in members:
+                if str(m.get(key, "") or "").strip() == target:
+                    return m
+        # 2) 包含匹配（同样 card 优先）
+        for key in ("card", "nickname"):
+            for m in members:
+                if target in str(m.get(key, "") or ""):
+                    return m
         return None
 
     @staticmethod
