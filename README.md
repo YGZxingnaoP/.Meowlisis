@@ -69,10 +69,31 @@ func/pipeline/toolbox_audio.py
 
 
 ## 接下来是一些功能介绍
-<div align="center">
-<img src="./工作流程解析/【待完善】meowlisis工作流程.webp" alt="核心功能的流程图（未实时更新，待完善）" width="600" height="400">
-<figcaption>核心功能的流程图（未实时更新，待完善）</figcaption>
-</div>
+<figure align="center" style="margin: 2rem 0;">
+  <img 
+    src="./工作流程解析/【待完善】meowlisis工作流程.webp" 
+    alt="Meowlisis 核心功能流程图（待完善）" 
+    width="600" 
+    style="
+      width: 80%; 
+      max-width: 600px; 
+      height: auto; 
+      border-radius: 12px; 
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+      border: 1px solid #e1e4e8;
+      display: block;
+      margin: 0 auto;
+    "
+  />
+  <figcaption style="
+    margin-top: 12px; 
+    font-size: 0.9em; 
+    color: #586069; 
+    text-align: center;
+  ">
+    ⚠️ 核心功能流程图（<strong>待完善</strong>，点击图片查看大图）
+  </figcaption>
+</figure>
 
 ### 运行环境
 ```
@@ -289,10 +310,13 @@ MeowVision 视觉模块，支持屏幕截图、画面裁剪与变化检测，调
 
 ## Star History
 
-<a href="https://www.star-history.com/#YGZxingnaoP/.Meowlisis&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&legend=top-left" />
-  </picture>
-</a>
+<p align="center">
+  <a href="https://www.star-history.com/#YGZxingnaoP/.Meowlisis&Date">
+    <img 
+      src="./工作流程解析/star-history-202691.png" 
+      alt="Star History Chart" 
+      width="80%" 
+      style="max-width: 800px;"
+    >
+  </a>
+</p>
