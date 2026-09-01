@@ -26,8 +26,6 @@ config.yml
 
 #资源文件
 *.ico
-*.png
-必读文件/
 
 #内置Sovits
 .Sovits/FFmpeg
