@@ -1,12 +1,16 @@
 # Meowlisis!
 
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+> 本项目采用 [MIT 许可证](LICENSE) 开源。
+
 ```
 写代码的初衷是希望自己做动画的时候有个人陪我聊天
 然后找不到人，就把一只小猫变成人了awa
 更新频率随缘，可以在B站@YGZ醒脑片的直播间不定期看到
 ```
 
-## 首先是使用教程
+## 写在最前面
 - 这里是Github的源代码区。
 - 整合包地址：【百度网盘】链接: https://pan.baidu.com/s/1Ea-LSXFDMSUIN0o-9n4OBQ?pwd=0204 提取码: 0204 
 --来自百度网盘超级会员v2的分享
