@@ -286,3 +286,13 @@ MeowVision 视觉模块，支持屏幕截图、画面裁剪与变化检测，调
 
 ## Requirements
 依赖清单见 requirements.txt，运行环境为 Python 3.11（项目内置 runtime 目录）。
+
+## Star History
+
+<a href="https://www.star-history.com/#YGZxingnaoP/.Meowlisis&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&theme=dark&legend=top-left" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&legend=top-left" />
+    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=YGZxingnaoP/.Meowlisis&type=Date&legend=top-left" />
+  </picture>
+</a>
