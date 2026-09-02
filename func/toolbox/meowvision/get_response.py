@@ -47,7 +47,7 @@ class TBVisionGetResponse:
         properties = {
             "reply": {
                 "type": "string",
-                "description": "以角色身份自然、口语化、简短地回复用户，控制在30字以内",
+                "description": "以角色身份自然、口语化、简短地回复用户，控制在30~60字以内",
             }
         }
         required = ["reply"]

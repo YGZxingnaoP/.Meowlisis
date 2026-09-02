@@ -31,8 +31,8 @@ class TBWatchingConfig:
         # 截屏频率（秒）：20 ~ 120
         self.min_interval = int(cfg.get("min_interval", 20))
         self.max_interval = int(cfg.get("max_interval", 120))
-        # 持续时间（秒）：30分钟 ~ 5小时
-        self.min_duration = int(cfg.get("min_duration", 30 * 60))
+        # 持续时间（秒）：5分钟 ~ 5小时
+        self.min_duration = int(cfg.get("min_duration", 5 * 60))
         self.max_duration = int(cfg.get("max_duration", 5 * 60 * 60))
         # 变化检测相似度阈值：两帧相似度 >= 该值判定为"无变化"
         self.change_similarity_threshold = float(cfg.get("change_similarity_threshold", 0.85))
@@ -103,5 +103,5 @@ class TBWatchingConfig:
         try:
             v = int(value)
         except (TypeError, ValueError):
-            v = 30 * 60
+            v = 5 * 60
         return max(self.min_duration, min(self.max_duration, v))

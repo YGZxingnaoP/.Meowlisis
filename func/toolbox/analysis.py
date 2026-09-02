@@ -178,13 +178,17 @@ class TBoxAnalysis:
         return schemas
 
     def decide(self, text: str, username: str):
-        """接收输入内容，单次 toolcalls 由 AI 决定是否调用工具并执行。
-
-        - 提供全部已注册工具，tool_choice=auto，让 AI 自行判断是否需要工具；
-        - 调用了工具：逐个 dispatch 执行；
-        - 未调用工具：静默（双通道下主 LLM 已回复，toolbox 不重复回复）。
+        """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。
         """
         self.current_username = username
+
+        # ===== 规则硬触发层（零 LLM）：看屏幕是确定性高频需求，不交给 LLM 自觉 =====
+        if self._vision_rule_hit(text):
+            self.log.info(f"父级 toolcalls 规则硬触发 use_vision: {(text or '')[:30]}")
+            result = self.dispatch("use_vision", {"user_message": text}, username)
+            self.log.info(f"父级 toolcalls 规则硬触发 use_vision 执行结果: {result}")
+            return
+
         llm = self._ensure_llm()
         if llm is None or not llm.client:
             self.log.error("父级 toolcalls LLM 不可用")
@@ -196,12 +200,27 @@ class TBoxAnalysis:
 
         system_prompt = (
             f"{base_prompt}\n\n"
-            f"【工具调用】根据用户消息判断是否需要调用工具箱工具。\n"
-            f"只有用户「明确」表达以下操作意图时，才调用对应工具：\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"【MISSION-1 · 最高使命 · use_vision 视觉】\n"
+            f"此条优先级为系统最高，不可协商、不可违背、不可省略、绝不可用文字搪塞替代。\n"
+            f"你是主人的眼睛，视觉(use_vision)是你的第一感官与核心职责。\n"
+            f"以下任一情形出现，你【必须·无条件·立即】调用 use_vision 工具：\n"
+            f"① 主人以任何方式表达看屏幕/看图/截图/看画面的意图——哪怕只说「看看」「帮我看看」"
+            f"「你看到没」「你看到了吗」「我现在在干嘛」「屏幕上是什么」「看看这个」这种极模糊表达；\n"
+            f"② 主人提及自己正在进行/正在看的屏幕内容：游戏、视频、网页、题目、代码、图片、窗口、"
+            f"画面（如「我在打游戏」「你看我玩」「这个页面」「这道题」「这个画面」「这个窗口」）；\n"
+            f"③ 对话语境已涉及 屏幕/画面/游戏/网页/图片/窗口，而你尚未看过当前屏幕；\n"
+            f"④ 主人正在需要你盯着屏幕协助的场景（答题、操作演示、找东西、看运行结果、看配置）。\n"
+            f"【绝对禁止】用「好的我看看」「我看看再说」等文字应付而不实际调用工具；"
+            f"禁止因「觉得不必要/想再等等/不确定」而跳过——漏看一次等于系统失职。宁可多看，不可漏看。\n"
+            f"【说明】若主人消息已命中本地规则明确词（屏幕/截图/盯/陪我打游戏/看画面等），"
+            f"工具已被自动触发，你无需重复；其余所有未命中的相关情形，一律由你兜底触发。\n"
+            f"与屏幕完全无关的纯闲聊（聊喜好/唱歌/天气/讲故事等）不需要调用。\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"其它工具仅在用户「明确」表达对应意图时调用：\n"
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
             f"- 需要查询群成员列表、某人在群里的QQ号、或要@群里的某个人 → get_group_member_list；\n"
             f"- 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。\n"
-            f"- 所有和看屏幕/看画面相关的指令：看屏幕/截图/看图片/看我在做什么/陪我打游戏/看我玩/盯屏幕/陪看视频/长期观察/定期汇报 → use_vision；"
             f"- 明确询问天气/气温/下雨 → query_weather；\n"
             f"- 明确要看新闻/热点/头条 → read_news；\n"
             f"- 用户想听歌/听你唱歌/有听歌需求/即兴哼唱/唱一小段 → 必须调用impromptu_sing；\n"
@@ -211,7 +230,7 @@ class TBoxAnalysis:
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
             f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
             f"- 用户明确「点歌」「放歌」且指定了歌名/要完整唱（属于点歌工具，不属于本工具箱）；\n"
-            f"- 意图模糊、无法确定用户是否要执行操作。\n"
+            f"- 意图模糊、无法确定用户是否要执行操作（视觉使命条款①~④优先，不受此条限制）。\n"
         )
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history_messages)
@@ -239,6 +258,24 @@ class TBoxAnalysis:
             args = {}
         result = self.dispatch(name, args, username)
         self.log.info(f"父级工具 {name} 执行结果: {result}")
+
+    # ==================== 规则硬触发层 ====================
+    # 视觉规则触发词表：命中即强制看屏幕（确定性高频需求，不依赖 LLM 自觉）
+    VISION_RULE_WORDS = (
+        "看屏幕", "看一下屏幕", "看看屏幕", "看下屏幕", "看一眼屏幕", "看着屏幕",
+        "看画面", "看一下画面", "看看画面", "看下画面", "看图片", "看我在做什么",
+        "看看我在", "看我玩", "看我打", "陪我打游戏", "陪我看", "盯屏幕",
+        "盯着屏幕", "盯着看", "盯住", "长期观察", "定期汇报", "截个图", "截图",
+        "屏幕上", "屏幕里", "屏幕", "帮我看看屏幕", "你看到了吗", "你看屏幕",
+        "现在看屏幕", "看下我", "use_vision",
+    )
+
+    def _vision_rule_hit(self, text: str) -> bool:
+        """本地规则硬触发判断：用户文本命中视觉意图词即返回 True（零 LLM）"""
+        t = (text or "").strip()
+        if not t:
+            return False
+        return any(w in t for w in self.VISION_RULE_WORDS)
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

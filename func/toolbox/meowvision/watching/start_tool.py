@@ -4,7 +4,7 @@
 
 import json
 import re
-from typing import Dict, Optional
+from typing import Optional
 
 from func.log.default_log import DefaultLog
 from func.toolbox.meowvision.watching.config import TBWatchingConfig
@@ -30,19 +30,24 @@ class TBWatchingStart:
         self.window_list = TBWindowList()
 
     # ==================== 主入口 ====================
-    def decide_and_start(self, username: str, user_instruction: str) -> Optional[dict]:
-        """判断是否需要 watching，需要则收集配置并启动循环。返回配置 dict 或 None（不 watching）。"""
+    def decide_and_start(self, username: str, user_instruction: str,
+                         front_window: Optional[dict] = None) -> Optional[dict]:
+        """判断是否需要 watching，需要则收集配置并启动循环。返回配置 dict 或 None（不 watching）。
+
+        :param front_window: 首帧截图时抓到的前台窗口候选 {hwnd,title,...}（可空）。
+            仅作为高置信候选置顶展示，是否绑定仍由 LLM 结合用户指令语义确认。
+        """
         instruction = (user_instruction or "").strip()
         if not instruction:
             return None
 
-        # 阶段1：深度思考判断
+        # 阶段1：深度思考判断（语义确认①：用户是否真要长期观察）
         need = self._decide_watching(username, instruction)
         if not need:
             return None
 
-        # 阶段2：收集配置（可能 excuse 追问一轮）
-        config = self._collect_with_excuse(username, instruction)
+        # 阶段2：收集配置（可能 excuse 追问一轮；前台候选置顶供语义选窗）
+        config = self._collect_with_excuse(username, instruction, front_window=front_window)
         if not config:
             return None
 
@@ -54,46 +59,8 @@ class TBWatchingStart:
 
         return self._launch(config, username, instruction)
 
-    # ==================== 参数直启（use_vision 合并 watching 后的主入口） ====================
-    def start_with_params(self, args: dict, username: str, instruction: str) -> Optional[dict]:
-        """用 AI 填写的循环参数直接启动 watching（跳过阶段1深度思考）。
-
-        - 参数齐全：直接校验并启动；
-        - 缺 duration/window_title 等关键参数：强制追问用户补齐（最多2轮）；
-        - 参数几乎全空（无窗口、无时长）：回退 decide_and_start（深度思考兜底）。
-        """
-        config = self._normalize(args or {})
-
-        # 参数几乎全空 → 回退旧深度思考路径兜底
-        if not config.get("window_title") and int(config.get("duration") or 0) <= 0:
-            self.log.info("[Watching] watching=true 但循环参数为空，回退深度思考兜底")
-            return self.decide_and_start(username, instruction)
-
-        windows = self.window_list.list_windows()
-        # 强制补齐缺失项（最多2轮追问）
-        for _ in range(2):
-            missing = self._missing_keys(config)
-            if not missing:
-                break
-            question = self._build_question(missing)
-            self.log.info(f"[Watching] 参数缺失，追问用户: {question}")
-            from func.toolbox.excuse import TBExcuse
-            answer = TBExcuse().ask(question, username=username)
-            if not answer:
-                self.log.warning("[Watching] 追问无应答，无法补齐缺失参数")
-                break
-            config = self._merge_answer(config, answer, windows)
-
-        # 仍有缺失 → 放弃启动
-        missing = self._missing_keys(config)
-        if missing:
-            self.log.warning(f"[Watching] 追问后仍缺失参数: {missing}，放弃启动")
-            return None
-
-        return self._launch(config, username, instruction)
-
     def _launch(self, config: dict, username: str, instruction: str) -> Optional[dict]:
-        """公共启动流程：窗口绑定 → 落盘 → 启动循环（参数直启与深度思考兜底两个入口共用）"""
+        """公共启动流程：窗口绑定 → 落盘 → 启动循环（由 decide_and_start 深度思考入口调用）"""
         # 窗口绑定
         hwnd = self._resolve_hwnd(config)
         if not hwnd:
@@ -122,126 +89,6 @@ class TBWatchingStart:
         self.log.info(f"[Watching] 已启动：{config.get('window_title')}，"
                       f"间隔 {config.get('interval')}s，时长 {config.get('duration')}s")
         return config
-
-    @staticmethod
-    def _build_question(missing: list) -> str:
-        """把缺失参数转成对用户的中文追问"""
-        parts = []
-        if "window_title" in missing:
-            parts.append("你想让我观察哪个窗口/游戏？")
-        if "duration" in missing:
-            parts.append("你想让我持续观察多久（如 30分钟 / 1小时）？")
-        if "bbox" in missing:
-            parts.append("你想让我观察屏幕的哪个区域（坐标）？")
-        return "；".join(parts) if parts else ""
-
-    def _merge_answer(self, config: dict, answer: str, windows: list) -> dict:
-        """从用户回答中解析并补全缺失参数（不重新调 LLM）"""
-        answer = (answer or "").strip()
-        # 时长解析
-        if int(config.get("duration") or 0) <= 0:
-            secs = self._parse_duration(answer)
-            if secs:
-                config["duration"] = self.config.clamp_duration(secs)
-        # 窗口解析（从窗口列表标题匹配回答中的关键词）
-        if not config.get("window_title"):
-            title = self._match_window(answer, windows)
-            if title:
-                config["window_title"] = title
-        # bbox 解析：能解析则补全，解析失败回退全屏（避免 bbox 缺失死路）
-        if config.get("region_type") == "bbox" and not config.get("bbox"):
-            bbox = self._parse_bbox_answer(answer)
-            if bbox:
-                config["bbox"] = bbox
-            else:
-                config["region_type"] = "fullscreen"
-                config["bbox"] = None
-        return config
-
-    @staticmethod
-    def _parse_bbox_answer(text: str) -> Optional[list]:
-        """从回答解析屏幕坐标 bbox [left, top, right, bottom]；解析失败返回 None"""
-        nums = re.findall(r"\d+", text or "")
-        if len(nums) >= 4:
-            try:
-                return [int(v) for v in nums[:4]]
-            except (TypeError, ValueError):
-                return None
-        return None
-
-    # 中文数字 → 数值（用于时长解析）
-    _CN_NUM = {'一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
-               '六': 6, '七': 7, '八': 8, '九': 9, '半': 0.5, '十': 10}
-
-    @classmethod
-    def _parse_duration(cls, text: str) -> int:
-        """从文本解析时长（秒），支持阿拉伯/中文数字 + 小时/分钟/秒"""
-        text = (text or "").strip()
-        if not text:
-            return 0
-        # 特判：一个半小时 / 半小时
-        if "一个半小时" in text:
-            return 5400
-        if "半小时" in text:
-            return 1800
-        # 阿拉伯数字 + 单位
-        m = re.search(r"(\d+)\s*(小时|分钟|分|秒|h|m|s)", text)
-        if m:
-            num = int(m.group(1))
-            unit = m.group(2)
-            if unit in ("小时", "h"):
-                return num * 3600
-            if unit in ("分钟", "分", "m"):
-                return num * 60
-            return num
-        # 中文数字 + 单位
-        m = re.search(r"([一两二三四五六七八九十半])\s*(小时|分钟|分|秒)", text)
-        if m:
-            num = cls._CN_NUM.get(m.group(1), 1)
-            unit = m.group(2)
-            if unit == "小时":
-                return int(num * 3600)
-            if unit in ("分钟", "分"):
-                return int(num * 60)
-            return int(num)
-        # 纯数字（默认秒）
-        m = re.search(r"(\d+)", text)
-        if m:
-            return int(m.group(1))
-        return 0
-
-    @classmethod
-    def _match_window(cls, text: str, windows: list) -> str:
-        """在窗口列表里找与回答文本匹配的窗口标题
-
-        - 回答包含窗口标题（子串）优先；
-        - 再按回答中的词（2字以上片段）匹配标题，英文/数字片段不区分大小写。
-        """
-        text = (text or "").strip()
-        if not text or not windows:
-            return ""
-        # 1) 回答包含窗口标题（子串）
-        for w in windows:
-            title = w.get("title") or ""
-            if title and title in text:
-                return title
-        # 2) 标题包含回答中的词（按空白/标点切分，取2字以上片段）
-        tokens = [t for t in re.split(r"[\s，。！？、,.!?；;：:\"'（）()\[\]【】]+", text)
-                  if len(t.strip()) >= 2]
-        for t in tokens:
-            tl = t.lower()
-            for w in windows:
-                title = w.get("title") or ""
-                if not title:
-                    continue
-                # 整体子串（英文忽略大小写）
-                if tl in title.lower():
-                    return title
-                # token 内嵌英文/数字片段（如 "mC的窗口" 提取 "mc"）与标题匹配
-                for sub in re.findall(r"[a-zA-Z0-9]+", t):
-                    if sub.lower() in title.lower():
-                        return title
-        return ""
 
     # ==================== 阶段1：深度思考判断 ====================
     def _decide_watching(self, username: str, instruction: str) -> bool:
@@ -275,9 +122,24 @@ class TBWatchingStart:
         return need
 
     # ==================== 阶段2：收集配置 ====================
-    def _collect_with_excuse(self, username: str, instruction: str) -> Optional[dict]:
-        """收集配置，不确定则 excuse 追问一轮后重新收集"""
+    def _build_windows(self, front_window: Optional[dict] = None) -> list:
+        """构造供 LLM 选择的窗口列表：前台候选置顶并标注【当前前台】。
+
+        前台窗口只是高置信候选——LLM 仍需结合用户指令语义判断它是否用户所指，
+        语义明显不符时从完整列表中选择其它窗口，避免盲目绑定。
+        """
         windows = self.window_list.list_windows()
+        if front_window and front_window.get("title"):
+            front = dict(front_window)
+            front["is_foreground"] = True
+            windows = [w for w in windows if w.get("hwnd") != front.get("hwnd")]
+            windows.insert(0, front)
+        return windows
+
+    def _collect_with_excuse(self, username: str, instruction: str,
+                             front_window: Optional[dict] = None) -> Optional[dict]:
+        """收集配置，不确定则 excuse 追问一轮后重新收集"""
+        windows = self._build_windows(front_window)
         config = self._collect(username, instruction, windows)
         if not config:
             return None
@@ -298,7 +160,7 @@ class TBWatchingStart:
 
         # 合并回答后重新收集一轮
         new_instruction = f"{instruction}；用户补充：{answer}"
-        windows = self.window_list.list_windows()
+        windows = self._build_windows(front_window)
         config2 = self._collect(username, new_instruction, windows)
         return config2 if config2 else config
 
@@ -319,7 +181,12 @@ class TBWatchingStart:
             {"role": "user", "content": (
                 f"用户指令：{instruction}\n\n"
                 f"当前可见窗口列表（用于绑定游戏窗口）：\n{window_lines}\n\n"
-                f"请调用 start_watching 工具。参数约束：\n"
+                f"请调用 start_watching 工具。窗口选择说明：\n"
+                f"- 列表中标注【当前前台】的窗口是用户此刻正在操作的窗口，"
+                f"通常就是用户希望观察的窗口，请优先选择它；\n"
+                f"- 但如果它与用户指令语义明显不符（例如用户说要观察游戏，"
+                f"前台却是聊天窗口），请从列表中选择符合语义的其它窗口。\n"
+                f"参数约束：\n"
                 f"- interval：截屏间隔秒数，范围 20~300；\n"
                 f"- region_type：截屏区域，fullscreen(全屏) 或 bbox(坐标)；\n"
                 f"- bbox：region_type=bbox 时必填，屏幕绝对坐标 [left, top, right, bottom]；\n"
@@ -465,7 +332,8 @@ class TBWatchingStart:
         lines = []
         for i, w in enumerate(windows, 1):
             proc = w.get("process") or "?"
-            lines.append(f"{i}. 标题「{w.get('title', '')}」 进程「{proc}」")
+            tag = "【当前前台】" if w.get("is_foreground") else ""
+            lines.append(f"{i}. {tag}标题「{w.get('title', '')}」 进程「{proc}」")
         return "\n".join(lines)
 
     @staticmethod

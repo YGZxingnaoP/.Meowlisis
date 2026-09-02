@@ -311,6 +311,23 @@ async def tts_handle(req: dict):
 
     streaming_mode = streaming_mode or return_fragment
 
+    # ---- 云端部署兼容：Meowlisis 会把本地 Windows 绝对路径(如 D:\.Meowlisis\character\ref_audio\happy.wav)
+    # 直接放进 ref_audio_path；在 Linux 下 torchaudio/ffmpeg 会把 "D:" 当作 URL 协议导致
+    # "Protocol not found"。若项目根目录下已放置同名的伪装音频文件，则转为该文件的绝对路径即可正常打开。
+    # Windows 本地运行(os.sep == "\\")时该逻辑自动跳过，行为不变。
+    def _fix_win_audio_path(p):
+        if p and os.sep == "/" and ":" in str(p) and "\\" in str(p):
+            _ap = os.path.abspath(str(p))
+            if os.path.exists(_ap):
+                return _ap
+        return p
+
+    _rp = req.get("ref_audio_path") or ""
+    if _rp:
+        req["ref_audio_path"] = _fix_win_audio_path(_rp)
+    _aux = req.get("aux_ref_audio_paths") or []
+    if _aux:
+        req["aux_ref_audio_paths"] = [_fix_win_audio_path(a) for a in _aux if a]
 
     try:
         tts_generator = tts_pipeline.run(req)

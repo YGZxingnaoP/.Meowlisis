@@ -74,6 +74,34 @@ class TBWindowList:
                 return ""
         return ""
 
+    def get_foreground(self) -> Optional[dict]:
+        """返回当前前台（活动）窗口 {hwnd, title, pid, process}；不可用时返回 None。
+
+        仅作为「高置信候选」——最终是否绑定仍由 watching 内部结合用户指令语义确认。
+        """
+        try:
+            import win32gui
+            import win32process
+        except Exception as e:
+            self.log.warning(f"[Watching] 前台窗口获取不可用: {e}")
+            return None
+        try:
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd or not win32gui.IsWindowVisible(hwnd):
+                return None
+            title = win32gui.GetWindowText(hwnd)
+            if not title or not title.strip():
+                return None
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            return {
+                "hwnd": int(hwnd),
+                "title": title.strip(),
+                "pid": int(pid or 0),
+                "process": self._process_name(pid),
+            }
+        except Exception:
+            return None
+
     def find_hwnd(self, title: str) -> Optional[int]:
         """按窗口标题精确/包含匹配，返回第一个命中的 hwnd；找不到返回 None"""
         title = (title or "").strip()

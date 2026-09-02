@@ -68,20 +68,19 @@ class TBVisionCore:
     def build_tools(self) -> List[Dict]:
         """构建 use_vision 触发工具 schema（供父级 toolcalls 展开注册）
 
-        两种模式：
-        ① 一次性查看：不带 watching 参数，立即看图/截图并回复一次；
-        ② 长期观察（watching）：watching=true 并填写 interval/duration/window_title 等循环参数，
-           由 AI 一次决策直接启动后台循环。
+        统一「先看第一眼」：调用后先截图/看图并回复一次；
+        若用户要求长期盯屏（陪打游戏/长期观察/定期汇报），由工具内部自动升级持续观察，
+        ——调用方无需填写任何循环参数。
         """
         return [{
             "type": "function",
             "function": {
                 "name": self.TOOL_NAME,
                 "description": (
-                    "看屏幕/看图片并回复。两种模式二选一："
-                    "① 一次性查看：不带watching参数，立即看图/截图并回复一次；"
-                    "② 长期观察：用户要求持续盯屏/陪打游戏/长时间观察屏幕并定期汇报时，"
-                    "watching填true，并填写循环参数(interval/duration/window_title等)。"
+                    "看屏幕/看图片并回复。只要用户表达看屏幕/看画面/看图片/截图意图，"
+                    "或你正在关注当前屏幕内容即可调用；无需任何参数。"
+                    "若用户希望长期盯屏（陪我打游戏/长期观察/定期汇报画面等），"
+                    "工具内部会自动启动持续观察，调用方无需填写任何循环参数。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -95,42 +94,32 @@ class TBVisionCore:
                             "type": "string",
                             "description": "用户当前消息/看图指令（可空）",
                         },
-                        "watching": {
-                            "type": "boolean",
-                            "description": "是否开启长期观察。用户要求持续盯屏/陪打游戏/定期汇报时填true",
-                        },
-                        "interval": {
-                            "type": "integer",
-                            "description": "截屏间隔秒数20~120，如每2分钟=120（watching=true时填写）",
-                        },
-                        "duration": {
-                            "type": "integer",
-                            "description": "持续观察秒数300~18000，如一小时=3600（watching=true时必填）",
-                        },
-                        "need_change_check": {
-                            "type": "boolean",
-                            "description": "是否开启画面变化检测（动态游戏建议true，静态画面建议false）",
-                        },
-                        "window_title": {
-                            "type": "string",
-                            "description": "要绑定的窗口标题（watching=true时必填，从当前可见窗口中选择）",
-                        },
-                        "front_note": {
-                            "type": "string",
-                            "description": "游戏场景说明（谁在玩什么、第一/第三人称、画面特征），可空",
-                        },
                     },
                 },
             },
         }]
 
+    # 持续观察意图弱信号（命中只是"尝试升级"的提示，是否真启动由 watching 内部深度思考最终确认）
+    SUSTAIN_HINT = (
+        "长期", "持续", "一直", "盯着", "盯屏幕", "盯着我", "守着", "监视",
+        "观察我", "观察屏幕", "观察画面", "陪我打", "陪我玩", "陪我看", "陪打",
+        "看着我打", "看着我玩", "看我打", "看我玩", "看我一会", "等我打完",
+        "定期汇报", "汇报我", "全程", "帮我看着",
+    )
+
+    def _has_sustain_intent(self, text: str) -> bool:
+        """用户消息是否含持续观察意图的弱信号（子串匹配，零成本）"""
+        return any(k in (text or "") for k in self.SUSTAIN_HINT)
+
     # ==================== 执行分发 ====================
     def dispatch(self, name: str, arguments: Dict) -> str:
         """按工具名执行（父级 toolcalls 调用入口）
 
-        - watching=true：长期观察，用 AI 填写的循环参数直接启动（缺失关键参数时强制追问，
-          参数全空时回退 decide_and_start 深度思考兜底）；
-        - 否则：普通视觉逻辑（一次性看图/截图）。
+        统一「先看第一眼」：
+        1. 先做一次普通看屏（截图→评述→回复），无论最终是否长期，都先给用户即时反馈；
+        2. 若本次是盯屏场景（无外部图片）且用户消息含持续观察意图弱信号，
+           再尝试升级为长期观察(watching)——由 watching 内部结合【前台窗口候选】
+           与用户指令做语义确认后启动；确认不通过则保持一次性，不影响已完成的看屏。
         """
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
@@ -139,29 +128,31 @@ class TBVisionCore:
         user_message = arguments.get("user_message") or ""
         username = self._username or "用户"
 
-        # 1. 长期观察（watching）分支：由 AI 在参数中声明（兼容字符串 "true"/"false"）
-        if str(arguments.get("watching", "")).strip().lower() in ("true", "1"):
+        # 第1步：先看第一眼（watching 也先看一次再决定是否长期）
+        # 传了外部图片路径 → 需要图片描述；用缓存（角色自己截图）→ 不需要描述
+        need_description = bool(image_paths)
+        reply = self.run(image_paths, user_message, username, need_description)
+
+        # 第2步：盯屏场景 + 持续意图弱信号 + watching 开启 → 尝试升级长期观察
+        if not image_paths and self._has_sustain_intent(user_message):
             try:
                 from func.toolbox.meowvision.watching.config import TBWatchingConfig
                 if TBWatchingConfig().enabled:
                     from func.toolbox.meowvision.watching.start_tool import TBWatchingStart
-                    watching_config = TBWatchingStart().start_with_params(
-                        arguments, username, user_message
+                    from func.toolbox.meowvision.watching.window import TBWindowList
+                    # 首帧前台窗口作为高置信候选（是否绑定由 watching 内部语义确认）
+                    front = TBWindowList().get_foreground()
+                    watching_config = TBWatchingStart().decide_and_start(
+                        username, user_message, front_window=front
                     )
                     if watching_config:
                         title = watching_config.get("window_title", "")
-                        return f"已启动长期观察屏幕，绑定窗口：{title}"
-                    return "错误：长期观察启动失败，请确认窗口/时长后重试"
-                # 功能被禁用：明确告知，不静默降级为一次性看屏
-                return "错误：长期观察功能未开启"
+                        self.log.info(f"[MeowVision] 已启动长期观察: 窗口={title}")
+                        return (reply or "") + f"（已启动长期观察：{title}）"
             except Exception:
-                self.log.exception("[MeowVision] watching 启动异常，回退普通视觉")
-                return "错误：长期观察启动异常"
+                self.log.exception("[MeowVision] watching 升级异常，保持一次性看屏")
 
-        # 2. 普通视觉逻辑
-        # 传了外部图片路径 → 需要图片描述；用缓存（角色自己截图）→ 不需要描述
-        need_description = bool(image_paths)
-        return self.run(image_paths, user_message, username, need_description)
+        return reply
 
     # ==================== 核心流程 ====================
     def run(self, image_paths: List[str], user_message: str, username: str,
