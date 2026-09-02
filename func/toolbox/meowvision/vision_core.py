@@ -66,15 +66,22 @@ class TBVisionCore:
 
     # ==================== 工具 schema ====================
     def build_tools(self) -> List[Dict]:
-        """构建 use_vision 触发工具 schema（供父级 toolcalls 展开注册）"""
+        """构建 use_vision 触发工具 schema（供父级 toolcalls 展开注册）
+
+        两种模式：
+        ① 一次性查看：不带 watching 参数，立即看图/截图并回复一次；
+        ② 长期观察（watching）：watching=true 并填写 interval/duration/window_title 等循环参数，
+           由 AI 一次决策直接启动后台循环。
+        """
         return [{
             "type": "function",
             "function": {
                 "name": self.TOOL_NAME,
                 "description": (
-                    "调用视觉模型看屏幕/看图片并回复。适用于：对主人现在在做的事情感兴趣、"
-                    "主人要求你陪他玩、想看看屏幕更好陪伴主人、或者想了解当前屏幕内容时。"
-                    "可指定本地图片路径列表；若不指定，则自动截图或使用此前缓存图片。"
+                    "看屏幕/看图片并回复。两种模式二选一："
+                    "① 一次性查看：不带watching参数，立即看图/截图并回复一次；"
+                    "② 长期观察：用户要求持续盯屏/陪打游戏/长时间观察屏幕并定期汇报时，"
+                    "watching填true，并填写循环参数(interval/duration/window_title等)。"
                 ),
                 "parameters": {
                     "type": "object",
@@ -82,11 +89,35 @@ class TBVisionCore:
                         "image_paths": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "要查看的图片路径或 url 列表（可空，空则使用缓存的图片）",
+                            "description": "一次性查看的图片路径或 url 列表（可空，空则使用缓存图片或自动截图）",
                         },
                         "user_message": {
                             "type": "string",
                             "description": "用户当前消息/看图指令（可空）",
+                        },
+                        "watching": {
+                            "type": "boolean",
+                            "description": "是否开启长期观察。用户要求持续盯屏/陪打游戏/定期汇报时填true",
+                        },
+                        "interval": {
+                            "type": "integer",
+                            "description": "截屏间隔秒数20~120，如每2分钟=120（watching=true时填写）",
+                        },
+                        "duration": {
+                            "type": "integer",
+                            "description": "持续观察秒数300~18000，如一小时=3600（watching=true时必填）",
+                        },
+                        "need_change_check": {
+                            "type": "boolean",
+                            "description": "是否开启画面变化检测（动态游戏建议true，静态画面建议false）",
+                        },
+                        "window_title": {
+                            "type": "string",
+                            "description": "要绑定的窗口标题（watching=true时必填，从当前可见窗口中选择）",
+                        },
+                        "front_note": {
+                            "type": "string",
+                            "description": "游戏场景说明（谁在玩什么、第一/第三人称、画面特征），可空",
                         },
                     },
                 },
@@ -97,8 +128,9 @@ class TBVisionCore:
     def dispatch(self, name: str, arguments: Dict) -> str:
         """按工具名执行（父级 toolcalls 调用入口）
 
-        先判断是否需要 watching（长期观察屏幕）；需要则走 watching 循环，
-        否则走普通视觉逻辑（一次性看图/截图）。
+        - watching=true：长期观察，用 AI 填写的循环参数直接启动（缺失关键参数时强制追问，
+          参数全空时回退 decide_and_start 深度思考兜底）；
+        - 否则：普通视觉逻辑（一次性看图/截图）。
         """
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
@@ -107,17 +139,24 @@ class TBVisionCore:
         user_message = arguments.get("user_message") or ""
         username = self._username or "用户"
 
-        # 1. 判断是否开启 watching（长期观察，受 watching.enabled 开关控制）
-        try:
-            from func.toolbox.meowvision.watching.config import TBWatchingConfig
-            if TBWatchingConfig().enabled:
-                from func.toolbox.meowvision.watching.start_tool import TBWatchingStart
-                watching_config = TBWatchingStart().decide_and_start(username, user_message)
-                if watching_config:
-                    title = watching_config.get("window_title", "")
-                    return f"已启动长期观察屏幕，绑定窗口：{title}"
-        except Exception:
-            self.log.exception("[MeowVision] watching 决策失败，回退普通视觉")
+        # 1. 长期观察（watching）分支：由 AI 在参数中声明（兼容字符串 "true"/"false"）
+        if str(arguments.get("watching", "")).strip().lower() in ("true", "1"):
+            try:
+                from func.toolbox.meowvision.watching.config import TBWatchingConfig
+                if TBWatchingConfig().enabled:
+                    from func.toolbox.meowvision.watching.start_tool import TBWatchingStart
+                    watching_config = TBWatchingStart().start_with_params(
+                        arguments, username, user_message
+                    )
+                    if watching_config:
+                        title = watching_config.get("window_title", "")
+                        return f"已启动长期观察屏幕，绑定窗口：{title}"
+                    return "错误：长期观察启动失败，请确认窗口/时长后重试"
+                # 功能被禁用：明确告知，不静默降级为一次性看屏
+                return "错误：长期观察功能未开启"
+            except Exception:
+                self.log.exception("[MeowVision] watching 启动异常，回退普通视觉")
+                return "错误：长期观察启动异常"
 
         # 2. 普通视觉逻辑
         # 传了外部图片路径 → 需要图片描述；用缓存（角色自己截图）→ 不需要描述

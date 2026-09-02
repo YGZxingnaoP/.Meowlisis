@@ -15,11 +15,13 @@ class MeowLoadValues:
     # 字段 → 中文标签映射（0204 为主人的话，绝对禁止修改）
     FIELD_LABELS = {
         "0204": "主人的话",
-        "trust": "信任",
-        "belief": "信仰",
-        "responsity": "责任",
-        "honor": "尊重",
-        "tolerance": "宽容",
+        "universalism": "普世价值",
+        "benevolence": "仁爱",
+        "power": "权力",
+        "achievement": "成就",
+        "tradition": "传统",
+        "self_direction": "自我导向",
+        "stimulation": "刺激",
     }
 
     def __init__(self):

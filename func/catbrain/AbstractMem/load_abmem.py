@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """摘要记忆加载与提示词构建：按证据分>准确度>话题>标签>参与>重要度检索"""
 import os
+import re
 import json
 import time
 import datetime
@@ -86,16 +87,43 @@ class MeowLoadAbstractMemory:
             self.log.exception("读取摘要目录失败")
         return result
 
+    @staticmethod
+    def _month_of(item: Dict) -> str:
+        """从条目的 time 字段提取月份 YYMM；缺失或格式异常时回退当前月份"""
+        if isinstance(item, dict) and item.get("time"):
+            m = re.match(r"^(\d{4})-(\d{2})", str(item["time"]))
+            if m:
+                return m.group(1)[2:] + m.group(2)
+        return datetime.datetime.now().strftime("%y%m")
+
     def save(self, data: List[Dict]):
-        """整体写回当前月份摘要文件"""
-        meow_path = self._current_meow_path()
-        os.makedirs(os.path.dirname(meow_path), exist_ok=True)
+        """按条目 time 字段的月份分文件写回，避免跨月数据整体写入当月文件
+
+        - 每个条目按自己的月份落入 meow-YYMM.json（time 缺失回退当前月，不丢数据）；
+        - 同月内按 id 去重（保留首次出现的条目）。
+        """
+        os.makedirs(self.meow_dir, exist_ok=True)
+        by_month: Dict[str, List[Dict]] = {}
+        seen: set = set()
+        for item in data:
+            if not isinstance(item, dict):
+                by_month.setdefault(datetime.datetime.now().strftime("%y%m"), []).append(item)
+                continue
+            item_id = item.get("id")
+            if item_id:
+                if item_id in seen:
+                    continue
+                seen.add(item_id)
+            month = self._month_of(item)
+            by_month.setdefault(month, []).append(item)
         with self._lock:
-            try:
-                with open(meow_path, "w", encoding="utf-8") as f:
-                    json.dump(data, f, ensure_ascii=False, indent=2)
-            except Exception:
-                self.log.exception("写入摘要文件失败")
+            for month, items in by_month.items():
+                path = os.path.join(self.meow_dir, f"meow-{month}.json")
+                try:
+                    with open(path, "w", encoding="utf-8") as f:
+                        json.dump(items, f, ensure_ascii=False, indent=2)
+                except Exception:
+                    self.log.exception(f"写入摘要文件失败: {path}")
 
     def _current_topic(self, data: List[Dict]) -> str:
         """当前话题：缓存优先，过期后决策，失败回退最新摘要"""

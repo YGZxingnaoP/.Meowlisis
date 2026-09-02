@@ -126,12 +126,23 @@ class MeowUpdateValues:
         return None
 
     def _check_format(self, result: Dict) -> Tuple[bool, str]:
-        """检查格式：5字段齐全且为非空字符串（主人的话由系统回填，不参与校验）"""
+        """检查格式：字段齐全且为非空字符串（主人的话由系统回填，不参与校验）"""
         for field in self.update_tool.FIELDS:
             if field not in result:
                 return False, f"缺少字段: {field}"
             if not isinstance(result[field], str) or not result[field].strip():
                 return False, f"字段 {field} 为空或非字符串"
+        return True, ""
+
+    def _check_length(self, result: Dict) -> Tuple[bool, str]:
+        """检查字数：任一字段超过 MAX_LEN 字即失败（超限属致命错误，直接终止本次更新）"""
+        max_len = self.update_tool.MAX_LEN
+        for field in self.update_tool.FIELDS:
+            value = result.get(field)
+            if isinstance(value, str):
+                length = len(value.strip())
+                if length > max_len:
+                    return False, f"字段 {field} 长度 {length} 字，超过上限 {max_len} 字"
         return True, ""
 
     def _fill_lock_field(self, result: Dict, lock_value: str):
@@ -195,6 +206,10 @@ class MeowUpdateValues:
                 return False
             ok, err = self._check_format(result)
             if ok:
+                ok_len, err_len = self._check_length(result)
+                if not ok_len:
+                    self.log.error(f"价值观字数超限，本次不更新并终止: {err_len}")
+                    return False
                 self._fill_lock_field(result, lock_value)
                 break
             self.log.warning(f"价值观格式检查不通过(第{attempt + 1}次): {err}")
@@ -225,6 +240,10 @@ class MeowUpdateValues:
             if not ok:
                 self.log.warning(f"审查修改后格式不通过: {err}")
                 continue
+            ok_len, err_len = self._check_length(result)
+            if not ok_len:
+                self.log.error(f"审查修改后价值观字数超限，本次不更新并终止: {err_len}")
+                return False
             self._fill_lock_field(result, lock_value)
             self._write_unchecked(result)
         else:
@@ -251,6 +270,10 @@ class MeowUpdateValues:
                     ok, err = self._check_format(result)
                     if not ok:
                         continue
+                    ok_len, err_len = self._check_length(result)
+                    if not ok_len:
+                        self.log.error(f"二次审查修改后价值观字数超限，本次不更新并终止: {err_len}")
+                        return False
                     self._fill_lock_field(result, lock_value)
                     self._write_unchecked(result)
                 else:
