@@ -7,6 +7,15 @@ const Config = {
     cfg: null,
 
     setConfig(c) { this.cfg = c; },
+    _t(s) {
+        try {
+            if (typeof I18n !== 'undefined' && I18n && I18n.text) return I18n.text(s);
+        } catch (e) { /* ignore */ }
+        return s;
+    },
+    _emptyTipHtml() {
+        return '<div class="help-text">' + this._t('暂无条目，点击下方按钮添加') + '</div>';
+    },
     _val(path, def) {
         const parts = path.split('.');
         let v = this.cfg;
@@ -18,48 +27,48 @@ const Config = {
     },
     _text(label, path, def, help) {
         const v = this._val(path, def);
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <input type="text" data-path="${path}" value="${v == null ? '' : v}">
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _num(label, path, def, min, max, step, help) {
         const v = this._val(path, def);
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <input type="number" data-path="${path}" value="${v == null ? '' : v}" min="${min}" max="${max}" step="${step}">
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _check(label, path, def, help) {
         const v = this._val(path, def);
         return `<div class="form-group"><div class="checkbox-group">
             <input type="checkbox" data-path="${path}" ${v ? 'checked' : ''}>
-            <label>${label}</label></div>
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            <label>${this._t(label)}</label></div>
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _select(label, path, options, def, help, extraAttr) {
         const v = this._val(path, def);
-        const opts = options.map(o => `<option value="${o.value}" ${String(o.value) === String(v) ? 'selected' : ''}>${o.label}</option>`).join('');
-        return `<div class="form-group"><label>${label}</label>
+        const opts = options.map(o => `<option value="${o.value}" ${String(o.value) === String(v) ? 'selected' : ''}>${this._t(o.label)}</option>`).join('');
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <select data-path="${path}" ${extraAttr || ''}>${opts}</select>
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _password(label, path, def, help) {
         const v = this._val(path, def);
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <input type="password" data-path="${path}" value="${v == null ? '' : v}">
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _list(label, path, def, help) {
         const v = this._val(path, def) || [];
         const text = Array.isArray(v) ? v.join(', ') : v;
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <input type="text" data-path="${path}" data-list="1" value="${text}">
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _area(label, path, def, help) {
         const v = this._val(path, def);
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <textarea class="auto-grow" rows="3" data-path="${path}">${this._esc(v == null ? '' : v)}</textarea>
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _wordTagEditor(label, path, def, help, placeholder) {
         const list = (this._val(path, def) || []).filter(x => x != null && String(x).trim());
@@ -67,15 +76,15 @@ const Config = {
             `<span class="split-tag" data-word="${this._escAttr(w)}">${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button></span>`
         ).join('');
         const json = JSON.stringify(list);
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <div class="split-flag-editor" data-word-tag-editor="${path}">
                 <div class="split-tags">${tags}</div>
                 <div class="split-add-row">
-                    <input type="text" class="split-add-input" placeholder="${placeholder || '输入后回车添加'}">
+                    <input type="text" class="split-add-input" placeholder="${this._t(placeholder) || this._t('输入后回车添加')}">
                 </div>
                 <input type="hidden" data-path="${path}" value='${this._escAttr(json)}'>
             </div>
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
 
     // ============ 键值对（dict）可视化编辑器 ============,
@@ -89,19 +98,19 @@ const Config = {
     _kvDictEditor(label, path, help, keyLabel, valueLabel) {
         const obj = this._val(path, {}) || {};
         const rows = Object.keys(obj).map(k => this._kvRow(k, obj[k], keyLabel, valueLabel)).join('');
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <div class="kv-editor" data-kv-editor="${path}" data-kv-key-label="${keyLabel}" data-kv-value-label="${valueLabel}">
-                ${rows || '<div class="help-text">暂无条目，点击下方按钮添加</div>'}
+                ${rows || this._emptyTipHtml()}
             </div>
-            <button type="button" class="btn btn-secondary" data-kv-add="${path}">添加条目</button>
+            <button type="button" class="btn btn-secondary" data-kv-add="${path}">${this._t('添加条目')}</button>
             ${this._dictHidden(path, obj)}
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _kvRow(key, value, keyLabel, valueLabel) {
         return `<div class="kv-row">
-            <input type="text" data-kv-key value="${this._esc(key || '')}" placeholder="${keyLabel}">
-            <input type="text" data-kv-value value="${this._esc(value || '')}" placeholder="${valueLabel}">
-            <button type="button" class="kv-remove" title="删除">&times;</button>
+            <input type="text" data-kv-key value="${this._esc(key || '')}" placeholder="${this._t(keyLabel)}">
+            <input type="text" data-kv-value value="${this._esc(value || '')}" placeholder="${this._t(valueLabel)}">
+            <button type="button" class="kv-remove" title="${this._t('删除')}">&times;</button>
         </div>`;
     },
 
@@ -109,32 +118,32 @@ const Config = {
     _groupConfigEditor(label, path, help) {
         const obj = this._val(path, {}) || {};
         const rows = Object.keys(obj).map(gid => this._groupConfigRow(gid, obj[gid])).join('');
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <div class="kv-editor" data-gc-editor="${path}">
-                ${rows || '<div class="help-text">暂无条目，点击下方按钮添加</div>'}
+                ${rows || this._emptyTipHtml()}
             </div>
-            <button type="button" class="btn btn-secondary" data-gc-add="${path}">添加群配置</button>
+            <button type="button" class="btn btn-secondary" data-gc-add="${path}">${this._t('添加群配置')}</button>
             ${this._dictHidden(path, obj)}
-            ${help ? `<div class="help-text">${help}</div>` : ''}</div>`;
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _groupConfigRow(gid, cfg) {
         cfg = cfg || {};
         const base = cfg.reply_base != null ? cfg.reply_base : '';
         const pass = cfg.pass_rounds != null ? cfg.pass_rounds : '';
         return `<div class="kv-row kv-row-3">
-            <input type="text" data-gc-group value="${this._esc(gid || '')}" placeholder="群号">
-            <input type="number" data-gc-base value="${base}" placeholder="触发基数(默认6)">
-            <input type="number" data-gc-pass value="${pass}" placeholder="pass次数(默认1)">
-            <button type="button" class="kv-remove" title="删除">&times;</button>
+            <input type="text" data-gc-group value="${this._esc(gid || '')}" placeholder="${this._t('群号')}">
+            <input type="number" data-gc-base value="${base}" placeholder="${this._t('触发基数(默认6)')}">
+            <input type="number" data-gc-pass value="${pass}" placeholder="${this._t('pass次数(默认1)')}">
+            <button type="button" class="kv-remove" title="${this._t('删除')}">&times;</button>
         </div>`;
     },
     _section(title) {
-        return `<div class="form-section"><h4>${title}</h4></div>`;
+        return `<div class="form-section"><h4>${this._t(title)}</h4></div>`;
     },
     _fold(title, body) {
         return `<details class="ref-fold">
             <summary class="ref-fold-summary">
-                <span class="ref-fold-name">${title}</span>
+                <span class="ref-fold-name">${this._t(title)}</span>
                 <span class="ref-fold-arrow">▾</span>
             </summary>
             <div class="ref-fold-body">${body}</div>

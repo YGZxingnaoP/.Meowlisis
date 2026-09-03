@@ -3,6 +3,7 @@
 import json
 import os
 import queue
+import random
 import re
 import threading
 import time
@@ -32,13 +33,14 @@ class StreamSource:
     _END = object()
 
     def __init__(self, generator, cancel_func=None, traceid="", seg_index=0,
-                 sample_rate=None, channels=1):
+                 sample_rate=None, channels=1, source="other"):
         self.generator = generator
         self.cancel_func = cancel_func
         self.traceid = traceid
         self.seg_index = seg_index
         self.sample_rate = sample_rate
         self.channels = channels
+        self.source = source or "other"
         self.buffer = queue.Queue()
         self.cancelled = False
         self.finished = False
@@ -366,6 +368,38 @@ class TTsCore:
                     self._playing_priority = 0
                 source.cancel()
 
+            # 段间随机停顿（播放层）：每播完一段后停顿 pause_min~max 秒，可被暂停/打断/抢占中断
+            self._segment_pause(source)
+
+    def _segment_pause(self, source=None):
+        """段间随机停顿：不按标点，每段播完后停顿 0.5~1s（配置 pause_min/max_ms）。
+
+        - 仅当 pause_enabled 开启；
+        - pause_sources 非空时仅对指定来源停顿（空=所有来源）；
+        - 每 30ms 检查暂停与代际（打断/抢占/停止都会 generation+1），可立即中断。
+        """
+        try:
+            cfg = self.config
+            if not getattr(cfg, "pause_enabled", False):
+                return
+            if cfg.pause_sources:
+                src_name = getattr(source, "source", "") if source else ""
+                if src_name not in cfg.pause_sources:
+                    return
+            if self._is_paused():
+                return
+            duration = random.uniform(cfg.pause_min_ms, cfg.pause_max_ms) / 1000.0
+            gen = self.ttsData.generation
+            end = time.time() + duration
+            while time.time() < end:
+                if self._is_paused():
+                    return
+                if gen != self.ttsData.generation:
+                    return
+                time.sleep(0.03)
+        except Exception as e:
+            self.log.debug(f"段间停顿异常: {e}")
+
     def _play_stream_source(self, source: StreamSource):
         """阻塞播放一个流式源：边收边播直到结束/打断"""
         samplerate = int(source.sample_rate or self.config.sample_rate or 32000)
@@ -472,7 +506,8 @@ class TTsCore:
 
             traceid = traceid or str(uuid.uuid4())
             source = StreamSource(None, None, traceid, 0,
-                                  sample_rate=sr, channels=channels)
+                                  sample_rate=sr, channels=channels,
+                                  source=source)
             source.push(raw)
             source.finish()
 
@@ -550,7 +585,8 @@ class TTsCore:
         if generator is None:
             return
 
-        source = StreamSource(generator, cancel_func, traceid, seg_index)
+        source = StreamSource(generator, cancel_func, traceid, seg_index,
+                              source=json.get("source", "other"))
 
         # 入队前再次检查：代际不匹配（已打断/暂停）或暂停状态，则丢弃该流
         if (generation is not None and generation != self.ttsData.generation) or self._is_paused():

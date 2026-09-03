@@ -33,6 +33,13 @@ class TTSConfig:
         self.overlap_length = int(gpt.get("overlap_length", 2))
         # v2Pro 流式输出采样率
         self.sample_rate = int(gpt.get("sample_rate", 32000))
+
+        # ===== 段间随机停顿（播放层）：每播完一段后停顿 pause_min~pause_max 毫秒，不按标点 =====
+        # pause_sources: 空列表=所有来源都停；非空(如 ["llm"])仅这些来源停
+        self.pause_enabled = bool(gpt.get("pause_enabled", True))
+        self.pause_min_ms = int(gpt.get("pause_min_ms", 500))
+        self.pause_max_ms = int(gpt.get("pause_max_ms", 1000))
+        self.pause_sources = list(gpt.get("pause_sources", []) or [])
         # 合成文本语言：zh 最稳（中文 g2p 可读短英文词），auto 中英混合但可能误判成日文
         self.text_lang = gpt.get("text_lang", "zh")
         # 是否启用「整段语言自动切换」：整段英文/日文时覆盖 text_lang，其余落回 text_lang

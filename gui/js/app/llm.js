@@ -112,14 +112,14 @@ Object.assign(App, {
         overlay.innerHTML = `
             <div class="bili-login-box">
                 <div class="bili-login-header">
-                    <span>B站扫码登录</span>
+                    <span>${this._t('B站扫码登录')}</span>
                     <button type="button" class="bili-login-close">&times;</button>
                 </div>
                 <div class="bili-login-body">
                     <div class="bili-login-qr-wrap">
                         <img class="bili-login-qr" alt="登录二维码" src="">
                     </div>
-                    <div class="bili-login-status">正在生成二维码...</div>
+                    <div class="bili-login-status">${this._t('正在生成二维码...')}</div>
                 </div>
             </div>
         `;

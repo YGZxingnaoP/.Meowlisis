@@ -11,11 +11,11 @@ Object.assign(Config, {
             const v = f.replace(/\.json$/, '');
             return `<option value="${v}" ${v === cur ? 'selected' : ''}>${v}</option>`;
         }).join('');
-        h += `<div class="form-group"><label>角色卡文件</label>
+        h += `<div class="form-group"><label>${this._t('角色卡文件')}</label>
             <select data-path="character_card.card_file" id="cardFileSelect">${opts || '<option value="prompt">prompt</option>'}</select></div>`;
         h += this._text('当前选中角色名', 'character_card.select', '');
         h += `<div class="speaker-actions">
-            <button class="btn btn-secondary" id="newCardBtn">新建角色卡</button>
+            <button class="btn btn-secondary" id="newCardBtn">${this._t('新建角色卡')}</button>
         </div>`;
         return h;
     },
@@ -23,7 +23,7 @@ Object.assign(Config, {
         const chars = (data && data.characters) || [];
         let h = this._section('角色卡内容');
         if (!chars.length) {
-            h += `<div class="help-text">暂无角色数据，请点击下方新建</div>`;
+            h += `<div class="help-text">${this._t('暂无角色数据，请点击下方新建')}</div>`;
             return h;
         }
         const c = chars[0];
@@ -52,7 +52,7 @@ Object.assign(Config, {
             });
         }
         h += `</div>`;
-        h += `<button class="btn btn-secondary" id="addSettingBtn">添加设定</button>`;
+        h += `<button class="btn btn-secondary" id="addSettingBtn">${this._t('添加设定')}</button>`;
 
         // 性格（字典，多条）
         h += this._section('角色性格（多条，每条含提示词）');
@@ -64,7 +64,7 @@ Object.assign(Config, {
             });
         }
         h += `</div>`;
-        h += `<button class="btn btn-secondary" id="addPersonalityBtn">新建性格</button>`;
+        h += `<button class="btn btn-secondary" id="addPersonalityBtn">${this._t('新建性格')}</button>`;
         return h;
     },
     _charText(label, field, value) {
@@ -74,17 +74,17 @@ Object.assign(Config, {
     },
     _settingRow(index, key, value) {
         return `<div class="dict-row" data-dict-index="${index}">
-            <div class="form-group"><label>设定名</label>
+            <div class="form-group"><label>${this._t('设定名')}</label>
                 <input type="text" data-setting-key value="${key == null ? '' : key}"></div>
-            <div class="form-group"><label>设定内容</label>
+            <div class="form-group"><label>${this._t('设定内容')}</label>
                 <textarea class="auto-grow" rows="2" data-setting-value>${this._esc(value)}</textarea></div>
         </div>`;
     },
     _personalityRow(index, key, value) {
         return `<div class="dict-row" data-dict-index="${index}">
-            <div class="form-group"><label>性格名</label>
+            <div class="form-group"><label>${this._t('性格名')}</label>
                 <input type="text" data-personality-key value="${key == null ? '' : key}"></div>
-            <div class="form-group"><label>性格提示词</label>
+            <div class="form-group"><label>${this._t('性格提示词')}</label>
                 <textarea class="auto-grow" rows="2" data-personality-value>${this._esc(value)}</textarea></div>
         </div>`;
     },

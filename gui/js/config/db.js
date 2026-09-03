@@ -12,7 +12,7 @@ Object.assign(Config, {
             this._llmTypeSelect('搜索 LLM 类型', 'database.search.llm_type', type);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="db_search_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="db_search_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="db_search_aliyun">${this._t('阿里云')}</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="db_search_ds">` +
             this._password('API Key', 'database.search.deepseek.api_key', '') +
@@ -41,16 +41,16 @@ Object.assign(Config, {
     db_store() {
         const provider = this._val('database.store.embedding.provider', 'siliconflow');
         let h = this._section('知识存储与检索 (database.store)') +
-            `<div class="form-group"><label>向量平台</label>
+            `<div class="form-group"><label>${this._t('向量平台')}</label>
             <select data-path="database.store.embedding.provider">
-                <option value="aliyun" ${provider === 'aliyun' ? 'selected' : ''}>阿里云</option>
-                <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>硅基流动</option>
+                <option value="aliyun" ${provider === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
+                <option value="siliconflow" ${provider === 'siliconflow' ? 'selected' : ''}>${this._t('硅基流动')}</option>
             </select>
-            <div class="help-text">选择文本向量化（embedding）平台，两个平台独立配置 API Key</div></div>`;
+            <div class="help-text">${this._t('选择文本向量化（embedding）平台，两个平台独立配置 API Key')}</div></div>`;
 
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="embed_aliyun">阿里云</button>
-            <button class="modal-tab" data-tab="embed_sf">硅基流动</button>
+            <button class="modal-tab active" data-tab="embed_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab" data-tab="embed_sf">${this._t('硅基流动')}</button>
         </div>`;
 
         h += `<div class="tab-content active" data-tab-content="embed_aliyun">` +
@@ -85,10 +85,10 @@ Object.assign(Config, {
         const siteKeys = Object.keys(sites);
         if (!siteKeys.length) {
             return this._section('知识库预填充') +
-                `<div class="help-text">未读取到预填充配置（gui/tools/prefill_seed.json），请检查文件是否存在。</div>`;
+                `<div class="help-text">${this._t('未读取到预填充配置（gui/tools/prefill_seed.json），请检查文件是否存在。')}</div>`;
         }
         let h = this._section('知识库预填充') +
-            `<div class="help-text">选择数据来源站点并添加搜索词条（回车添加、点击 × 删除），点击「一键预填」后将模拟现有 search 模块：搜索 → 抓详情页正文 → 分块 → 向量化 → 入库。源文件归档到 .DataBase/raw_seed。</div>`;
+            `<div class="help-text">${this._t('选择数据来源站点并添加搜索词条（回车添加、点击 × 删除），点击「一键预填」后将模拟现有 search 模块：搜索 → 抓详情页正文 → 分块 → 向量化 → 入库。源文件归档到 .DataBase/raw_seed。')}</div>`;
 
         siteKeys.forEach(site => {
             const cfg = sites[site] || {};
@@ -100,9 +100,9 @@ Object.assign(Config, {
             </div>`;
         });
 
-        h += `<div class="checkbox-group"><input type="checkbox" id="dbPrefillReset" checked><label>清空已有预填数据后再写入</label></div>
+        h += `<div class="checkbox-group"><input type="checkbox" id="dbPrefillReset" checked><label>${this._t('清空已有预填数据后再写入')}</label></div>
             <div class="speaker-actions">
-                <button type="button" class="btn btn-primary" id="dbPrefillStartBtn">一键预填</button>
+                <button type="button" class="btn btn-primary" id="dbPrefillStartBtn">${this._t('一键预填')}</button>
             </div>
             <div id="dbPrefillStatus" class="help-text" style="margin-top:8px;"></div>`;
         return h;
@@ -114,14 +114,14 @@ Object.assign(Config, {
         const tags = list.map(k =>
             `<span class="split-tag" data-keyword="${this._escAttr(k)}">${this._esc(k)}<button type="button" class="split-tag-remove">&times;</button></span>`
         ).join('');
-        return `<div class="form-group"><label>搜索词条</label>
+        return `<div class="form-group"><label>${this._t('搜索词条')}</label>
             <div class="split-flag-editor" data-keyword-editor="${this._escAttr(site)}">
                 <div class="split-tags">${tags}</div>
                 <div class="split-add-row">
-                    <input type="text" class="split-add-input" placeholder="输入词条后回车添加">
+                    <input type="text" class="split-add-input" placeholder="${this._t('输入词条后回车添加')}">
                 </div>
             </div>
-            <div class="help-text">每个词条单独一条，回车添加，点击 × 删除</div>
+            <div class="help-text">${this._t('每个词条单独一条，回车添加，点击 × 删除')}</div>
         </div>`;
     },
 
@@ -132,13 +132,13 @@ Object.assign(Config, {
         let h = this._section('网页数据来源 (database.search.sites)') +
             `<div id="sourceSiteList">`;
         if (!keys.length) {
-            h += `<div class="help-text">暂无站点，点击下方按钮添加</div>`;
+            h += `<div class="help-text">${this._t('暂无站点，点击下方按钮添加')}</div>`;
         } else {
             keys.forEach(k => { h += this.sourceSiteRow(k, sites[k] || {}); });
         }
         h += `</div>`;
-        h += `<button class="btn btn-secondary" id="addSourceSiteBtn">添加站点</button>` +
-            `<div class="help-text">策略：http=网页解析、api=JSON接口、direct=直连详情页。search_url 用 {q} 占位搜索关键词。</div>`;
+        h += `<button class="btn btn-secondary" id="addSourceSiteBtn">${this._t('添加站点')}</button>` +
+            `<div class="help-text">${this._t('策略：http=网页解析、api=JSON接口、direct=直连详情页。search_url 用 {q} 占位搜索关键词。')}</div>`;
         return h;
     },
     sourceSiteRow(key, cfg) {
@@ -157,30 +157,30 @@ Object.assign(Config, {
                 ${this._esc(label)} <span class="help-text">(${this._esc(key)})</span>
             </div>
             <div class="source-site-body">
-                <div class="form-group"><label>站点标识</label>
-                    <input type="text" data-source-field="key" value="${this._esc(key)}" placeholder="如 mcmod"></div>
-                <div class="form-group"><label>显示名</label>
-                    <input type="text" data-source-field="label" value="${this._esc(label)}" placeholder="如 MC百科"></div>
-                <div class="form-group"><label>适用场景</label>
-                    <input type="text" data-source-field="description" value="${this._esc(description)}" placeholder="如 Minecraft 相关知识检索"></div>
-                <div class="checkbox-group"><input type="checkbox" data-source-field="enabled" ${enabled ? 'checked' : ''}><label>启用</label></div>
-                <div class="form-group"><label>策略</label>
+                <div class="form-group"><label>${this._t('站点标识')}</label>
+                    <input type="text" data-source-field="key" value="${this._esc(key)}" placeholder="${this._t('如 mcmod')}"></div>
+                <div class="form-group"><label>${this._t('显示名')}</label>
+                    <input type="text" data-source-field="label" value="${this._esc(label)}" placeholder="${this._t('如 MC百科')}"></div>
+                <div class="form-group"><label>${this._t('适用场景')}</label>
+                    <input type="text" data-source-field="description" value="${this._esc(description)}" placeholder="${this._t('如 Minecraft 相关知识检索')}"></div>
+                <div class="checkbox-group"><input type="checkbox" data-source-field="enabled" ${enabled ? 'checked' : ''}><label>${this._t('启用')}</label></div>
+                <div class="form-group"><label>${this._t('策略')}</label>
                     <select data-source-field="strategy">
                         <option value="http" ${strategy === 'http' ? 'selected' : ''}>http</option>
                         <option value="api" ${strategy === 'api' ? 'selected' : ''}>api</option>
                         <option value="direct" ${strategy === 'direct' ? 'selected' : ''}>direct</option>
                     </select></div>
-                <div class="form-group"><label>每站爬取条数</label>
+                <div class="form-group"><label>${this._t('每站爬取条数')}</label>
                     <input type="number" data-source-field="count" value="${count}" min="1" max="50" step="1"></div>
-                <div class="form-group"><label>站点主页</label>
+                <div class="form-group"><label>${this._t('站点主页')}</label>
                     <input type="text" data-source-field="base_url" value="${this._esc(baseUrl)}" placeholder="https://..."></div>
-                <div class="form-group"><label>搜索 URL 模板</label>
+                <div class="form-group"><label>${this._t('搜索 URL 模板')}</label>
                     <input type="text" data-source-field="search_url" value="${this._esc(searchUrl)}" placeholder="https://...?q={q}"></div>
-                <div class="form-group"><label>请求间隔(秒)</label>
+                <div class="form-group"><label>${this._t('请求间隔(秒)')}</label>
                     <input type="number" data-source-field="interval" value="${interval}" min="0" max="60" step="0.5"></div>
                 <div class="source-verify-row">
-                    <button type="button" class="btn btn-secondary source-verify-btn">验证</button>
-                    <button type="button" class="btn btn-secondary source-remove-btn">删除</button>
+                    <button type="button" class="btn btn-secondary source-verify-btn">${this._t('验证')}</button>
+                    <button type="button" class="btn btn-secondary source-remove-btn">${this._t('删除')}</button>
                 </div>
                 <div class="source-verify-result help-text"></div>
             </div>

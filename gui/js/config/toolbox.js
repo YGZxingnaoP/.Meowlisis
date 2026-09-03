@@ -107,9 +107,9 @@ Object.assign(Config, {
     webBrowseConfig() {
         const visionType = this._val('llm_active.vision.llm_type', 'aliyun');
         let h = this._section('B站浏览视觉模型 (llm_active.vision)') +
-            `<div class="form-group"><label>视觉 LLM 类型</label>
+            `<div class="form-group"><label>${this._t('视觉 LLM 类型')}</label>
             <select data-path="llm_active.vision.llm_type">
-                <option value="aliyun" ${visionType === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="aliyun" ${visionType === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${visionType === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>` +
             this._password('API Key', 'llm_active.vision.api_key', '',
@@ -162,8 +162,8 @@ Object.assign(Config, {
         let h = this.webBrowseConfig();
 
         h += `<div class="speaker-actions">
-            <button type="button" class="btn btn-secondary webbrowse-refresh-btn">刷新列表</button>
-            <button type="button" class="btn btn-primary bili-login-btn" data-target="web_browse">B站扫码登录</button>
+            <button type="button" class="btn btn-secondary webbrowse-refresh-btn">${this._t('刷新列表')}</button>
+            <button type="button" class="btn btn-primary bili-login-btn" data-target="web_browse">${this._t('B站扫码登录')}</button>
         </div>`;
 
         h += this._section('待使用缓存（' + caches.length + '）');
@@ -176,8 +176,8 @@ Object.assign(Config, {
     _videoList(items, isCollected) {
         if (!items || !items.length) {
             return isCollected
-                ? `<div class="help-text">暂无已收藏视频。主动回复使用过的视频会移动到此处。</div>`
-                : `<div class="help-text">暂无缓存视频，等待后台采集或先扫码登录并配置视觉 API Key。</div>`;
+                ? `<div class="help-text">${this._t('暂无已收藏视频。主动回复使用过的视频会移动到此处。')}</div>`
+                : `<div class="help-text">${this._t('暂无缓存视频，等待后台采集或先扫码登录并配置视觉 API Key。')}</div>`;
         }
         return items.map(v => this._videoCard(v, isCollected)).join('');
     },
@@ -185,14 +185,14 @@ Object.assign(Config, {
         v = v || {};
         const tags = (v.tags || []).map(t => `<span class="webbrowse-tag">${this._esc(t)}</span>`).join('');
         const urlHtml = (v.url && isCollected)
-            ? `<a class="webbrowse-link" href="${this._escAttr(v.url)}" target="_blank" rel="noopener">打开视频 ↗</a>`
+            ? `<a class="webbrowse-link" href="${this._escAttr(v.url)}" target="_blank" rel="noopener">${this._t('打开视频 ↗')}</a>`
             : '';
         return `<div class="char-card">
             <div class="char-card-title">${this._esc(v.title || '(无标题)')}</div>
             <div class="webbrowse-meta">
-                <span>UP：${this._esc(v.uploader || '-')}</span>
-                <span>时长：${this._esc(v.len || '-')}</span>
-                <span>话题：${this._esc(v.topic || '-')}</span>
+                <span>${this._t('UP：')}${this._esc(v.uploader || '-')}</span>
+                <span>${this._t('时长：')}${this._esc(v.len || '-')}</span>
+                <span>${this._t('话题：')}${this._esc(v.topic || '-')}</span>
                 ${urlHtml}
             </div>
             ${tags ? `<div class="webbrowse-tags">${tags}</div>` : ''}
@@ -203,7 +203,7 @@ Object.assign(Config, {
     // ============ 字幕 ============,
     subtitle() {
         return this._section('字幕模块') +
-            `<div class="help-text">浏览器字幕模块：TTS 播放字幕与歌词字幕统一输出（HTTP 8080 / WebSocket 8765，暂无配置项）。</div>`;
+            `<div class="help-text">${this._t('浏览器字幕模块：TTS 播放字幕与歌词字幕统一输出（HTTP 8080 / WebSocket 8765，暂无配置项）。')}</div>`;
     },
 
     // ============ Toolbox 父级模型 ============,
@@ -213,7 +213,7 @@ Object.assign(Config, {
             this._llmTypeSelect('父级 LLM 类型', 'toolbox.llm_type', type);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="toolbox_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="toolbox_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="toolbox_aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab" data-tab="toolbox_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="toolbox_ds">` +
@@ -248,9 +248,9 @@ Object.assign(Config, {
     meowvision() {
         const type = this._val('meowvision.llm_type', 'aliyun');
         return this._section('MeowVision 视觉理解') +
-            `<div class="form-group"><label>视觉 LLM 类型</label>
+            `<div class="form-group"><label>${this._t('视觉 LLM 类型')}</label>
             <select data-path="meowvision.llm_type">
-                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>` +
             this._password('API Key', 'meowvision.api_key', '') +
@@ -282,8 +282,8 @@ Object.assign(Config, {
     calendarPanel() {
         return `<div class="calendar-panel">
             <div class="calendar-toolbar">
-                <input type="text" id="newBacklogUserInput" placeholder="输入用户名">
-                <button type="button" class="btn btn-primary" id="addBacklogUserBtn">新建用户</button>
+                <input type="text" id="newBacklogUserInput" placeholder="${this._t('输入用户名')}">
+                <button type="button" class="btn btn-primary" id="addBacklogUserBtn">${this._t('新建用户')}</button>
             </div>
             <div id="backlogUserList"></div>
         </div>`;

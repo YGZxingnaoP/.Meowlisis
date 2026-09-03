@@ -29,19 +29,19 @@ Object.assign(Config, {
         h += `<div id="refAudioPanel"></div>`;
         h += this.emotionParamsPanel();
         h += this._section('GPT-SoVITS 模型权重 (tts_infer.yaml)');
-        h += `<div class="form-group"><label>版本</label>
+        h += `<div class="form-group"><label>${this._t('版本')}</label>
             <select data-tts-model="version">
                 <option value="v2" ${c.version === 'v2' ? 'selected' : ''}>v2</option>
                 <option value="v2Pro" ${c.version !== 'v2' ? 'selected' : ''}>v2Pro</option>
             </select></div>`;
         h += this._modelSelect('GPT 权重 (ckpt)', 't2s_weights_path', ckpts, c.t2s_weights_path);
         h += this._modelSelect('SoVITS 权重 (pth)', 'vits_weights_path', pths, c.vits_weights_path);
-        h += `<div class="form-group"><label>设备</label>
+        h += `<div class="form-group"><label>${this._t('设备')}</label>
             <select data-tts-model="device">
                 <option value="cuda" ${c.device === 'cuda' ? 'selected' : ''}>cuda</option>
                 <option value="cpu" ${c.device === 'cpu' ? 'selected' : ''}>cpu</option>
             </select></div>`;
-        h += `<div class="checkbox-group"><input type="checkbox" data-tts-model="is_half" ${c.is_half !== false ? 'checked' : ''}><label>半精度</label></div>`;
+        h += `<div class="checkbox-group"><input type="checkbox" data-tts-model="is_half" ${c.is_half !== false ? 'checked' : ''}><label>${this._t('半精度')}</label></div>`;
         return h;
     },
 
@@ -49,15 +49,15 @@ Object.assign(Config, {
     tts_params_panel(data) {
         const d = data || {};
         let h = this._section('合成参数 (tts_infer.yaml)');
-        h += `<div class="form-group"><label>语速</label>
+        h += `<div class="form-group"><label>${this._t('语速')}</label>
             <input type="number" data-tts-model="speed_factor" value="${d.speed_factor != null ? d.speed_factor : 1.0}" step="0.1" min="0.5" max="2"></div>`;
-        h += `<div class="form-group"><label>温度</label>
+        h += `<div class="form-group"><label>${this._t('温度')}</label>
             <input type="number" data-tts-model="temperature" value="${d.temperature != null ? d.temperature : 1.0}" step="0.1" min="0" max="2"></div>`;
         h += `<div class="form-group"><label>Top K</label>
             <input type="number" data-tts-model="top_k" value="${d.top_k != null ? d.top_k : 15}" step="1" min="1" max="50"></div>`;
         h += `<div class="form-group"><label>Top P</label>
             <input type="number" data-tts-model="top_p" value="${d.top_p != null ? d.top_p : 1.0}" step="0.05" min="0" max="1"></div>`;
-        h += `<div class="form-group"><label>切分方式</label>
+        h += `<div class="form-group"><label>${this._t('切分方式')}</label>
             <input type="text" data-tts-model="text_split_method" value="${d.text_split_method || 'cut5'}"></div>`;
 
         h += this._section('流式参数 (config.yml)');
@@ -109,6 +109,19 @@ Object.assign(Config, {
             this._text('输出目录', 'tts.output_dir', './output');
     },
 
+    // ============ TTS 子球：间隔（段间随机停顿） ============
+    tts_pause_panel() {
+        return this._section('段间随机停顿（每播完一段后停顿，可被说话/抢占中断）') +
+            this._check('启用段间停顿', 'tts.gpt-sovits.pause_enabled', true,
+                '关闭后每段连续播放，无额外停顿') +
+            this._num('最小停顿(毫秒)', 'tts.gpt-sovits.pause_min_ms', 500, 0, 5000, 50,
+                '建议 500（0.5 秒）') +
+            this._num('最大停顿(毫秒)', 'tts.gpt-sovits.pause_max_ms', 1000, 0, 5000, 50,
+                '建议 1000（1 秒）；实际在最小与最大之间随机') +
+            this._list('适用来源(留空=全部)', 'tts.gpt-sovits.pause_sources', [],
+                '留空表示所有语音来源都停顿；填写来源名如 llm、toolbox_news（逗号分隔）则仅这些来源停顿');
+    },
+
     // 情绪采样参数配置面板（emotion_params，每个情绪可覆盖基础采样参数）,
     emotionParamsPanel() {
         const emotions = ['happy', 'sad', 'call', 'angry', 'blush', 'approve', 'sweat', 'blood', 'love', 'wordless'];
@@ -131,7 +144,7 @@ Object.assign(Config, {
                 const v = this._val(path, '');
                 const shown = (v === '' || v == null) ? '' : v;
                 h += `<div class="form-group"><label>${f.label}</label>
-                    <input type="number" data-path="${path}" value="${shown}" step="${f.step}" min="${f.min}" max="${f.max}" placeholder="继承基础值"></div>`;
+                    <input type="number" data-path="${path}" value="${shown}" step="${f.step}" min="${f.min}" max="${f.max}" placeholder="${this._t('继承基础值')}"></div>`;
             });
             h += `</div></details>`;
         });
@@ -144,7 +157,7 @@ Object.assign(Config, {
         const map = data || {};
         let h = this._section('参考音频配置（按角色名绑定 · 多情绪）');
         if (!Object.keys(map).length) {
-            h += `<div class="help-text">暂无参考音频配置</div>`;
+            h += `<div class="help-text">${this._t('暂无参考音频配置')}</div>`;
             return h;
         }
         Object.keys(map).forEach((name, i) => {
@@ -161,22 +174,22 @@ Object.assign(Config, {
                     h += `<details class="ref-fold ref-fold-emotion">
                         <summary class="ref-fold-summary ref-fold-sub"><span class="emotion-tag">${this._esc(emotion)}</span><span class="ref-fold-arrow">▾</span></summary>
                         <div class="ref-fold-body">
-                            <div class="form-group"><label>音频路径</label>
+                            <div class="form-group"><label>${this._t('音频路径')}</label>
                                 <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="audio" value="${this._escAttr(e.audio || '')}"></div>
-                            <div class="form-group"><label>参考文本</label>
+                            <div class="form-group"><label>${this._t('参考文本')}</label>
                                 <textarea class="auto-grow" rows="2" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="text">${this._esc(e.text || '')}</textarea></div>
-                            <div class="form-group"><label>语言</label>
+                            <div class="form-group"><label>${this._t('语言')}</label>
                                 <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-emotion="${this._escAttr(emotion)}" data-ref-audio-field="lang" value="${this._escAttr(e.lang || 'zh')}"></div>
                         </div>
                     </details>`;
                 });
             } else {
                 // 旧单条格式兼容
-                h += `<div class="form-group"><label>音频路径</label>
+                h += `<div class="form-group"><label>${this._t('音频路径')}</label>
                     <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="audio" value="${this._escAttr(item.audio || '')}"></div>
-                <div class="form-group"><label>参考文本</label>
+                <div class="form-group"><label>${this._t('参考文本')}</label>
                     <textarea class="auto-grow" rows="2" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="text">${this._esc(item.text || '')}</textarea></div>
-                <div class="form-group"><label>语言</label>
+                <div class="form-group"><label>${this._t('语言')}</label>
                     <input type="text" data-ref-audio-name="${this._escAttr(name)}" data-ref-audio-field="lang" value="${this._escAttr(item.lang || 'zh')}"></div>`;
             }
             h += `</div></details>`;
@@ -190,33 +203,33 @@ Object.assign(Config, {
         const ckpts = (models && models.ckpt) || [];
         const pths = (models && models.pth) || [];
         let h = this._section('GPT-SoVITS 模型配置 (tts_infer.yaml)');
-        h += `<div class="form-group"><label>版本</label>
+        h += `<div class="form-group"><label>${this._t('版本')}</label>
             <select data-tts-model="version">
                 <option value="v2" ${c.version === 'v2' ? 'selected' : ''}>v2</option>
                 <option value="v2Pro" ${c.version !== 'v2' ? 'selected' : ''}>v2Pro</option>
             </select></div>`;
         h += this._modelSelect('GPT 权重 (ckpt)', 't2s_weights_path', ckpts, c.t2s_weights_path);
         h += this._modelSelect('SoVITS 权重 (pth)', 'vits_weights_path', pths, c.vits_weights_path);
-        h += `<div class="form-group"><label>设备</label>
+        h += `<div class="form-group"><label>${this._t('设备')}</label>
             <select data-tts-model="device">
                 <option value="cuda" ${c.device === 'cuda' ? 'selected' : ''}>cuda</option>
                 <option value="cpu" ${c.device === 'cpu' ? 'selected' : ''}>cpu</option>
             </select></div>`;
-        h += `<div class="checkbox-group"><input type="checkbox" data-tts-model="is_half" ${c.is_half !== false ? 'checked' : ''}><label>半精度</label></div>`;
-        h += `<div class="form-group"><label>语速</label>
+        h += `<div class="checkbox-group"><input type="checkbox" data-tts-model="is_half" ${c.is_half !== false ? 'checked' : ''}><label>${this._t('半精度')}</label></div>`;
+        h += `<div class="form-group"><label>${this._t('语速')}</label>
             <input type="number" data-tts-model="speed_factor" value="${data.speed_factor != null ? data.speed_factor : 1.0}" step="0.1" min="0.5" max="2"></div>`;
-        h += `<div class="form-group"><label>温度</label>
+        h += `<div class="form-group"><label>${this._t('温度')}</label>
             <input type="number" data-tts-model="temperature" value="${data.temperature != null ? data.temperature : 1.0}" step="0.1" min="0" max="2"></div>`;
         h += `<div class="form-group"><label>Top K</label>
             <input type="number" data-tts-model="top_k" value="${data.top_k != null ? data.top_k : 15}" step="1" min="1" max="50"></div>`;
         h += `<div class="form-group"><label>Top P</label>
             <input type="number" data-tts-model="top_p" value="${data.top_p != null ? data.top_p : 1.0}" step="0.05" min="0" max="1"></div>`;
-        h += `<div class="form-group"><label>切分方式</label>
+        h += `<div class="form-group"><label>${this._t('切分方式')}</label>
             <input type="text" data-tts-model="text_split_method" value="${data.text_split_method || 'cut5'}"></div>`;
         return h;
     },
     _modelSelect(label, field, options, current) {
-        let opts = `<option value="">（不选择）</option>`;
+        let opts = `<option value="">${this._t('（不选择）')}</option>`;
         options.forEach(o => {
             opts += `<option value="${o}" ${o === current ? 'selected' : ''}>${o}</option>`;
         });

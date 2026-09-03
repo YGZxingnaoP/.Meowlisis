@@ -7,6 +7,13 @@ const App = {
     config: null,
     calendarData: {},
 
+    _t(s) {
+        try {
+            if (typeof I18n !== 'undefined' && I18n && I18n.text) return I18n.text(s);
+        } catch (e) { /* ignore */ }
+        return s;
+    },
+
     async init() {
         Modal.init();
         Orbit.init();
@@ -92,6 +99,7 @@ const App = {
         if (id === 'tts_model') { await this.openTtsModelPanel(); return; }
         if (id === 'tts_params') { await this.openTtsParamsPanel(); return; }
         if (id === 'tts_config') { await this.openTtsConfigPanel(); return; }
+        if (id === 'tts_pause') { await this.openTtsPausePanel(); return; }
 
         // 主动回复子球（配置/浏览）
         if (id === 'active_config') { await this.openActiveConfigPanel(); return; }
@@ -212,7 +220,8 @@ const App = {
     },
     showToast(msg, isError) {
         const toast = document.getElementById('toast');
-        toast.textContent = msg;
+        const txt = (typeof I18n !== 'undefined' && I18n.text) ? I18n.text(msg) : msg;
+        toast.textContent = txt;
         toast.style.background = isError ? 'linear-gradient(145deg, #ff6b6b, #ee5a5a)' : 'linear-gradient(145deg, var(--pink-main), var(--pink-deep))';
         toast.classList.add('show');
         setTimeout(() => toast.classList.remove('show'), 3000);

@@ -51,7 +51,7 @@ const Modal = {
     },
 
     show(title, contentHtml, onSaveCallback) {
-        this.title.textContent = title;
+        this.title.textContent = (typeof I18n !== 'undefined' && I18n.text) ? I18n.text(title) : title;
         this.body.innerHTML = contentHtml;
         this.onSave = onSaveCallback;
         this.overlay.classList.add('show');

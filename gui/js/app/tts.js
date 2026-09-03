@@ -129,4 +129,29 @@ Object.assign(App, {
             this.showToast('面板渲染失败: ' + e.message, true);
         }
     },
+
+    // ============ TTS 子球：间隔（段间随机停顿） ============,
+    async openTtsPausePanel() {
+        try {
+            const html = Config.tts_pause_panel();
+            Modal.show('TTS 段间停顿', html, async () => {
+                try {
+                    const updates = Config.collectValues();
+                    Config.applyUpdates(updates, this.config);
+                    // pause_sources 以逗号文本收集，转回数组
+                    const gs = this.config && this.config.tts && this.config.tts['gpt-sovits'];
+                    if (gs && typeof gs.pause_sources === 'string') {
+                        gs.pause_sources = gs.pause_sources.split(/[,，\n]/).map(s => s.trim()).filter(Boolean);
+                    }
+                    await API.saveConfig(this.config);
+                    this.showToast('配置已保存');
+                } catch (e) {
+                    this.showToast('保存失败: ' + e.message, true);
+                }
+            });
+        } catch (e) {
+            console.error('Error rendering tts pause panel:', e);
+            this.showToast('面板渲染失败: ' + e.message, true);
+        }
+    },
 });

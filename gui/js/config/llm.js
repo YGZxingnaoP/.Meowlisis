@@ -7,16 +7,16 @@ Object.assign(Config, {
     llm_model() {
         const type = this._val('llm.local_llm_type', 'deepseek');
         let h = this._section('LLM 大模型') +
-            `<div class="form-group"><label>LLM类型</label>
+            `<div class="form-group"><label>${this._t('LLM类型')}</label>
             <select data-path="llm.local_llm_type">
                 <option value="deepseek" ${type === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
 
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="deepseek">DeepSeek</button>
-            <button class="modal-tab" data-tab="aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab" data-tab="gemini">Gemini</button>
         </div>`;
 
@@ -65,48 +65,48 @@ Object.assign(Config, {
         const napcatFront = f.prompt_napcat || '';
         const postPrompt = f.post_prompt || '';
         return this._section('提示词（前置词放最前，后置词放最后）') +
-            `<div class="form-group"><label>前置词（行为约束，system prompt 最前）</label>
-                <textarea id="frontPromptInput" class="auto-grow" rows="3" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(frontPrompt)}</textarea>
-                <div class="help-text">放在 system prompt 最前面，约束本次回复行为</div>
+            `<div class="form-group"><label>${this._t('前置词（行为约束，system prompt 最前）')}</label>
+                <textarea id="frontPromptInput" class="auto-grow" rows="3" placeholder="${this._t('一次回复不要一次性解决复杂问题...')}">${this._esc(frontPrompt)}</textarea>
+                <div class="help-text">${this._t('放在 system prompt 最前面，约束本次回复行为')}</div>
             </div>` +
-            `<div class="form-group"><label>主动回复前置词</label>
-                <textarea id="activeFrontPromptInput" class="auto-grow" rows="2" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(activeFront)}</textarea>
-                <div class="help-text">主动找话题时的行为约束</div>
+            `<div class="form-group"><label>${this._t('主动回复前置词')}</label>
+                <textarea id="activeFrontPromptInput" class="auto-grow" rows="2" placeholder="${this._t('一次回复不要一次性解决复杂问题...')}">${this._esc(activeFront)}</textarea>
+                <div class="help-text">${this._t('主动找话题时的行为约束')}</div>
             </div>` +
-            `<div class="form-group"><label>NapCat 前置词</label>
-                <textarea id="napcatFrontPromptInput" class="auto-grow" rows="2" placeholder="一次回复不要一次性解决复杂问题...">${this._esc(napcatFront)}</textarea>
-                <div class="help-text">QQ 回复时的行为约束</div>
+            `<div class="form-group"><label>${this._t('NapCat 前置词')}</label>
+                <textarea id="napcatFrontPromptInput" class="auto-grow" rows="2" placeholder="${this._t('一次回复不要一次性解决复杂问题...')}">${this._esc(napcatFront)}</textarea>
+                <div class="help-text">${this._t('QQ 回复时的行为约束')}</div>
             </div>` +
-            `<div class="form-group"><label>后置词（人设，system prompt 最后）</label>
-                <textarea id="postPromptInput" class="auto-grow" rows="2" placeholder="你是...，大家都叫你...">${this._esc(postPrompt)}</textarea>
-                <div class="help-text">放在 system prompt 最后，描述角色身份</div>
+            `<div class="form-group"><label>${this._t('后置词（人设，system prompt 最后）')}</label>
+                <textarea id="postPromptInput" class="auto-grow" rows="2" placeholder="${this._t('你是...，大家都叫你...')}">${this._esc(postPrompt)}</textarea>
+                <div class="help-text">${this._t('放在 system prompt 最后，描述角色身份')}</div>
             </div>`;
     },
     _narrationFormula() {
         return `<div class="formula-box">
-            <div class="formula-box-title">计算公式</div>
+            <div class="formula-box-title">${this._t('计算公式')}</div>
             <div class="formula-block">
                 <div class="formula-row">
-                    <span class="formula-name">水词密度分</span>
+                    <span class="formula-name">${this._t('水词密度分')}</span>
                     <span class="formula-expr">Density = 100 − ( W / L × 100 )</span>
-                    <span class="formula-cond">若 W / L ≥ θ 则 Density = 0</span>
+                    <span class="formula-cond">${this._t('若 W / L ≥ θ 则 Density = 0')}</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">超长惩罚</span>
-                    <span class="formula-expr">Penalty = 0，当 L ≤ L<sub>0</sub></span>
+                    <span class="formula-name">${this._t('超长惩罚')}</span>
+                    <span class="formula-expr">${this._t('Penalty = 0，当 L ≤ L')}<sub>0</sub></span>
                     <span class="formula-expr">Penalty = min( P<sub>cap</sub>, ( L − L<sub>0</sub> ) × r )，当 L &gt; L<sub>0</sub></span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">原始得分</span>
+                    <span class="formula-name">${this._t('原始得分')}</span>
                     <span class="formula-expr">Raw<sub>t</sub> = max( 0, Density − Penalty )</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">平滑得分</span>
+                    <span class="formula-name">${this._t('平滑得分')}</span>
                     <span class="formula-expr">S<sub>t</sub> = λ · S<sub>t−1</sub> + ( 1 − λ ) · Raw<sub>t</sub></span>
-                    <span class="formula-cond">λ = 0.75（下降）/ 0.55（上升）/ 0.70（相等）</span>
+                    <span class="formula-cond">${this._t('λ = 0.75（下降）/ 0.55（上升）/ 0.70（相等）')}</span>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">清洗档位</span>
+                    <span class="formula-name">${this._t('清洗档位')}</span>
                     <span class="formula-expr">S ≥ 60 不清洗；30 ≤ S &lt; 60 清部分；S &lt; 30 全清</span>
                 </div>
             </div>
@@ -152,15 +152,15 @@ Object.assign(Config, {
         const tags = chars.map(c =>
             `<span class="split-tag" data-char="${c}">${c}<button type="button" class="split-tag-remove">&times;</button></span>`
         ).join('');
-        return `<div class="form-group"><label>分割符（点击 × 删除）</label>
+        return `<div class="form-group"><label>${this._t('分割符（点击 × 删除）')}</label>
             <div class="split-flag-editor" data-split-flag-editor="${path}">
                 <div class="split-tags">${tags}</div>
                 <div class="split-add-row">
-                    <input type="text" class="split-add-input" placeholder="输入一个符号后回车添加" maxlength="2">
+                    <input type="text" class="split-add-input" placeholder="${this._t('输入一个符号后回车添加')}" maxlength="2">
                 </div>
                 <input type="hidden" data-path="${path}" value="${raw}">
             </div>
-            <div class="help-text">每个符号单独作为一个分段点，例如逗号、句号、感叹号</div>
+            <div class="help-text">${this._t('每个符号单独作为一个分段点，例如逗号、句号、感叹号')}</div>
         </div>`;
     },
 
@@ -191,7 +191,7 @@ Object.assign(Config, {
         h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="abstract_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="abstract_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="abstract_aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab" data-tab="abstract_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="abstract_ds">` +
@@ -225,7 +225,7 @@ Object.assign(Config, {
         h += this._llmTypeSelect('价值观 LLM 类型', 'catbrain.cat_values.llm_type', cv);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="values_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="values_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="values_aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab" data-tab="values_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="values_ds">` +
@@ -249,10 +249,10 @@ Object.assign(Config, {
             this._num('更新触发间隔(小时)', 'catbrain.cat_values.update_interval_hours', 12, 1, 720, 1) +
             this._num('哲思触发冷却(分钟)', 'catbrain.cat_values.philosophy_cooldown_minutes', 30, 1, 1440, 1);
         h += this._check('启用二次审查', 'catbrain.cat_values.second_review.enabled', false);
-        h += `<div class="form-group"><label>二次审查 LLM 类型</label>
+        h += `<div class="form-group"><label>${this._t('二次审查 LLM 类型')}</label>
             <select data-path="catbrain.cat_values.second_review.llm_type">
                 <option value="deepseek" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-                <option value="aliyun" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="aliyun" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
         return h;
@@ -266,7 +266,7 @@ Object.assign(Config, {
         h += this._llmTypeSelect('用户记忆 LLM 类型', 'catbrain.user_memory.llm_type', um);
         h += `<div class="modal-tabs">
             <button class="modal-tab active" data-tab="usermem_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="usermem_aliyun">阿里云</button>
+            <button class="modal-tab" data-tab="usermem_aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab" data-tab="usermem_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content active" data-tab-content="usermem_ds">` +
@@ -292,7 +292,7 @@ Object.assign(Config, {
         return `<div class="form-group"><label>${label}</label>
             <select data-path="${path}">
                 <option value="deepseek" ${current === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-                <option value="aliyun" ${current === 'aliyun' ? 'selected' : ''}>阿里云</option>
+                <option value="aliyun" ${current === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${current === 'gemini' ? 'selected' : ''}>Gemini</option>
             </select></div>`;
     },
@@ -309,29 +309,29 @@ Object.assign(Config, {
             this._check('主线程启用', 'rulebreak.enabled_msg', false) +
             this._num('触发好感度下限', 'rulebreak.affinity_min', 3, -10, 10, 1,
                 '仅好感度大于该值的用户才允许触发原则词注入');
-        h += `<div class="form-group"><label>主线程原则词</label>
-                <textarea id="armorPromptInput" class="auto-grow" rows="3" placeholder="守底线的原则词...">${this._esc(armorPrompt)}</textarea>
-                <div class="help-text">主线程检测到色情内容时，插入 system prompt 顶部</div>
+        h += `<div class="form-group"><label>${this._t('主线程原则词')}</label>
+                <textarea id="armorPromptInput" class="auto-grow" rows="3" placeholder="${this._t('守底线的原则词...')}">${this._esc(armorPrompt)}</textarea>
+                <div class="help-text">${this._t('主线程检测到色情内容时，插入 system prompt 顶部')}</div>
             </div>`;
-        h += `<div class="form-group"><label>QQ 原则词</label>
-                <textarea id="armorNapcatPromptInput" class="auto-grow" rows="3" placeholder="守底线的原则词...">${this._esc(armorNapcat)}</textarea>
-                <div class="help-text">QQ 私聊/群聊 @ 检测到色情内容时，插入 system prompt 顶部</div>
+        h += `<div class="form-group"><label>${this._t('QQ 原则词')}</label>
+                <textarea id="armorNapcatPromptInput" class="auto-grow" rows="3" placeholder="${this._t('守底线的原则词...')}">${this._esc(armorNapcat)}</textarea>
+                <div class="help-text">${this._t('QQ 私聊/群聊 @ 检测到色情内容时，插入 system prompt 顶部')}</div>
             </div>`;
-        h += `<div class="form-group"><label>NSFW 性格（触发时覆盖角色性格）</label>
-                <textarea id="armorNsfwInput" class="auto-grow" rows="3" placeholder="触发破甲词时替换角色卡「角色性格」的内容...">${this._esc(armorNsfw)}</textarea>
-                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「角色性格」行，消除调皮/生气等性格冲突</div>
+        h += `<div class="form-group"><label>${this._t('NSFW 性格（触发时覆盖角色性格）')}</label>
+                <textarea id="armorNsfwInput" class="auto-grow" rows="3" placeholder="${this._t('触发破甲词时替换角色卡「角色性格」的内容...')}">${this._esc(armorNsfw)}</textarea>
+                <div class="help-text">${this._t('检测到色情内容触发破甲词时，用此内容替换角色卡「角色性格」行，消除调皮/生气等性格冲突')}</div>
             </div>`;
-        h += `<div class="form-group"><label>NSFW 爱好（触发时覆盖角色爱好）</label>
-                <textarea id="armorNsfwHobbyInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换角色卡「角色爱好」的内容...">${this._esc(armorNsfwHobby)}</textarea>
-                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「角色爱好」行</div>
+        h += `<div class="form-group"><label>${this._t('NSFW 爱好（触发时覆盖角色爱好）')}</label>
+                <textarea id="armorNsfwHobbyInput" class="auto-grow" rows="2" placeholder="${this._t('触发破甲词时替换角色卡「角色爱好」的内容...')}">${this._esc(armorNsfwHobby)}</textarea>
+                <div class="help-text">${this._t('检测到色情内容触发破甲词时，用此内容替换角色卡「角色爱好」行')}</div>
             </div>`;
-        h += `<div class="form-group"><label>NSFW 最喜欢的东西（触发时覆盖）</label>
-                <textarea id="armorNsfwFavoriteInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换角色卡「最喜欢的东西」的内容...">${this._esc(armorNsfwFavorite)}</textarea>
-                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换角色卡「最喜欢的东西」行</div>
+        h += `<div class="form-group"><label>${this._t('NSFW 最喜欢的东西（触发时覆盖）')}</label>
+                <textarea id="armorNsfwFavoriteInput" class="auto-grow" rows="2" placeholder="${this._t('触发破甲词时替换角色卡「最喜欢的东西」的内容...')}">${this._esc(armorNsfwFavorite)}</textarea>
+                <div class="help-text">${this._t('检测到色情内容触发破甲词时，用此内容替换角色卡「最喜欢的东西」行')}</div>
             </div>`;
-        h += `<div class="form-group"><label>NSFW 字数规范（触发时覆盖字数限制）</label>
-                <textarea id="armorNsfwWordNormInput" class="auto-grow" rows="2" placeholder="触发破甲词时替换默认字数限制，如：每次回复至少80字，详细描写...">${this._esc(armorNsfwWordNorm)}</textarea>
-                <div class="help-text">检测到色情内容触发破甲词时，用此内容替换「每次回复10个字左右，严格控制在20字以内」</div>
+        h += `<div class="form-group"><label>${this._t('NSFW 字数规范（触发时覆盖字数限制）')}</label>
+                <textarea id="armorNsfwWordNormInput" class="auto-grow" rows="2" placeholder="${this._t('触发破甲词时替换默认字数限制，如：每次回复至少80字，详细描写...')}">${this._esc(armorNsfwWordNorm)}</textarea>
+                <div class="help-text">${this._t('检测到色情内容触发破甲词时，用此内容替换「每次回复10个字左右，严格控制在20字以内」')}</div>
             </div>`;
         h += this._section('审查端口（独立 DeepSeek）') +
             this._password('API Key', 'rulebreak.deepseek.api_key', '') +

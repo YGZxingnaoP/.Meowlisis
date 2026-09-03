@@ -47,7 +47,7 @@ Object.assign(App, {
                 </div>
                 <div class="backlog-user-body">
                     <div class="backlog-todo-list">${todoHtml || '<div class="help-text">暂无待办</div>'}</div>
-                    <button type="button" class="btn btn-secondary backlog-add-todo" data-user="${this._escAttr(u)}">添加待办</button>
+                    <button type="button" class="btn btn-secondary backlog-add-todo" data-user="${this._escAttr(u)}">${this._t('添加待办')}</button>
                 </div>
             </div>`;
         }).join('');
@@ -60,25 +60,25 @@ Object.assign(App, {
         const timeHour = timeParts[0] || '';
         const timeMinute = timeParts[1] || '';
         return `<div class="backlog-todo" data-user="${this._escAttr(user)}" data-todo-index="${index}">
-            <div class="form-group"><label>提醒日期</label>
-                <input type="text" data-todo-field="day" value="${this._esc(todo.day || '')}" placeholder="MM-DD，留空/none 每天"></div>
-            <div class="form-group"><label>提醒时间</label>
+            <div class="form-group"><label>${this._t('提醒日期')}</label>
+                <input type="text" data-todo-field="day" value="${this._esc(todo.day || '')}" placeholder="${this._t('MM-DD，留空/none 每天')}"></div>
+            <div class="form-group"><label>${this._t('提醒时间')}</label>
                 <div class="time-row">
-                    <input type="number" data-todo-field="time_hour" value="${this._esc(timeHour)}" min="0" max="23" placeholder="时">
+                    <input type="number" data-todo-field="time_hour" value="${this._esc(timeHour)}" min="0" max="23" placeholder="${this._t('时')}">
                     <span class="time-colon">:</span>
-                    <input type="number" data-todo-field="time_minute" value="${this._esc(timeMinute)}" min="0" max="59" placeholder="分">
+                    <input type="number" data-todo-field="time_minute" value="${this._esc(timeMinute)}" min="0" max="59" placeholder="${this._t('分')}">
                 </div></div>
-            <div class="form-group"><label>类型</label>
+            <div class="form-group"><label>${this._t('类型')}</label>
                 <button type="button" class="btn btn-secondary cycle-btn" data-todo-field="type" data-todo-values="instant,steady" data-todo-value="${type}">${type}</button></div>
-            <div class="form-group"><label>QQ提醒</label>
+            <div class="form-group"><label>${this._t('QQ提醒')}</label>
                 <button type="button" class="btn btn-secondary cycle-btn" data-todo-field="qq" data-todo-values="false,true" data-todo-value="${qq ? 'true' : 'false'}">${qq ? '开' : '关'}</button></div>
-            <div class="form-group"><label>重复间隔(秒)</label>
+            <div class="form-group"><label>${this._t('重复间隔(秒)')}</label>
                 <input type="number" data-todo-field="repeat_interval" value="${todo.repeat_interval != null ? todo.repeat_interval : 300}"></div>
-            <div class="form-group"><label>总次数</label>
+            <div class="form-group"><label>${this._t('总次数')}</label>
                 <input type="number" data-todo-field="loop" value="${todo.loop != null ? todo.loop : 2}"></div>
-            <div class="form-group"><label>提醒内容</label>
-                <input type="text" data-todo-field="content" value="${this._esc(todo.content || '')}" placeholder="提醒内容"></div>
-            <button type="button" class="btn btn-secondary backlog-remove-todo">删除待办</button>
+            <div class="form-group"><label>${this._t('提醒内容')}</label>
+                <input type="text" data-todo-field="content" value="${this._esc(todo.content || '')}" placeholder="${this._t('提醒内容')}"></div>
+            <button type="button" class="btn btn-secondary backlog-remove-todo">${this._t('删除待办')}</button>
         </div>`;
     },
     bindCalendarEvents() {
@@ -409,18 +409,18 @@ Object.assign(App, {
         btn.addEventListener('click', async () => {
             const resultEl = document.querySelector('[data-vts-params-result]');
             btn.disabled = true;
-            if (resultEl) resultEl.innerHTML = '<div class="help-text">查询中，请稍候…</div>';
+            if (resultEl) resultEl.innerHTML = '<div class="help-text">' + this._t('查询中，请稍候…') + '</div>';
             try {
                 const r = await API.getVtsParameters();
                 if (r && r.ok) {
                     const data = r.data || {};
                     if (resultEl) resultEl.innerHTML = Config._vtsParamsTable(data, data);
                 } else {
-                    const msg = (r && r.data) ? r.data : '查询失败';
+                    const msg = (r && r.data) ? r.data : this._t('查询失败');
                     if (resultEl) resultEl.innerHTML = `<div class="help-text">${this._esc(msg)}</div>`;
                 }
             } catch (e) {
-                if (resultEl) resultEl.innerHTML = `<div class="help-text">查询失败：${this._esc(e.message)}</div>`;
+                if (resultEl) resultEl.innerHTML = `<div class="help-text">${this._t('查询失败：')}${this._esc(e.message)}</div>`;
             } finally {
                 btn.disabled = false;
             }

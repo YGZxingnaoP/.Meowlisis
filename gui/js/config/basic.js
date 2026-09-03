@@ -37,7 +37,7 @@ Object.assign(Config, {
             this._num('心跳超时(秒)', 'sensevoice.ping_timeout', 60, 1, 300, 1) +
             this._section('易错词替换（上=正确词，下=错误词）') +
             `<div id="replaceRulesList"></div>
-            <button class="btn btn-secondary" id="addReplaceRuleBtn">添加规则</button>`;
+            <button class="btn btn-secondary" id="addReplaceRuleBtn">${this._t('添加规则')}</button>`;
     },
 
     // ============ 音频采集（多源，分别开关） ============,
@@ -84,7 +84,7 @@ Object.assign(Config, {
             h += this.replaceRuleRow(correct, wrongs);
         });
         if (!Object.keys(rules).length) {
-            h += `<div class="help-text">暂无替换规则，点击下方按钮添加</div>`;
+            h += `<div class="help-text">${this._t('暂无替换规则，点击下方按钮添加')}</div>`;
         }
         return h;
     },
@@ -93,13 +93,13 @@ Object.assign(Config, {
             `<span class="split-tag" data-wrong="${this._esc(w)}">${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button></span>`
         ).join('');
         return `<div class="replace-rule-row">
-            <div class="form-group"><label>正确词</label>
+            <div class="form-group"><label>${this._t('正确词')}</label>
                 <input type="text" data-replace-correct value="${this._esc(correct || '')}"></div>
-            <div class="form-group"><label>错误词（回车添加，点击 × 删除）</label>
+            <div class="form-group"><label>${this._t('错误词（回车添加，点击 × 删除）')}</label>
                 <div class="split-flag-editor replace-wrong-editor">
                     <div class="split-tags replace-wrong-tags">${wrongTags}</div>
                     <div class="split-add-row">
-                        <input type="text" class="split-add-input replace-wrong-input" placeholder="输入错误词后回车添加" maxlength="20">
+                        <input type="text" class="split-add-input replace-wrong-input" placeholder="${this._t('输入错误词后回车添加')}" maxlength="20">
                     </div>
                 </div>
             </div>
@@ -122,11 +122,11 @@ Object.assign(Config, {
 
     // ============ 声纹管理面板 ============,
     speakerManager() {
-        return `<div class="form-section"><h4>声纹管理</h4></div>
-            <div id="speakerList" class="speaker-list"><div class="help-text">加载中...</div></div>
+        return `<div class="form-section"><h4>${this._t('声纹管理')}</h4></div>
+            <div id="speakerList" class="speaker-list"><div class="help-text">${this._t('加载中...')}</div></div>
             <div class="speaker-actions">
-                <button class="btn btn-primary" id="speakerBuildBtn">一键生成所有声纹</button>
-                <button class="btn btn-secondary" id="speakerCreateBtn">新建用户</button>
+                <button class="btn btn-primary" id="speakerBuildBtn">${this._t('一键生成所有声纹')}</button>
+                <button class="btn btn-secondary" id="speakerCreateBtn">${this._t('新建用户')}</button>
             </div>
             <div id="speakerBuildProgress" class="help-text" style="margin-top:8px;"></div>`;
     },

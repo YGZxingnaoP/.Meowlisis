@@ -10,11 +10,11 @@ Object.assign(Config, {
             this._check('启用弹幕模块', 'danmaku.blivedm.enabled', false,
                 '开启后独立后台线程连接直播间，默认走开放平台，SESSDATA 作为兜底') +
             this._text('直播间号', 'danmaku.blivedm.room_id', '') +
-            `<div class="form-group"><label>SESSDATA（兜底通道）</label>
+            `<div class="form-group"><label>${this._t('SESSDATA（兜底通道）')}</label>
                 <div class="verify-row">
                     <input type="text" data-path="danmaku.blivedm.sessdata" value="${this._esc(sessdata)}">
-                    <button type="button" class="btn btn-secondary sessdata-verify-btn">验证</button>
-                    <button type="button" class="btn btn-primary bili-login-btn" data-target="danmaku">扫码登录</button>
+                    <button type="button" class="btn btn-secondary sessdata-verify-btn">${this._t('验证')}</button>
+                    <button type="button" class="btn btn-primary bili-login-btn" data-target="danmaku">${this._t('扫码登录')}</button>
                 </div>
                 <div class="sessdata-verify-result help-text"></div>
             </div>` +
@@ -136,7 +136,7 @@ Object.assign(Config, {
     _desktopetEmotionSlotRow(key, val) {
         return `<div class="emotion-slot-row">
             <span class="emotion-slot-id">${key}</span>
-            <input type="text" data-path="desktopet_emote.emotion_slots.${key}" value="${this._esc(val || '')}" placeholder="桌宠 hotkeyID">
+            <input type="text" data-path="desktopet_emote.emotion_slots.${key}" value="${this._esc(val || '')}" placeholder="${this._t('桌宠 hotkeyID')}">
         </div>`;
     },
 
@@ -190,11 +190,11 @@ Object.assign(Config, {
             const def = p.default != null ? p.default : '-';
             return `<tr><td>${this._esc(p.name)}</td><td>${this._esc(source)}</td><td>${this._esc(val)}</td><td>${this._esc(min)}</td><td>${this._esc(max)}</td><td>${this._esc(def)}</td></tr>`;
         };
-        const rows = live2d.map(p => row(p, 'Live2D模型')).join('') +
-                     tracking.map(p => row(p, '追踪参数')).join('');
-        return `<div class="vts-params-model">模型：${this._esc(model)}（Live2D参数 ${live2d.length} 个，追踪参数 ${tracking.length} 个）</div>
+        const rows = live2d.map(p => row(p, this._t('Live2D模型'))).join('') +
+                     tracking.map(p => row(p, this._t('追踪参数'))).join('');
+        return `<div class="vts-params-model">${this._t('模型：')}${this._esc(model)}${this._t('（Live2D参数 {n} 个，追踪参数 {m} 个）', { n: live2d.length, m: tracking.length })}</div>
             <table class="vts-params-table">
-                <thead><tr><th>参数名</th><th>来源</th><th>当前值</th><th>最小值</th><th>最大值</th><th>默认值</th></tr></thead>
+                <thead><tr><th>${this._t('参数名')}</th><th>${this._t('来源')}</th><th>${this._t('当前值')}</th><th>${this._t('最小值')}</th><th>${this._t('最大值')}</th><th>${this._t('默认值')}</th></tr></thead>
                 <tbody>${rows || '<tr><td colspan="6">未返回参数</td></tr>'}</tbody>
             </table>`;
     },

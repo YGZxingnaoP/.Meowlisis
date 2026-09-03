@@ -183,19 +183,19 @@ Object.assign(App, {
         if (!list) return;
         const formHtml = `
             <div class="char-card" id="createSpeakerForm">
-                <div class="char-card-title">新建声纹用户</div>
-                <div class="form-group"><label>用户名</label>
-                    <input type="text" id="newSpeakerName" placeholder="输入用户名"></div>
+                <div class="char-card-title">${this._t('新建声纹用户')}</div>
+                <div class="form-group"><label>${this._t('用户名')}</label>
+                    <input type="text" id="newSpeakerName" placeholder="${this._t('输入用户名')}"></div>
                 <div class="form-group">
-                    <label>拖拽 wav 文件到下方区域</label>
+                    <label>${this._t('拖拽 wav 文件到下方区域')}</label>
                     <div class="drop-zone" id="dropZone">
                         <input type="file" id="wavFileInput" accept=".wav" style="display:none;">
-                        <span id="dropZoneText">点击或拖拽 wav 文件到此处</span>
+                        <span id="dropZoneText">${this._t('点击或拖拽 wav 文件到此处')}</span>
                     </div>
                 </div>
                 <div class="speaker-actions">
-                    <button class="btn btn-primary" id="submitSpeakerBtn">提交</button>
-                    <button class="btn btn-secondary" id="cancelSpeakerBtn">取消</button>
+                    <button class="btn btn-primary" id="submitSpeakerBtn">${this._t('提交')}</button>
+                    <button class="btn btn-secondary" id="cancelSpeakerBtn">${this._t('取消')}</button>
                 </div>
             </div>`;
         list.insertAdjacentHTML('afterend', formHtml);

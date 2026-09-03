@@ -11,14 +11,19 @@
 </head>
 <body>
     <div class="bg-stars"></div>
+    <!-- 语言切换（右上角，白色圆角按钮组） -->
+    <div id="langSwitch" style="position:fixed;top:10px;right:14px;z-index:9999;display:flex;gap:3px;align-items:center;background:rgba(255,255,255,.95);padding:3px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.22);">
+        <button type="button" data-lang="zh-CN" class="lang-btn">中文</button>
+        <button type="button" data-lang="en" class="lang-btn">EN</button>
+    </div>
     <div class="container">
         <div class="orbit-system" id="orbitSystem">
             <!-- 中心启动球簇（含分裂出的服务启动球） -->
             <div class="launcher-cluster" id="launcherCluster">
                 <div class="center-launcher" id="centerLauncher">
                     <div class="launcher-glow"></div>
-                    <img src="MiaoWuFace.png" alt="启动" class="launcher-face">
-                    <div class="launcher-label">启动</div>
+                    <img src="MiaoWuFace.png" alt="启动" data-i18n-alt="启动" class="launcher-face">
+                    <div class="launcher-label" data-i18n="启动">启动</div>
                 </div>
             </div>
             
@@ -33,14 +38,14 @@
     <div class="toolbox-overlay" id="toolboxOverlay">
         <div class="toolbox-panel">
             <div class="toolbox-header">
-                <h3>Toolbox 工具箱</h3>
+                <h3 data-i18n="Toolbox 工具箱">Toolbox 工具箱</h3>
                 <button class="modal-close" id="toolboxClose">&times;</button>
             </div>
             <div class="toolbox-system" id="toolboxSystem">
                 <!-- 中心父级模型球（独立，不随轨道压扁） -->
                 <div class="toolbox-center-cluster">
                     <div class="toolbox-center" id="toolboxCenter">
-                        <span class="toolbox-center-label">父级模型</span>
+                        <span class="toolbox-center-label" data-i18n="父级模型">父级模型</span>
                     </div>
                 </div>
                 <!-- 椭圆轨道（立体倾斜） -->
@@ -55,15 +60,15 @@
     <div class="modal-overlay" id="modalOverlay">
         <div class="modal-window" id="modalWindow">
             <div class="modal-header">
-                <h3 id="modalTitle">配置</h3>
+                <h3 id="modalTitle" data-i18n="配置">配置</h3>
                 <button class="modal-close" id="modalClose">&times;</button>
             </div>
             <div class="modal-body" id="modalBody">
                 <!-- Dynamic content -->
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="modalSave">保存</button>
-                <button class="btn btn-secondary" id="modalCancel">取消</button>
+                <button class="btn btn-primary" id="modalSave" data-i18n="保存">保存</button>
+                <button class="btn btn-secondary" id="modalCancel" data-i18n="取消">取消</button>
             </div>
         </div>
     </div>
@@ -71,6 +76,10 @@
     <!-- Status Toast -->
     <div class="toast" id="toast"></div>
 
+    <!-- 语言包与 i18n 运行时（最先加载，保证渲染点可用） -->
+    <script src="locales/zh-CN.js"></script>
+    <script src="locales/en.js"></script>
+    <script src="js/i18n.js"></script>
     <script src="js/api.js"></script>
     <!-- 配置面板生成器（Config 对象，按功能域拆分） -->
     <script src="js/config/core.js"></script>

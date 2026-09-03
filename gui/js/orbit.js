@@ -146,8 +146,8 @@ const Orbit = {
     createToolboxPlanet(p, index, total) {
         const el = document.createElement('div');
         el.className = 'toolbox-planet';
-        el.innerHTML = `<span class="planet-label">${p.label}</span>`;
-        el.dataset.tooltip = p.tooltip;
+        el.innerHTML = `<span class="planet-label">${I18n.text(p.label)}</span>`;
+        el.dataset.tooltip = I18n.text(p.tooltip);
         el.dataset.id = p.id;
         const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
         el.dataset.baseAngle = baseAngle;
@@ -192,8 +192,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -250,8 +250,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -309,8 +309,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -366,8 +366,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -493,8 +493,8 @@ const Orbit = {
     createLauncherPlanet(p, index) {
         const el = document.createElement('div');
         el.className = 'launch-planet';
-        el.innerHTML = `<span class="launch-label">${p.label}</span>`;
-        el.dataset.tooltip = `${p.tooltip}：${p.endpoint}`;
+        el.innerHTML = `<span class="launch-label">${I18n.text(p.label)}</span>`;
+        el.dataset.tooltip = `${I18n.text(p.tooltip)}：${p.endpoint}`;
         el.dataset.launchId = p.id;
 
         // 目标偏移：按角度均匀分布在主球右侧弧线上（从右下到右上）
@@ -549,8 +549,8 @@ const Orbit = {
     createOuterPlanet(p, index, total) {
         const el = document.createElement('div');
         el.className = `planet planet-outer`;
-        el.innerHTML = `<span class="planet-label">${p.label}</span>`;
-        el.dataset.tooltip = p.tooltip;
+        el.innerHTML = `<span class="planet-label">${I18n.text(p.label)}</span>`;
+        el.dataset.tooltip = I18n.text(p.tooltip);
         el.dataset.id = p.id;
 
         const baseAngle = (2 * Math.PI / total) * index - Math.PI / 2;
@@ -577,7 +577,7 @@ const Orbit = {
                 this.toggleDatabaseSubs();
             });
         } else if (p.id === 'tts') {
-            // TTS 球：点击分裂出 3 个子配置球（模型/参数/配置）
+            // TTS 球：点击分裂出 4 个子配置球（模型/参数/配置/间隔）
             this.ttsEl = el;
             this.createTtsSubs(el);
             el.addEventListener('click', (e) => {
@@ -664,8 +664,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -723,8 +723,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -763,25 +763,27 @@ const Orbit = {
         this.databaseSubEls.forEach(el => this._applyDatabaseSub(el, this.databaseOpen));
     },
 
-    // TTS 子球（模型/参数/配置）
+    // TTS 子球（模型/参数/配置/间隔）
     createTtsSubs(parent) {
         const subs = [
             { id: 'tts_model', label: '模型', tooltip: '模型配置（权重与参考音频）' },
             { id: 'tts_params', label: '参数', tooltip: '参数配置（语速/温度/流式参数）' },
-            { id: 'tts_config', label: '配置', tooltip: '打断与流式开关' }
+            { id: 'tts_config', label: '配置', tooltip: '打断与流式开关' },
+            { id: 'tts_pause', label: '间隔', tooltip: '段间随机停顿（0.5~1s）' }
         ];
-        // 目标偏移：3 个子球沿 TTS 球右侧弧线排列（右上/右中/右下）
+        // 目标偏移：4 个子球沿 TTS 球右侧弧线排列（右上/右中上/右中下/右下）
         const offsets = [
             { x: 82, y: -82 },
-            { x: 115, y: 0 },
+            { x: 115, y: -27 },
+            { x: 115, y: 27 },
             { x: 82, y: 82 }
         ];
         this.ttsSubEls = [];
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -836,8 +838,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
@@ -890,8 +892,8 @@ const Orbit = {
         subs.forEach((s, i) => {
             const el = document.createElement('div');
             el.className = 'catbrain-sub';
-            el.innerHTML = `<span class="launch-label">${s.label}</span>`;
-            el.dataset.tooltip = s.tooltip;
+            el.innerHTML = `<span class="launch-label">${I18n.text(s.label)}</span>`;
+            el.dataset.tooltip = I18n.text(s.tooltip);
             el.dataset.subId = s.id;
             el.dataset.offsetX = offsets[i].x;
             el.dataset.offsetY = offsets[i].y;
