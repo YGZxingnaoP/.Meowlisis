@@ -1,0 +1,16 @@
+{
+  "cmd": [
+    "server/sensevoice_server.py",
+    "--host", "0.0.0.0",
+    "--port", "10095",
+    "--model_dir", "localmodels/SenseVoiceSmall",
+    "--sv_model", "localmodels/speech_campplus_sv_zh-cn_16k-common",
+    "--speaker_db_path", "voicetexture/speaker_db.json",
+    "--device", "cuda",
+    "--ngpu", "1",
+    "--worker_threads", "4",
+    "--concurrent_asr", "4",
+    "--concurrent_sv", "2",
+    "--sv_threshold", "0.2"
+  ]
+}

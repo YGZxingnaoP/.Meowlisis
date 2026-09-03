@@ -16,7 +16,6 @@ class TBVisionGetResponse:
     - description：图片基本描述（30~50字纯文本），仅用于记忆，不参与 TTS / 发送。
     - reply：以角色身份对图片的正式回复，用于 TTS / 发送 / 记忆。
     - need_description=False（角色自己截图）时，不要求输出描述，description 恒为空串。
-
     优先通过 function calling（tool_calls）解析结构化输出；
     若模型未调用工具，则回退到 content 的【图片描述】/【回复】标记解析。
     """
