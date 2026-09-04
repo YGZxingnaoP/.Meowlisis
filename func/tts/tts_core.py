@@ -540,7 +540,6 @@ class TTsCore:
         if self._interrupt_flag.is_set():
             return
 
-        # 合成互斥：串行合成，避免并发导致播放顺序错乱
         with self.synth_lock:
             return self._tts_say_do_locked(json, generation)
 
@@ -558,27 +557,21 @@ class TTsCore:
         chat_status = json.get("chatStatus", "end")
         priority = self._priority_of(json.get("source", "other"))
 
-        # 空文本 + end 作为结束标记
         if text == "" and chat_status == "end":
             reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": ""}
             if is_segmented:
-                # 分段场景：空结束段仅用于清理顺序缓冲，不入播放队列
                 self._add_segment(traceid, seg_index, None, reply_json, is_end=True, priority=priority)
             else:
                 self.subtitle.put(reply_json)
                 self.log.info(reply_json)
             return
 
-        # 过滤影响合成的特殊字符
         text = re.sub(r"(《|》|（|）)", "", text)
 
-        # 获取当前情绪与强度（用于选择参考音频 + 采样参数）
         emotion, intensity = self._resolve_emotion()
 
-        # 获取当前角色卡绑定的参考音频配置（按情绪选择）
         ref_audio = self._resolve_ref_audio(emotion)
 
-        # 流式合成：创建流式源（生成器 + 取消函数）
         generator, cancel_func = self.sovits.get_sovits_stream(
             text, ref_audio, emotion=emotion, intensity=intensity
         )
@@ -588,29 +581,23 @@ class TTsCore:
         source = StreamSource(generator, cancel_func, traceid, seg_index,
                               source=json.get("source", "other"))
 
-        # 入队前再次检查：代际不匹配（已打断/暂停）或暂停状态，则丢弃该流
         if (generation is not None and generation != self.ttsData.generation) or self._is_paused():
             source.cancel()
             return
 
-        # 注册活跃流（供打断统一取消 + 抢占优先级判断）
         with self._streams_lock:
             self._active_streams[source] = priority
 
         reply_json = {"traceid": traceid, "chatStatus": chat_status, "text": reply_text}
 
         if is_segmented:
-            # 分段任务交给顺序缓冲，保证按序播放
             self._add_segment(traceid, seg_index, source, reply_json,
                               is_end=(chat_status == "end"), priority=priority)
         else:
-            # 非分段任务直接入队
             is_last = (chat_status == "end")
             self.subtitle.put(reply_json)
             self.play_queue.put((source, reply_json, is_last, priority))
 
-        # 同步拉取字节填充缓冲：调用方持有 synth_lock，保证同一时刻只有一个流式请求，
-        # 播放线程并行消费 source.buffer，实现"边合成边播放"
         self._pump_stream(source, generation)
 
     def _pump_stream(self, source: StreamSource, generation=None):

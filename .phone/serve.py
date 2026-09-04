@@ -25,6 +25,13 @@ import subprocess
 from flask import Flask, request, send_from_directory, Response
 import requests
 
+# Windows 管道/GUI 启动时 stdout 默认 GBK，print(emoji) 会 UnicodeEncodeError；
+# 统一 UTF-8 容错，避免服务启动即崩溃。
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
 DESKTOPET_DIR = os.path.join(PROJECT_DIR, '.desktopet')
@@ -62,19 +69,21 @@ def pet_files(p):
 
 def _proxy(path, method='GET', **kw):
     url = API_BASE + path
+    # GET 轮询类请求短超时（主程序挂了快速失败），POST（如音频上传）给足时间
+    timeout = 60 if method == 'POST' else 15
     try:
         if method == 'POST':
-            r = requests.post(url, timeout=60, **kw)
+            r = requests.post(url, timeout=timeout, **kw)
         else:
-            r = requests.get(url, timeout=60, **kw)
+            r = requests.get(url, timeout=timeout, **kw)
         return Response(
             r.content,
             status=r.status_code,
             content_type=r.headers.get('Content-Type', 'application/json'),
         )
-    except requests.exceptions.ConnectionError:
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
         return Response(
-            '{"status":"error","message":"主程序 api.py 未启动"}',
+            '{"status":"error","message":"主程序 api.py 未启动或无响应"}',
             status=502,
             content_type='application/json',
         )
@@ -217,9 +226,11 @@ if __name__ == '__main__':
         print('  首次访问有证书警告 -> 点「高级 / 继续前往」即可')
         print('  提示：语音识别走主程序 SenseVoice；AI 回复声音在电脑端播放')
         print('=' * 58)
-        app.run(host=HOST, port=PORT, ssl_context=(cert_pem, key_pem), debug=False)
+        # 必须多线程：否则单个慢请求（代理等待/大文件）会阻塞整个服务，导致页面一直加载
+        app.run(host=HOST, port=PORT, ssl_context=(cert_pem, key_pem), debug=False,
+                threaded=True)
     else:
         print('[警告] 无法生成 HTTPS 证书，回退 HTTP（浏览器将无法授权麦克风，仅可用文字）')
         print(f'  手机请访问: http://{ip}:{PORT}')
         print('=' * 58)
-        app.run(host=HOST, port=PORT, debug=False)
+        app.run(host=HOST, port=PORT, debug=False, threaded=True)

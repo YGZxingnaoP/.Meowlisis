@@ -3,6 +3,7 @@
 # 单个音频源的识别会话：独立连接 + 独立收发 + 独立 VAD/打断/声纹
 
 import asyncio
+import time
 
 from func.sensevoice.port import SenseVoicePort
 from func.sensevoice.manager import SenseVoiceManager
@@ -73,6 +74,7 @@ class SenseVoiceSession:
         """采集循环：取源帧 → VAD/打断 → 发送音频与控制信号"""
         try:
             while self._is_running():
+                t0 = time.monotonic()
                 frame = self.hub.next_frame(self.source_id)
                 if frame is None:
                     frame = self.silence_frame
@@ -109,7 +111,9 @@ class SenseVoiceSession:
                     self.tts_bridge.set_speaking(interrupt_event == 'started')
 
                 await self.manager.send_audio(frame)
-                await asyncio.sleep(self.hub.frame_duration)
+                wait = self.hub.frame_duration - (time.monotonic() - t0)
+                if wait > 0:
+                    await asyncio.sleep(wait)
         except Exception as e:
             self.log.error(f"[{self.source_id}] 采集循环异常: {e}", exc_info=True)
             raise

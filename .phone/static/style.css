@@ -1,4 +1,4 @@
-/* .phone 手机界面样式 */
+/* .phone 手机界面样式 —— 简洁中性风格（无彩色按钮） */
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -35,6 +35,157 @@ body {
   background: transparent;
 }
 
+/* 悬浮层通用：浮在桌宠 iframe 之上 */
+.pet-overlay {
+  position: absolute;
+  z-index: 5;
+}
+
+/* ---- 昵称条（左上角）---- */
+.name-tag {
+  top: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 110px);
+  padding: 7px 12px;
+  border-radius: 18px;
+  background: rgba(15, 15, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 14px;
+  color: #e8e8f0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+.name-label {
+  color: #9a9ab2;
+  flex: 0 0 auto;
+}
+
+.name-value {
+  font-weight: 600;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.name-edit {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: #b9b9d4;
+}
+
+.name-input {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 10px;
+  background: rgba(31, 31, 54, 0.95);
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+}
+
+/* 编辑态：隐藏文字显示输入框 */
+.name-tag.editing {
+  cursor: text;
+}
+.name-tag.editing .name-value,
+.name-tag.editing .name-label,
+.name-tag.editing .name-edit {
+  display: none;
+}
+.name-tag.editing .name-input {
+  display: block;
+}
+
+/* ---- 缩放控制（右上角）---- */
+.zoom-ctl {
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: rgba(15, 15, 26, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 18px;
+  padding: 6px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.zoom-btn {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: manipulation;
+}
+
+.zoom-btn:active {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+/* ---- 对话区（含折叠把手 + 消息列表）---- */
+.chat-zone {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  max-height: 52vh;            /* 收起前的最高高度 */
+}
+
+/* 折叠把手：细条，位于消息区顶部 */
+.chat-toggle {
+  flex: 0 0 auto;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(20, 20, 32, 0.95);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: #8a8aa0;
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.chat-toggle:active {
+  background: rgba(40, 40, 60, 0.95);
+}
+.ct-arrow {
+  font-size: 10px;
+  color: #b9b9d4;
+}
+
+/* 折叠态：隐藏消息列表，桌宠区域自动撑满放大 */
+.chat-zone.collapsed .chat-box {
+  display: none;
+}
+.chat-zone.collapsed .chat-toggle {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 /* 对话消息区 */
 .chat-box {
   height: 24vh;
@@ -60,14 +211,14 @@ body {
 
 .msg.user {
   align-self: flex-end;
-  background: #e94560;
+  background: rgba(255, 255, 255, 0.16);
   color: #fff;
   border-bottom-right-radius: 4px;
 }
 
 .msg.ai {
   align-self: flex-start;
-  background: #2a2a44;
+  background: rgba(255, 255, 255, 0.07);
   color: #e8e8f0;
   border-bottom-left-radius: 4px;
 }
@@ -106,9 +257,9 @@ body {
 .hold-btn {
   flex: 0 0 auto;
   padding: 12px 16px;
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 22px;
-  background: #e94560;
+  background: rgba(255, 255, 255, 0.12);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
@@ -119,21 +270,21 @@ body {
 }
 
 .hold-btn.recording {
-  background: #ff2d55;
-  box-shadow: 0 0 0 3px rgba(255, 45, 85, 0.35);
+  background: rgba(255, 255, 255, 0.30);
+  border-color: rgba(255, 255, 255, 0.6);
   animation: pulse 1s ease-in-out infinite;
 }
 
 @keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(0.96); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
 }
 
 #textInput {
   flex: 1;
   min-width: 0;
   padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 22px;
   background: #1f1f36;
   color: #fff;
@@ -142,17 +293,22 @@ body {
 }
 
 #textInput:focus {
-  border-color: #e94560;
+  border-color: rgba(255, 255, 255, 0.5);
 }
 
 .send-btn {
   flex: 0 0 auto;
   padding: 12px 18px;
-  border: 0;
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 22px;
-  background: #4361ee;
+  background: rgba(255, 255, 255, 0.22);
   color: #fff;
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+}
+
+.hold-btn:active,
+.send-btn:active {
+  background: rgba(255, 255, 255, 0.34);
 }

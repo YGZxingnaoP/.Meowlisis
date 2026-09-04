@@ -69,6 +69,10 @@ echo 启动 SenseVoice 服务端...
 echo 使用设备: cuda (如需 CPU 请修改脚本中的 --device 参数)
 echo.
 
+:: 延迟观测打点文件（供 scripts/sensevoice_latency 监听；目录不存在则自动创建）
+set LATENCY_LOG=%PROJECT_DIR%..\scripts\sensevoice_latency\logs\sv_events.log
+if not exist "%PROJECT_DIR%..\scripts\sensevoice_latency\logs" mkdir "%PROJECT_DIR%..\scripts\sensevoice_latency\logs"
+
 :: 启动服务（可根据需要修改 --device 为 cpu 或 cuda）
 "%PYTHON_EXE%" "%SERVER_SCRIPT%" ^
     --host 0.0.0.0 ^
@@ -81,7 +85,8 @@ echo.
     --worker_threads 4 ^
     --concurrent_asr 4 ^
     --concurrent_sv 2 ^
-    --sv_threshold 0.2
+    --sv_threshold 0.2 ^
+    --latency_log "%LATENCY_LOG%"
 
 :: 如果服务异常退出，暂停以显示错误信息
 if errorlevel 1 (

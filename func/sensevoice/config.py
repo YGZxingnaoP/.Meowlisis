@@ -19,6 +19,8 @@ class SenseVoiceConfig:
 
         # 服务端地址
         self.server_url = cfg.get('server_url', 'ws://127.0.0.1:10095/')
+        # UDP 音频直传端口（None = 服务端口 + 1）
+        self.udp_port = cfg.get('udp_port', None)
 
         # 识别协议参数
         self.mode = cfg.get('mode', '2pass')

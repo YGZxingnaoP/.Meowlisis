@@ -148,12 +148,17 @@ class AudioHub:
             return
 
         buf = self._buffers[sid]
+        limit = buf.maxlen
         try:
             while self._running[sid]:
                 frame = source.read()
                 if frame is not None:
-                    with self._lock:
-                        buf.append(frame)
+                    while self._running[sid]:
+                        with self._lock:
+                            if limit is None or len(buf) < limit:
+                                buf.append(frame)
+                                break
+                        time.sleep(0.01)
                 else:
                     # 队列类源（inject）无数据时短暂休眠，避免忙等
                     time.sleep(0.01)

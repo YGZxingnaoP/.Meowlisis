@@ -5,6 +5,23 @@
   const params = new URLSearchParams(location.search);
   const modelUrl = params.get('model') || '../Live2d_resource/Meowlisis/MiaoWu-l2d.model3.json';
 
+  // ---- 宿主环境与自适应模式 ----
+  // 本渲染层同时服务两类宿主：
+  //   1) 桌面 Electron（存在 window.desktopet API，由主进程下发 scale 指令，窗口尺寸=模型尺寸）
+  //   2) 普通浏览器 iframe（如 .phone 手机页，无主进程）→ 开启"自适应"：按容器尺寸自动缩放
+  const isElectronEnv = !!(window.desktopet && window.desktopet.onCommand);
+  let autoFitMode = !isElectronEnv; // 非 Electron（手机 iframe）默认自适应
+  let fitRatio = 0.92;              // 模型占容器比例（留物理摆动/呼吸等余量，防止被裁切）
+  let manualFactor = 1.0;           // 用户手动微调倍率（手机页通过 postMessage 控制）
+  let modelOrigW = 0, modelOrigH = 0; // 模型 scale=1 时的原始画布尺寸
+
+  // URL 显式控制：?autofit=1/0、?fit=0.9
+  const _af = params.get('autofit');
+  if (_af === '1') autoFitMode = true;
+  else if (_af === '0') autoFitMode = false;
+  const _fit = parseFloat(params.get('fit'));
+  if (_fit > 0.05 && _fit <= 3) fitRatio = _fit;
+
   if (!window.PIXI || !window.PIXI.live2d) {
     document.title = 'Live2D 库未加载';
     console.error('[renderer] Live2D 库未加载');
@@ -36,16 +53,67 @@
   // 表情自动消失定时器：触发后 N 秒自动清空表情
   let expressionTimer = null;
 
-  function recenter() {
+  // ---- 模型位置 = 屏幕中心 + 用户拖拽偏移 ----
+  // 手机 iframe（自适应模式）下用户可按住人物拖动；旋转/缩放/页面尺寸变化都保留该偏移。
+  let dragOffsetX = 0;
+  let dragOffsetY = 0;
+
+  function clampDragOffset() {
+    // 限制模型中心不越出画布（留 40px 余量），拖拽与尺寸变化时统一约束
+    if (!app || !app.screen) return;
+    const W = app.screen.width, H = app.screen.height;
+    const mx = Math.max(W / 2 - 40, 0);
+    const my = Math.max(H / 2 - 40, 0);
+    dragOffsetX = Math.max(-mx, Math.min(mx, dragOffsetX));
+    dragOffsetY = Math.max(-my, Math.min(my, dragOffsetY));
+  }
+
+  function setCenterPosition() {
     if (!model) return;
-    model.position.set(app.screen.width / 2, app.screen.height / 2);
+    clampDragOffset();
+    model.position.set(
+      app.screen.width / 2 + dragOffsetX,
+      app.screen.height / 2 + dragOffsetY
+    );
+  }
+
+  function recenter() {
+    setCenterPosition(); // 保留用户拖拽偏移
+  }
+
+  function resetCenter() {
+    dragOffsetX = 0;
+    dragOffsetY = 0;
+    setCenterPosition();
   }
 
   function applyScale(s) {
     currentScale = s;
     if (!model) return;
     model.scale.set(s);
-    recenter();
+    setCenterPosition();
+  }
+
+  // 自适应模式下计算"完整显示在容器内"的缩放：min(可用宽/模型宽, 可用高/模型高)
+  function computeFitScale() {
+    if (!(modelOrigW > 0) || !(modelOrigH > 0)) return null;
+    const availW = app.screen.width * fitRatio;
+    const availH = app.screen.height * fitRatio;
+    if (availW <= 0 || availH <= 0) return null;
+    return Math.min(availW / modelOrigW, availH / modelOrigH);
+  }
+
+  // 按当前模式应用缩放：
+  //   自适应模式（手机 iframe）→ fitScale × 手动倍率
+  //   桌面模式 → 沿用主进程下发的 currentScale
+  function applyDesiredScale() {
+    if (!model) return;
+    if (autoFitMode) {
+      const fs = computeFitScale();
+      if (fs && fs > 0) applyScale(fs * manualFactor);
+    } else {
+      applyScale(currentScale);
+    }
   }
 
   function applyParam(p) {
@@ -93,7 +161,11 @@
     // 头部/眼睛方向完全由 VTS 注入参数（FaceAngleX/Y）驱动，方向通过控制面板 paramFix 修正。
     model.autoInteract = false;
     app.stage.addChild(model);
-    applyScale(currentScale);
+
+    // 记录 scale=1 时的原始尺寸（必须在 applyScale 前读取，供自适应计算）
+    modelOrigW = model.width;
+    modelOrigH = model.height;
+    applyDesiredScale();
 
     // 上报模型原始尺寸（用于主进程计算窗口大小）
     if (window.desktopet && window.desktopet.modelReady) {
@@ -110,7 +182,51 @@
     return;
   }
 
-  window.addEventListener('resize', recenter);
+  // ---- 视口变化：居中 + 自适应模式下重算缩放（旋转/窗口变化）----
+  function onViewportResize() {
+    recenter();
+    if (autoFitMode) {
+      const fs = computeFitScale();
+      if (fs && fs > 0) applyScale(fs * manualFactor);
+    }
+  }
+  window.addEventListener('resize', onViewportResize);
+  window.addEventListener('orientationchange', onViewportResize);
+
+  // ---- 手机 iframe（自适应模式）：按住人物拖拽移动，双击回中 ----
+  if (autoFitMode) {
+    const dragCanvas = document.getElementById('canvas');
+    let afDragging = false;
+    let afLast = null;
+    dragCanvas.style.touchAction = 'none'; // 防 iframe 内触摸滚动/缩放
+    dragCanvas.style.cursor = 'grab';
+
+    dragCanvas.addEventListener('pointerdown', (e) => {
+      afDragging = true;
+      afLast = { x: e.clientX, y: e.clientY };
+      dragCanvas.style.cursor = 'grabbing';
+      try { dragCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    dragCanvas.addEventListener('pointermove', (e) => {
+      if (!afDragging || !afLast) return;
+      dragOffsetX += e.clientX - afLast.x;
+      dragOffsetY += e.clientY - afLast.y;
+      afLast = { x: e.clientX, y: e.clientY };
+      setCenterPosition();
+    });
+    function endAfDrag() {
+      afDragging = false;
+      afLast = null;
+      dragCanvas.style.cursor = 'grab';
+    }
+    dragCanvas.addEventListener('pointerup', endAfDrag);
+    dragCanvas.addEventListener('pointercancel', endAfDrag);
+    // 双击人物回中（浏览器仅在两次点击无明显位移时触发）
+    dragCanvas.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      resetCenter();
+    });
+  }
 
   // ---- 拖动模式：鼠标实时拖动人物 ----
   let dragMode = false;
@@ -213,4 +329,26 @@
       }
     });
   }
+
+  // 手机页（父窗口 iframe）缩放控制：postMessage
+  // { source:'meow-phone', type:'pet-zoom', dir:'in'|'out' } / { type:'pet-reset' }
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || d.source !== 'meow-phone') return;
+    if (d.type === 'pet-zoom') {
+      const step = (d.dir === 'in' ? 1.15 : 1 / 1.15);
+      manualFactor = Math.max(0.35, Math.min(2.5, manualFactor * step));
+      if (autoFitMode) {
+        const fs = computeFitScale();
+        if (fs && fs > 0) applyScale(fs * manualFactor);
+      }
+    } else if (d.type === 'pet-reset') {
+      manualFactor = 1.0;
+      resetCenter(); // 重置大小 + 位置回中
+      if (autoFitMode) {
+        const fs = computeFitScale();
+        if (fs && fs > 0) applyScale(fs * manualFactor);
+      }
+    }
+  });
 })();

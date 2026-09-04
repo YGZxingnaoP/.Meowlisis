@@ -27,6 +27,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 parser = argparse.ArgumentParser()
 parser.add_argument("--host", type=str, default="0.0.0.0")
 parser.add_argument("--port", type=int, default=10095)
+parser.add_argument("--udp_port", type=int, default=None,
+    help="UDP 音频直传端口（默认 = --port + 1）")
 parser.add_argument("--model_dir", type=str, 
     default=os.path.join(PROJECT_ROOT, "localmodels", "SenseVoiceSmall"))
 parser.add_argument("--device", type=str, default="cuda")
@@ -43,6 +45,8 @@ parser.add_argument("--speaker_db_reload_sec", type=int, default=5)
 parser.add_argument("--worker_threads", type=int, default=4)
 parser.add_argument("--concurrent_asr", type=int, default=4)
 parser.add_argument("--concurrent_sv", type=int, default=2)
+parser.add_argument("--latency_log", type=str, default=None,
+    help="延迟观测事件文件路径（可选，不传则不产生任何打点）")
 
 args = parser.parse_args()
 
@@ -83,6 +87,26 @@ sem_sv = asyncio.Semaphore(args.concurrent_sv)
 SAMPLE_RATE = 16000
 
 # ==================== 辅助函数 ====================
+def latency_tick(event: str, extra: str = ""):
+    """延迟观测打点：向 --latency_log 追加一行（毫秒时间戳），未配置则完全静默。
+
+    extra 中制表符/换行会被替换为空格，避免破坏行结构。
+    """
+    path = getattr(args, "latency_log", None)
+    if not path:
+        return
+    try:
+        ts = int(time.time() * 1000)
+        clean = str(extra).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+        d = os.path.dirname(path)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(f"{ts}\t{event}\t{clean}\n")
+    except Exception:
+        pass
+
+
 def to_python(obj):
     """将numpy/torch类型转换为Python原生类型"""
     try:
@@ -248,10 +272,12 @@ class SenseVoiceSession:
                 # 开始说话：重置缓冲区
                 self.audio_buffer = bytearray()
                 print("客户端开始说话")
+                latency_tick("user_start", self.wav_name)
             elif was_speaking and not self.is_speaking:
                 # 结束说话：触发最终识别
                 if len(self.audio_buffer) > 0:
                     print(f"说话结束，触发识别 ({len(self.audio_buffer)} bytes)")
+                    latency_tick("user_end", f"{self.wav_name}|{len(self.audio_buffer)}")
                     await self._recognize_final()
                 print("客户端结束说话")
         
@@ -312,6 +338,7 @@ class SenseVoiceSession:
                 }
                 await self.websocket.send(json.dumps(message, ensure_ascii=False))
                 print(f"识别结果: [{spk_name}] {text}")
+                latency_tick("sv_result_sent", f"{self.wav_name}|{spk_name}|{text}")
         except Exception as e:
             print(f"识别失败: {e}")
         finally:
@@ -335,6 +362,63 @@ async def run_blocking(fn, *args, sem: Optional[asyncio.Semaphore] = None, **kwa
 # ==================== WebSocket 服务 ====================
 connected_sessions = set()
 
+udp_sessions = {}
+udp_queues = {}
+udp_tasks = {}
+
+
+def register_session(session):
+    key = session.wav_name
+    udp_sessions[key] = session
+    if key not in udp_queues:
+        q = asyncio.Queue()
+        udp_queues[key] = q
+        udp_tasks[key] = asyncio.ensure_future(_udp_worker(key, q))
+
+
+def unregister_session(session):
+    key = session.wav_name
+    if udp_sessions.get(key) is session:
+        udp_sessions.pop(key, None)
+
+
+async def _udp_worker(key, q):
+    while True:
+        ftype, payload = await q.get()
+        session = udp_sessions.get(key)
+        if session is None:
+            continue
+        try:
+            if ftype == 1:
+                await session.handle_audio(payload)
+            elif ftype == 2:
+                try:
+                    msg = json.loads(payload.decode("utf-8"))
+                except Exception:
+                    continue
+                await session.handle_text_message(msg)
+        except Exception as e:
+            print(f"UDP 会话处理异常: {e}")
+
+
+class SenseVoiceUdpProtocol(asyncio.DatagramProtocol):
+    def datagram_received(self, data, addr):
+        if len(data) < 3:
+            return
+        ftype = data[0]
+        nlen = data[1]
+        if 2 + nlen > len(data):
+            return
+        try:
+            key = data[2:2 + nlen].decode("utf-8")
+        except Exception:
+            return
+        q = udp_queues.get(key)
+        if q is None:
+            return
+        q.put_nowait((ftype, data[2 + nlen:]))
+
+
 async def ws_handler(websocket, path=None):
     """WebSocket连接处理器"""
     sv = SpeakerVerification(model_sv, args.speaker_db_path, args.speaker_db_reload_sec, args.sv_threshold)
@@ -354,14 +438,16 @@ async def ws_handler(websocket, path=None):
                     print(f"JSON解析错误: {e}")
                     continue
             else:
-                # 二进制音频数据
+                # 二进制音频数据（兼容旧协议）
                 await session.handle_audio(message)
+            register_session(session)
     except websockets.exceptions.ConnectionClosed:
         print("客户端连接关闭")
     except Exception as e:
         print(f"连接异常: {e}")
     finally:
         connected_sessions.discard(websocket)
+        unregister_session(session)
         print(f"客户端断开，当前连接数: {len(connected_sessions)}")
 
 
@@ -382,9 +468,17 @@ async def main():
         ping_timeout=30,
         ssl=ssl_context,
     )
-    
+
+    udp_port = args.udp_port if args.udp_port is not None else (args.port + 1)
+    loop = asyncio.get_running_loop()
+    udp_transport, _ = await loop.create_datagram_endpoint(
+        SenseVoiceUdpProtocol,
+        local_addr=(args.host, udp_port),
+    )
+
     print(f"SenseVoice WebSocket 服务已启动")
     print(f"地址: ws://{args.host}:{args.port}")
+    print(f"UDP 音频服务: udp://{args.host}:{udp_port}")
     print(f"声纹识别: {args.sv_model}")
     await server.wait_closed()
 

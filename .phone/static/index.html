@@ -8,14 +8,37 @@
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <!-- 桌宠画面（同源 iframe 加载 .desktopet 渲染层） -->
+  <!-- 桌宠画面（同源 iframe 加载 .desktopet 渲染层；autofit 开启自适应，fit 为占容器比例） -->
   <div class="pet-wrap">
-    <iframe id="petFrame" src="/pet/renderer/index.html" title="桌宠"></iframe>
+    <iframe id="petFrame" src="/pet/renderer/index.html?autofit=1&fit=0.92" title="桌宠"></iframe>
+
+    <!-- 悬浮层：昵称编辑 -->
+    <div class="pet-overlay name-tag" id="nameTag">
+      <span class="name-label">我是</span>
+      <span class="name-value" id="nameValue">手机用户</span>
+      <input id="nameInput" class="name-input" type="text" maxlength="20"
+             placeholder="输入昵称，回车确认" autocomplete="off">
+      <span class="name-edit" id="nameEditBtn">✎</span>
+    </div>
+
+    <!-- 悬浮层：桌宠缩放控制 -->
+    <div class="pet-overlay zoom-ctl">
+      <button id="zoomOut" class="zoom-btn" title="缩小桌宠">－</button>
+      <button id="zoomReset" class="zoom-btn" title="重置大小">⟲</button>
+      <button id="zoomIn" class="zoom-btn" title="放大桌宠">＋</button>
+    </div>
   </div>
 
   <!-- 对话消息区 -->
-  <div class="chat-box" id="chatBox">
-    <div class="msg sys">欢迎～按住「按住说话」或直接打字</div>
+  <div class="chat-zone" id="chatZone">
+    <!-- 折叠把手：点击收起/展开对话 -->
+    <div class="chat-toggle" id="chatToggle" role="button" title="收起/展开对话">
+      <span class="ct-arrow" id="ctArrow">▾</span>
+      <span class="ct-text" id="ctText">收起对话</span>
+    </div>
+    <div class="chat-box" id="chatBox">
+      <div class="msg sys">欢迎～按住「按住说话」或直接打字</div>
+    </div>
   </div>
 
   <!-- 底部控制栏 -->

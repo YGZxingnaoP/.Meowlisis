@@ -33,7 +33,7 @@ class MeowUserInfoTool:
                         "gender": {"type": "string", "description": "用户性别，不知道则填写 unknown"},
                         "character": {"type": "string", "description": "几句话简单描述用户性格，**严格控制在100字以内**，禁止出现任何事件"},
                         "likes": {"type": "string", "description": "用户喜欢的东西，必须用户多次明确表达喜欢，才确认填写。"},
-                        "preference": {"type": "string", "description": "用户喜欢的事情，必须用户多次明确表达喜欢，才确认填写。"},
+                        "preference": {"type": "string", "description": "用户喜欢的事情，必须用户多次明确表达喜欢，才确认填写。**禁止无限堆叠事件，重复话题的事件合并即可，严格控制在100字以内**"},
                         "relation": {"type": "string", "description": "用户和角色的关系"},
                         "birthday": {"type": "string", "description": "用户的公历生日，格式如 4月23日，不知道则填写 unknown"},
                         "favorite_songs": {"type": "string", "description": "用户喜欢的歌曲，必须用户多次明确表达喜欢，才确认填写。不知道则填写 unknown"},

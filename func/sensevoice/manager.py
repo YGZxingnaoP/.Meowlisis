@@ -50,7 +50,7 @@ class SenseVoiceManager:
         if hotwords_dict:
             cfg["hotwords"] = json.dumps(hotwords_dict, ensure_ascii=False)
 
-        await self.port.send_json(cfg)
+        await self.port.send_ws_json(cfg)
         self.log.info(f"✅ 发送启动配置: language={self.config.language}, mode={self.config.mode}, itn={self.config.itn}")
         self.log.info(f"   热词: {list(hotwords_dict.keys())}")
         self.log.info(f"   目标说话人: {self.config.target_speakers}")
@@ -65,13 +65,13 @@ class SenseVoiceManager:
         return hotwords_dict
 
     async def send_audio(self, data: bytes):
-        """发送一帧音频数据到服务端"""
-        await self.port.send_bytes(data)
+        """发送一帧音频数据到服务端（UDP）"""
+        await self.port.send_bytes(self.wav_name, data)
 
     async def send_speaking(self, speaking: bool):
-        """发送说话状态控制信号"""
+        """发送说话状态控制信号（UDP）"""
         self._speaking = speaking
-        await self.port.send_json({"is_speaking": speaking})
+        await self.port.send_ctrl(self.wav_name, {"is_speaking": speaking})
 
     def on_speech_start(self):
         """新开口：取消 merge 计时（继续累积，不发送）"""

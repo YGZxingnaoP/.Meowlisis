@@ -5,13 +5,39 @@
 (function () {
   'use strict';
 
-  // 手机用户昵称（可自行修改）
-  var USERNAME = '手机用户';
+  // ---------------- 用户昵称（localStorage 记忆，可随时点击修改） ----------------
+  var NAME_KEY = 'phone_username';
+  var USERNAME = localStorage.getItem(NAME_KEY) || '手机用户';
+  var nameFirstRun = !localStorage.getItem(NAME_KEY);
+
+  // 清洗并保存昵称：去首尾空白、压多余空格、限长 20，空名不保存返回 false
+  function setUsername(name) {
+    name = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 20);
+    if (!name) return false;
+    USERNAME = name;
+    try { localStorage.setItem(NAME_KEY, name); } catch (e) {}
+    return true;
+  }
 
   var chatBox = document.getElementById('chatBox');
   var holdBtn = document.getElementById('holdBtn');
   var textInput = document.getElementById('textInput');
   var sendBtn = document.getElementById('sendBtn');
+
+  // 对话区折叠相关 DOM
+  var chatZone = document.getElementById('chatZone');
+  var chatToggle = document.getElementById('chatToggle');
+  var ctArrow = document.getElementById('ctArrow');
+  var ctText = document.getElementById('ctText');
+  var CHAT_KEY = 'phone_chat_collapsed';
+
+  // 昵称/缩放控件 DOM
+  var nameTag = document.getElementById('nameTag');
+  var nameValue = document.getElementById('nameValue');
+  var nameInput = document.getElementById('nameInput');
+  var zoomIn = document.getElementById('zoomIn');
+  var zoomOut = document.getElementById('zoomOut');
+  var zoomReset = document.getElementById('zoomReset');
 
   // ---------------- 消息显示 ----------------
   function addMsg(who, text) {
@@ -31,6 +57,94 @@
     }
     chatBox.appendChild(div);
     chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  // ---------------- 昵称显示与编辑 ----------------
+  var lastExitTs = 0; // 上次退出编辑的时间戳（防 blur→click 重开编辑）
+
+  function renderName() {
+    if (nameValue) nameValue.textContent = USERNAME;
+  }
+
+  function enterEdit() {
+    if (!nameTag) return;
+    nameTag.classList.add('editing');
+    nameInput.value = '';
+    nameInput.placeholder = '输入昵称（当前：' + USERNAME + '），回车确认';
+    nameInput.focus();
+  }
+
+  function exitEdit(save) {
+    if (!nameTag) return;
+    if (!nameTag.classList.contains('editing')) return; // 已退出，避免 pointerdown+blur 重复触发
+    nameTag.classList.remove('editing');
+    lastExitTs = Date.now();
+    if (save && setUsername(nameInput.value)) {
+      renderName();
+      addMsg('sys', '✅ 已切换身份：' + USERNAME);
+    }
+  }
+
+  function initNameUi() {
+    // 点击页面其它区域时结束昵称编辑（保存）
+    document.addEventListener('pointerdown', function (e) {
+      if (nameTag && nameTag.classList.contains('editing') && !nameTag.contains(e.target)) {
+        exitEdit(true);
+      }
+    });
+    if (nameTag) {
+      nameTag.addEventListener('click', function () {
+        if (nameTag.classList.contains('editing')) return;
+        // 刚因 blur 退出时紧跟的 click 不再立即重开编辑
+        if (Date.now() - lastExitTs < 350) return;
+        enterEdit();
+      });
+    }
+    if (nameInput) {
+      nameInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.keyCode === 13) exitEdit(true);
+        else if (e.key === 'Escape' || e.keyCode === 27) exitEdit(false);
+      });
+      nameInput.addEventListener('blur', function () { exitEdit(true); });
+      // 编辑态内点击不冒泡到 nameTag，避免重复切换
+      nameInput.addEventListener('click', function (e) { e.stopPropagation(); });
+    }
+    renderName();
+  }
+
+  // ---------------- 对话区折叠 / 展开 ----------------
+  function setChatCollapsed(collapsed) {
+    if (!chatZone) return;
+    chatZone.classList.toggle('collapsed', !!collapsed);
+    if (ctText) ctText.textContent = collapsed ? '展开对话' : '收起对话';
+    if (ctArrow) ctArrow.textContent = collapsed ? '▴' : '▾';
+    try { localStorage.setItem(CHAT_KEY, collapsed ? '1' : '0'); } catch (e) {}
+  }
+
+  function initChatToggle() {
+    var saved = false;
+    try { saved = localStorage.getItem(CHAT_KEY) === '1'; } catch (e) {}
+    setChatCollapsed(saved);
+    if (chatToggle) {
+      chatToggle.addEventListener('click', function () {
+        setChatCollapsed(!chatZone.classList.contains('collapsed'));
+      });
+    }
+  }
+
+  // ---------------- 桌宠缩放（postMessage 控制 iframe 内桌宠） ----------------
+  function petPost(msg) {
+    var f = document.getElementById('petFrame');
+    if (f && f.contentWindow) {
+      msg.source = 'meow-phone';
+      try { f.contentWindow.postMessage(msg, '*'); } catch (e) {}
+    }
+  }
+
+  function initZoomUi() {
+    if (zoomIn) zoomIn.addEventListener('click', function () { petPost({ type: 'pet-zoom', dir: 'in' }); });
+    if (zoomOut) zoomOut.addEventListener('click', function () { petPost({ type: 'pet-zoom', dir: 'out' }); });
+    if (zoomReset) zoomReset.addEventListener('click', function () { petPost({ type: 'pet-reset' }); });
   }
 
   // ---------------- TTS 音频播放 ----------------
@@ -71,12 +185,26 @@
   function sendText() {
     var text = textInput.value.trim();
     if (!text) return;
+    // 对话若处于折叠态，发消息时自动展开（便于看到自己的消息与 AI 回复）
+    if (chatZone && chatZone.classList.contains('collapsed')) setChatCollapsed(false);
+
     textInput.value = '';
     addMsg('user', text);
     fetch('/api/chat?text=' + encodeURIComponent(text) + '&username=' + encodeURIComponent(USERNAME))
-      .then(function () {})
-      .catch(function () {
-        addMsg('sys', '发送失败：请确认电脑端 api.py 已启动');
+      .then(function (resp) {
+        if (resp.ok) return;
+        // 代理失败（主程序未启动等）：回读错误信息给用户可见提示
+        return resp.text().then(function (body) {
+          var msg = '发送失败（HTTP ' + resp.status + '）';
+          try {
+            var d = JSON.parse(body);
+            if (d && d.message) msg = d.message;
+          } catch (e) {}
+          throw new Error(msg);
+        });
+      })
+      .catch(function (err) {
+        addMsg('sys', '发送失败：' + (err && err.message ? err.message : '网络异常，请重试'));
       });
   }
 
@@ -216,4 +344,17 @@
   });
   holdBtn.addEventListener('pointerup', stopRecord);
   holdBtn.addEventListener('pointercancel', stopRecord);
+
+  // ---------------- 初始化 ----------------
+  initNameUi();
+  initZoomUi();
+  initChatToggle();
+
+  // 首次访问：仅文字引导点击昵称改名。不再自动弹出昵称编辑框，
+  // 避免焦点落在昵称框导致"打字/回车进了昵称框、消息发不出去"的误操作。
+  if (nameFirstRun) {
+    setTimeout(function () {
+      addMsg('sys', '💬 首次使用：点上方「我是 手机用户」即可改昵称');
+    }, 600);
+  }
 })();
