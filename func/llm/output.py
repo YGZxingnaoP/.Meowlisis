@@ -15,12 +15,14 @@ class Output:
     # 参与连续标点合并的标点集合
     PUNCT_CHARS = set("，。！？!?,.;；:：、")
 
-    def __init__(self, config, llm_data, enable_narration: bool = True):
+    def __init__(self, config, llm_data, enable_narration: bool = True,
+                 source: str = "llm"):
         self.log = DefaultLog().getLogger()
         self.split_chars: List[str] = config.split_chars
         self.split_limit: int = config.split_limit
         self.llm_data = llm_data
         self.tts_bridge = LLMTtsBridge()
+        self.source = source
 
         self.all_content = ""
         self.filtered_content = ""
@@ -121,7 +123,7 @@ class Output:
             return
         self.tts_bridge.send_to_answer_queue(
             self.llm_data, text.strip(), traceid,
-            seg_index=0, chat_status=""
+            seg_index=0, chat_status="", source=self.source
         )
         self.segment_idx = 1
 
@@ -168,7 +170,7 @@ class Output:
         else:
             self.tts_bridge.send_to_answer_queue(
                 self.llm_data, "", traceid,
-                seg_index=self.segment_idx, chat_status="end"
+                seg_index=self.segment_idx, chat_status="end", source=self.source
             )
         # 本轮结束：用源文本（清洗前）更新平滑得分（空文本按 Raw=70 更新）
         if self.narration is not None:
@@ -184,7 +186,8 @@ class Output:
         self.tts_bridge.send_to_answer_queue(
             self.llm_data, text, traceid,
             seg_index=self.segment_idx,
-            chat_status=chat_status
+            chat_status=chat_status,
+            source=self.source,
         )
 
     @staticmethod

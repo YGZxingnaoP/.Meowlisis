@@ -132,6 +132,10 @@ class TTsCore:
         self.pending_lock = Lock()
         self.pending_segments = {}
 
+        # 手机 TTS 播放通道（source=phone 的语音不本地播放，转推手机）
+        from func.pipeline.tts_phone import TtsPhoneBridge
+        self.tts_phone = TtsPhoneBridge()
+
         # 活跃流式源：source -> priority，打断/暂停时统一取消（关闭 HTTP 拉取）
         self._streams_lock = Lock()
         self._active_streams = {}
@@ -360,7 +364,11 @@ class TTsCore:
                     lyric_syncer = None
 
             try:
-                self._play_stream_source(source)
+                if getattr(source, "source", "") == "phone":
+                    # phone 语音：不本地播放，经 tts_phone 推给手机
+                    self._play_stream_phone(source, full_text)
+                else:
+                    self._play_stream_source(source)
             finally:
                 if lyric_syncer:
                     lyric_syncer.stop()
@@ -424,6 +432,24 @@ class TTsCore:
                         break
         finally:
             self.player.close_stream()
+
+    def _play_stream_phone(self, source: StreamSource, text: str = ""):
+        """phone 语音：不本地播放，经 tts_phone 逐块转发手机（可被暂停/打断中断）"""
+        if source.cancelled or self._is_paused():
+            self._drain_stream(source)
+            return
+        sr = int(getattr(source, "sample_rate", 0) or self.config.sample_rate or 32000)
+        self.tts_phone.start_stream(text or "", getattr(source, "traceid", ""),
+                                    sample_rate=sr)
+        try:
+            while True:
+                data, finished = source.pop(timeout=0.5)
+                if finished:
+                    break
+                if data:
+                    self.tts_phone.push(data)
+        finally:
+            self.tts_phone.end_stream()
 
     def _drain_stream(self, source: StreamSource):
         """丢弃流式源剩余数据（播放器不可用时）"""

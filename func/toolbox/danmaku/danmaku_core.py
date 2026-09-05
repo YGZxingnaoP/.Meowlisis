@@ -106,8 +106,19 @@ class TBDanmakuCore:
             return False
 
     # ==================== 礼物/舰长感谢 ====================
-    def thank_gift(self, username: str, gift_name: str, gift_num: int, price: int):
-        """收到礼物：toolbox LLM 拟感谢词 + TTS（50 字以内）"""
+    def thank_gift(self, username: str, gift_name: str, gift_num: int, price: int,
+                   coin_type: str = 'gold', paid=None):
+        """收到礼物：入账奖励 + toolbox LLM 拟感谢词 + TTS（50 字以内）"""
+        # 奖励入账（付费礼物才计入，与感谢开关解耦）
+        try:
+            from func.pipeline.toolbox_rewards import ToolboxRewardsBridge
+            event = ToolboxRewardsBridge().on_gift(username, gift_name, gift_num,
+                                                   price, coin_type, paid)
+            if event:
+                self.log.info(f"[奖励] {event.get('user')} 送 {event.get('gift')} "
+                              f"→ {event.get('kind')} +{event.get('qty')}{event.get('unit')}")
+        except Exception as e:
+            self.log.warning(f"[奖励] 入账失败: {e}")
         if not self.config.gift_thanks_enabled:
             return
         threading.Thread(target=self._thank_gift_async,

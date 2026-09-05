@@ -7,7 +7,10 @@ Object.assign(Config, {
     basic() {
         return this._section('基础信息') +
             this._text('AI名称', 'AiName', '喵呜') +
-            this._num('API 端口', 'app.port', 1800, 1, 65535, 1);
+            this._num('API 端口', 'app.port', 1800, 1, 65535, 1) +
+            this._section('奖励收纳篮（礼物入账）') +
+            '<div id="rewardManage"></div>' +
+            '<div class="help-text">礼物按 1000瓜子=1元=10电池 折算，随机入账到某个奖励项</div>';
     },
 
     // ============ SenseVoice ============,

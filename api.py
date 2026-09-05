@@ -145,6 +145,8 @@ def http_tts_audio():
         return jsonify({"status": "error", "message": "缺少 text"}), 400
 
     emotion, intensity = ttsCore._resolve_emotion()
+
+    emotion, intensity = ttsCore._resolve_emotion()
     ref = ttsCore._resolve_ref_audio(emotion)
     generator, cancel = ttsCore.sovits.get_sovits_stream(text, ref, emotion=emotion, intensity=intensity)
     if generator is None:
@@ -204,11 +206,24 @@ def http_audio_send():
     """远程端口：外部直接传递 16k 单声道 int16 PCM，注入 inject 源独立识别"""
     if asr_core is None or getattr(asr_core, "hub", None) is None:
         return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
+    name = request.args.get("username") or request.headers.get("X-Username")
+    if name:
+        asr_core.hub.set_meta('inject', 'username', str(name)[:20])
     data = request.get_data()
     if not data:
         return jsonify({"status": "error", "message": "空音频数据"}), 400
     asr_core.hub.inject('inject', data)
     return jsonify({"status": "ok", "bytes": len(data)})
+
+
+@app.route("/audio/end", methods=["POST"])
+def http_audio_end():
+    """按住说话结束：清空 inject 缓冲并通知会话立即判停识别"""
+    if asr_core is None or getattr(asr_core, "hub", None) is None:
+        return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
+    asr_core.hub.flush('inject')
+    asr_core.hub.notify('inject', 'ptt_end')
+    return jsonify({"status": "ok"})
 
 # http人物表情输出
 @app.route("/emote", methods=["POST"])
@@ -243,6 +258,7 @@ def input_msg():
     data = request.json
     query = data["msg"]  # 获取弹幕内容
     user_name = data["username"]  # 获取用户昵称
+    msg_source = data.get("source", "llm")  # 来源标记（手机语音传 phone）
     # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
     try:
         from func.toolbox.excuse import TBExcuse
@@ -268,7 +284,7 @@ def input_msg():
         return jsonify({"status": "成功", "turtle_soup": True})
     traceid = str(uuid.uuid4())
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
-    llmCore.msg_deal(traceid, query, user_name)
+    llmCore.msg_deal(traceid, query, user_name, source=msg_source)
     if turtle_route != "pass":
         try:
             from func.pipeline.msg_toolbox import MsgToolboxBridge
@@ -293,12 +309,25 @@ def chatreply():
         jsonStr = CallBackForTest + jsonStr
     return jsonStr
 
+@app.route("/phone/audio", methods=["GET"])
+def phone_audio():
+    """手机轮询：取一条用户语音识别字幕（role=user，"你说：..."）"""
+    sub = getattr(asr_core, "subtitle", None)
+    if sub is None:
+        return "({})"
+    item = sub.poll()
+    if item is None:
+        return "({})"
+    return "(" + json.dumps(item, ensure_ascii=False) + ")"
+
+
 # 聊天【用户funasr语音对话】
 @app.route("/chat", methods=["POST", "GET"])
 def chat():
     CallBackForTest = request.args.get("CallBack")
     username = request.args.get("username")
     text = request.args.get("text")
+    msg_source = request.args.get("source", "llm")  # 来源标记（手机传 phone）
     # =========处理消息开始========
     status = "成功"
     traceid = str(uuid.uuid4())
@@ -329,7 +358,7 @@ def chat():
     if turtle_route == "consumed":
         return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
-    llmCore.msg_deal(traceid, text, username)
+    llmCore.msg_deal(traceid, text, username, source=msg_source)
     if turtle_route != "pass":
         try:
             from func.pipeline.msg_toolbox import MsgToolboxBridge
@@ -452,6 +481,15 @@ def main():
 
     # 弹幕模块（独立后台线程，由 danmaku.blivedm.enabled 控制）
     danmaku_core.start()
+
+    # 奖励启动消耗（每次主程序启动执行一次，不欠条）
+    try:
+        from func.rewards.fishcake_store import FishCakeStore
+        for rec in FishCakeStore().apply_startup_cost():
+            log.info(f"[奖励] 启动消耗: {rec['name']} -{rec['cost']} "
+                     f"({rec['before']} → {rec['after']})")
+    except Exception as e:
+        log.warning(f"[奖励] 启动消耗失败: {e}")
 
     # 主线程兜底
     while True:

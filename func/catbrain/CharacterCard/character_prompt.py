@@ -134,6 +134,15 @@ class MeowCharacterPrompt:
             if value:
                 lines.append(f"- {label}：{value}")
 
+        # 奖励余额（位于「个人信息喵」区、人际关系下一行；仅列当前持有）
+        try:
+            from func.pipeline.toolbox_rewards import ToolboxRewardsBridge
+            reward_line = ToolboxRewardsBridge().get_reward_line()
+            if reward_line:
+                lines.append(reward_line)
+        except Exception:
+            pass
+
         return self._ensure_markdown("\n".join(lines))
 
     @staticmethod

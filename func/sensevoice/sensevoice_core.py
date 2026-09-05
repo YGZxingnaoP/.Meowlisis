@@ -10,6 +10,7 @@ from func.log.default_log import DefaultLog
 from func.audio import AudioHub
 from func.sensevoice.config import SenseVoiceConfig
 from func.sensevoice.session import SenseVoiceSession
+from func.sensevoice.subtitle import SenseVoiceSubtitle
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
 
@@ -31,6 +32,7 @@ class SenseVoiceCore:
         self.callback = callback
         self.hub = AudioHub()
         self.sensevoice_tts = SenseVoiceTtsBridge()
+        self.subtitle = SenseVoiceSubtitle()  # 用户识别字幕（手机轮询显示）
         self.sessions = {}  # sid -> asyncio.Task
 
     def start(self):
@@ -113,6 +115,8 @@ class SenseVoiceCore:
 
     def _make_session(self, sid):
         scfg = self.hub.config.source_config(sid)
+        # inject 源 = 手机语音通道：消息标记 source=phone、识别文本投用户字幕
+        is_phone = (sid == 'inject')
         return SenseVoiceSession(
             source_id=sid,
             config=self.config,
@@ -122,6 +126,9 @@ class SenseVoiceCore:
             tts_bridge=self.sensevoice_tts,
             allow_interrupt=scfg.get('allow_interrupt', True),
             speaker_verify=scfg.get('speaker_verify', True),
-            username=scfg.get('username', '主人的电脑'),
+            username=scfg.get('username', '手机用户'),
+            llm_source='phone' if is_phone else 'llm',
+            subtitle_publish=is_phone,
+            subtitle=self.subtitle,
             is_running=lambda: self.running and self.hub.is_enabled(sid),
         )

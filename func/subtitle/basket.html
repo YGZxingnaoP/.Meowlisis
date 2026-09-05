@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>奖励收纳篮</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+        min-height: 100vh;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        color: #6a4250;
+        background: transparent;
+    }
+    .wrap { width: 92vw; margin: 0 auto; padding: 28px 0 20px; }
+    .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+    }
+    .card {
+        background: #ffe2eb;
+        border: 1px solid rgba(255, 150, 176, .65);
+        border-radius: 20px;
+        padding: 18px 22px;
+        box-shadow: 0 8px 22px rgba(224, 92, 136, .16);
+        transform-origin: center;
+    }
+    .card .kname {
+        font-size: 22px;
+        font-weight: 800;
+        color: #e05c88;
+        letter-spacing: 1px;
+        margin-bottom: 2px;
+    }
+    .card .num {
+        font-size: 34px;
+        font-weight: 800;
+        margin: 2px 0 4px;
+        background: linear-gradient(135deg, #ff6f9f, #ffb46b);
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: inline-block;
+        transform-origin: center;
+    }
+    .card .meta { font-size: 12px; color: #bd93a2; margin-top: 6px; line-height: 1.6; }
+    .card.jump .num { animation: pop 1s cubic-bezier(.18, .9, .3, 1.15); }
+    @keyframes pop {
+        0% { transform: scale(1); }
+        18% { transform: scale(1.5); filter: brightness(1.5); }
+        40% { transform: scale(1.06); }
+        60% { transform: scale(1.2); }
+        100% { transform: scale(1); }
+    }
+    .toast {
+        position: fixed;
+        top: 26px;
+        left: 50%;
+        display: none;
+        transform: translateX(-50%);
+        background: linear-gradient(135deg, #ff7e9e, #ffc07a);
+        color: #6b2436;
+        font-weight: 700;
+        padding: 12px 26px;
+        border-radius: 40px;
+        font-size: 18px;
+        box-shadow: 0 10px 30px rgba(224, 92, 136, .35);
+        z-index: 99;
+        white-space: nowrap;
+        border: 2px solid rgba(255, 255, 255, .6);
+    }
+    .toast.show {
+        display: block;
+        animation: toastIn .4s cubic-bezier(.2, .9, .3, 1.3);
+    }
+    @keyframes toastIn {
+        0% { opacity: 0; transform: translateX(-50%) translateY(-30px); }
+        100% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    .empty { color: #bd93a2; padding: 40px 0; text-align: center; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <div class="grid" id="grid"></div>
+</div>
+<div class="toast" id="toast"></div>
+<script>
+    const grid = document.getElementById('grid');
+    const toastEl = document.getElementById('toast');
+    let ws = null;
+    let lastJson = '';
+
+    function toast(text) {
+        toastEl.textContent = text;
+        toastEl.classList.add('show');
+        clearTimeout(toastEl._t);
+        toastEl._t = setTimeout(function () { toastEl.classList.remove('show'); }, 2400);
+    }
+
+    function esc(s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderKinds(kinds) {
+        if (!kinds || !kinds.length) {
+            grid.innerHTML = '<div class="empty">还没有奖励项，去「基本」球新建一个吧</div>';
+            return;
+        }
+        const json = JSON.stringify(kinds);
+        if (json === lastJson) return;
+        lastJson = json;
+        grid.innerHTML = kinds.map(function (k) {
+            const unit = k.unit || '';
+            return '<div class="card" data-kind="' + esc(k.name) + '">' +
+                '<div class="kname">' + esc(k.name) + '</div>' +
+                '<div class="num">' + esc(k.balance) + unit + '</div>' +
+                '<div class="meta">猫猫最喜欢的东西 · 每 ' + esc(k.battery_per_unit) +
+                ' 电池 = 1' + unit + '</div>' +
+                '</div>';
+        }).join('');
+    }
+
+    function fetchAll() {
+        fetch('/api/rewards').then(function (r) { return r.json(); }).then(function (data) {
+            renderKinds(data.kinds);
+        }).catch(function () {});
+    }
+
+    function jump(kind) {
+        const card = grid.querySelector('.card[data-kind="' + kind + '"]');
+        if (!card) { fetchAll(); return; }
+        card.classList.remove('jump');
+        void card.offsetWidth;
+        card.classList.add('jump');
+        setTimeout(function () { card.classList.remove('jump'); }, 1100);
+    }
+
+    function connect() {
+        try { if (ws) ws.close(); } catch (e) {}
+        try {
+            ws = new WebSocket('ws://127.0.0.1:8765/?role=basket');
+            ws.onmessage = function (ev) {
+                try {
+                    const m = JSON.parse(ev.data);
+                    if (m && m.r === 'basket') {
+                        toast('收到 ' + (m.gift || '礼物') + (m.user ? '（' + m.user + '）' : '') +
+                              ' → ' + m.kind + ' +' + m.qty + (m.unit || ''));
+                        jump(m.kind);
+                        setTimeout(fetchAll, 1200);
+                    }
+                } catch (e) {}
+            };
+            ws.onclose = function () { setTimeout(connect, 3000); };
+        } catch (e) {}
+    }
+
+    fetchAll();
+    connect();
+    setInterval(fetchAll, 2000);
+</script>
+</body>
+</html>

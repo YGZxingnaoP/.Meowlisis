@@ -205,8 +205,8 @@ class LLmCore:
         else:
             self.message_builder.add_user_message(username, prompt)
 
-        # 每次对话新建带流式状态的处理器
-        output = Output(self.config, self.llmData)
+        # 每次对话新建带流式状态的处理器（source 透传到 TTS：phone 语音不本地播放）
+        output = Output(self.config, self.llmData, source=source)
 
         # 弹幕朗读前置段：先送 TTS 朗读（与回复共享 traceid，连续不插入）
         if preamble_text:

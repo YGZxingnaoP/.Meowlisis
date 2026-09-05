@@ -190,7 +190,10 @@
 
     textInput.value = '';
     addMsg('user', text);
-    fetch('/api/chat?text=' + encodeURIComponent(text) + '&username=' + encodeURIComponent(USERNAME))
+    // source=phone：手机消息标记来源（回复语音不本地播放、推回手机）
+    fetch('/api/chat?text=' + encodeURIComponent(text)
+          + '&username=' + encodeURIComponent(USERNAME)
+          + '&source=phone')
       .then(function (resp) {
         if (resp.ok) return;
         // 代理失败（主程序未启动等）：回读错误信息给用户可见提示
@@ -226,6 +229,102 @@
       .catch(function () {});
   }, 1000);
 
+  // ---------------- 手机实时语音播放（phone 回复经 .phone 推流） ----------------
+  var phoneTts = {
+    ctx: null,
+    nextStart: 0,
+    lastSeq: -1,
+    metaText: '',
+    sr: 32000,
+    timer: null,
+    _ac: function () {
+      if (!this.ctx) {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) this.ctx = new AC();
+      }
+      return this.ctx;
+    },
+    start: function () {
+      var self = this;
+      if (this.timer) return;
+      this.timer = setInterval(function () { self.poll(); }, 200);
+    },
+    poll: function () {
+      var self = this;
+      fetch('/api/tts/pending?seq=' + self.lastSeq)
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          var meta = d.meta || {};
+          var blocks = d.blocks || [];
+          if (meta.text) {
+            // 有活动句（含刚结束的保留期）：播新块
+            if (meta.text !== self.metaText) {
+              self.metaText = meta.text;
+              if (meta.sample_rate) { self.sr = meta.sample_rate; }
+              var ctx = self._ac();
+              // 新句开始：本地积压明显时软对齐，避免滞后连播
+              if (ctx && self.nextStart > ctx.currentTime + 0.3) {
+                self.nextStart = ctx.currentTime + 0.05;
+              }
+            }
+            for (var i = 0; i < blocks.length; i++) {
+              var b = blocks[i];
+              if (b.seq > self.lastSeq) { self.schedule(b.pcm); self.lastSeq = b.seq; }
+            }
+          } else {
+            // 无活动句：丢弃历史残留块（防进入页面播旧音频），只推进游标
+            self.metaText = '';
+            if (blocks.length) { self.lastSeq = blocks[blocks.length - 1].seq; }
+          }
+        })
+        .catch(function () {});
+    },
+    schedule: function (pcmB64) {
+      var ctx = this._ac();
+      if (!ctx || !pcmB64) return;
+      try {
+        if (ctx.state === 'suspended') { ctx.resume(); }
+        var bin = atob(pcmB64);
+        var n = bin.length / 2;
+        var f = new Float32Array(n);
+        for (var i = 0; i < n; i++) {
+          var s = bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8);
+          if (s > 32767) s -= 65536;
+          f[i] = s / 32768;
+        }
+        var buf = ctx.createBuffer(1, n, this.sr || 32000);
+        buf.copyToChannel(f, 0);
+        var src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        var t = Math.max(this.nextStart, ctx.currentTime + 0.02);
+        // 落后过多（如切后台回来）：丢弃迟到内容，避免追赶爆音
+        if (t < ctx.currentTime - 0.2) {
+          this.nextStart = ctx.currentTime + 0.02;
+          t = this.nextStart;
+        }
+        src.start(t);
+        this.nextStart = t + n / (this.sr || 32000);
+      } catch (e) {}
+    },
+    pause: function () { var c = this._ac(); if (c && c.state === 'running') c.suspend(); },
+    resume: function () { var c = this._ac(); if (c && c.state === 'suspended') c.resume(); }
+  };
+  phoneTts.start();
+
+  // 语音识别回显：手机按住说话的内容，从主项目用户字幕轮询显示
+  setInterval(function () {
+    fetch('/api/phone/audio')
+      .then(function (r) { return r.text(); })
+      .then(function (raw) {
+        var data = parseReply(raw);
+        if (data && data.text) {
+          addMsg('user', String(data.text));
+        }
+      })
+      .catch(function () {});
+  }, 500);
+
   // ---------------- 录音：getUserMedia -> PCM -> /api/audio/send ----------------
   var recording = false;
   var audioContext = null;
@@ -260,7 +359,8 @@
 
   function doSend(buf) {
     sendChain = sendChain.then(function () {
-      return fetch('/api/audio/send', { method: 'POST', body: buf })
+      return fetch('/api/audio/send?username=' + encodeURIComponent(USERNAME),
+                   { method: 'POST', body: buf })
         .then(function (r) {
           if (!r.ok && !audioErrShown) {
             audioErrShown = true;
@@ -283,10 +383,12 @@
   function startRecord() {
     if (recording) return;
     recording = true;
+    phoneTts.pause();   // 说话期间暂停手机 AI 语音播放
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       addMsg('sys', '当前浏览器不支持麦克风，请用文字输入');
       recording = false;
+      phoneTts.resume();
       return;
     }
 
@@ -295,6 +397,7 @@
     }).then(function (s) {
       if (!recording) {
         s.getTracks().forEach(function (t) { t.stop(); });
+        phoneTts.resume();
         return;
       }
       stream = s;
@@ -319,6 +422,7 @@
       holdBtn.textContent = '松开结束';
     }).catch(function (err) {
       recording = false;
+      phoneTts.resume();
       addMsg('sys', '无法使用麦克风：' + (err && err.message ? err.message : err));
       addMsg('sys', '提示：需用 https 访问本页，并在浏览器中允许麦克风权限');
     });
@@ -327,6 +431,7 @@
   function stopRecord() {
     if (!recording) return;
     recording = false;
+    phoneTts.resume();  // 松开恢复手机 AI 语音播放
     holdBtn.classList.remove('recording');
     holdBtn.textContent = '按住说话';
     try {
@@ -334,6 +439,10 @@
       if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; }
       if (audioContext) { audioContext.close(); audioContext = null; }
     } catch (e) {}
+    // 结束信号排在音频块之后发送：先收齐整句，服务端再执行 flush+判停
+    sendChain = sendChain.then(function () {
+      return fetch('/api/audio/end', { method: 'POST' }).catch(function () {});
+    });
     addMsg('sys', '🎤 语音已发送');
   }
 

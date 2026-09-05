@@ -96,6 +96,44 @@ def post_config():
     return jsonify({'status': 'ok'})
 
 
+@app.route('/api/rewards', methods=['GET'])
+def get_rewards():
+    from func.rewards.fishcake_store import FishCakeStore
+    return jsonify(FishCakeStore().summary(history_limit=6))
+
+
+@app.route('/api/rewards', methods=['POST'])
+def post_rewards():
+    try:
+        from func.rewards.fishcake_store import FishCakeStore
+        store = FishCakeStore()
+        body = request.get_json(force=True) or {}
+        action = body.get('action', '')
+        if action == 'add_kind':
+            ok = store.add_kind(body.get('name', ''), body.get('unit', ''),
+                                body.get('battery_per_unit', 10),
+                                body.get('startup_cost', 1))
+            if not ok:
+                return jsonify({'status': 'error', 'message': '名称重复或非法'}), 400
+        elif action == 'set':
+            store.set_fields(body.get('name', ''), unit=body.get('unit'),
+                             battery_per_unit=body.get('battery_per_unit'),
+                             startup_cost=body.get('startup_cost'))
+        elif action == 'adjust':
+            try:
+                delta = float(body.get('delta', 0))
+            except Exception:
+                delta = 0
+            store.adjust(body.get('name', ''), delta, note=body.get('note', ''))
+        elif action == 'remove':
+            store.remove_kind(body.get('name', ''))
+        else:
+            return jsonify({'status': 'error', 'message': '未知动作'}), 400
+        return jsonify({'status': 'ok', 'data': store.summary(history_limit=6)})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
 @app.route('/api/tts_config', methods=['GET'])
 def get_tts_config():
     return jsonify(load_tts_config())

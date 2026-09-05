@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AI 实时字幕（TTS）</title>
+    <title>语音识别字幕（ASR）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
         body {
@@ -14,28 +14,28 @@
         }
         .subtitle-box {
             position: relative; background: #ffffff; border-radius: 60px;
-            padding: 10px 48px; border: 2px solid #FFB7C5;
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(255, 105, 180, 0.15);
+            padding: 10px 48px; border: 2px solid #A6C8FF;
+            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(100, 150, 255, 0.18);
             transition: all 0.2s ease; max-width: 92vw; min-width: 360px;
             width: fit-content; text-align: center;
         }
-        .tts-tag {
-            position: absolute; top: -10px; left: 26px; background: #FF85A1;
+        .asr-tag {
+            position: absolute; top: -10px; left: 26px; background: #4A90E2;
             color: #fff; font-size: 12px; font-weight: 700; padding: 1px 12px;
             border-radius: 999px; letter-spacing: 1px; z-index: 9;
         }
         .butterfly-deco {
             position: absolute; left: -56px; top: -56px; width: 128px; height: 128px;
             object-fit: contain; pointer-events: none; z-index: 10;
-            filter: drop-shadow(0 6px 12px rgba(255, 140, 200, 0.35));
+            filter: drop-shadow(0 6px 12px rgba(120, 170, 255, 0.35));
             transition: transform 0.25s ease;
         }
         .subtitle-box:hover .butterfly-deco { transform: rotate(5deg) scale(1.03); }
         .subtitle-text {
             font-size: 44px; font-weight: 700;
-            background: linear-gradient(135deg, #FF85A1, #FFA07A, #FBC8B5);
+            background: linear-gradient(135deg, #4A90E2, #7FB2FF, #9FC9FF);
             background-clip: text; -webkit-background-clip: text; color: transparent;
-            text-shadow: 2px 2px 12px rgba(255, 160, 122, 0.2);
+            text-shadow: 2px 2px 12px rgba(120, 170, 255, 0.25);
             letter-spacing: 1px; word-break: break-word; line-height: 1.2;
             animation: bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
         }
@@ -59,36 +59,46 @@
 </head>
 <body>
     <div class="subtitle-box">
-        <span class="tts-tag" id="tagName">AI</span>
+        <span class="asr-tag" id="tagName">你说</span>
         <img src="bluebutterfly.png" alt="蓝蝶" class="butterfly-deco"
              onerror="this.onerror=null; this.style.opacity='0.7';">
-        <div class="subtitle-text" id="subtitle">✨ ฅ^•ﻌ•^ฅ ✨<br>✨ AI 待机中 ✨</div>
+        <div class="subtitle-text" id="asrText">🎤 语音识别待机中 🎤</div>
     </div>
     <script>
-        const el = document.getElementById('subtitle');
+        const el = document.getElementById('asrText');
         const tagEl = document.getElementById('tagName');
-        const IDLE = '✨ ฅ^•ﻌ•^ฅ ✨<br>✨ AI 待机中 ✨';
+        const IDLE = '🎤 语音识别待机中 🎤';
         const BASE = 44, MIN = 20;
         let ws = null, retry = 0;
         const MAX_RETRY = 5;
 
         function idle() {
             el.classList.remove('single-line'); el.style.fontSize = '';
-            el.innerHTML = IDLE;
+            el.textContent = IDLE;
         }
         function fit() {
+            el.classList.add('single-line');
             el.style.fontSize = BASE + 'px';
             let s = BASE;
-            while (s > MIN && el.scrollWidth > el.clientWidth) { s -= 2; el.style.fontSize = s + 'px'; }
+            while (s > MIN && el.scrollWidth > el.clientWidth) { s -= 1; el.style.fontSize = s + 'px'; }
+            if (el.scrollWidth > el.clientWidth) {
+                el.classList.remove('single-line');
+                el.style.fontSize = MIN + 'px';
+            }
         }
-        function show(t) { el.classList.add('single-line'); el.textContent = t; fit(); anim(); }
+        function show(t) {
+            el.style.fontSize = '';
+            el.textContent = t;
+            fit();
+            anim();
+        }
         function anim() { el.style.animation = 'none'; void el.offsetHeight;
             el.style.animation = 'bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1)'; }
 
         function connect() {
             try { if (ws) ws.close(); } catch (e) {}
             try {
-                ws = new WebSocket('ws://localhost:8765/?role=tts');
+                ws = new WebSocket('ws://localhost:8765/?role=asr');
                 ws.onopen = function () { retry = 0; };
                 ws.onmessage = function (ev) {
                     if (!ev.data || typeof ev.data !== 'string') return;
@@ -96,7 +106,7 @@
                     try { msg = JSON.parse(ev.data); } catch (e) { msg = null; }
                     if (msg && msg.r) {
                         if (msg.r === 'clear') { idle(); anim(); return; }
-                        if (msg.n && tagEl) { tagEl.textContent = msg.n; }   // 标签=AI 角色名
+                        if (msg.n && tagEl) { tagEl.textContent = msg.n; }   // 标签=说话用户名
                         const t = String(msg.t || '').trim();
                         if (t === '') idle(); else show(t.replace(/\n+/g, ' '));
                     } else {
@@ -117,7 +127,7 @@
                     if (retry < MAX_RETRY) {
                         retry++;
                         setTimeout(connect, Math.min(2000 * retry, 10000));
-                    } else { show('💧 无法连接 AI 服务端 请检查程序 💧'); }
+                    } else { show('💧 无法连接服务端 请检查程序 💧'); }
                 };
             } catch (err) {
                 show('⚠️ 初始化连接失败 ⚠️'); retry++;

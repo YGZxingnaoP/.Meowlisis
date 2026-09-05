@@ -19,10 +19,14 @@ import os
 import sys
 import socket
 import shutil
+import json
+import base64
+import threading
+import time
 import datetime
 import subprocess
 
-from flask import Flask, request, send_from_directory, Response
+from flask import Flask, request, send_from_directory, Response, jsonify
 import requests
 
 # Windows 管道/GUI 启动时 stdout 默认 GBK，print(emoji) 会 UnicodeEncodeError；
@@ -43,6 +47,16 @@ KEY_PEM = os.path.join(CERT_DIR, 'key.pem')
 API_BASE = 'http://127.0.0.1:1800'
 HOST = '0.0.0.0'
 PORT = 8443
+
+# ---- 手机实时 TTS 播放缓冲：主程序 tts_phone 推流 → 手机轮询拉增量 ----
+TTS_BUF = []                     # [(seq, pcm_bytes)]
+TTS_SEQ = 0
+TTS_META = {}                    # 当前句 meta {text, traceid, _id, ended}
+TTS_META_ID = 0
+TTS_LOCK = threading.Lock()
+MAX_TTS_BLOCKS = 600             # 保留最近音频块数（约 15s）
+PENDING_LIMIT = 60               # 单次拉取上限（约 1.5s 音频）
+END_HOLD_SECS = 1.6              # 句末保留 meta 时长，供手机播完尾部块
 
 app = Flask(__name__)
 
@@ -109,8 +123,76 @@ def api_say():
 
 @app.route('/api/audio/send', methods=['POST'])
 def api_audio_send():
-    """语音上传，转发 /audio/send（16k 单声道 int16 PCM）"""
-    return _proxy('/audio/send', method='POST', data=request.get_data())
+    """语音上传，转发 /audio/send（16k 单声道 int16 PCM；username 随 query 透传）"""
+    return _proxy('/audio/send', method='POST',
+                  data=request.get_data(), params=request.args)
+
+
+@app.route('/api/audio/end', methods=['POST'])
+def api_audio_end():
+    """按住说话结束信号，转发 /audio/end"""
+    return _proxy('/audio/end', method='POST', data=b'')
+
+
+@app.route('/api/phone/audio')
+def api_phone_audio():
+    """手机语音识别字幕（你说：...），转发主程序 /phone/audio"""
+    return _proxy('/phone/audio', params=request.args)
+
+
+# ==================== 手机实时 TTS 播放（推流接收 + 增量拉取） ====================
+
+@app.route('/api/tts/phone', methods=['POST'])
+def tts_phone_push():
+    """主程序 tts_phone 推流：?start=1+meta(json) 开句；body=PCM 块；?end=1 结句"""
+    global TTS_SEQ, TTS_META_ID
+    with TTS_LOCK:
+        if request.args.get('start'):
+            meta = request.get_json(silent=True) or {}
+            TTS_META_ID += 1
+            TTS_META.clear()
+            TTS_META.update(meta)
+            TTS_META['_id'] = TTS_META_ID
+            return 'ok'
+        if request.args.get('end'):
+            mid = TTS_META.get('_id')
+            TTS_META['ended'] = True
+            # 句末保留 meta 一小段时间（手机拉尾块用），随后按 _id 校验后清空
+            def _clear_later(mid=mid):
+                time.sleep(END_HOLD_SECS)
+                with TTS_LOCK:
+                    if TTS_META.get('_id') == mid:
+                        TTS_META.clear()
+            threading.Thread(target=_clear_later, daemon=True).start()
+            return 'ok'
+        data = request.get_data()
+        if data:
+            TTS_BUF.append((TTS_SEQ, data))
+            TTS_SEQ += 1
+            if len(TTS_BUF) > MAX_TTS_BLOCKS:
+                del TTS_BUF[:len(TTS_BUF) - MAX_TTS_BLOCKS]
+        return 'ok'
+
+
+@app.route('/api/tts/pending')
+def tts_phone_pending():
+    """手机轮询：自 seq 起的新音频块（base64，单次上限 PENDING_LIMIT）+ 当前句 meta"""
+    seq = request.args.get('seq', type=int, default=-1)
+    with TTS_LOCK:
+        start = 0
+        while start < len(TTS_BUF) and TTS_BUF[start][0] <= seq:
+            start += 1
+        items = TTS_BUF[start:start + PENDING_LIMIT]
+        blocks = [{'seq': s, 'pcm': base64.b64encode(d).decode('ascii')}
+                  for s, d in items]
+        meta = {k: v for k, v in TTS_META.items() if not k.startswith('_')}
+        if items:
+            next_seq = items[-1][0] + 1   # 本批尾+1（截断时下轮续拉）
+        elif TTS_BUF:
+            next_seq = TTS_BUF[-1][0] + 1
+        else:
+            next_seq = seq
+    return jsonify({'seq': next_seq, 'meta': meta, 'blocks': blocks})
 
 
 @app.route('/api/chatreply')

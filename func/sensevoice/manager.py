@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/sensevoice/manager.py
-# 统一负责接收服务端消息与发送音频/控制信号/识别结果
+# func/sensevoice/manager.py - 服务端消息接收处理与发送提交
 
 import asyncio
 import json
@@ -12,10 +11,11 @@ from func.sensevoice.optimizer import SenseVoiceTextOptimizer
 
 
 class SenseVoiceManager:
-    """统一收发：发音频帧、发控制信号、收识别结果并送 LLM"""
+    """收服务端结果 + 声纹过滤 + 断句合并；发送 audio/ctrl 为非阻塞提交"""
 
     def __init__(self, config, port, log, callback=None,
-                 wav_name="mic", speaker_verify=True, username="主人"):
+                 wav_name="mic", speaker_verify=True, username="主人",
+                 llm_source="llm", subtitle_publish=False, subtitle=None):
         self.config = config
         self.port = port
         self.log = log
@@ -25,6 +25,10 @@ class SenseVoiceManager:
         self.wav_name = wav_name
         self.speaker_verify = bool(speaker_verify)
         self.username = username
+        # 手机语音链路：消息标记 source=phone；识别文本投用户字幕
+        self.llm_source = llm_source
+        self.subtitle_publish = bool(subtitle_publish)
+        self.subtitle = subtitle
 
         from func.config.app_config import AppConfig
         self.api_base = f"http://127.0.0.1:{AppConfig().port}"
@@ -50,7 +54,7 @@ class SenseVoiceManager:
         if hotwords_dict:
             cfg["hotwords"] = json.dumps(hotwords_dict, ensure_ascii=False)
 
-        await self.port.send_ws_json(cfg)
+        await self.port.send_config(cfg)
         self.log.info(f"✅ 发送启动配置: language={self.config.language}, mode={self.config.mode}, itn={self.config.itn}")
         self.log.info(f"   热词: {list(hotwords_dict.keys())}")
         self.log.info(f"   目标说话人: {self.config.target_speakers}")
@@ -64,14 +68,14 @@ class SenseVoiceManager:
                 hotwords_dict[' '.join(parts[:-1])] = int(parts[-1])
         return hotwords_dict
 
-    async def send_audio(self, data: bytes):
-        """发送一帧音频数据到服务端（UDP）"""
-        await self.port.send_bytes(self.wav_name, data)
+    def send_audio(self, data: bytes):
+        """非阻塞提交一帧音频到发送队列"""
+        return self.port.submit_audio(data)
 
-    async def send_speaking(self, speaking: bool):
-        """发送说话状态控制信号（UDP）"""
+    def send_speaking(self, speaking: bool):
+        """更新本地说话状态并非阻塞提交控制消息"""
         self._speaking = speaking
-        await self.port.send_ctrl(self.wav_name, {"is_speaking": speaking})
+        return self.port.submit_ctrl({"is_speaking": speaking})
 
     def on_speech_start(self):
         """新开口：取消 merge 计时（继续累积，不发送）"""
@@ -143,8 +147,21 @@ class SenseVoiceManager:
             username = spk_name
             self.log.info(f"✅ 通过说话人验证: {spk_name} (score={spk_score:.3f})")
         else:
-            username = self.username or '主人的电脑'
+            username = self.username or '手机用户'
             self.log.info(f"✅ 跳过声纹验证，用户名: {username}")
+
+        # 手机语音：识别文本投用户字幕（供手机端轮询回显"你说：..."）
+        if self.subtitle is not None and self.subtitle_publish:
+            try:
+                self.subtitle.put(username, text)
+            except Exception:
+                self.log.exception("写入用户字幕失败")
+        # ASR 字幕：识别内容推字幕服务器（字幕前端标签显示说话用户名；纯旁路，失败静默）
+        try:
+            from func.pipeline.get_subtitle import GetSubtitleBridge
+            GetSubtitleBridge().send_asr(text, username)
+        except Exception:
+            pass
 
         # 记录最近一次说话人（供哼唱识别绑定用户名）
         try:
@@ -207,7 +224,7 @@ class SenseVoiceManager:
             return
 
         url = f"{self.api_base}/msg"
-        payload = {"msg": text, "username": username}
+        payload = {"msg": text, "username": username, "source": self.llm_source}
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as resp:

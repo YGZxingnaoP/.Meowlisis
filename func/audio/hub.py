@@ -28,6 +28,8 @@ class AudioHub:
         self._sources = {}   # id -> AudioSource 实例
         self._enabled = {}   # id -> bool
         self._buffers = {}   # id -> deque
+        self._events = {}    # id -> 事件队列（如 PTT 结束信号）
+        self._meta = {}      # id -> 会话元数据（如当前手机用户）
         self._threads = {}   # id -> Thread
         self._running = {}   # id -> bool
 
@@ -46,6 +48,7 @@ class AudioHub:
             self._sources[sid] = source
             self._enabled[sid] = bool(scfg.get('enabled', False))
             self._buffers[sid] = deque(maxlen=64)
+            self._events[sid] = deque(maxlen=8)
             self._threads[sid] = None
             self._running[sid] = False
 
@@ -81,6 +84,39 @@ class AudioHub:
         if source is not None and hasattr(source, 'inject'):
             source.inject(data)
 
+    def notify(self, sid, event: str):
+        """向指定源投递事件（如 'ptt_end'），由会话轮询消费"""
+        with self._lock:
+            dq = self._events.get(sid)
+            if dq is not None:
+                dq.append(event)
+
+    def set_meta(self, sid, key: str, value):
+        """写入指定源会话元数据（如当前手机用户），供会话读取"""
+        with self._lock:
+            self._meta.setdefault(sid, {})[key] = value
+
+    def get_meta(self, sid, key: str, default=None):
+        """读取指定源会话元数据"""
+        with self._lock:
+            return self._meta.get(sid, {}).get(key, default)
+
+    def poll_event(self, sid):
+        """取指定源一个事件；无则返回 None"""
+        with self._lock:
+            dq = self._events.get(sid)
+            return dq.popleft() if dq else None
+
+    def flush(self, sid):
+        """清空指定源缓冲与源内未消费数据（丢弃在途残块）"""
+        with self._lock:
+            buf = self._buffers.get(sid)
+            if buf:
+                buf.clear()
+        source = self._sources.get(sid)
+        if source is not None and hasattr(source, 'clear'):
+            source.clear()
+
     # ---------- 生命周期 ----------
     def open(self):
         for sid in list(self._sources.keys()):
@@ -93,18 +129,15 @@ class AudioHub:
 
     # ---------- 分源输出 ----------
     def next_frame(self, sid):
-        """取指定源一帧；无帧返回静音帧"""
-        chunk = self.config.chunk
-        silence = b'\x00' * (chunk * 2)
+        """取指定源一帧；缓冲空时返回 None（由会话补静音占位，用于区分断流）"""
         with self._lock:
             buf = self._buffers.get(sid)
             if buf:
                 try:
-                    frame = buf.popleft()
-                    return frame if frame else silence
+                    return buf.popleft()
                 except IndexError:
                     pass
-        return silence
+        return None
 
     # ---------- 内部采集线程 ----------
     def _start_source(self, sid):

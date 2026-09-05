@@ -44,7 +44,7 @@ class TBDanmakuWeb:
         self._danmaku_dedup = TTLCache(maxsize=5000, ttl=self.DEDUP_TTL)
         self._sc_dedup = TTLCache(maxsize=1000, ttl=self.DEDUP_TTL)
         # 礼物/舰长回调（由 danmaku_core 注入，避免循环 import）
-        self.on_gift: Optional[Callable[[str, str, int, str], None]] = None
+        self.on_gift: Optional[Callable[[str, str, int, int, str, Optional[bool]], None]] = None
         self.on_guard: Optional[Callable[[str, int], None]] = None
 
     # ==================== 回调注入 ====================
@@ -200,10 +200,11 @@ class TBDanmakuWeb:
         self.receiver.add_sc(uname, message, msg_id)
         self.log.info(f"[SC] {uname}: {message}")
 
-    def _handle_gift(self, uname: str, gift_name: str, gift_num: int, price: int):
+    def _handle_gift(self, uname: str, gift_name: str, gift_num: int, price: int,
+                     coin_type: str = 'gold', paid: Optional[bool] = None):
         if self.on_gift:
             try:
-                self.on_gift(uname, gift_name, gift_num, price)
+                self.on_gift(uname, gift_name, gift_num, price, coin_type, paid)
             except Exception:
                 self.log.exception("[DanmakuWeb] 礼物感谢回调异常")
 
@@ -223,7 +224,8 @@ class TBDanmakuWeb:
             self.web._handle_danmaku(message.uname, message.msg)
 
         def _on_open_live_gift(self, client, message: open_models.GiftMessage):
-            self.web._handle_gift(message.uname, message.gift_name, message.gift_num, message.price)
+            self.web._handle_gift(message.uname, message.gift_name, message.gift_num,
+                                  message.price, coin_type=None, paid=message.paid)
 
         def _on_open_live_buy_guard(self, client, message: open_models.GuardBuyMessage):
             self.web._handle_guard(message.user_info.uname, message.guard_level)
@@ -243,7 +245,8 @@ class TBDanmakuWeb:
             self.web._handle_danmaku(message.uname, message.msg)
 
         def _on_gift(self, client, message: web_models.GiftMessage):
-            self.web._handle_gift(message.uname, message.gift_name, message.num, message.price)
+            self.web._handle_gift(message.uname, message.gift_name, message.num,
+                                  message.price, coin_type=message.coin_type, paid=None)
 
         def _on_buy_guard(self, client, message: web_models.GuardBuyMessage):
             self.web._handle_guard(message.username, message.guard_level)

@@ -1,97 +1,109 @@
 # -*- coding: utf-8 -*-
-# func/sensevoice/port.py
-# SenseVoice 服务端收发封装：WS 负责配置与结果，UDP 负责音频与实时控制
-
+# func/sensevoice/port.py - 纯 WebSocket 传输通道（发送缓冲不丢帧）
+import asyncio
 import json
-import socket
-import urllib.parse
+import time
 
 import websockets
 
+WATERMARK = 32
+STALL_LIMIT = 30.0
+
 
 class SenseVoicePort:
-    """封装与 SenseVoice 服务端的 WebSocket 连接与收发"""
+    """WebSocket 传输：独立发送协程 + 无界队列（正常仅几帧，卡死才清理）"""
 
     def __init__(self, config, log):
         self.config = config
         self.log = log
         self.ws = None
-        self._udp = None
-        self._udp_addr = None
+        self._q = None
+        self._sender = None
+        self._stall_since = 0.0
 
     async def connect(self):
-        """建立 WebSocket 连接与 UDP 音频通道"""
         self.ws = await websockets.connect(
             self.config.server_url,
             subprotocols=["binary"],
             ping_interval=self.config.ping_interval,
             ping_timeout=self.config.ping_timeout
         )
-        parsed = urllib.parse.urlparse(self.config.server_url)
-        host = parsed.hostname or "127.0.0.1"
-        port = parsed.port or 10095
-        udp_port = self.config.udp_port
-        if not udp_port:
-            udp_port = port + 1
-        self._udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._udp_addr = (host, int(udp_port))
+        self._q = asyncio.Queue()
+        self._sender = asyncio.ensure_future(self._send_loop())
         return self
 
     async def close(self):
-        """关闭 WebSocket 连接与 UDP 通道"""
+        if self._sender is not None:
+            self._sender.cancel()
+            try:
+                await self._sender
+            except Exception:
+                pass
+            self._sender = None
         if self.ws is not None:
             try:
                 await self.ws.close()
             except Exception:
                 pass
             self.ws = None
-        if self._udp is not None:
-            try:
-                self._udp.close()
-            except Exception:
-                pass
-            self._udp = None
-            self._udp_addr = None
+        self._stall_since = 0.0
 
-    async def send_ws_json(self, data: dict):
-        """通过 WebSocket 发送 JSON 消息（启动配置）"""
-        await self.ws.send(json.dumps(data, ensure_ascii=False))
-
-    async def send_bytes(self, wav_name: str, data: bytes):
-        """通过 UDP 发送一帧音频数据（PCM 16k 单声道）"""
-        if self._udp is None or self._udp_addr is None:
-            return
+    async def _send_loop(self):
         try:
-            self._udp.sendto(self._frame(1, wav_name, data), self._udp_addr)
-        except OSError:
+            while True:
+                kind, payload = await self._q.get()
+                if kind == 'a':
+                    await self.ws.send(payload)
+                else:
+                    await self.ws.send(json.dumps(payload, ensure_ascii=False))
+                if self._q.qsize() <= WATERMARK:
+                    self._stall_since = 0.0
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            self._fail(e)
+
+    def _fail(self, exc):
+        try:
+            self.log.warning(f"发送通道异常: {exc}")
+            if self.ws is not None:
+                asyncio.ensure_future(self.ws.close())
+        except Exception:
             pass
 
-    async def send_ctrl(self, wav_name: str, data: dict):
-        """通过 UDP 发送控制信号（说话状态切换）"""
-        if self._udp is None or self._udp_addr is None:
-            return
-        try:
-            payload = json.dumps(data, ensure_ascii=False).encode('utf-8')
-            self._udp.sendto(self._frame(2, wav_name, payload), self._udp_addr)
-        except OSError:
-            pass
+    def submit(self, kind, payload):
+        if self.ws is None or self._q is None:
+            return False
+        if self._sender is not None and self._sender.done():
+            return False
+        self._q.put_nowait((kind, payload))
+        if self._q.qsize() > WATERMARK and self._stall_since == 0.0:
+            self._stall_since = time.monotonic()
+        return True
 
-    @staticmethod
-    def _frame(ftype: int, wav_name: str, payload: bytes) -> bytes:
-        """组装 UDP 帧：类型(1B) + 源名长度(1B) + 源名 + 载荷"""
-        name = wav_name.encode('utf-8', 'ignore')
-        if len(name) > 255:
-            name = name[:255]
-        return bytes([ftype, len(name)]) + name + payload
+    def submit_audio(self, data):
+        return self.submit('a', data)
+
+    def submit_ctrl(self, data: dict):
+        return self.submit('c', data)
+
+    def check_health(self):
+        if self.ws is None:
+            return False
+        if self._sender is not None and self._sender.done():
+            return False
+        if self._stall_since and time.monotonic() - self._stall_since > STALL_LIMIT:
+            return False
+        return True
+
+    async def send_config(self, cfg: dict):
+        await self.ws.send(json.dumps(cfg, ensure_ascii=False))
 
     def __aiter__(self):
-        """支持 async for 迭代接收服务端消息"""
         return self.ws.__aiter__()
 
     async def __aenter__(self):
-        """异步上下文进入：建立连接"""
         return await self.connect()
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """异步上下文退出：关闭连接"""
         await self.close()

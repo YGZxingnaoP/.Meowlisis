@@ -1,0 +1,28 @@
+{
+  "name": "小鱼干",
+  "unit": "条",
+  "battery_per_unit": 10.0,
+  "startup_cost": 0.1,
+  "total_acquired": 1.1,
+  "balance": 1.0,
+  "history": [
+    {
+      "ts": 1788600163,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788600290,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788600526,
+      "type": "manual_add",
+      "delta": 0.1,
+      "note": "手动入库"
+    }
+  ]
+}

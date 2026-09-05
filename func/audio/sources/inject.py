@@ -44,6 +44,12 @@ class InjectSource(BaseAudioSource):
                 self._queue.append(bytes(self._pending[:self._frame_bytes]))
                 del self._pending[:self._frame_bytes]
 
+    def clear(self):
+        """清空未消费的注入数据（按住说话结束时丢弃在途残块）"""
+        with self._lock:
+            self._pending.clear()
+            self._queue.clear()
+
     def read(self):
         """取一帧；无完整帧时，若有剩余数据则补零成一帧，否则返回 None"""
         with self._lock:
