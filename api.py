@@ -6,6 +6,7 @@ import uuid
 import subprocess
 import io
 import wave
+import json
 from threading import Thread
 from flask import Flask, jsonify, request, Response
 from flask_apscheduler import APScheduler
@@ -394,7 +395,7 @@ def main():
         from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
         sensevoice_bridge = SenseVoiceLLMBridge()
 
-        def sensevoice_callback(text, username):
+        def sensevoice_callback(text, username, source="llm"):
             # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
             try:
                 from func.pipeline.toolbox_audio import ToolboxAudioBridge
@@ -426,7 +427,7 @@ def main():
             if turtle_route == "consumed":
                 return
             # 双通道：主 LLM 快速回复 + toolbox 工具分析
-            sensevoice_bridge.send_to_llm(text, username)
+            sensevoice_bridge.send_to_llm(text, username, source)
             if turtle_route != "pass":
                 try:
                     from func.pipeline.msg_toolbox import MsgToolboxBridge

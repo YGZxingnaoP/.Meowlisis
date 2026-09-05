@@ -41,6 +41,14 @@
     </div>
   </div>
 
+  <!-- 常驻播放器输出元素：iOS 系统"正在播放"识别目标（由"开启播放器"按钮激活） -->
+  <audio id="phoneAudio" style="display:none"></audio>
+
+  <!-- 常驻播放器：进站点点一次开启，之后所有语音持续走它（iOS 只认注册播放器） -->
+  <div class="player-bar">
+    <button id="playerBtn" class="player-btn">🔊 开启播放器</button>
+  </div>
+
   <!-- 底部控制栏 -->
   <div class="controls">
     <button id="holdBtn" class="hold-btn">按住说话</button>

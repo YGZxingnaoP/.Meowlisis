@@ -137,6 +137,14 @@ class SenseVoiceManager:
             self.log.warning("⚠️ 收到空文本，忽略")
             return
 
+        # 手机语音：识别文本先投用户字幕（手机端"你说：xxx"泡泡回显），
+        # 不依赖声纹验证——只要识别到非空内容手机就显示（方案2A）
+        if self.subtitle is not None and self.subtitle_publish:
+            try:
+                self.subtitle.put(self.username or '手机用户', text)
+            except Exception:
+                self.log.exception("写入用户字幕失败")
+
         if self.speaker_verify:
             if spk_name not in self.config.target_speakers:
                 self.log.warning(f"⚠️ 说话人 '{spk_name}' 不在目标列表中 {self.config.target_speakers}，忽略")
@@ -150,13 +158,7 @@ class SenseVoiceManager:
             username = self.username or '手机用户'
             self.log.info(f"✅ 跳过声纹验证，用户名: {username}")
 
-        # 手机语音：识别文本投用户字幕（供手机端轮询回显"你说：..."）
-        if self.subtitle is not None and self.subtitle_publish:
-            try:
-                self.subtitle.put(username, text)
-            except Exception:
-                self.log.exception("写入用户字幕失败")
-        # ASR 字幕：识别内容推字幕服务器（字幕前端标签显示说话用户名；纯旁路，失败静默）
+        # ASR 字幕：识别内容推字幕服务器（桌面字幕顶部人名；保持原逻辑——声纹通过后显示）
         try:
             from func.pipeline.get_subtitle import GetSubtitleBridge
             GetSubtitleBridge().send_asr(text, username)
@@ -220,7 +222,7 @@ class SenseVoiceManager:
         """发送识别文本到 LLM"""
         if self.callback:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.callback, text, username)
+            await loop.run_in_executor(None, self.callback, text, username, self.llm_source)
             return
 
         url = f"{self.api_base}/msg"

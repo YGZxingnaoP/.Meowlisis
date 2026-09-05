@@ -147,21 +147,110 @@
     if (zoomReset) zoomReset.addEventListener('click', function () { petPost({ type: 'pet-reset' }); });
   }
 
-  // ---------------- TTS 音频播放 ----------------
-  var audioPlayer = null;
+  // ============ 常驻播放器：<audio> 元素 + 用户点击激活（iOS 系统"正在播放"识别方式） ============
+  // 声音由 WebAudio 合成 → MediaStreamDestination 流 → 常驻 <audio>.srcObject 播放。
+  // 点「🔊 开启播放器」= 在用户手势里 audio.play() → iOS 把该 <audio> 当成系统播放器：
+  // 控制中心/锁屏出现"正在播放"，且一直保持（流内恒有数据，不会空闲收起）。
+  var player = {
+    ctx: null,      // 声音合成上下文（WebAudio）
+    dest: null,     // MediaStreamDestination：所有声音的唯一输出口
+    audio: null,    // 常驻 <audio id="phoneAudio">：播放 dest 的流
+    on: false,      // 是否已开启
+    _until: 0,      // 🔊 整句试听排队时间游标
+    _idleSrc: null,
+    keepTimer: null,
+    boot: function () {            // 必须在按钮点击（用户手势）里调用
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { addMsg('sys', '浏览器不支持 AudioContext'); return false; }
+      try {
+        if (!this.ctx) this.ctx = new AC();
+        if (!this.dest) this.dest = this.ctx.createMediaStreamDestination();
+        if (!this.audio) this.audio = document.getElementById('phoneAudio');
+        if (!this.audio) { this.audio = new Audio(); document.body.appendChild(this.audio); }
+        if (this.audio.srcObject !== this.dest.stream) this.audio.srcObject = this.dest.stream;
+        // 手势内 play()：iOS 把该 <audio> 识别为系统"正在播放"的媒体
+        var p = this.audio.play();
+        if (p && p.catch) p.catch(function () { addMsg('sys', '播放器启动失败，请再点一次'); });
+        this._idle();              // 流内永远有数据，防止 iOS 判定空闲收起播放器
+        try {                      // 控制中心/锁屏显示播放器信息（尽力而为）
+          if (navigator.mediaSession && window.MediaMetadata) {
+            navigator.mediaSession.metadata =
+              new MediaMetadata({ title: 'Meowlisis 手机端', artist: 'AI 语音' });
+          }
+        } catch (e) {}
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        this.on = true;
+        this.startKeepAlive();
+        return true;
+      } catch (e) {
+        addMsg('sys', '开启播放器失败：' + e.message);
+        return false;
+      }
+    },
+    _idle: function () {           // 0.25s 循环静音源挂在流上（听不见，仅保持媒体流活跃）
+      if (this._idleSrc) return;
+      try {
+        var ctx = this.ctx;
+        var buf = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * 0.25)), ctx.sampleRate);
+        var src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.loop = true;
+        src.connect(this.dest);
+        src.start(0);
+        this._idleSrc = src;
+      } catch (e) {}
+    },
+    out: function () {             // 所有声音的接线口：WebAudio 声源连这里进流
+      return this.dest;
+    },
+    playBuffer: function (audioBuf) {  // 🔊 整句试听（已解码 AudioBuffer）
+      var ctx = this.ctx, dest = this.dest;
+      if (!ctx || !dest || !audioBuf) return;
+      try {
+        var src = ctx.createBufferSource();
+        src.buffer = audioBuf;
+        src.connect(dest);
+        var t = Math.max(this._until, ctx.currentTime + 0.02);
+        if (t < ctx.currentTime - 0.2) t = ctx.currentTime + 0.02;
+        src.start(t);
+        this._until = t + audioBuf.duration;
+      } catch (e) {}
+    },
+    startKeepAlive: function () {  // 每 10s：context 被挂起就恢复；audio 被系统暂停就续播
+      var self = this;
+      if (this.keepTimer) return;
+      this.keepTimer = setInterval(function () {
+        if (self.ctx && self.ctx.state === 'suspended') {
+          try { self.ctx.resume(); } catch (e) {}
+        }
+        if (self.audio && self.audio.paused) {
+          var p = self.audio.play();
+          if (p && p.catch) p.catch(function () {});
+        }
+      }, 10000);
+    }
+  };
+
+  // ---------------- TTS 整句试听（🔊 按钮）→ 走常驻播放器 ----------------
   function playTts(text) {
     if (!text) return;
+    if (!player.on) {
+      addMsg('sys', '请先点「🔊 开启播放器」再试听');
+      return;
+    }
     fetch('/api/tts?text=' + encodeURIComponent(text))
       .then(function (resp) {
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
-        return resp.blob();
+        return resp.arrayBuffer();
       })
-      .then(function (blob) {
-        var url = URL.createObjectURL(blob);
-        if (audioPlayer) { audioPlayer.pause(); }
-        audioPlayer = new Audio(url);
-        audioPlayer.play();
-        audioPlayer.onended = function () { URL.revokeObjectURL(url); };
+      .then(function (ab) {
+        if (player.ctx && typeof player.ctx.decodeAudioData === 'function') {
+          return player.ctx.decodeAudioData(ab);
+        }
+        throw new Error('播放器未就绪');
+      })
+      .then(function (audioBuf) {
+        player.playBuffer(audioBuf);
       })
       .catch(function (err) {
         addMsg('sys', '语音合成失败：' + err.message);
@@ -229,21 +318,13 @@
       .catch(function () {});
   }, 1000);
 
-  // ---------------- 手机实时语音播放（phone 回复经 .phone 推流） ----------------
+  // ---------------- 手机实时语音播放（AI 回复流）→ 全部走常驻播放器 player.ctx ----------------
   var phoneTts = {
-    ctx: null,
     nextStart: 0,
     lastSeq: -1,
     metaText: '',
     sr: 32000,
     timer: null,
-    _ac: function () {
-      if (!this.ctx) {
-        var AC = window.AudioContext || window.webkitAudioContext;
-        if (AC) this.ctx = new AC();
-      }
-      return this.ctx;
-    },
     start: function () {
       var self = this;
       if (this.timer) return;
@@ -261,10 +342,9 @@
             if (meta.text !== self.metaText) {
               self.metaText = meta.text;
               if (meta.sample_rate) { self.sr = meta.sample_rate; }
-              var ctx = self._ac();
-              // 新句开始：本地积压明显时软对齐，避免滞后连播
-              if (ctx && self.nextStart > ctx.currentTime + 0.3) {
-                self.nextStart = ctx.currentTime + 0.05;
+              // 播放器已开启且本地积压明显时软对齐，避免滞后连播
+              if (player.ctx && self.nextStart > player.ctx.currentTime + 0.3) {
+                self.nextStart = player.ctx.currentTime + 0.05;
               }
             }
             for (var i = 0; i < blocks.length; i++) {
@@ -280,8 +360,8 @@
         .catch(function () {});
     },
     schedule: function (pcmB64) {
-      var ctx = this._ac();
-      if (!ctx || !pcmB64) return;
+      var ctx = player.ctx;
+      if (!ctx || !player.dest || !pcmB64) return;   // 播放器未开启：跳过（开启后从新句开始播）
       try {
         if (ctx.state === 'suspended') { ctx.resume(); }
         var bin = atob(pcmB64);
@@ -296,7 +376,7 @@
         buf.copyToChannel(f, 0);
         var src = ctx.createBufferSource();
         src.buffer = buf;
-        src.connect(ctx.destination);
+        src.connect(player.out());   // 接入常驻播放器流（MediaStream → <audio>）
         var t = Math.max(this.nextStart, ctx.currentTime + 0.02);
         // 落后过多（如切后台回来）：丢弃迟到内容，避免追赶爆音
         if (t < ctx.currentTime - 0.2) {
@@ -307,8 +387,8 @@
         this.nextStart = t + n / (this.sr || 32000);
       } catch (e) {}
     },
-    pause: function () { var c = this._ac(); if (c && c.state === 'running') c.suspend(); },
-    resume: function () { var c = this._ac(); if (c && c.state === 'suspended') c.resume(); }
+    pause: function () { var c = player.ctx; if (c && c.state === 'running') c.suspend(); },
+    resume: function () { var c = player.ctx; if (c && c.state === 'suspended') c.resume(); }
   };
   phoneTts.start();
 
@@ -383,7 +463,7 @@
   function startRecord() {
     if (recording) return;
     recording = true;
-    phoneTts.pause();   // 说话期间暂停手机 AI 语音播放
+    phoneTts.pause();   // 说话期间暂停播放器（松开会自动恢复）
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       addMsg('sys', '当前浏览器不支持麦克风，请用文字输入');
@@ -453,6 +533,19 @@
   });
   holdBtn.addEventListener('pointerup', stopRecord);
   holdBtn.addEventListener('pointercancel', stopRecord);
+
+  // ---------------- 常驻播放器按钮（注册一次，一直开着） ----------------
+  var playerBtn = document.getElementById('playerBtn');
+  if (playerBtn) {
+    playerBtn.addEventListener('click', function () {
+      if (player.boot()) {
+        playerBtn.classList.add('on');
+        playerBtn.textContent = '🔊 播放器已开启';
+        player.startKeepAlive();
+        addMsg('sys', '🔊 播放器已开启，AI 语音将持续播放');
+      }
+    });
+  }
 
   // ---------------- 初始化 ----------------
   initNameUi();

@@ -51,12 +51,9 @@ class InjectSource(BaseAudioSource):
             self._queue.clear()
 
     def read(self):
-        """取一帧；无完整帧时，若有剩余数据则补零成一帧，否则返回 None"""
+        """取一帧；不够一帧就继续累积（不补零稀释语音），等凑满整帧再出；
+        尾残由 ptt_end/flush 清理。"""
         with self._lock:
             if self._queue:
                 return self._queue.popleft()
-            if len(self._pending) > 0:
-                frame = bytes(self._pending) + b'\x00' * (self._frame_bytes - len(self._pending))
-                self._pending.clear()
-                return frame
             return None
