@@ -115,6 +115,8 @@ class SenseVoiceSession:
 
     def _vad_tick(self):
         """能量 VAD 模式（mic/loopback）：检测说话状态，说话中才发帧"""
+        # 消费追赶：丢弃积压旧帧，只保留最近帧，保证打断/VAD 检测实时
+        self.hub.drain_to_latest(self.source_id)
         frame = self.hub.next_frame(self.source_id)
         if frame is None:
             frame = self.silence_frame

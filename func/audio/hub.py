@@ -117,6 +117,14 @@ class AudioHub:
         if source is not None and hasattr(source, 'clear'):
             source.clear()
 
+    def drain_to_latest(self, sid, keep=2):
+        """丢弃积压旧帧，只保留最近 keep 帧（保证能量/VAD 检测实时，避免累积延迟）"""
+        with self._lock:
+            buf = self._buffers.get(sid)
+            if buf:
+                while len(buf) > keep:
+                    buf.popleft()
+
     # ---------- 生命周期 ----------
     def open(self):
         for sid in list(self._sources.keys()):
@@ -182,16 +190,25 @@ class AudioHub:
 
         buf = self._buffers[sid]
         limit = buf.maxlen
+        # 实时源（mic/loopback）可丢旧保新；非实时源（inject 手机上传）需保留完整音频
+        is_realtime = (sid != 'inject')
         try:
             while self._running[sid]:
                 frame = source.read()
                 if frame is not None:
-                    while self._running[sid]:
+                    if is_realtime:
+                        # 丢旧保新：直接 append，deque(maxlen) 满时自动丢最旧，
+                        # 采集线程永不阻塞，pyaudio 设备缓冲不会滞后积压
                         with self._lock:
-                            if limit is None or len(buf) < limit:
-                                buf.append(frame)
-                                break
-                        time.sleep(0.01)
+                            buf.append(frame)
+                    else:
+                        # inject：保留完整音频，满则短暂等待消费腾出空间
+                        while self._running[sid]:
+                            with self._lock:
+                                if limit is None or len(buf) < limit:
+                                    buf.append(frame)
+                                    break
+                            time.sleep(0.01)
                 else:
                     # 队列类源（inject）无数据时短暂休眠，避免忙等
                     time.sleep(0.01)

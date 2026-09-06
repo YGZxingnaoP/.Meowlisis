@@ -3,8 +3,8 @@
   "unit": "条",
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
-  "total_acquired": 1.1,
-  "balance": 0.1,
+  "total_acquired": 6.1,
+  "balance": 4.2,
   "history": [
     {
       "ts": 1788600163,
@@ -74,6 +74,90 @@
     },
     {
       "ts": 1788617750,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788697262,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788697263,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788697263,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788697265,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788697390,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788700084,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788701428,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788701486,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1788702884,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788703275,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788703709,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788704498,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788705865,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788707591,
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"
