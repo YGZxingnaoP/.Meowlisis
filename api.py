@@ -59,6 +59,14 @@ sched1.init_app(app)
 # ============= LLM参数 =====================
 llmCore = LLmCore()  # llm核心
 get_subtitle_server()
+# ============ Flux 绘画画板服务（工具箱-绘画配置开关） =====================
+try:
+    from func.toolbox.flux_painter.config import TBFluxPainterConfig
+    if TBFluxPainterConfig().enabled:
+        from func.toolbox.flux_painter.server import get_flux_painter_server
+        get_flux_painter_server().start()
+except Exception:
+    log.exception("启动 Flux 绘画画板服务失败")
 # ============================================
 
 # ============= CatBrain 角色灵魂 =====================

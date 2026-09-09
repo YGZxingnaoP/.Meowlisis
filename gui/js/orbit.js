@@ -10,6 +10,7 @@ const Orbit = {
         { id: 'main', label: '主程序', tooltip: '启动主程序', endpoint: 'http://127.0.0.1:1800' },
         { id: 'sovits', label: 'SoVITS', tooltip: '启动 SoVITS 服务', endpoint: 'http://127.0.0.1:9880' },
         { id: 'sensevoice', label: 'SenseVoice', tooltip: '启动 SenseVoice 服务', endpoint: 'ws://127.0.0.1:10095' },
+        { id: 'painting', label: '绘画', tooltip: '启动内置 ComfyUI 绘画引擎', endpoint: 'http://127.0.0.1:8188' },
         { id: 'napcat', label: 'NapCat', tooltip: 'NapCat 快速启动', endpoint: 'ws://127.0.0.1:3001' },
         { id: 'netease', label: '网易云', tooltip: '启动网易云搜歌服务', endpoint: 'http://127.0.0.1:5000' },
         { id: 'rvc', label: 'RVC', tooltip: '启动 RVC 翻唱服务', endpoint: 'http://127.0.0.1:7865' },
@@ -43,7 +44,8 @@ const Orbit = {
         { id: 'danmaku', label: '弹幕', tooltip: 'B站直播弹幕配置' },
         { id: 'add_backlog', label: '提醒', tooltip: '新建待办触发工具配置' },
         { id: 'meowsongs', label: '哼唱', tooltip: '即兴哼唱配置' },
-        { id: 'turtle_soup', label: '海龟汤', tooltip: '海龟汤触发工具配置' }
+        { id: 'turtle_soup', label: '海龟汤', tooltip: '海龟汤触发工具配置' },
+        { id: 'flux_painter', label: '绘画', tooltip: 'Flux 绘画（内置 ComfyUI 文生图）配置' }
     ],
 
     rotation: 0,

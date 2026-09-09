@@ -136,6 +136,17 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册海龟汤模块失败")
 
+        # Flux 绘画模块（AI 文生图：flux_paint）
+        try:
+            from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
+            painter = TBFluxPainterCore()
+            for tool_schema in painter.build_tools():
+                name = tool_schema.get("function", {}).get("name")
+                if name:
+                    self.register(name, painter)
+        except Exception:
+            self.log.exception("注册 Flux 绘画模块失败")
+
         # 群机器人指令入口（如幻梦）
         try:
             from func.toolbox.napcat.groupchat.ask_group_bot_entry import TBAskGroupBotEntry
@@ -185,7 +196,9 @@ class TBoxAnalysis:
         # ===== 规则硬触发层（零 LLM）：看屏幕是确定性高频需求，不交给 LLM 自觉 =====
         if self._vision_rule_hit(text):
             self.log.info(f"父级 toolcalls 规则硬触发 use_vision: {(text or '')[:30]}")
-            result = self.dispatch("use_vision", {"user_message": text}, username)
+            context = {"username": username, "text": text,
+                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+            result = self.dispatch("use_vision", {"user_message": text}, username, context)
             self.log.info(f"父级 toolcalls 规则硬触发 use_vision 执行结果: {result}")
             return
 
@@ -197,6 +210,10 @@ class TBoxAnalysis:
         from func.toolbox.get_prompt import TBoxGetPrompt
         base_prompt = TBoxGetPrompt().get_tool_prompt(username, text) or ""
         history_messages = self._load_short_memory()
+        # 显式上下文：短记忆 + 角色提示词，供 flux_painter 等工具通过 set_context 接收
+        dispatch_context = {"username": username, "text": text,
+                            "short_memory": history_messages,
+                            "system_prompt": base_prompt}
 
         system_prompt = (
             f"{base_prompt}\n\n"
@@ -227,6 +244,7 @@ class TBoxAnalysis:
             f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send；\n"
             f"- 有让你提醒TA事情，需要新建/记录待办或提醒事项（如提醒我几点做什么）→ add_backlog。\n"
             f"- 用户想玩海龟汤/情境猜谜/猜谜游戏 → turtle_soup。\n"
+            f"- 用户需要「画/画图/画画/画一幅/画个…/绘一幅/来张图/生成一张图/想要一张…的图」→ flux_paint"
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
             f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
             f"- 用户明确「点歌」「放歌」且指定了歌名/要完整唱（属于点歌工具，不属于本工具箱）；\n"
@@ -256,7 +274,7 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception(f"解析工具参数失败: {name}")
             args = {}
-        result = self.dispatch(name, args, username)
+        result = self.dispatch(name, args, username, dispatch_context)
         self.log.info(f"父级工具 {name} 执行结果: {result}")
 
     # ==================== 规则硬触发层 ====================
@@ -288,8 +306,14 @@ class TBoxAnalysis:
             self.log.exception("工具分析加载短期记忆失败")
             return []
 
-    def dispatch(self, tool_name: str, arguments: Dict, username: str = None):
-        """按模块入口名与参数执行对应模块"""
+    def dispatch(self, tool_name: str, arguments: Dict, username: str = None,
+                 context: Dict = None):
+        """按模块入口名与参数执行对应模块。
+
+        context：显式上下文 {username, text, short_memory, system_prompt}，
+        供需要「短记忆 + 角色提示词」的工具（如 flux_painter）通过 set_context 接收；
+        未实现 set_context 的既有工具完全不受影响（向后兼容）。
+        """
         tool = self._tools.get(tool_name)
         if not tool:
             return f"错误：未知模块入口 {tool_name}"
@@ -298,6 +322,11 @@ class TBoxAnalysis:
                 tool.set_username(username)
             except Exception:
                 pass
+        if context and hasattr(tool, "set_context"):
+            try:
+                tool.set_context(context)
+            except Exception:
+                self.log.exception(f"注入上下文失败: {tool_name}")
         if hasattr(tool, "dispatch"):
             return tool.dispatch(tool_name, arguments or {})
         return None

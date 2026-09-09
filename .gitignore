@@ -72,3 +72,14 @@ character/songs/raw_list
 
 #todolist
 todolist.md
+
+#内置绘图内核 ComfyNode（内核/模型/输出/画师库均不入库）
+#仅保留：参考 prompt_reference、节点 node、脚本 scripts、json
+.ComfyNode/*
+!.ComfyNode/comfyui_builtin.json
+!.ComfyNode/prompt_reference/
+!.ComfyNode/prompt_reference/*
+!.ComfyNode/node/
+!.ComfyNode/node/*
+!.ComfyNode/scripts/
+!.ComfyNode/scripts/*

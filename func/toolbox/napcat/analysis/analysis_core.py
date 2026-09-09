@@ -118,6 +118,23 @@ class TBNapcatAnalysis:
             TBTurtleSoupCore().set_username(username)
             TBTurtleSoupCore().dispatch_qq(name, args, qq_context)
             handled = True
+        elif name == "flux_paint":
+            # Flux 绘画：QQ 一次性触发开局（无会话接管，出图即结束）
+            try:
+                from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
+                core = TBFluxPainterCore()
+                core.set_username(username)
+                core.set_context({
+                    "username": username,
+                    "text": str(args.get("request") or "") if isinstance(args, dict) else "",
+                    "short_memory": short_memory,
+                    "system_prompt": "",
+                })
+                result = core.dispatch_qq(name, args, qq_context)
+                self.log.info(f"[NapcatAnalysis] Flux 绘画 QQ 开局: {result}")
+            except Exception:
+                self.log.exception("SVG 绘画 QQ 开局失败")
+            handled = True
         else:
             self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
         return handled
@@ -187,6 +204,11 @@ class TBNapcatAnalysis:
             tools.extend(TBTurtleSoupCore().build_tools())
         except Exception:
             self.log.exception("构建 turtle_soup 工具失败")
+        try:
+            from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
+            tools.extend(TBFluxPainterCore().build_tools())
+        except Exception:
+            self.log.exception("构建 flux_paint 工具失败")
         return tools
 
     # ==================== LLM（复用 napcat 现有配置 func/llm） ====================

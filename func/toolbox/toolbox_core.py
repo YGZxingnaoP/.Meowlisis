@@ -37,10 +37,7 @@ class TBoxCore:
             self.log.exception("设置 MeowVision 回传回调失败")
 
     def receive(self, text: str, username: str):
-        """接收输入内容（来自 pipeline），交给 analysis 决策调用工具。
-
-        双通道：主 LLM 已快速回复，工具分析无工具时静默，避免重复回复。
-        """
+        """接收输入内容（来自 pipeline），交给父级分析器决策工具"""
         self.analysis.decide(text, username)
 
     def forward_vision_reply(self, text: str):

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="600" height="800" viewBox="0 0 600 800">viewBox='0 0 600 800' xmlns='http://www.w3.org/2000/svg'>
+  
+  <ellipse cx='290' cy='430' rx='160' ry='90' fill='#FFB84C' stroke='#333' stroke-width='5'/>
+  
+  <polygon points='440,430 540,370 540,490' fill='#FF6B6B' stroke='#333' stroke-width='5' stroke-linejoin='round'/>
+  
+  <polygon points='250,342 340,342 300,290' fill='#FF6B6B' stroke='#333' stroke-width='5' stroke-linejoin='round'/>
+  
+  <polygon points='260,500 330,520 290,545' fill='#FF6B6B' stroke='#333' stroke-width='5' stroke-linejoin='round'/>
+  
+  <circle cx='190' cy='420' r='14' fill='#fff' stroke='#333' stroke-width='4'/>
+  <circle cx='185' cy='416' r='6' fill='#333'/>
+  
+  <path d='M150,455 Q170,472 195,462' fill='none' stroke='#333' stroke-width='5' stroke-linecap='round'/>
+  
+  <path d='M260,380 Q250,430 265,480' fill='none' stroke='#333' stroke-width='4' stroke-linecap='round'/>
+  
+  <circle cx='120' cy='370' r='12' fill='none' stroke='#5BA8E8' stroke-width='4'/>
+  <circle cx='95' cy='330' r='8' fill='none' stroke='#5BA8E8' stroke-width='4'/></svg>

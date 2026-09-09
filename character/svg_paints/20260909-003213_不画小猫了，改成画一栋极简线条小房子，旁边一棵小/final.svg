@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="600" height="800" viewBox="0 0 600 800">viewBox='0 0 600 800' xmlns='http://www.w3.org/2000/svg'>
+  <g stroke='#82939a' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'>
+    <line x1='90' y1='640' x2='510' y2='640'/>
+    <circle cx='115' cy='170' r='34' fill='#f7e6a5'/>
+    <polygon points='130,445 350,445 240,325' fill='#b7d0d3'/>
+    <rect x='165' y='445' width='150' height='195' fill='#fdf7ef'/>
+    <path d='M 218 640 V 565 Q 218 540 240 540 Q 262 540 262 565 V 640 Z' fill='#f4d9c9'/>
+    <rect x='278' y='475' width='52' height='52' fill='#e7f1f8'/>
+    <path d='M 304 475 V 527 M 278 501 H 330' fill='none'/>
+    <rect x='438' y='520' width='14' height='120' fill='#dfbc8f'/>
+    <circle cx='445' cy='460' r='62' fill='#b9d8ae'/>
+    <circle cx='472' cy='438' r='36' fill='#b9d8ae'/>
+    <path d='M 120 652 V 640 M 128 650 V 638 M 136 652 V 641' fill='none'/>
+  </g></svg>

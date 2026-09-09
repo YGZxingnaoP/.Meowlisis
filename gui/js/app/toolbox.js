@@ -429,3 +429,125 @@ Object.assign(App, {
 
     // ============ 歌曲翻唱面板（RVC 模型/索引下拉） ============,
 });
+
+/* =====================================================================
+ * Flux 绘画配置面板补丁
+ * 画布尺寸为 chips 输入：输入一项后回车或输入一个标点即添加，点击 × 删除
+ * 采样器 / 调度器下拉取自 ComfyUI 原生枚举
+ * ===================================================================== */
+const FluxSamplerOptions = [{"value": "euler", "label": "euler"}, {"value": "euler_cfg_pp", "label": "euler_cfg_pp"}, {"value": "euler_ancestral", "label": "euler_ancestral"}, {"value": "euler_ancestral_cfg_pp", "label": "euler_ancestral_cfg_pp"}, {"value": "heun", "label": "heun"}, {"value": "heunpp2", "label": "heunpp2"}, {"value": "exp_heun_2_x0", "label": "exp_heun_2_x0"}, {"value": "exp_heun_2_x0_sde", "label": "exp_heun_2_x0_sde"}, {"value": "dpm_2", "label": "dpm_2"}, {"value": "dpm_2_ancestral", "label": "dpm_2_ancestral"}, {"value": "lms", "label": "lms"}, {"value": "dpm_fast", "label": "dpm_fast"}, {"value": "dpm_adaptive", "label": "dpm_adaptive"}, {"value": "dpmpp_2s_ancestral", "label": "dpmpp_2s_ancestral"}, {"value": "dpmpp_2s_ancestral_cfg_pp", "label": "dpmpp_2s_ancestral_cfg_pp"}, {"value": "dpmpp_sde", "label": "dpmpp_sde"}, {"value": "dpmpp_sde_gpu", "label": "dpmpp_sde_gpu"}, {"value": "dpmpp_2m", "label": "dpmpp_2m"}, {"value": "dpmpp_2m_cfg_pp", "label": "dpmpp_2m_cfg_pp"}, {"value": "dpmpp_2m_sde", "label": "dpmpp_2m_sde"}, {"value": "dpmpp_2m_sde_gpu", "label": "dpmpp_2m_sde_gpu"}, {"value": "dpmpp_2m_sde_heun", "label": "dpmpp_2m_sde_heun"}, {"value": "dpmpp_2m_sde_heun_gpu", "label": "dpmpp_2m_sde_heun_gpu"}, {"value": "dpmpp_3m_sde", "label": "dpmpp_3m_sde"}, {"value": "dpmpp_3m_sde_gpu", "label": "dpmpp_3m_sde_gpu"}, {"value": "ddpm", "label": "ddpm"}, {"value": "lcm", "label": "lcm"}, {"value": "ipndm", "label": "ipndm"}, {"value": "ipndm_v", "label": "ipndm_v"}, {"value": "deis", "label": "deis"}, {"value": "res_multistep", "label": "res_multistep"}, {"value": "res_multistep_cfg_pp", "label": "res_multistep_cfg_pp"}, {"value": "res_multistep_ancestral", "label": "res_multistep_ancestral"}, {"value": "res_multistep_ancestral_cfg_pp", "label": "res_multistep_ancestral_cfg_pp"}, {"value": "gradient_estimation", "label": "gradient_estimation"}, {"value": "gradient_estimation_cfg_pp", "label": "gradient_estimation_cfg_pp"}, {"value": "er_sde", "label": "er_sde"}, {"value": "seeds_2", "label": "seeds_2"}, {"value": "seeds_3", "label": "seeds_3"}, {"value": "sa_solver", "label": "sa_solver"}, {"value": "sa_solver_pece", "label": "sa_solver_pece"}];
+const FluxSchedulerOptions = [{"value": "simple", "label": "simple"}, {"value": "sgm_uniform", "label": "sgm_uniform"}, {"value": "karras", "label": "karras"}, {"value": "exponential", "label": "exponential"}, {"value": "ddim_uniform", "label": "ddim_uniform"}, {"value": "beta", "label": "beta"}, {"value": "normal", "label": "normal"}, {"value": "linear_quadratic", "label": "linear_quadratic"}, {"value": "kl_optimal", "label": "kl_optimal"}];
+
+window.FluxChips = {
+    norm(v) {
+        let list = [];
+        if (Array.isArray(v)) list = v.map(String);
+        else if (typeof v === 'string') list = v.split(/[\s,，;；]+/);
+        else return [];
+        return list.map(s => {
+            const m = String(s).trim().match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+            return m ? m[1] + 'x' + m[2] : '';
+        }).filter(Boolean);
+    },
+    join() {
+        const box = document.getElementById('flux-canvas-chips');
+        if (!box) return '';
+        return Array.from(box.querySelectorAll('.split-tag')).map(s => s.dataset.v).join(' ');
+    },
+    sync() {
+        const hid = document.getElementById('flux-canvas-value');
+        if (hid) hid.value = FluxChips.join();
+    },
+    key(e, input) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === '，') {
+            e.preventDefault();
+            FluxChips.add(input);
+        }
+    },
+    add(input) {
+        const t = (input.value || '').trim();
+        const m = t.match(/^(\d+)\s*[xX*]\s*(\d+)$/);
+        input.value = '';
+        if (!m) return;
+        const v = m[1] + 'x' + m[2];
+        const box = document.getElementById('flux-canvas-chips');
+        if (!box) return;
+        const exists = Array.from(box.querySelectorAll('.split-tag')).some(s => s.dataset.v === v);
+        if (!exists) {
+            box.insertAdjacentHTML('beforeend',
+                `<span class="split-tag" data-v="${v}">${v}<button type="button" class="split-tag-remove" onclick="FluxChips.remove(this)">&times;</button></span>`);
+        }
+        FluxChips.sync();
+    },
+    remove(btn) {
+        const span = btn.closest('.split-tag');
+        if (span) span.remove();
+        FluxChips.sync();
+    }
+};
+
+if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
+    fluxPainter() {
+        const canvasVals = FluxChips.norm(this._val('flux_painter.canvas_sizes', ['1024x1024', '1080x1960']));
+        const chipsHtml = canvasVals.map(v =>
+            `<span class="split-tag" data-v="${v}">${v}<button type="button" class="split-tag-remove" onclick="FluxChips.remove(this)">&times;</button></span>`).join('');
+        const opts = (arr, cur) => arr.map(o => {
+            const sel = String(o.value) === String(cur) ? 'selected' : '';
+            return `<option value="${o.value}" ${sel}>${o.label}</option>`;
+        }).join('');
+        const samplerCur = this._val('flux_painter.sampler_name', 'er_sde');
+        const schedCur = this._val('flux_painter.sampler_scheduler', 'simple');
+
+        let h = this._section('Flux 绘画') +
+            this._check('启用绘画', 'flux_painter.enabled', true) +
+            this._select('绘图引擎', 'flux_painter.comfy.mode', [
+                { value: 'internal', label: '内置' },
+                { value: 'external', label: '外部' }
+            ], 'internal') +
+            this._num('HTTP 端口', 'flux_painter.http_port', 8090, 1, 65535, 1) +
+            this._num('WebSocket 端口', 'flux_painter.ws_port', 8767, 1, 65535, 1) +
+            this._num('ComfyUI 端口', 'flux_painter.comfy.port', 8188, 1, 65535, 1) +
+            this._check('审查模式', 'flux_painter.review_enabled', false) +
+            `<div class="form-group"><label>${this._t('画布尺寸')}</label>
+                <div class="split-tags" id="flux-canvas-chips">${chipsHtml}</div>
+                <input type="hidden" data-path="flux_painter.canvas_sizes" id="flux-canvas-value" value="${canvasVals.join(' ')}">
+                <input type="text" placeholder="${this._t('输入一个尺寸后回车添加')}" onkeydown="FluxChips.key(event,this)">
+            </div>` +
+            `<div class="form-group"><label>${this._t('采样器')}</label>
+                <select data-path="flux_painter.sampler_name">${opts(FluxSamplerOptions, samplerCur)}</select></div>` +
+            `<div class="form-group"><label>${this._t('调度器')}</label>
+                <select data-path="flux_painter.sampler_scheduler">${opts(FluxSchedulerOptions, schedCur)}</select></div>` +
+            this._check('记录绘画记忆', 'flux_painter.memory_enabled', true) +
+            this._num('记忆轮数', 'flux_painter.memory_rounds', 10, 1, 50, 1) +
+            this._text('归档目录', 'flux_painter.backup_dir', 'character/paints');
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="flux_llm">提示词模型</button>
+            <button class="modal-tab" data-tab="flux_deepseek">DeepSeek</button>
+            <button class="modal-tab" data-tab="flux_aliyun">${this._t('阿里云')}</button>
+        </div>`;
+        h += `<div class="tab-content active" data-tab-content="flux_llm">` +
+            this._section('提示词模型') +
+            this._select('生效平台', 'flux_painter.llm_type', [
+                { value: 'deepseek', label: 'DeepSeek' },
+                { value: 'aliyun', label: '阿里云 Qwen' }
+            ], 'deepseek') +
+            this._check('深度思考', 'flux_painter.thinking_enabled', true) +
+            this._num('max_tokens', 'flux_painter.max_tokens', 8192, 256, 32768, 256) +
+            this._num('温度', 'flux_painter.temperature', 0.8, 0, 2, 0.1) +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="flux_deepseek">` +
+            this._section('DeepSeek') +
+            this._text('API Key', 'flux_painter.deepseek.api_key', '') +
+            this._text('Base URL', 'flux_painter.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'flux_painter.deepseek.model', 'deepseek-v4-flash') +
+            `</div>`;
+        h += `<div class="tab-content" data-tab-content="flux_aliyun">` +
+            this._section('阿里云 Qwen') +
+            this._text('API Key', 'flux_painter.aliyun.api_key', '') +
+            this._text('Base URL', 'flux_painter.aliyun.base_url',
+                'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'flux_painter.aliyun.model', 'qwen3.7-flash') +
+            `</div>`;
+        return h;
+    },
+});

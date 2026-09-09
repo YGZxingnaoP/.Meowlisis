@@ -54,6 +54,24 @@ const API = {
         return res.json();
     },
 
+    async startPainting() {
+        const res = await fetch('/api/start_painting_comfy', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start painting engine');
+        return res.json();
+    },
+
+    async stopPainting() {
+        const res = await fetch('/api/stop_painting_comfy', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to stop painting engine');
+        return res.json();
+    },
+
+    async paintingStatus() {
+        const res = await fetch('/api/painting_comfy_status');
+        if (!res.ok) return { running: false };
+        return res.json();
+    },
+
     async toggleMic() {
         const res = await fetch('/api/mic', {
             method: 'POST',

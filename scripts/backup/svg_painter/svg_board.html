@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AI 绘画画板</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            background: transparent;               /* 页面背景透明，可浮层/OBS */
+            font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            overflow: hidden;
+        }
+        .stage {
+            position: fixed; inset: 0;
+            display: flex; align-items: center; justify-content: center;
+            padding: 18px;
+        }
+        /* 现代化画布卡片：玻璃浅底 + 细亮描边 + 柔和投影 */
+        #frame {
+            position: relative;
+            background: linear-gradient(165deg, rgba(255,255,255,.96), rgba(242,246,255,.92));
+            border-radius: 18px;
+            border: 1px solid rgba(255,255,255,.65);
+            box-shadow:
+                0 0 0 1px rgba(120,140,200,.18),
+                0 2px 6px rgba(30,40,80,.10),
+                0 18px 44px rgba(20,28,60,.22),
+                0 0 26px rgba(160,190,255,.10);
+            overflow: hidden;
+            display: inline-block;
+            line-height: 0;
+        }
+        svg {
+            display: block;
+            /* 画布底色默认透明（由后端 clear 的 bg 决定是否铺底），此处由 JS 按比例缩放撑满 */
+        }
+        /* 顶部状态胶囊（悬浮在卡片上方） */
+        .status-pill {
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 8px;
+            max-width: 70vw;
+            padding: 7px 16px;
+            background: rgba(20, 26, 48, .62);
+            color: #eef2ff; font-size: 13px; line-height: 1.3;
+            border-radius: 999px;
+            border: 1px solid rgba(255,255,255,.18);
+            backdrop-filter: blur(10px) saturate(1.2);
+            box-shadow: 0 6px 18px rgba(0,0,0,.25);
+            user-select: none; white-space: nowrap; overflow: hidden;
+            z-index: 10;
+        }
+        .status-pill .dot { width: 9px; height: 9px; border-radius: 50%; background: #8a93a8; flex: none; }
+        .status-pill .dot.ok { background: #4ade80; box-shadow: 0 0 8px rgba(74,222,128,.8); }
+        .status-pill .dot.err { background: #fb7185; box-shadow: 0 0 8px rgba(251,113,133,.8); }
+        #info { opacity: .72; font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+        #status { font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="status-pill">
+        <span class="dot" id="dot"></span>
+        <span id="status">连接中…</span>
+        <span id="info"></span>
+    </div>
+    <div class="stage">
+        <div id="frame"><svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+
+    <script>
+        const NS = 'http://www.w3.org/2000/svg';
+        const canvas = document.getElementById('canvas');
+        const frame = document.getElementById('frame');
+        const stage = document.querySelector('.stage');
+        const dot = document.getElementById('dot');
+        const statusEl = document.getElementById('status');
+        const infoEl = document.getElementById('info');
+        const MAX_RETRY = 9999;
+        let ws = null, retry = 0, curW = 600, curH = 800;
+
+        function setStatus(txt, ok) {
+            statusEl.textContent = txt;
+            dot.className = 'dot' + (ok === true ? ' ok' : ok === false ? ' err' : '');
+        }
+        function setInfo(txt) { infoEl.textContent = txt || ''; }
+        function setCanvasSize(w, h) {
+            curW = Math.max(32, parseInt(w) || curW);
+            curH = Math.max(32, parseInt(h) || curH);
+            canvas.setAttribute('viewBox', '0 0 ' + curW + ' ' + curH);
+            updateScale();
+        }
+        /* 画布尽可能撑满可视区，且保持竖版比例不变形 */
+        function updateScale() {
+            const pad = 36;
+            const aw = Math.max(80, stage.clientWidth - pad);
+            const ah = Math.max(80, stage.clientHeight - pad - 16);
+            const s = Math.min(aw / curW, ah / curH);
+            canvas.style.width = Math.round(curW * s) + 'px';
+            canvas.style.height = Math.round(curH * s) + 'px';
+        }
+        function drawBg(bg) {
+            if (!bg || bg === 'none' || bg === 'transparent') return;   // 透明底：露出卡片浅底
+            const r = document.createElementNS(NS, 'rect');
+            r.setAttribute('x', 0); r.setAttribute('y', 0);
+            r.setAttribute('width', curW); r.setAttribute('height', curH);
+            r.setAttribute('fill', bg);
+            canvas.appendChild(r);
+        }
+        function parseSvg(html) {
+            const doc = new DOMParser().parseFromString(html, 'image/svg+xml');
+            return doc.querySelector('parsererror') ? null : doc.documentElement;
+        }
+        function handle(msg) {
+            if (!msg || !msg.type) return;
+            switch (msg.type) {
+                case 'status':
+                    setStatus(msg.text || '', msg.ok);
+                    if (msg.info) setInfo(msg.info);
+                    break;
+                case 'clear': {
+                    canvas.innerHTML = '';
+                    setCanvasSize(msg.width, msg.height);
+                    drawBg(msg.bg || 'none');
+                    setStatus('画布已就绪，等待 AI 落笔', true);
+                    break;
+                }
+                case 'snapshot': {
+                    const svg = parseSvg(msg.svg);
+                    if (!svg) { setStatus('快照解析失败', false); return; }
+                    canvas.innerHTML = '';
+                    const w = svg.getAttribute('width'), h = svg.getAttribute('height');
+                    setCanvasSize(w || curW, h || curH);
+                    while (svg.firstChild) canvas.appendChild(svg.firstChild);
+                    setStatus('已载入当前画面', true);
+                    break;
+                }
+                case 'append': {
+                    const root = parseSvg('<svg xmlns="' + NS + '">' + msg.html + '</svg>');
+                    if (!root) { setStatus('片段解析失败，已跳过', false); break; }
+                    const g = document.createElementNS(NS, 'g');
+                    g.setAttribute('data-fid', msg.frag_id || '');
+                    while (root.firstChild) g.appendChild(root.firstChild);
+                    canvas.appendChild(g);
+                    setStatus('AI 正在作画…', true);
+                    break;
+                }
+                case 'saved':
+                    setInfo('已存档：' + (msg.path || ''));
+                    break;
+                case 'finish':
+                    setStatus(msg.text || '本轮绘画完成', true);
+                    setInfo(msg.summary || '');
+                    break;
+                default:
+                    break;
+            }
+        }
+        function connect() {
+            try { if (ws) ws.close(); } catch (e) {}
+            const q = new URLSearchParams(location.search);
+            const wsPort = q.get('ws') || '8767';
+            const channel = q.get('channel') || 'live';
+            try {
+                ws = new WebSocket('ws://127.0.0.1:' + wsPort + '?channel=' + encodeURIComponent(channel));
+            } catch (err) {
+                setStatus('初始化连接失败，重试中…', false);
+                if (retry < MAX_RETRY) { retry++; setTimeout(connect, 3000); }
+                return;
+            }
+            ws.onopen = function () { retry = 0; setStatus('已连接画板', true); };
+            ws.onmessage = function (ev) {
+                let msg = null;
+                try { msg = JSON.parse(ev.data); } catch (e) { msg = null; }
+                if (msg) handle(msg);
+            };
+            ws.onerror = function () {
+                setStatus('连接异常，重试中…', false);
+                setTimeout(function () { if (ws && ws.readyState !== WebSocket.OPEN) connect(); }, 3000);
+            };
+            ws.onclose = function () {
+                setStatus('连接断开，正在重连…', false);
+                if (retry < MAX_RETRY) { retry++; setTimeout(connect, Math.min(3000 * (retry + 1), 15000)); }
+                else setStatus('无法连接 AI 服务端，请检查程序', false);
+            };
+        }
+        window.addEventListener('resize', updateScale);
+        canvas.setAttribute('viewBox', '0 0 ' + curW + ' ' + curH);
+        connect();
+        window.addEventListener('beforeunload', function () { if (ws) ws.close(); });
+    </script>
+</body>
+</html>

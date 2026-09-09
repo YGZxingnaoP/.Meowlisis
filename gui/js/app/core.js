@@ -46,6 +46,7 @@ const App = {
             sensevoice: { fn: () => API.startSensevoice(), name: 'SenseVoice' },
             sovits: { fn: () => API.startSovits(), name: 'SoVITS' },
             main: { fn: () => API.startMain(), name: '主程序' },
+            painting: { fn: () => API.startPainting(), name: '绘画引擎' },
             napcat: { fn: () => API.startNapcat(), name: 'NapCat' },
             netease: { fn: () => API.startNetease(), name: '网易云' },
             rvc: { fn: () => API.startRvc(), name: 'RVC' },
@@ -180,7 +181,8 @@ const App = {
             'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
             'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() },
             'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() },
-            'turtle_soup': { title: '海龟汤设置', fn: () => Config.turtle_soup() }
+            'turtle_soup': { title: '海龟汤设置', fn: () => Config.turtle_soup() },
+            'flux_painter': { title: 'Flux 绘画设置', fn: () => Config.fluxPainter() }
         };
         const panel = map[id];
         if (!panel) {

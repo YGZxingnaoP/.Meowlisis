@@ -212,6 +212,50 @@ def start_sensevoice():
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
+@app.route('/api/start_painting_comfy', methods=['POST'])
+def start_painting_comfy():
+    """启动内置 ComfyUI 绘画引擎（后台执行，不阻塞）"""
+    try:
+        import threading
+        from func.toolbox.flux_painter.config import TBFluxPainterConfig
+        from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
+
+        def _boot():
+            try:
+                get_managed_painter(TBFluxPainterConfig()).start()
+            except Exception:
+                pass
+
+        threading.Thread(target=_boot, daemon=True).start()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/stop_painting_comfy', methods=['POST'])
+def stop_painting_comfy():
+    """停止由本面板启动的内置引擎（外部自建服务不受影响）"""
+    try:
+        from func.toolbox.flux_painter.config import TBFluxPainterConfig
+        from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
+        get_managed_painter(TBFluxPainterConfig()).stop()
+        return jsonify({'status': 'ok'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/painting_comfy_status', methods=['GET'])
+def painting_comfy_status():
+    """查询内置引擎是否在线"""
+    try:
+        from func.toolbox.flux_painter.config import TBFluxPainterConfig
+        from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
+        running = get_managed_painter(TBFluxPainterConfig()).health()
+        return jsonify({'running': running, 'url': f"http://127.0.0.1:{TBFluxPainterConfig().comfy_port}"})
+    except Exception as e:
+        return jsonify({'running': False, 'message': str(e)})
+
+
 @app.route('/api/mic', methods=['POST'])
 def mic_toggle():
     """闭麦开关：转发到主程序 api.py（1800）的 /mic 接口"""

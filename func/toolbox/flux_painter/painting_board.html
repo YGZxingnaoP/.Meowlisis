@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>喵的画板 · Flux</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #17141f; color: #ece7f5; font-family: "Microsoft YaHei", sans-serif;
+         min-height: 100vh; display: flex; justify-content: center; }
+  .wrap { width: min(1080px, 96vw); padding: 20px 8px 60px; }
+  h1 { font-size: 18px; opacity: .8; margin: 6px 0 14px; text-align: center; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .site-box { font-size: 12px; }
+  .site-box select { background: #2a2340; color: #ece7f5; border: 1px solid #4a3d6b;
+                     border-radius: 8px; padding: 4px 6px; margin-right: 6px; max-width: 260px; }
+  .site-box button { background: #6c5ce7; color: #fff; border: 0; border-radius: 999px;
+                     padding: 5px 14px; cursor: pointer; }
+  .stage { display: flex; gap: 18px; align-items: flex-start; }
+  .panel { background: #221c31; border: 1px solid #372d4f; border-radius: 14px; padding: 14px; }
+  .side { flex: 1 1 40%; min-height: 220px; }
+  .main { flex: 1 1 60%; text-align: center; }
+  .label { font-size: 12px; opacity: .55; margin-bottom: 6px; }
+  #promptBox { font-size: 12px; line-height: 1.7; max-height: 46vh; overflow-y: auto;
+               white-space: pre-wrap; word-break: break-all; color: #cfc6e6; }
+  #positiveBox { font-size: 12px; line-height: 1.6; color: #ffd9a0; word-break: break-all; }
+  #negativeBox { font-size: 11px; line-height: 1.5; color: #b9a9d6; word-break: break-all; }
+  #statusBar { margin-top: 10px; font-size: 13px; color: #9fe0a8; min-height: 20px; }
+  #progressBar { display: none; margin-top: 8px; height: 6px; border-radius: 3px;
+                 background: #372d4f; overflow: hidden; }
+  #progressFill { height: 100%; width: 0%; background: linear-gradient(90deg,#ff9fb0,#c9a0ff); }
+  #imageBox img { max-width: 100%; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #reviewArea { display: none; margin-top: 14px; }
+  #rejectedText { display: none; font-size: 22px; color: #ff9fb0; margin-top: 30vh; }
+  .btn { display: inline-block; padding: 10px 26px; border-radius: 999px; border: 0;
+         font-size: 15px; cursor: pointer; margin: 0 6px; }
+  .btn-ok { background: #6fcf97; color: #10231a; }
+  .btn-no { background: #eb5757; color: #fff; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <h1>🎨 喵的画板 · Flux 文生图</h1>
+    <div class="site-box">
+      <select id="siteSel"></select>
+      <button onclick="gotoSite()">🔗 画师站</button>
+    </div>
+  </div>
+  <div class="stage">
+    <div class="panel side">
+      <div class="label">AI 思考 / 提示词</div>
+      <div id="promptBox">（等待任务…）</div>
+      <div id="promptArea" class="hidden">
+        <div class="label" style="margin-top:12px">最终提示词</div>
+        <div id="positiveBox"></div>
+        <div class="label" style="margin-top:10px">负向</div>
+        <div id="negativeBox"></div>
+      </div>
+      <div id="statusBar"></div>
+      <div id="progressBar"><div id="progressFill"></div></div>
+    </div>
+    <div class="panel main">
+      <div id="imageBox"></div>
+      <div id="reviewArea">
+        <div class="label">主人检察一下这幅画~</div>
+        <button class="btn btn-ok" onclick="review(1)">✓ 通过，展示吧</button>
+        <button class="btn btn-no" onclick="review(0)">✗ 不给看</button>
+      </div>
+      <div id="rejectedText">不给看不给看awa</div>
+    </div>
+  </div>
+</div>
+<script>
+const params = new URLSearchParams(location.search);
+const channel = params.get('channel') || 'live';
+const ws = new WebSocket(`ws://${location.hostname}:8767/?channel=${encodeURIComponent(channel)}`);
+let promptBuf = '';
+let sites = [];
+
+function el(id){ return document.getElementById(id); }
+function setStatus(t){ el('statusBar').textContent = t || ''; }
+function gotoSite() {
+  const sel = el('siteSel');
+  const url = sites[sel.selectedIndex] && sites[sel.selectedIndex].url;
+  if (url) window.open(url, '_blank');
+}
+
+ws.onmessage = (ev) => {
+  let m; try { m = JSON.parse(ev.data); } catch(e){ return; }
+  switch (m.type) {
+    case 'hello':
+      setStatus('已连接画板频道 ' + channel);
+      if (Array.isArray(m.artist_sources) && m.artist_sources.length) {
+        sites = m.artist_sources;
+        const sel = el('siteSel');
+        sel.innerHTML = '';
+        m.artist_sources.forEach(s => {
+          const o = document.createElement('option');
+          o.textContent = s.name || s.url;
+          o.value = s.url || '';
+          sel.appendChild(o);
+        });
+      }
+      break;
+    case 'producing':
+      promptBuf += m.text || '';
+      if (promptBuf.length > 9000) promptBuf = promptBuf.slice(-6000);
+      el('promptBox').textContent = promptBuf;
+      el('promptBox').scrollTop = el('promptBox').scrollHeight;
+      break;
+    case 'prompt':
+      el('promptArea').classList.remove('hidden');
+      el('positiveBox').textContent = m.positive || '';
+      el('negativeBox').textContent = m.negative || '';
+      break;
+    case 'progress':
+      el('progressBar').style.display = 'block';
+      el('progressFill').style.width = (m.text === '生成完成') ? '100%' : '45%';
+      setStatus('⏳ ' + (m.text || ''));
+      break;
+    case 'done':
+      el('progressBar').style.display = 'none';
+      setStatus('✅ 画好啦');
+      el('imageBox').innerHTML = `<img src="${m.image}" alt="画作">`;
+      el('reviewArea').style.display = 'none';
+      el('rejectedText').style.display = 'none';
+      break;
+    case 'review':
+      el('progressBar').style.display = 'none';
+      el('imageBox').innerHTML = '';
+      el('reviewArea').style.display = 'block';
+      el('rejectedText').style.display = 'none';
+      setStatus('🔍 等你检查～');
+      break;
+    case 'rejected':
+      el('reviewArea').style.display = 'none';
+      el('rejectedText').style.display = 'block';
+      setStatus('主人说不给看呢 awa');
+      break;
+    case 'error':
+      setStatus('⚠️ ' + (m.text || '出错了'));
+      break;
+  }
+};
+ws.onclose = () => setStatus('连接断开');
+function review(pass) {
+  fetch(`/api/review?channel=${encodeURIComponent(channel)}&pass=${pass ? 1 : 0}`);
+  setStatus(pass ? '通过啦，展示中…' : '收到，不给看awa');
+}
+</script>
+</body>
+</html>

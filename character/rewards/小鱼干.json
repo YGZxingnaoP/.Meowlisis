@@ -3,8 +3,8 @@
   "unit": "条",
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
-  "total_acquired": 6.1,
-  "balance": 4.2,
+  "total_acquired": 7.1,
+  "balance": 4.6,
   "history": [
     {
       "ts": 1788600163,
@@ -161,6 +161,49 @@
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"
+    },
+    {
+      "ts": 1788760867,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788760922,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788761075,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788784325,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788785007,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788785087,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1788791286,
+      "type": "gift",
+      "delta": 1.0,
+      "gift": "粉丝团灯牌x10",
+      "user": "翼天_筱羽OuO"
     }
   ]
 }

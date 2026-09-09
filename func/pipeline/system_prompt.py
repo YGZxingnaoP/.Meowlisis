@@ -127,6 +127,11 @@ class SystemPromptBridge:
             pass
         return prompt
 
+    @staticmethod
+    def _append_painting(prompt: str, session_key: str = "") -> str:
+        """（保留）绘画提示块注入：当前未启用，如未来需要可在此追加"""
+        return prompt
+
     # ==================== 各场景完整提示词 ====================
     def get_poke_prompt(self) -> str:
         """戳一戳发牢骚专用提示词：仅前置词 + 自定义后置词（不含角色卡、用户记忆、日期、摘要）"""

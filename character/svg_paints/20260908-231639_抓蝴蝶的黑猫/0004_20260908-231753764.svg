@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="600" height="800" viewBox="0 0 600 800"><rect x="0" y="0" width="600" height="800" fill="#E3F2FD" />
+        
+        <path d="M0,600 Q150,580 300,620 T600,590 L600,800 L0,800 Z" fill="#C5E1A5" stroke="#000000" stroke-width="4"/>
+        
+        <circle cx="100" cy="700" r="5" fill="#FFEB3B" />
+        <circle cx="150" cy="720" r="4" fill="#FFEB3B" />
+        <circle cx="500" cy="680" r="5" fill="#FFEB3B" />
+        <circle cx="450" cy="750" r="4" fill="#FFEB3B" /><circle cx="200" cy="200" r="30" fill="#FFFFFF" opacity="0.4" />
+        <circle cx="500" cy="300" r="40" fill="#FFFFFF" opacity="0.3" />
+        <circle cx="300" cy="100" r="20" fill="#FFFFFF" opacity="0.5" /><ellipse cx="300" cy="610" rx="90" ry="110" fill="#FFFFFF" stroke="#000000" stroke-width="4"/>
+        
+        <path d="M280,550 Q300,570 320,550 Z" fill="#E0E0E0" opacity="0.5"/>
+        
+        <rect x="250" y="530" width="100" height="70" rx="15" fill="#FFFFFF" stroke="#000000" stroke-width="4"/>
+        
+        <line x1="270" y1="560" x2="270" y2="590" stroke="#000000" stroke-width="2"/>
+        <line x1="330" y1="560" x2="330" y2="590" stroke="#000000" stroke-width="2"/>
+        
+        <path d="M250,590 L350,590 L370,680 L230,680 Z" fill="#FFFFFF" stroke="#000000" stroke-width="4"/>
+        
+        <line x1="270" y1="590" x2="260" y2="680" stroke="#000000" stroke-width="2"/>
+        <line x1="290" y1="590" x2="280" y2="680" stroke="#000000" stroke-width="2"/>
+        <line x1="310" y1="590" x2="320" y2="680" stroke="#000000" stroke-width="2"/>
+        <line x1="330" y1="590" x2="340" y2="680" stroke="#000000" stroke-width="2"/><path d="M220,430 Q200,550 280,600 L320,600 Q400,550 380,430 Z" fill="#1a1a1a" stroke="#000000" stroke-width="4"/>
+        
+        <ellipse cx="240" cy="480" rx="15" ry="40" fill="#444444" transform="rotate(-20 240 480)" />
+        <ellipse cx="360" cy="480" rx="15" ry="40" fill="#444444" transform="rotate(20 360 480)" /><circle cx="300" cy="430" r="70" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+        
+        <polygon points="240,380 210,300 280,350" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+        <polygon points="360,380 390,300 320,350" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+        
+        <polygon points="240,370 225,320 270,355" fill="#FFD1DC" opacity="0.6" /><path d="M230,430 Q250,350 300,370 Q350,350 370,430 Q340,380 300,390 Q260,380 230,430 Z" fill="#1a1a1a" stroke="#000000" stroke-width="4" />
+        
+        <path d="M250,380 Q270,360 300,380" fill="none" stroke="#888888" stroke-width="4" stroke-linecap="round" /><path d="M260,390 Q270,380 280,390" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" />
+        <path d="M320,390 Q330,380 340,390" fill="none" stroke="#000000" stroke-width="3" stroke-linecap="round" /><ellipse cx="270" cy="430" rx="8" ry="12" fill="#000000" />
+        <ellipse cx="330" cy="430" rx="8" ry="12" fill="#000000" />
+        
+        <circle cx="272" cy="426" r="3" fill="#FFFFFF" />
+        <circle cx="332" cy="426" r="3" fill="#FFFFFF" /><path d="M290,450 Q300,460 310,450 Q300,470 290,450 Z" fill="#FF6B6B" stroke="#000000" stroke-width="2" />
+        
+        <circle cx="250" cy="440" r="10" fill="#FFD1DC" opacity="0.5" />
+        <circle cx="350" cy="440" r="10" fill="#FFD1DC" opacity="0.5" /><path d="M300,360 Q320,320 340,340 Q330,360 310,360 Z" fill="#1a1a1a" stroke="#000000" stroke-width="4" /><g transform="translate(360, 360)">
+            <path d="M0,0 Q-20,-20 -30,0 Q-20,20 0,0 Z" fill="#87CEEB" stroke="#000000" stroke-width="2" />
+            <path d="M0,0 Q20,-20 30,0 Q20,20 0,0 Z" fill="#87CEEB" stroke="#000000" stroke-width="2" />
+            <circle cx="0" cy="0" r="5" fill="#FFEB3B" stroke="#000000" stroke-width="2" />
+        </g><ellipse cx="250" cy="680" rx="30" ry="20" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+        <ellipse cx="350" cy="680" rx="30" ry="20" fill="#FFFFFF" stroke="#000000" stroke-width="4" /><path d="M390,650 Q450,600 430,550 Q410,500 430,480" fill="none" stroke="#000000" stroke-width="20" stroke-linecap="round" />
+        <path d="M390,650 Q450,600 430,550 Q410,500 430,480" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round" /><g transform="translate(220, 550) rotate(-30)">
+            <rect x="-10" y="-50" width="20" height="100" rx="10" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+            
+            <circle cx="-10" cy="-60" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+            <circle cx="0" cy="-65" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+            <circle cx="10" cy="-60" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+        </g><g transform="translate(380, 550) rotate(30)">
+            <rect x="-10" y="-50" width="20" height="100" rx="10" fill="#FFFFFF" stroke="#000000" stroke-width="4" />
+            
+            <circle cx="-10" cy="-60" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+            <circle cx="0" cy="-65" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+            <circle cx="10" cy="-60" r="5" fill="#FFFFFF" stroke="#000000" stroke-width="3" />
+        </g></svg>
