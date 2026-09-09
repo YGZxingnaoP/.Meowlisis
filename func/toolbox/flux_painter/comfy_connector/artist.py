@@ -46,19 +46,20 @@ class TBArtistPicker:
         return self._cache
 
     def search(self, keyword, top=5):
-        """按名字/词检索画师，返回 [{name, id, post_count}]"""
+        """按名字检索画师：精确名优先，其次子串；返回 [{name, id, post_count}]"""
         kw = (keyword or "").strip().lower()
         if not kw:
             return []
-        hits = []
+        exact, subs = [], []
         for a in self._load():
             name = (a.get("name") or "").lower()
-            if kw in name:
-                hits.append(a)
-            if len(hits) >= top * 3:
-                break
-        hits.sort(key=lambda x: x.get("post_count") or 0, reverse=True)
-        return hits[:top]
+            if name == kw:
+                exact.append(a)
+            elif kw in name:
+                subs.append(a)
+        for lst in (exact, subs):
+            lst.sort(key=lambda x: x.get("post_count") or 0, reverse=True)
+        return (exact + subs)[:top]
 
     def pick_artists(self, count=1):
         """从画师库随机挑选 count 名画师（返回条目列表）"""

@@ -93,6 +93,33 @@ class TBFluxPainterConfig:
         # ===== 审查模式 =====
         self.review_enabled = bool(cfg.get("review_enabled", False))
 
+        # ===== 常驻画师名单（未点名时随机抽取） =====
+        raw_artists = cfg.get("artists") or []
+        if isinstance(raw_artists, str):
+            raw_artists = [x for x in re.split(r"[\s,，;；]+", raw_artists) if x.strip()]
+        self.artists = []
+        for a in raw_artists:
+            a = str(a or "").strip().lstrip("@").strip()
+            if a and a not in self.artists:
+                self.artists.append(a)
+
+        # ===== 点名角色解析（词典 → 缓存 → 萌娘百科） =====
+        self.moegirl_lookup = bool(cfg.get("moegirl_lookup", True))
+        prd = self.prompt_reference_dir
+        self.role_map_file = os.path.join(prd, "role_map.json")
+        self.role_cache_file = os.path.join(prd, "role_cache.json")
+
+        # ===== 群聊裸露审查（NudeNet onnx） =====
+        nc = cfg.get("nsfw_check") or {}
+        self.nsfw_enabled = bool(nc.get("enabled", False))
+        self.nsfw_mode = str(nc.get("mode", "nudenet"))
+        self.nsfw_threshold = float(nc.get("threshold", 0.45))
+        self.nsfw_fail = str(nc.get("fail_action", "dm"))
+        self.nsfw_model_path = str(nc.get("model_path",
+                                          os.path.join(".ComfyNode", "nsfw", "nudenet.onnx")) or "")
+        self.nsfw_model_url = str(nc.get("model_url",
+                                         "https://huggingface.co/vladmandic/nudenet/resolve/main/nudenet.onnx") or "")
+
         # ===== 归档 / 记忆 / TTS =====
         self.temp_dir = str(cfg.get("temp_dir", os.path.join(".temp", "flux_paint")) or
                             os.path.join(".temp", "flux_paint"))

@@ -486,6 +486,50 @@ window.FluxChips = {
     }
 };
 
+/* 常驻画师 chips：同画布 chips 交互，值写 flux_painter.artists（空格分隔画师名） */
+window.FluxArtistChips = {
+    norm(v) {
+        let list = [];
+        if (Array.isArray(v)) list = v.map(String);
+        else if (typeof v === 'string') list = v.split(/[\s,，;；]+/);
+        else return [];
+        return list.map(s => String(s).trim().replace(/^@/, '')).filter(Boolean);
+    },
+    join() {
+        const box = document.getElementById('flux-artist-chips');
+        if (!box) return '';
+        return Array.from(box.querySelectorAll('.split-tag')).map(s => s.dataset.v).join(' ');
+    },
+    sync() {
+        const hid = document.getElementById('flux-artist-value');
+        if (hid) hid.value = FluxArtistChips.join();
+    },
+    key(e, input) {
+        if (e.key === 'Enter' || e.key === ',' || e.key === '，' || e.key === ';' || e.key === '；') {
+            e.preventDefault();
+            FluxArtistChips.add(input);
+        }
+    },
+    add(input) {
+        const t = (input.value || '').trim().replace(/^@/, '');
+        input.value = '';
+        if (!t) return;
+        const box = document.getElementById('flux-artist-chips');
+        if (!box) return;
+        const exists = Array.from(box.querySelectorAll('.split-tag')).some(s => s.dataset.v === t);
+        if (!exists) {
+            box.insertAdjacentHTML('beforeend',
+                `<span class="split-tag" data-v="${t}">@${t}<button type="button" class="split-tag-remove" onclick="FluxArtistChips.remove(this)">&times;</button></span>`);
+        }
+        FluxArtistChips.sync();
+    },
+    remove(btn) {
+        const span = btn.closest('.split-tag');
+        if (span) span.remove();
+        FluxArtistChips.sync();
+    }
+};
+
 if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
     fluxPainter() {
         const canvasVals = FluxChips.norm(this._val('flux_painter.canvas_sizes', ['1024x1024', '1080x1960']));
@@ -497,6 +541,9 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
         }).join('');
         const samplerCur = this._val('flux_painter.sampler_name', 'er_sde');
         const schedCur = this._val('flux_painter.sampler_scheduler', 'simple');
+        const artistsCur = FluxArtistChips.norm(this._val('flux_painter.artists', []));
+        const artistChipsHtml = artistsCur.map(v =>
+            `<span class="split-tag" data-v="${v}">@${v}<button type="button" class="split-tag-remove" onclick="FluxArtistChips.remove(this)">&times;</button></span>`).join('');
 
         let h = this._section('Flux 绘画') +
             this._check('启用绘画', 'flux_painter.enabled', true) +
@@ -508,6 +555,13 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             this._num('WebSocket 端口', 'flux_painter.ws_port', 8767, 1, 65535, 1) +
             this._num('ComfyUI 端口', 'flux_painter.comfy.port', 8188, 1, 65535, 1) +
             this._check('审查模式', 'flux_painter.review_enabled', false) +
+            this._check('群聊裸露审查', 'flux_painter.nsfw_check.enabled', false) +
+            this._check('角色查证(萌娘百科)', 'flux_painter.moegirl_lookup', true) +
+            `<div class="form-group"><label>${this._t('常驻画师')}</label>
+                <div class="split-tags" id="flux-artist-chips">${artistChipsHtml}</div>
+                <input type="hidden" data-path="flux_painter.artists" id="flux-artist-value" value="${artistsCur.join(' ')}">
+                <input type="text" placeholder="${this._t('输入画师名回车添加；未点名时每画随机抽1个')}" onkeydown="FluxArtistChips.key(event,this)">
+            </div>` +
             `<div class="form-group"><label>${this._t('画布尺寸')}</label>
                 <div class="split-tags" id="flux-canvas-chips">${chipsHtml}</div>
                 <input type="hidden" data-path="flux_painter.canvas_sizes" id="flux-canvas-value" value="${canvasVals.join(' ')}">

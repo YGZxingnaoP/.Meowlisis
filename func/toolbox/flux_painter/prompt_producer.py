@@ -23,6 +23,10 @@ PRODUCE_TOOL = {
                           "description": "画完后对主人说的话：喵系卖萌口吻（可带 主人/喵），50 字以内"},
                 "canvas": {"type": "string", "description": "画布规格",
                            "enum": ["1024x1024", "1080x1960"]},
+                "character": {"type": "string",
+                              "description": "若主人点名了具体动漫/游戏角色，填该角色中文常用名（如 阿尔托莉雅、初音未来）；未点名则省略"},
+                "character_known": {"type": "boolean",
+                                    "description": "仅当填写了 character 时才有意义：你是否完全了解该角色的外观特征(发型/发色/瞳色/服饰)，能直接写出准确英文标签。不了解就填 false（系统会查证资料后让你重出）"},
             },
             "required": ["title", "positive", "reply", "canvas"],
         },
@@ -171,8 +175,9 @@ class TBPromptProducer:
                 artist_kw = kw
         return style_extra, artist_kw
 
-    def run(self, user_text, username="主人", persona="", on_stream=None):
-        """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段"""
+    def run(self, user_text, username="主人", persona="", on_stream=None, role_card=None):
+        """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段
+        role_card: Optional[str] 点名角色的资料卡文本（char_resolver 拼好），注入后用于补全角色标签"""
         port = self._llm()
         if port is None or not getattr(port, "client", None):
             self.log.error("[flux_painter] 提示词 LLM 不可用")
@@ -182,6 +187,9 @@ class TBPromptProducer:
         system = SYSTEM_RULES
         if getattr(self.config, "adult_mode", True):
             system += UNLOCK_TEXT
+        if role_card:
+            system += ("\n\n" + role_card
+                       + "\n据此补全/修正 positive 中该角色的英文标签与外观，角色辨识度优先。")
         if sections:
             system += "\n\n【法典相关章节参考(按需取用)】\n" + sections[:7000]
         if head:

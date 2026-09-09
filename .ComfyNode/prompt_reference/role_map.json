@@ -1,0 +1,62 @@
+{
+  "阿尔托莉雅": {
+    "aliases": ["吾王", "saber", "阿尔托莉雅·潘德拉贡", "呆毛王", "阿尔托莉雅·潘德拉贡alter", "黑saber"],
+    "tags": ["saber", "artoria pendragon", "blonde hair", "green eyes", "ahoge", "blue dress", "armor", "noble"],
+    "en": "artoria pendragon (fate)",
+    "appearance": "金色长发、绿色眼瞳、呆毛，蓝白礼裙/铠甲"
+  },
+  "初音未来": {
+    "aliases": ["miku", "初音", "葱娘"],
+    "tags": ["hatsune miku", "long hair", "teal hair", "hair between eyes", "neckerchief"],
+    "en": "hatsune miku",
+    "appearance": "蓝绿色双马尾、学生制服风演出服"
+  },
+  "蕾姆": {
+    "aliases": ["雷姆", "rem"],
+    "tags": ["rem (re zero)", "short hair", "blue hair", "blue eyes", "maid"],
+    "en": "rem (re zero)",
+    "appearance": "天蓝色短发、女仆装，额前刘海别针"
+  },
+  "拉姆": {
+    "aliases": ["ram", "拉姆拉姆"],
+    "tags": ["ram (re zero)", "pink hair", "pink eyes", "maid"],
+    "en": "ram (re zero)",
+    "appearance": "粉色长发、女仆装"
+  },
+  "时崎狂三": {
+    "aliases": ["狂三", "tokisaki kurumi"],
+    "tags": ["tokisaki kurumi", "long hair", "black hair", "heterochromia", "golden eyes", "red eyes", "gothic"],
+    "en": "tokisaki kurumi",
+    "appearance": "黑长直双马尾、异色瞳(金红)、哥特裙装"
+  },
+  "博丽灵梦": {
+    "aliases": ["灵梦", "hakurei reimu"],
+    "tags": ["hakurei reimu", "brown hair", "brown eyes", "red hair ribbon", "miko", "touhou"],
+    "en": "hakurei reimu",
+    "appearance": "黑色长发、红白巫女服、大蝴蝶结"
+  },
+  "雾雨魔理沙": {
+    "aliases": ["魔理沙", "kirisame marisa"],
+    "tags": ["kirisame marisa", "blonde hair", "green eyes", "witch hat", "touhou"],
+    "en": "kirisame marisa",
+    "appearance": "金色双马尾、黑白色魔法使装、魔女帽"
+  },
+  "雷电将军": {
+    "aliases": ["雷神", "巴尔泽布", "raiden shogun", "雷电影"],
+    "tags": ["raiden shogun (genshin impact)", "long hair", "purple hair", "purple eyes", "braid", "genshin impact"],
+    "en": "raiden shogun (genshin impact)",
+    "appearance": "紫色长辫、和服+铠甲、太刀"
+  },
+  "纳西妲": {
+    "aliases": ["小草神", "nahida"],
+    "tags": ["nahida (genshin impact)", "white hair", "green eyes", "short hair", "genshin impact", "hat"],
+    "en": "nahida (genshin impact)",
+    "appearance": "白短发绿瞳、白色露脐装+兜帽"
+  },
+  "胡桃": {
+    "aliases": ["hutao", "胡桃堂主"],
+    "tags": ["hu tao (genshin impact)", "brown hair", "dark brown eyes", "twin braids", "genshin impact"],
+    "en": "hu tao (genshin impact)",
+    "appearance": "深棕双辫、黑红主调中国风"
+  }
+}

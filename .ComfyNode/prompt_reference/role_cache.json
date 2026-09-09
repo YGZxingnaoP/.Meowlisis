@@ -1,0 +1,26 @@
+{
+ "阿尔托莉雅": {
+  "ts": 1788933589.332402,
+  "card": {
+   "name": "阿尔托莉雅·潘德拉贡",
+   "source": "moegirl",
+   "known": false
+  }
+ },
+ "初音未来": {
+  "ts": 1788933593.5016181,
+  "card": {
+   "name": "初音未来",
+   "source": "moegirl",
+   "known": false
+  }
+ },
+ "雷姆": {
+  "ts": 1788933599.487017,
+  "card": {
+   "name": "雷姆",
+   "source": "moegirl",
+   "known": false
+  }
+ }
+}

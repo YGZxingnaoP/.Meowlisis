@@ -174,16 +174,76 @@ class TBFluxPainterCore:
             self.log.info(f"[flux_painter] 提示词产出 title={title} len={len(positive)} "
                           f"canvas={canvas_key} request={request[:60]!r}")
 
+            # —— 点名角色解析：词典/缓存命中→注入标签；模型不了解才出网查证→重出一次 ——
+            character = str(elements.get("character") or "").strip()
+            ck = elements.get("character_known")
+            char_known = True if ck is None else bool(ck)
+            if character and not char_known:
+                try:
+                    from func.toolbox.flux_painter.char_resolver import TBRoleResolver
+                    resolver = TBRoleResolver(self.config)
+                    card = resolver.resolve(character)
+                    if card and card.get("tags"):
+                        role_prefix = ", ".join(str(t).strip()
+                                                for t in card["tags"] if str(t).strip())
+                        if role_prefix and not positive.lower().startswith(role_prefix[:10].lower()):
+                            positive = role_prefix + ", " + positive
+                            self.log.info(f"[flux_painter] 词典角色标签注入: {role_prefix[:80]}")
+                    elif card:
+                        role_text = resolver.card_text(card)
+                        if role_text:
+                            again = self.producer.run(
+                                request, username=username,
+                                persona=str(self._context.get("system_prompt") or ""),
+                                on_stream=on_stream, role_card=role_text)
+                            if again and again.get("positive"):
+                                elements = again
+                                positive = str(elements["positive"] or "").strip()
+                                reply = str(elements["reply"] or "画好啦！")
+                                title = str(elements["title"] or session.get("topic") or "画")
+                                canvas_key = elements["canvas"]
+                                self.log.info(f"[flux_painter] 角色查证后重出提示词 title={title} "
+                                              f"card={card.get('name')}")
+                except Exception:
+                    self.log.exception("[flux_painter] 角色解析异常(忽略，按原提示词继续)")
+
             # 画师/风格串 + 质量前缀（脚本侧拼接，模型不输出）
+            # 目标画师 = 点名 artist_kw；未点名但配置了常驻名单 → 随机抽 1
             style_extra, artist_kw = self._style_hint(request)
-            named = []
+            if not artist_kw and self.config.artists:
+                import random
+                artist_kw = random.choice(self.config.artists)
+            named, manual = [], []
             if artist_kw:
+                hit = None
                 try:
                     if self.artist.ensure_data()[0]:
-                        named = self.artist.search(artist_kw, top=1)
+                        hit = self.artist.search(artist_kw, top=1)  # 精确优先
                 except Exception:
-                    pass
-            artist_tags = self.artist.build_artist_tags(named=named, style_tags=style_extra)
+                    hit = None
+                if hit and hit[0].get("name") == artist_kw:
+                    named = [hit[0]]
+                elif hit:
+                    manual.append("@" + str(hit[0].get("name") or "").strip())  # 点名近似→库内全名
+                else:
+                    manual.append("@" + artist_kw)                              # 库外/名单直接按原名
+            for s in style_extra:
+                s = str(s).strip()
+                tag = "@" + s.lstrip("@").strip()
+                if s and tag not in manual:
+                    manual.append(tag)
+            if artist_kw or manual:
+                # 有明确画师意图 → 不自动全库随机补位；default_style 固定收尾
+                parts = ["@" + str(a.get("name") or "").strip() for a in named if a.get("name")]
+                parts += manual
+                for s in self.config.default_style:
+                    s = str(s).strip()
+                    if s and s not in parts:
+                        parts.append(s)
+                artist_tags = ", ".join(parts) + ", " if parts else ""
+            else:
+                # 未点名画师且未配置名单 → 保留原行为（全库随机 1 名 + 默认画风）
+                artist_tags = self.artist.build_artist_tags(named=[], style_tags=[])
             quality = self.config.quality_prefix
             final_positive = ((artist_tags + quality + ", " + positive)
                               if artist_tags else
@@ -448,7 +508,9 @@ class TBFluxPainterCore:
             self.log.exception("[flux_painter] QQ 文本发送失败")
 
     def _send_qq_image(self, session, image_path):
-        """把成品图+角色点评发给 QQ（私聊：点评文字+图；群聊：@+点评+图）"""
+        """把成品图+角色点评发给 QQ。
+        群聊：先做裸露审查（nsfw_check.enabled）→ 命中则群聊只发 @+点评+【私】占位，
+        成品图+点评仅私发给发起人；未命中照常群发图。私聊渠道不审查，原样发送。"""
         try:
             if not self.config.enabled or not image_path or not os.path.isfile(image_path):
                 return
@@ -462,6 +524,39 @@ class TBFluxPainterCore:
             if channel.startswith("qq_group_"):
                 gid = str(qc.get("target_id") or qc.get("group_id") or "")
                 if not gid:
+                    return
+                # —— 群裸图审查 ——
+                nsfw, why = False, "safe(未开启)"
+                if self.config.nsfw_enabled:
+                    try:
+                        from func.toolbox.flux_painter.nsfw_judge import TBNsfwJudge
+                        j = TBNsfwJudge(self.config)
+                        okm, mmsg = j.ensure_model()
+                        if okm:
+                            nsfw, why = j.judge(image_path)
+                        else:
+                            nsfw = self.config.nsfw_fail == "dm"
+                            why = "model:" + mmsg
+                    except Exception as e:
+                        nsfw = self.config.nsfw_fail == "dm"
+                        why = f"judge_error:{e}"
+                    self.log.info(f"[flux_painter] 群裸图审查 {os.path.basename(image_path)} -> {why}")
+                if nsfw:
+                    # 群聊：@发起人 + 点评 + 【私】占位，不带图
+                    msg = []
+                    if owner:
+                        msg.append({"type": "at", "data": {"qq": owner}})
+                        msg.append({"type": "text",
+                                    "data": {"text": " " + reply + "（这张比较大胆，已私发给你啦~【私】）"}})
+                    else:
+                        msg.append({"type": "text",
+                                    "data": {"text": reply + "（已私发给你~【私】）"}})
+                    ncore.call_action_sync("send_group_msg", {"group_id": int(gid), "message": msg})
+                    # 图仅私发给发起人
+                    if owner:
+                        ncore.call_action_sync("send_private_msg", {
+                            "user_id": int(owner),
+                            "message": [{"type": "text", "data": {"text": reply}}, img]})
                     return
                 msg = []
                 if owner:
