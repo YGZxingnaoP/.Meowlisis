@@ -61,6 +61,11 @@ class TBNapCatCore:
         """停止时清理所有缓冲定时器"""
         self.buffer._clear_buffers()
         self.buffer._clear_group_buffers()
+        try:
+            from func.toolbox.napcat.groupchat.group_coordinator import TBGroupReplyCoordinator
+            TBGroupReplyCoordinator().clear()
+        except Exception:
+            pass
 
     # ==================== 回调属性（转发到连接层，保持旧接口可注入） ====================
     @property

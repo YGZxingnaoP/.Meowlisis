@@ -3,6 +3,7 @@
 # 主动发送框架：发送文本/链接/图片/文件/聊天记录，D盘搜索文件，校验链接，供 AI 调用
 
 import os
+import re
 import time
 import urllib.request
 from typing import List, Dict
@@ -227,14 +228,113 @@ class TBSender:
     def _action_and_key(self, target_type: str):
         return ("send_group_msg", "group_id") if target_type == "group" else ("send_private_msg", "user_id")
 
+    def _group_target(self, target_type, target_id):
+        """群目标解析：群号(纯数字)直通；群名按在线群列表解析。返回 (id, err)。"""
+        if str(target_type or "") != "group":
+            return str(target_id or "").strip(), ""
+        raw = str(target_id or "").strip().strip("\"'")
+        if not raw:
+            return None, "目标群为空"
+        if re.fullmatch(r"\d+", raw):
+            return raw, ""
+        try:
+            from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
+            return TBGetGroupList().resolve_id(raw)
+        except Exception as e:
+            return None, f"解析群名失败: {e}"
+
+    @staticmethod
+    def _project_root() -> str:
+        """项目根目录（本文件上溯：文件→active_sender→napcat→toolbox→func→根，共5级）"""
+        return os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__))))))
+
+    def _resolve_existing_path(self, raw: str) -> str:
+        """本地文件路径智能解析：LLM 拼接路径常出错（隐藏目录 .Meowlisis 前缀丢失、
+        凭空加 .image.png 尾巴、盘符/斜杠变形等）。依次尝试多种候选，返回首个真实存在的
+        文件绝对路径；全部失败返回空串。"""
+        raw = (raw or "").strip().strip("\"'")
+        if not raw:
+            return ""
+        root = self._project_root()
+        candidates = []
+
+        def _add(p):
+            if p:
+                p = os.path.normpath(p)
+                if p not in candidates:
+                    candidates.append(p)
+
+        _add(raw)
+        _add(raw.replace("\\", "/"))
+        _add(raw.replace("/", "\\"))
+
+        base = os.path.basename(raw.replace("\\", "/"))
+        # ① 隐藏目录前缀丢失：任意盘符的 Meowlisis / .Meowlisis → 项目根（不再写死 D 盘）
+        m = re.match(r"^([A-Za-z]):[\\/]+\.?Meowlisis[\\/]+(.*)$", raw)
+        if m:
+            _add(os.path.join(root, m.group(2)))
+        # ② LLM 常给存档名凭空加 .image(.png) 尾巴（真实存档无扩展名）
+        no_ext = re.sub(r"\.image(\.(png|jpg|jpeg|webp|gif|bmp))?$", "", base, flags=re.IGNORECASE)
+        if no_ext and no_ext != base:
+            for cand in list(candidates):
+                _add(os.path.join(os.path.dirname(cand), no_ext))
+        # ③ 相对/裸文件名 → 挂到项目根
+        if not re.match(r"^[A-Za-z]:[\\/]", raw):
+            _add(os.path.join(root, raw.replace("\\", "/")))
+        _add(os.path.join(root, base))
+        if no_ext and no_ext != base:
+            _add(os.path.join(root, no_ext))
+        # ④ 兜底：按时间戳在画作存档目录(character/paints)前缀匹配（LLM 文件名常带错后缀/缺目录）。
+        #    存档结构可能为 会话目录(内含 image.png/meta.json) 或 单文件；目录命中则取其内部图片。
+        ts = re.search(r"(\d{8}-\d{6})", raw.replace("\\", "/"))
+        if ts:
+            prefix = ts.group(1)
+            img_names = ("image.png", "image.jpg", "image.jpeg")
+            for dirname_ in ("character/paints", "character", ".temp/flux_paint"):
+                d = os.path.join(root, dirname_)
+                if not os.path.isdir(d):
+                    continue
+                try:
+                    names = os.listdir(d)
+                except Exception:
+                    continue
+                for fn in names:
+                    if not fn.startswith(prefix):
+                        continue
+                    sub = os.path.join(d, fn)
+                    if os.path.isdir(sub):
+                        # 会话目录：取其内部主图
+                        try:
+                            for inner in os.listdir(sub):
+                                ip = os.path.join(sub, inner)
+                                if inner.lower() in img_names or inner.lower().endswith(
+                                        (".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                                    _add(ip)
+                        except Exception:
+                            pass
+                    elif os.path.isfile(sub):
+                        _add(sub)
+        # 返回首个存在
+        for cand in candidates:
+            try:
+                if os.path.isfile(cand):
+                    return cand
+            except Exception:
+                continue
+        return ""
+
     def send_text(self, target_type: str, target_id, text: str) -> str:
         if not text or not target_id:
             return "发送失败：缺少目标或内容"
+        gid, err = self._group_target(target_type, target_id)
+        if not gid:
+            return f"发送失败：{err}"
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             action, key = self._action_and_key(target_type)
             TBNapCatCore().call_action_sync(action, {
-                key: int(target_id),
+                key: int(gid),
                 "message": [{"type": "text", "data": {"text": text}}],
             })
             return f"已发送：{text[:30]}"
@@ -246,9 +346,12 @@ class TBSender:
         """主动 @ 群成员发送（at_qq 为目标 QQ 号，text 为空时仅 @）"""
         if not group_id or not at_qq:
             return "发送失败：缺少群号或 @ 目标"
+        gid, err = self._group_target("group", group_id)
+        if not gid:
+            return f"发送失败：{err}"
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
-            TBNapCatCore().send_group_at_text(group_id, at_qq, text)
+            TBNapCatCore().send_group_at_text(gid, at_qq, text)
             return f"已 @ 发送：{text[:30] if text else '(仅@)'}"
         except Exception:
             self.log.exception("主动 @ 发送失败")
@@ -263,34 +366,48 @@ class TBSender:
     def send_image(self, target_type: str, target_id, file_path: str) -> str:
         if not file_path or not target_id:
             return "发送失败：缺少目标或图片路径"
-        if not os.path.exists(file_path):
-            return f"发送失败：文件不存在 {file_path}"
+        gid, err = self._group_target(target_type, target_id)
+        if not gid:
+            return f"发送失败：{err}"
+        path = self._resolve_existing_path(file_path)
+        if not path:
+            return f"发送失败：文件不存在（已尝试多种路径解析仍找不到）{file_path}"
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             core = TBNapCatCore()
             action, key = self._action_and_key(target_type)
             core.call_action_sync(action, {
-                key: int(target_id),
-                "message": [{"type": "image", "data": {"file": core._to_file_uri(file_path)}}],
+                key: int(gid),
+                "message": [{"type": "image",
+                             "data": {"file": core.api_client._to_file_uri(path)}}],
             })
-            return f"已发送图片：{file_path}"
+            return f"已发送图片：{path}"
         except Exception:
             self.log.exception("主动发送图片失败")
             return "发送失败"
 
     def send_file(self, target_type: str, target_id, file_path: str) -> str:
+        """发送文件：私聊走 NapCat upload_private_file（QQ 私聊不支持 file 段消息），
+        群聊走 upload_group_file（比 file 段消息更稳定，直接入群文件）。"""
         if not file_path or not target_id:
             return "发送失败：缺少目标或文件路径"
-        if not os.path.exists(file_path):
-            return f"发送失败：文件不存在 {file_path}"
+        gid, err = self._group_target(target_type, target_id)
+        if not gid:
+            return f"发送失败：{err}"
+        path = self._resolve_existing_path(file_path)
+        if not path:
+            return f"发送失败：文件不存在（已尝试多种路径解析仍找不到）{file_path}"
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
-            action, key = self._action_and_key(target_type)
-            TBNapCatCore().call_action_sync(action, {
-                key: int(target_id),
-                "message": [{"type": "file", "data": {"file": file_path}}],
-            })
-            return f"已发送文件：{file_path}"
+            core = TBNapCatCore()
+            name = os.path.basename(path)
+            if str(target_type) == "group":
+                core.call_action_sync("upload_group_file", {
+                    "group_id": int(gid), "file": path, "name": name})
+            else:
+                core.call_action_sync("upload_private_file", {
+                    "user_id": int(gid), "file": path, "name": name})
+            return f"已发送文件：{path}"
         except Exception:
             self.log.exception("主动发送文件失败")
             return "发送失败"

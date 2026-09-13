@@ -246,12 +246,20 @@ def stop_painting_comfy():
 
 @app.route('/api/painting_comfy_status', methods=['GET'])
 def painting_comfy_status():
-    """查询内置引擎是否在线"""
+    """查询内置引擎是否在线（常驻服务：返回 pid/启动时间）"""
     try:
         from func.toolbox.flux_painter.config import TBFluxPainterConfig
         from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
-        running = get_managed_painter(TBFluxPainterConfig()).health()
-        return jsonify({'running': running, 'url': f"http://127.0.0.1:{TBFluxPainterConfig().comfy_port}"})
+        cfg = TBFluxPainterConfig()
+        mgr = get_managed_painter(cfg)
+        running = mgr.health()
+        pid, started = mgr._load_pid()
+        own = bool(pid) and mgr._pid_alive(pid)
+        return jsonify({'running': running,
+                        'pid': pid if (running and own) else None,
+                        'started_at': started if (running and own) else '',
+                        'resident': bool(running and own),
+                        'url': f"http://127.0.0.1:{cfg.comfy_port}"})
     except Exception as e:
         return jsonify({'running': False, 'message': str(e)})
 

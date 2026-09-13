@@ -1,5 +1,5 @@
 #环境
-*__pycache__/
+__pycache__/
 .idea/
 .vs/
 *.bin
@@ -88,3 +88,48 @@ todolist.md
 !.ComfyNode/node/*
 !.ComfyNode/scripts/
 !.ComfyNode/scripts/*
+
+# ========== 环境 / 解释器（体积巨大，可重建，不入库）==========
+runtime/
+.venv/
+venv/
+env/
+**/python_embeded/
+**/python_embed/
+**/site-packages/
+**/__pycache__/
+*.py[cod]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+
+# ========== 模型权重 / 推理文件（大文件，不入库）==========
+*.safetensors
+*.ckpt
+*.pth
+*.pt
+*.onnx
+*.gguf
+*.msgpack
+*.h5
+*.tflite
+*.index
+.ComfyNode/python_embeded/
+.ComfyNode/ComfyUI/
+.ComfyNode/models/
+.ComfyNode/output/
+.ComfyNode/nsfw/
+.ComfyNode/artist/
+.SenseVoice/localmodels/
+.SenseVoice/env/
+.Sovits/**/*.ckpt
+.Sovits/**/*.pth
+.RVC/**/*.pth
+.RVC/**/*.index
+.RVC/assets/
+
+# ========== 运行态 / 备份（含密钥，不入库）==========
+config.yml.bak*
+*.bak*
+.ComfyNode/engine.pid
+.ComfyNode/extra_model_paths.yaml

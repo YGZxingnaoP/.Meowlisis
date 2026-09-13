@@ -54,6 +54,15 @@ class TBoxQQResponse:
                 MsgDatabaseBridge().send_to_database(text, username)
             except Exception:
                 self.log.exception("QQ 私聊 → database 处理异常")
+        # 0.7 改图判定（画完 window 秒内的下一条消息：判断是否在上一张图上改）
+        if not is_bot:
+            try:
+                from func.toolbox.flux_painter.edit_router import TBFluxEditRouter
+                qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
+                if TBFluxEditRouter().try_handle(f"qq_private_{user_id}", "directed", text, qq_context, username):
+                    return
+            except Exception:
+                self.log.exception("QQ 私聊改图判定异常")
         # 0.8 napcat 意图分析：命中工具则走工具流程（结果发 QQ），跳过原 LLM 回复
         if not is_bot:
             try:
@@ -159,48 +168,57 @@ class TBoxQQResponse:
             from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
             TBNapCatActive().reset_group(group_id)
 
-        # 1.5 群聊 @ 聚合缓冲协调（@ 后等待该用户后续消息，等待策略与私聊共用，仅检测该用户）
-        has_buffer = self.napcat_core.group_buffer_exists(group_id, user_id)
+        # 群聊回复协调器：统一聚合 @ / 关键词 / 主动触发，2 秒窗口内多人/多触发合并为一次回复
+        coord = self._coord()
 
-        if at_self and not images:
-            # 纯 @ 或 @ + 文字（无图片）：进入缓冲等待后续消息
-            old = self.napcat_core.buffer_group_at(parsed)
-            if old:
-                self._flush_group_at_text(old)
-            return
-
+        # 1.5 @ + 图片：@ 了角色必看，直接走视觉（顺带带上该用户未决的待合并文本）
         if at_self and images:
-            # @ + 图片：@ 了角色必看，直接走视觉；新 @ 先挤出旧缓冲
-            old = self.napcat_core.take_group_buffer(group_id, user_id)
-            if old:
-                self._flush_group_at_text(old)
-            self._reply_group_image(group_id, group_name, user_id, username, text,
+            pending = coord.cancel_user(group_id, user_id)
+            image_text = TBImageSearch.text_from_segments(raw_message)
+            merged = "，".join([t for t in (pending, image_text) if t and t.strip()])
+            self._reply_group_image(group_id, group_name, user_id, username, merged,
                                     images, is_bot, self_id)
             return
 
-        if has_buffer:
-            # 该用户正在 @ 等待中，后续消息（仅检测该用户，不影响其他用户）
+        # 1.6 该用户已在触发窗口内（@ / 关键词续聊）：后续消息合并，绝不另起回复
+        if coord.has_user(group_id, user_id):
             if images:
-                # 图片：取出缓冲文本 + 图片，一次性走视觉（与私聊先文本后图片一致）
-                buf = self.napcat_core.take_group_buffer(group_id, user_id)
-                pending_text = "，".join([t for t in (buf.get("texts") or []) if t and t.strip()]) if buf else ""
+                # 图片：取出待合并文本 + 图片，一次性走视觉（与私聊先文本后图片一致）
+                pending = coord.take_user(group_id, user_id)
                 image_text = TBImageSearch.text_from_segments(raw_message)
-                merged = "，".join([t for t in (pending_text, image_text) if t and t.strip()])
+                merged = "，".join([t for t in (pending, image_text) if t and t.strip()])
                 self._reply_group_image(group_id, group_name, user_id, username, merged,
                                         images, is_bot, self_id)
                 return
-            # 文本 / 表情：合并到缓冲，重置计时
+            # 文本 / 表情：合并进该用户条目并重置计时
             emote_text = self._extract_emote_text(raw_message)
-            if emote_text:
-                merged_parsed = dict(parsed)
-                merged_parsed["text"] = "，".join([t for t in (text, emote_text) if t and t.strip()])
-                self.napcat_core.add_group_buffer_text(merged_parsed)
-            else:
-                self.napcat_core.add_group_buffer_text(parsed)
+            merge_text = "，".join([t for t in (text, emote_text) if t and t.strip()])
+            coord.add_text(group_id, user_id, merge_text)
             return
 
-        # 2. 普通图片检测（非 @ 且无缓冲）：vision_decide 深度思考判断是否看
-        if images:
+        # 1.7 @ 触发（无图）：进入协调器（窗口内后续消息合并 / 多人合并）
+        if at_self:
+            coord.offer({
+                "group_id": group_id, "group_name": group_name, "user_id": user_id,
+                "username": username, "self_id": self_id, "text": text,
+                "kind": "at", "at_self": True, "has_real_text": bool(text.strip()),
+            })
+            return
+
+        # 1.8 关键词命中：与 @ 完全同等待遇（进入协调器，窗口内合并；@ 等待期内不会走到这里）
+        if text and self._keyword_hit(text):
+            self.log.info(f"[NapCat群聊] 关键词命中，触发回复: {text[:20]}")
+            coord.offer({
+                "group_id": group_id, "group_name": group_name, "user_id": user_id,
+                "username": username, "self_id": self_id, "text": text,
+                "kind": "keyword", "at_self": True, "has_real_text": True,
+            })
+            return
+
+        # 2. 普通图片检测（非 @ 且无缓冲）：[暂禁 2026-09-09] 主动判断"是否需要看图/是否回复"
+        #    原逻辑：vision_decide 深度思考决定要不要看图；已临时禁用（恢复：改回 if images:）。
+        #    影响：普通图片消息不再主动触发看图判断，直接落入下方正常回复决策；@+图/等待缓冲图等必看路径不受影响。
+        if False and images:
             try:
                 from func.toolbox.napcat.image.vision_decide import TBVisionDecide
                 chat_record = None
@@ -217,79 +235,202 @@ class TBoxQQResponse:
             except Exception:
                 self.log.exception("群聊图片检测异常")
 
-        # 3. 主动回复决策
+        # 3. 主动回复决策：进入协调器，与其它触发（@ / 关键词）在 2 秒窗口内合并
         from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
-        active = TBNapCatActive()
-        decision = active.on_message(parsed)
+        decision = TBNapCatActive().on_message(parsed)
         action = decision.get("action")
         if action == "skip":
             return
+        coord.offer({
+            "group_id": group_id, "group_name": group_name, "user_id": user_id,
+            "username": username, "self_id": self_id, "text": text,
+            "kind": "active", "at_self": False, "has_real_text": bool(text.strip()),
+            "force": bool(decision.get("force")), "decide": (action == "decide"),
+        })
 
-        # 4. 群聊历史作为短期记忆上下文 + 群聊档案（无 @ 时替换用户档案）
+    # ==================== 群聊回复协调器 ====================
+    def _coord(self):
+        """获取群聊回复协调器并绑定派发回调"""
+        from func.toolbox.napcat.groupchat.group_coordinator import TBGroupReplyCoordinator
+        c = TBGroupReplyCoordinator()
+        c.set_flush_handler(self._coordinator_flush)
+        return c
+
+    def _coordinator_flush(self, group_id: str, merged: dict):
+        """协调器窗口到期：执行一次合并回复"""
+        try:
+            self._reply_group_merged(merged)
+        except Exception:
+            self.log.exception("群聊协调器回复异常")
+
+    def _keyword_hit(self, text: str) -> bool:
+        """本地关键词命中判断（子串匹配，零 LLM）"""
+        if not getattr(self.napcat_config, "group_keyword_enabled", False):
+            return False
+        kws = getattr(self.napcat_config, "group_keywords", None) or []
+        if not kws or not text:
+            return False
+        cs = getattr(self.napcat_config, "group_keyword_case_sensitive", False)
+        t = text if cs else text.lower()
+        for k in kws:
+            kk = str(k) if cs else str(k).lower()
+            if kk and kk in t:
+                return True
+        return False
+
+    def reply_group_at(self, buf: dict, text: str):
+        """群聊回复入口（@ 缓冲 flush / 重新投递）：统一进入协调器，与其它触发合并。
+
+        - text 由调用方计算（纯 @ 时为「{username}@了你」占位，否则为合并文本）；
+        - has_real_text 决定是否写用户档案与短期记忆，避免占位污染。
+        """
+        texts = [t for t in (buf.get("texts") or []) if t and t.strip()]
+        self._coord().offer({
+            "group_id": str(buf.get("group_id", "")),
+            "group_name": str(buf.get("group_name", "")),
+            "user_id": str(buf.get("user_id", "")),
+            "username": str(buf.get("username", "")),
+            "self_id": str(buf.get("self_id", "")),
+            "text": text,
+            "kind": "at", "at_self": True, "has_real_text": bool(texts),
+        })
+
+    # ==================== 合并回复执行 ====================
+    def _reply_group_merged(self, merged: dict):
+        """按合并结果派发回复：directed（@/关键词）或 active（主动插话）"""
+        gid = str(merged.get("group_id", "") or "")
+        group_name = str(merged.get("group_name", "") or "")
+        self_id = str(merged.get("self_id", "") or "")
+        mode = str(merged.get("mode") or "active")
+        merged_text = str(merged.get("merged_text") or "")
+        participants = merged.get("participants") or []
+        at_users = merged.get("at_users") or []
+        if mode == "at":
+            self._reply_group_directed(gid, group_name, self_id, merged_text, participants, at_users)
+        else:
+            self._reply_group_active(gid, group_name, self_id, merged_text, participants,
+                                     bool(merged.get("force")))
+
+    def _reply_group_directed(self, gid: str, group_name: str, self_id: str, merged_text: str,
+                              participants: list, at_users: list):
+        """@ / 关键词合并回复：改图判定 → 意图分析（工具）→ 破甲 → 流式回复"""
+        primary = (at_users[0] if at_users else (participants[0] if participants else {})) or {}
+        primary_uid = str(primary.get("user_id", "") or "")
+        primary_name = str(primary.get("username", "") or "")
+
+        # 改图判定（画完 120s 内的下一条完整 @/关键词消息；命中则续画并结束）
+        try:
+            from func.toolbox.flux_painter.edit_router import TBFluxEditRouter
+            qq_context = {"message_type": "group", "target_id": gid, "group_id": gid,
+                          "group_name": group_name, "self_id": self_id, "user_id": primary_uid}
+            if TBFluxEditRouter().try_handle(f"qq_group_{gid}", "directed", merged_text,
+                                             qq_context, primary_name):
+                return
+        except Exception:
+            self.log.exception("群聊改图判定异常")
+
         from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
         from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
-        short_memory = TBGetGroupRecord().fetch(group_id, self_id)
+        short_memory = TBGetGroupRecord().fetch(gid, self_id)
         group_info_text = TBGroupInfo().build_prompt(group_name)
 
-        # @ 触发时用 QQ 号解析稳定用户档案昵称（用户档案按昵称存取）
-        reply_username = None
-        if at_self:
-            try:
-                from func.toolbox.napcat.groupchat.user_nickname import TBUserNicknameMap
-                reply_username = TBUserNicknameMap().resolve(user_id)
-            except Exception:
-                reply_username = decision.get("username")
-            if not reply_username:
-                reply_username = decision.get("username")
-        force = bool(decision.get("force"))
+        # 稳定档案昵称
+        reply_username = self._resolve_username(primary_uid) or primary_name
 
-        # 5. @ 触发：记录用户档案（始终）+ 用户消息短期记忆
-        if at_self and not is_bot:
-            # 用户档案记录：始终执行（不跟随长期记忆开关），群聊 @ 同样有效
+        # 记录各参与者用户档案 + 短期记忆（仅真实文本，机器人跳过）
+        for p in participants:
+            if not p.get("has_real_text"):
+                continue
+            uid = str(p.get("user_id", "") or "")
+            ptext = str(p.get("text", "") or "")
+            if not ptext.strip() or self._is_bot(uid):
+                continue
+            rn = self._resolve_username(uid) or str(p.get("username", "") or "")
             try:
-                self.napcat_ltmem.record_user(reply_username or username, text)
+                self.napcat_ltmem.record_user(rn, ptext)
             except Exception:
-                self.log.exception("群聊 @ 记录用户档案失败")
-        if at_self and self.napcat_config.short_mem_enabled and not is_bot:
-            self.short_memory.save({
-                "role": "user",
-                "content": f"【来自QQ群的消息】{text}",
-                "type": "qq_response",
-            }, self.napcat_config.short_mem_rounds)
+                self.log.exception("群聊记录用户档案失败")
+            if self.napcat_config.short_mem_enabled:
+                self.short_memory.save({
+                    "role": "user",
+                    "content": f"【来自QQ群的消息】{ptext}",
+                    "type": "qq_response",
+                }, self.napcat_config.short_mem_rounds)
 
-        # 6. 生成回复
-        if action == "reply":
-            # @ 或 pass 次数用尽后强制回复：流式输出
+        # 意图分析（工具：天气/新闻/待办/唱歌/海龟汤/画图等）
+        try:
+            from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
+            qq_context = {"message_type": "group", "target_id": gid, "user_id": primary_uid,
+                          "group_name": group_name, "self_id": self_id}
+            if TBNapcatAnalysis().decide_and_run(merged_text, reply_username, qq_context, short_memory):
+                return
+        except Exception:
+            self.log.exception("群聊意图分析异常")
+
+        # 破甲审查
+        nsfw_triggered = False
+        try:
+            from func.catbrain.rules_break.rules_break import TBRulesBreak
+            nsfw_triggered = TBRulesBreak().check_and_store_qq(
+                f"qq_group:{gid}", reply_username, merged_text, short_memory)
+        except Exception:
+            self.log.exception("QQ 群聊破甲审查异常")
+
+        final = self.napcat_group_llm.reply(
+            reply_username, gid, group_name, merged_text, short_memory, group_info_text,
+            on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg),
+            nsfw=nsfw_triggered,
+        )
+        if final and final.strip().lower() != "pass":
+            parsed = {"group_id": gid, "group_name": group_name, "user_id": primary_uid,
+                      "username": primary_name, "at_self": True}
+            self._after_group_reply(parsed, final, True)
+            self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
+
+    def _reply_group_active(self, gid: str, group_name: str, self_id: str, merged_text: str,
+                            participants: list, force: bool):
+        """主动插话合并回复：force 直接回复；否则幻梦概率触发 + AI decide（可 pass）"""
+        from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
+        from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+        from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
+        active = TBNapCatActive()
+        primary = (participants[0] if participants else {}) or {}
+        username = str(primary.get("username", "") or "")
+        parsed = {"group_id": gid, "group_name": group_name,
+                  "user_id": str(primary.get("user_id", "") or ""), "username": username,
+                  "at_self": False}
+
+        short_memory = TBGetGroupRecord().fetch(gid, self_id)
+        group_info_text = TBGroupInfo().build_prompt(group_name)
+
+        if force:
             final = self.napcat_group_llm.reply(
-                reply_username, group_id, group_name, text, short_memory, group_info_text,
-                on_segment=lambda seg: self.napcat_core.send_group_text(group_id, seg),
+                None, gid, group_name, merged_text, short_memory, group_info_text,
+                on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg),
             )
-            active.record_reply(group_id)
+            active.record_reply(gid)
             if final and final.strip().lower() != "pass":
-                self._after_group_reply(parsed, final, at_self)
-                self._maybe_send_group_emote(parsed, text, final, short_memory)
+                self._after_group_reply(parsed, final, at_self=False)
+                self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
             return
 
-        # action == "decide"：先硬编码概率触发幻梦（替代 LLM 的「冷场」判断）
-        # 只要幻梦在该群发过言，就有 BOT_TRIGGER_PROB 概率随机调它；未命中才走原 decide
+        # 硬编码概率触发幻梦（替代 LLM 的「冷场」判断）
         try:
             from func.toolbox.napcat.groupchat.ask_group_bot import TBAskGroupBot
             _prob_bot = TBAskGroupBot()
             _prob_qq = _prob_bot.resolve_bot_qq("幻梦")
-            if _prob_qq and _prob_bot.was_used(group_id, _prob_qq) \
+            if _prob_qq and _prob_bot.was_used(gid, _prob_qq) \
                     and random.random() < self.BOT_TRIGGER_PROB:
                 _cmds = _prob_bot.merged_commands().get("幻梦") or []
                 if _cmds:
                     _cmd = random.choice(_cmds)
-                    _res = _prob_bot.execute_forced(group_id, "幻梦", _cmd)
+                    _res = _prob_bot.execute_forced(gid, "幻梦", _cmd)
                     self.log.info(f"[NapCat群聊] 概率触发幻梦: {_res}")
-                    active.record_reply(group_id)
+                    active.record_reply(gid)
                     return
         except Exception:
             self.log.exception("概率触发幻梦失败")
 
-        # AI 判断是否插话 / 是否调用 ask_group_bot / 输出 pass
-        # ask_group_bot 是 napcat 独有工具，挂群聊 LLM，不进 toolbox
         ask_bot_tools = None
         try:
             from func.toolbox.napcat.groupchat.ask_group_bot import TBAskGroupBot
@@ -298,114 +439,32 @@ class TBoxQQResponse:
             self.log.exception("构建 ask_group_bot 工具失败")
 
         decision_text = self.napcat_group_llm.decide(
-            None, group_id, group_name, text, short_memory, group_info_text, ask_bot_tools
+            None, gid, group_name, merged_text, short_memory, group_info_text, ask_bot_tools
         )
         final = (decision_text or "").strip()
-        # AI 选择调用群机器人发指令：工具已执行，不再文本回复
         if final.startswith("ASK_BOT:"):
             self.log.info(f"[NapCat群聊] AI 主动调用群机器人: {final}")
-            active.record_reply(group_id)
+            active.record_reply(gid)
             return
         if self._is_pass(final):
-            active.record_pass(group_id)
+            active.record_pass(gid)
             self.log.info(f"[NapCat群聊] AI 决策 pass，不插话（群 {group_name}）")
             return
         if final:
-            active.record_reply(group_id)
-            # 与 message 一致：去掉逗号句号，分段发送
+            active.record_reply(gid)
             from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
             for seg in TBNapCatGroupLLM.split_segments(final):
-                self.napcat_core.send_group_text(group_id, seg)
+                self.napcat_core.send_group_text(gid, seg)
             self._after_group_reply(parsed, final, at_self=False)
-            self._maybe_send_group_emote(parsed, text, final, short_memory)
+            self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
 
-    # ==================== 群聊 @ 缓冲 flush ====================
-    def reply_group_at(self, buf: dict, text: str):
-        """群聊 @ 缓冲 flush：拉历史 + 群档案 + 记忆 + 群聊 LLM 回复 + 发群。
-
-        - text 由缓冲计算而来（纯 @ 时为「{username}@了你」占位，否则为合并文本）；
-        - 仅真实文本（非占位）才写用户档案与短期记忆，避免污染。
-        """
-        group_id = str(buf.get("group_id", ""))
-        group_name = str(buf.get("group_name", ""))
-        user_id = str(buf.get("user_id", ""))
-        username = str(buf.get("username", ""))
-        self_id = str(buf.get("self_id", ""))
-        has_real_text = bool([t for t in (buf.get("texts") or []) if t and t.strip()])
-        is_bot = self._is_bot(user_id)
-
-        parsed = {
-            "group_id": group_id,
-            "group_name": group_name,
-            "user_id": user_id,
-            "username": username,
-            "self_id": self_id,
-            "at_self": True,
-            "is_self": False,
-            "text": text,
-        }
-
-        # 历史 + 群档案
-        from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
-        from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
-        short_memory = TBGetGroupRecord().fetch(group_id, self_id)
-        group_info_text = TBGroupInfo().build_prompt(group_name)
-
-        # 用户档案昵称（@ 触发时按 QQ 号解析稳定昵称）
-        reply_username = None
+    def _resolve_username(self, user_id: str) -> str:
+        """按 QQ 号解析稳定用户档案昵称（失败返回空串）"""
         try:
             from func.toolbox.napcat.groupchat.user_nickname import TBUserNicknameMap
-            reply_username = TBUserNicknameMap().resolve(user_id)
+            return TBUserNicknameMap().resolve(str(user_id or "")) or ""
         except Exception:
-            reply_username = None
-        if not reply_username:
-            reply_username = username
-
-        # 仅真实文本记录用户档案 + 短期记忆
-        if has_real_text and not is_bot:
-            try:
-                self.napcat_ltmem.record_user(reply_username or username, text)
-            except Exception:
-                self.log.exception("群聊 @ 记录用户档案失败")
-        if has_real_text and self.napcat_config.short_mem_enabled and not is_bot:
-            self.short_memory.save({
-                "role": "user",
-                "content": f"【来自QQ群的消息】{text}",
-                "type": "qq_response",
-            }, self.napcat_config.short_mem_rounds)
-
-        # napcat 意图分析（@ 触发）：命中工具则走工具流程（结果发群），跳过原群聊 LLM 回复
-        try:
-            from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
-            qq_context = {
-                "message_type": "group",
-                "target_id": group_id,
-                "user_id": user_id,
-                "group_name": group_name,
-                "self_id": self_id,
-            }
-            if TBNapcatAnalysis().decide_and_run(text, reply_username, qq_context, short_memory):
-                return
-        except Exception:
-            self.log.exception("群聊 @ 意图分析异常")
-
-        # QQ 群聊 @ 破甲审查：命中色情则写 toolbox_rulebreak 桥接（仅 @ 内容，普通群聊不检测）
-        nsfw_triggered = False
-        try:
-            from func.catbrain.rules_break.rules_break import TBRulesBreak
-            nsfw_triggered = TBRulesBreak().check_and_store_qq(f"qq_group:{group_id}", reply_username, text, short_memory)
-        except Exception:
-            self.log.exception("QQ 群聊破甲审查异常")
-
-        # 流式回复
-        final = self.napcat_group_llm.reply(
-            reply_username, group_id, group_name, text, short_memory, group_info_text,
-            on_segment=lambda seg: self.napcat_core.send_group_text(group_id, seg),
-            nsfw=nsfw_triggered,
-        )
-        if final and final.strip().lower() != "pass":
-            self._after_group_reply(parsed, final, True)
-            self._maybe_send_group_emote(parsed, text, final, short_memory)
+            return ""
 
     def _flush_group_at_text(self, buf: dict):
         """flush 被新 @ 挤出的旧缓冲（与 napcat_core 定时超时 flush 共用同一文本计算逻辑）"""

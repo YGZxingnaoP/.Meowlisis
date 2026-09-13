@@ -71,7 +71,9 @@ const Config = {
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _wordTagEditor(label, path, def, help, placeholder) {
-        const list = (this._val(path, def) || []).filter(x => x != null && String(x).trim());
+        let _raw = this._val(path, def);
+        if (typeof _raw === 'string') _raw = _raw.split(/[\s,，;；|]+/).filter(Boolean);
+        const list = (_raw || []).filter(x => x != null && String(x).trim());
         const tags = list.map(w =>
             `<span class="split-tag" data-word="${this._escAttr(w)}">${this._esc(w)}<button type="button" class="split-tag-remove">&times;</button></span>`
         ).join('');
@@ -302,7 +304,8 @@ const Config = {
                 path === 'meowsinger.cover.learn_users' ||
                 path === 'meowsinger.stop.keywords' ||
                 path === 'silence.wake_phrases' ||
-                path === 'silence.mute_phrases'
+                path === 'silence.mute_phrases' ||
+                path === 'napcat.group_keyword_reply.keywords'
             )) {
                 try { current[last] = JSON.parse(value); }
                 catch (e) { current[last] = value.split(/\n/).map(s => s.trim()).filter(Boolean); }

@@ -2,7 +2,6 @@
 # func/toolbox/flux_painter/port/deepseek.py
 # 绘画模型 DeepSeek 端口（thinking 与 function calling 并存，独立 api key）
 
-from typing import List, Dict, Optional
 
 from openai import OpenAI
 

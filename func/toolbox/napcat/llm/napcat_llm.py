@@ -161,6 +161,8 @@ class TBNapCatLLM:
         self._tag = ""
         self._temp = ""
         self._filtered = ""
+        # 【说话人】闭合后待吞掉的冒号标记（避免残留“：”）
+        self._swallow_colon = False
 
     def _feed(self, ch: str):
         """逐字符状态机：剥离 think 标签与中英文括号内容（与 TTS Output 一致）"""
@@ -189,12 +191,19 @@ class TBNapCatLLM:
     def _feed_plain(self, ch: str):
         if self._in_think:
             return
+        # 【说话人】前缀：剥离【...】后，连带吞掉紧跟的冒号/空白，避免残留“：”
+        if self._swallow_colon:
+            if ch in "：: \t":
+                return
+            self._swallow_colon = False
         if ch == "【":
             self._bracket_depth += 1
             return
         if ch == "】":
             if self._bracket_depth > 0:
                 self._bracket_depth -= 1
+                if self._bracket_depth == 0:
+                    self._swallow_colon = True
             return
         if self._bracket_depth > 0:
             return
@@ -206,6 +215,9 @@ class TBNapCatLLM:
                 self._paren_depth -= 1
             return
         if self._paren_depth == 0:
+            # 行首/段首无名冒号（模型模仿说话人标签）直接丢弃
+            if ch in "：:" and not self._filtered.strip():
+                return
             self._temp += ch
             self._filtered += ch
 
@@ -218,13 +230,15 @@ class TBNapCatLLM:
         out = ""
         for ch in text:
             if ch in cls.SPLIT_IGNORE:
-                if out.strip():
-                    segs.append(out.strip())
+                cleaned = cls._clean_segment(out)
+                if cleaned:
+                    segs.append(cleaned)
                 out = ""
             else:
                 out += ch
-        if out.strip():
-            segs.append(out.strip())
+        cleaned = cls._clean_segment(out)
+        if cleaned:
+            segs.append(cleaned)
         return segs
 
     def _split(self):
@@ -247,9 +261,20 @@ class TBNapCatLLM:
 
     @staticmethod
     def remove_analysis(text: str) -> str:
-        """移除中英文圆括号内容（与 TTS Output 一致）"""
+        """移除中英文圆括号内容（与 TTS Output 一致），并清理残留说话人标签/冒号"""
         if not text:
             return ""
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
+        # 残留的【说话人】标签（过滤器未闭合等边界情况）
+        text = re.sub(r"^\s*(?:【[^】]*】\s*)+", "", text)
+        # 开头的无名冒号（模型模仿【用户名】: 标签）
+        text = re.sub(r"^\s*[：:]\s*", "", text)
         return text.strip()
+
+    @staticmethod
+    def _clean_segment(seg: str) -> str:
+        """清理单段文本：去除段首无名冒号与空白（冒号是说话人标签泄漏，不是回复内容）"""
+        if not seg:
+            return ""
+        return re.sub(r"^\s*[：:]\s*", "", seg.strip()).strip()

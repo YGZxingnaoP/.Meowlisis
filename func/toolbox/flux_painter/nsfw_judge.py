@@ -27,6 +27,13 @@ SENSITIVE_CLASSES = {
 # 检出门槛（低于此分不视为检出）
 DETECT_FLOOR = 0.12
 
+# 按类别的判定阈值（未列出的类别用 config.yml 的统一阈值）
+# 说明：NudeNet v3.4 是真人照片模型，在二次元泳装/丝袜图上极易把裆部阴影误判成
+#       male_genitalia_exposed（实测 9/9 张正常图都是这一类误报）→ 该类单独抬高阈值
+CLASS_THRESHOLD = {
+    "male_genitalia_exposed": 0.85,
+}
+
 _lock = threading.Lock()
 _sessions = {}
 
@@ -136,7 +143,7 @@ class TBNsfwJudge:
             if name is None:
                 continue
             parts.append(f"{name} {s:.2f}")
-            if s >= threshold:
+            if s >= CLASS_THRESHOLD.get(name, threshold):
                 nsfw = True
         if not parts:
             return False, "safe"

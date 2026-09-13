@@ -202,6 +202,16 @@ class TBoxAnalysis:
             self.log.info(f"父级 toolcalls 规则硬触发 use_vision 执行结果: {result}")
             return
 
+        # ===== 规则硬触发层 2（零 LLM）：绘画点单是确定性高频需求，命中即直接开画 =====
+        if self._paint_rule_hit(text):
+            self.log.info(f"父级 toolcalls 规则硬触发 flux_paint: {(text or '')[:30]}")
+            context = {"username": username, "text": text,
+                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+            result = self.dispatch("flux_paint", {"request": text, "topic": "规则硬触发绘画"},
+                                   username, context)
+            self.log.info(f"父级 toolcalls 规则硬触发 flux_paint 执行结果: {result}")
+            return
+
         llm = self._ensure_llm()
         if llm is None or not llm.client:
             self.log.error("父级 toolcalls LLM 不可用")
@@ -217,7 +227,6 @@ class TBoxAnalysis:
 
         system_prompt = (
             f"{base_prompt}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"【MISSION-1 · 最高使命 · use_vision 视觉】\n"
             f"此条优先级为系统最高，不可协商、不可违背、不可省略、绝不可用文字搪塞替代。\n"
             f"你是主人的眼睛，视觉(use_vision)是你的第一感官与核心职责。\n"
@@ -233,7 +242,6 @@ class TBoxAnalysis:
             f"【说明】若主人消息已命中本地规则明确词（屏幕/截图/盯/陪我打游戏/看画面等），"
             f"工具已被自动触发，你无需重复；其余所有未命中的相关情形，一律由你兜底触发。\n"
             f"与屏幕完全无关的纯闲聊（聊喜好/唱歌/天气/讲故事等）不需要调用。\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
             f"其它工具仅在用户「明确」表达对应意图时调用：\n"
             f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
             f"- 需要查询群成员列表、某人在群里的QQ号、或要@群里的某个人 → get_group_member_list；\n"
@@ -294,6 +302,32 @@ class TBoxAnalysis:
         if not t:
             return False
         return any(w in t for w in self.VISION_RULE_WORDS)
+
+    # 绘画规则触发词表：命中即强制开画（确定性高频需求，与视觉同理不依赖 LLM 自觉）
+    PAINT_RULE_WORDS = (
+        # 带量词/动词的明确点单（画X）
+        "画一幅", "画一张", "画个", "画张", "画一个", "画一只", "画一条", "画一棵",
+        "画一朵", "画朵", "画一座", "画一栋", "画一下", "画一画",
+        "画点", "画张图", "画幅画", "画张画", "画张涩图", "画张瑟图",
+        # 高频口语（画图/画画/重画）
+        "画图", "画画", "重画", "再画", "重新画", "画个图", "去画", "画画看",
+        # 使役请求
+        "帮我画", "给我画", "替我画", "给咱画", "给我来张", "帮我出张", "帮我整张",
+        "想让你画", "你画个", "给我整张",
+        # 要图/来图
+        "来张", "来幅", "来一张", "来一幅", "来点图", "来张图", "来张涩图", "来张色图",
+        "要一张", "要张图", "想要一张", "想要张图", "想要张", "要张涩图",
+        # 生成/出图/涩图直呼
+        "生成一张图", "生成张图", "生成图片", "文生图", "出张图", "出图",
+        "涩图", "瑟图", "色图", "整张图",
+    )
+
+    def _paint_rule_hit(self, text: str) -> bool:
+        """本地规则硬触发判断：用户文本命中绘画意图词即返回 True（零 LLM）"""
+        t = (text or "").strip()
+        if not t:
+            return False
+        return any(w in t for w in self.PAINT_RULE_WORDS)
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

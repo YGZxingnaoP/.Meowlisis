@@ -5,102 +5,276 @@
 <title>喵的画板 · Flux</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { background: #17141f; color: #ece7f5; font-family: "Microsoft YaHei", sans-serif;
-         min-height: 100vh; display: flex; justify-content: center; }
-  .wrap { width: min(1080px, 96vw); padding: 20px 8px 60px; }
-  h1 { font-size: 18px; opacity: .8; margin: 6px 0 14px; text-align: center; }
-  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-  .site-box { font-size: 12px; }
-  .site-box select { background: #2a2340; color: #ece7f5; border: 1px solid #4a3d6b;
-                     border-radius: 8px; padding: 4px 6px; margin-right: 6px; max-width: 260px; }
-  .site-box button { background: #6c5ce7; color: #fff; border: 0; border-radius: 999px;
-                     padding: 5px 14px; cursor: pointer; }
-  .stage { display: flex; gap: 18px; align-items: flex-start; }
-  .panel { background: #221c31; border: 1px solid #372d4f; border-radius: 14px; padding: 14px; }
-  .side { flex: 1 1 40%; min-height: 220px; }
-  .main { flex: 1 1 60%; text-align: center; }
-  .label { font-size: 12px; opacity: .55; margin-bottom: 6px; }
-  #promptBox { font-size: 12px; line-height: 1.7; max-height: 46vh; overflow-y: auto;
-               white-space: pre-wrap; word-break: break-all; color: #cfc6e6; }
-  #positiveBox { font-size: 12px; line-height: 1.6; color: #ffd9a0; word-break: break-all; }
-  #negativeBox { font-size: 11px; line-height: 1.5; color: #b9a9d6; word-break: break-all; }
-  #statusBar { margin-top: 10px; font-size: 13px; color: #9fe0a8; min-height: 20px; }
-  #progressBar { display: none; margin-top: 8px; height: 6px; border-radius: 3px;
-                 background: #372d4f; overflow: hidden; }
-  #progressFill { height: 100%; width: 0%; background: linear-gradient(90deg,#ff9fb0,#c9a0ff); }
-  #imageBox img { max-width: 100%; border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
-  #reviewArea { display: none; margin-top: 14px; }
-  #rejectedText { display: none; font-size: 22px; color: #ff9fb0; margin-top: 30vh; }
-  .btn { display: inline-block; padding: 10px 26px; border-radius: 999px; border: 0;
-         font-size: 15px; cursor: pointer; margin: 0 6px; }
+  /* 尺度锚：内容的「包围盒」。画框尺寸 = 内容 + 固定外壳，所以这两个值就是画框的量级。
+     内容在盒内按自身比例等比缩放 → 比例随图变，但最长边恒定，画框不会忽大忽小。 */
+  :root { --art-max-w: min(88vw, 760px);
+          --art-max-h: min(68vh, 700px);   /* 内容最高（已含进度带的高度预算，保证放得下） */
+          --art-min-h: min(430px, 62vh);   /* 无内容(空闲)时的锚，避免缩成一团 */
+          --foot: 52px;                    /* 审查按钮等浮层的底部基准 */
+          --pace-h: 96px; }                /* 进度带高度：常驻占位 → 画框尺寸全程恒定 */
+
+  /* OBS 透明场景：无背景色，只保留画板与花边 */
+  body { background: transparent !important; color: #4a3140;
+         font-family: "Microsoft YaHei", sans-serif;
+         min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .stage { padding: 18px 20px; display: flex; flex-direction: column; align-items: center; }
+
+  /* 花装饰边框（简单双线 + 花朵点缀） */
+  .frame { position: relative; border: 2.5px solid #eeb9cf; outline: 1px solid #f6d7e4;
+           border-radius: 26px; padding: 22px 28px 16px;
+           background: transparent; display: flex; flex-direction: column;
+           align-items: center; }
+  .fl { position: absolute; line-height: 1; z-index: 2; filter: drop-shadow(0 1px 2px rgba(0,0,0,.15)); }
+  .fl-tl { top: -16px; left: -12px; font-size: 30px; }   /* 🌸 */
+  .fl-tr { top: -16px; right: -12px; font-size: 30px; }  /* 🌺 */
+  .fl-bl { bottom: -16px; left: -12px; font-size: 30px; }/* 🌷 */
+  .fl-br { bottom: -16px; right: -12px; font-size: 30px; }/* 🌸 */
+  .fl-tm { top: -11px; left: 50%; transform: translateX(-50%); font-size: 20px; }  /* ❀ */
+  .fl-bm { bottom: -11px; left: 50%; transform: translateX(-50%); font-size: 20px; } /* ❀ */
+  .fl-lm { top: 50%; left: -14px; transform: translateY(-50%); font-size: 20px; }  /* ✿ */
+  .fl-rm { top: 50%; right: -14px; transform: translateY(-50%); font-size: 20px; } /* ✿ */
+
+  /* 内容区：尺寸完全由上面的包围盒 CSS 决定，等比 contain 缩放、不裁剪、不溢出；
+     JS 不再计算 px（旧 fitImage 是「先巨大后骤缩」和尺寸跳动的根源，已删除） */
+  #imageBox { min-height: var(--art-min-h); display: flex; align-items: center;
+              justify-content: center; }
+  #imageBox img { display: block; border-radius: 16px;
+                  box-shadow: 0 10px 30px rgba(120, 60, 90, .28);
+                  max-width: var(--art-max-w); max-height: var(--art-max-h);
+                  width: auto; height: auto; object-fit: contain;
+                  opacity: 1; transform: scale(1);
+                  transition: opacity .4s ease, transform .4s ease; }
+  /* 新图入场：透明 + 略小 → 下一帧淡入放大到原尺寸 */
+  #imageBox img.enter { opacity: 0; transform: scale(.94); }
+
+  /* 审查按钮 / 被拒文案：一律浮层，不参与布局（否则会把画框顶高） */
+  #reviewArea { display: none; position: absolute; left: 0; right: 0; bottom: var(--foot);
+                text-align: center; }
+  #rejectedText { display: none; position: absolute; inset: 0; align-items: center;
+                  justify-content: center; font-size: 26px; color: #c96a7f; text-align: center; }
+  #statusBar { margin-top: 8px; font-size: 12px; min-height: 16px; text-align: center;
+               color: rgba(90, 62, 80, .6); text-shadow: 0 0 4px #fff, 0 0 4px #fff; }
+  #progressBar { display: none; width: 260px; height: 5px; border-radius: 3px; margin-top: 6px;
+                 background: rgba(233, 190, 210, .5); overflow: hidden; }
+  #progressFill { height: 100%; width: 0%; background: linear-gradient(90deg, #ff9fb0, #c9a0ff);
+                  transition: width .35s linear; }
+  /* 旧协议（只给阶段文案、没有百分比）时的流动条 */
+  #progressFill.indet { width: 100% !important;
+                        background: linear-gradient(90deg, #f6d7e4, #ff9fb0, #c9a0ff, #f6d7e4);
+                        background-size: 200% 100%; animation: indetRun 1.3s linear infinite; }
+  @keyframes indetRun { 0% { background-position: 0% 0; } 100% { background-position: -200% 0; } }
+
+  /* 作画中：动图注入 #imageBox 内，与出图共用同一个包围盒、尺寸完全一致
+     （不再为进度卡让位 → 动图大小不变，也不会被遮挡） */
+  #imageBox #busyGif { display: block; width: auto; height: auto; object-fit: contain;
+                       max-width: var(--art-max-w); max-height: var(--art-max-h);
+                       border-radius: 16px;
+                       filter: drop-shadow(0 6px 18px rgba(120, 60, 90, .22)); }
+
+  /* 绘画过程带：横向（环 + 阶段/步进/耗时 + 分块），固定在内容【下方】的文档流里，
+     visibility 控制显隐 → 常驻占位，既不遮内容，也不改变画框尺寸 */
+  #procArea { display: flex; flex-direction: row; align-items: center; justify-content: center;
+              gap: 12px; height: var(--pace-h); visibility: hidden;
+              max-width: min(100%, 420px);   /* 收窄：避免进度带反过来把画框撑宽 */
+              padding: 0 14px; border-radius: 16px;
+              background: rgba(255, 255, 255, .55); backdrop-filter: blur(3px); }
+  .pinfo { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; min-width: 0; }
+  #ring { flex: 0 0 auto; filter: drop-shadow(0 2px 6px rgba(180, 110, 150, .25)); }
+  #ringFg { stroke-dasharray: 351.86; stroke-dashoffset: 351.86;
+            transition: stroke-dashoffset .35s ease; }
+  #stageText { font-size: 15px; font-weight: 700; color: #a8577c; white-space: nowrap; }
+  #stepText { font-size: 12px; color: #8a6b7c; min-height: 14px; white-space: nowrap; }
+  #timeText { font-size: 12px; color: rgba(90, 62, 80, .75); white-space: nowrap; }
+  #blocksWrap { visibility: hidden; }
+  #blocks { display: flex; flex-wrap: wrap; gap: 2px; justify-content: flex-start;
+            max-width: 110px; }
+  #blocks .blk { width: 9px; height: 9px; border-radius: 2px;
+                 background: rgba(233, 190, 210, .45); transition: background .25s ease; }
+  #blocks .blk.on { background: linear-gradient(135deg, #ff9fb0, #c9a0ff); }
+  #blocksText { font-size: 11px; color: #8a6b7c; }
+  .btn { display: inline-block; padding: 10px 28px; border-radius: 999px; border: 0;
+         font-size: 15px; cursor: pointer; margin: 0 8px; }
   .btn-ok { background: #6fcf97; color: #10231a; }
   .btn-no { background: #eb5757; color: #fff; }
-  .hidden { display: none !important; }
+
+  /* ?info=1 侧栏：提示词过程信息（透明小卡片，默认隐藏） */
+  #infoPanel { display: none; position: fixed; top: 14px; right: 14px; width: 300px;
+               background: rgba(255, 255, 255, .72); border: 1px solid #f0c9da;
+               border-radius: 12px; padding: 10px 12px; font-size: 11px; color: #5a3d4e;
+               backdrop-filter: blur(2px); }
+  body.info #infoPanel { display: block; }
+  #infoPanel .lbl { font-weight: 700; color: #b06a88; margin: 8px 0 3px; }
+  #promptBox { line-height: 1.6; max-height: 24vh; overflow-y: auto; white-space: pre-wrap;
+               word-break: break-all; }
+  #positiveBox { line-height: 1.5; color: #8a5a2a; word-break: break-all; }
+  #negativeBox { line-height: 1.4; color: #7c6a80; word-break: break-all; }
 </style>
 </head>
 <body>
-<div class="wrap">
-  <div class="topbar">
-    <h1>🎨 喵的画板 · Flux 文生图</h1>
-    <div class="site-box">
-      <select id="siteSel"></select>
-      <button onclick="gotoSite()">🔗 画师站</button>
+<div class="stage">
+  <div class="frame">
+    <span class="fl fl-tl">🌸</span><span class="fl fl-tr">🌺</span>
+    <span class="fl fl-bl">🌷</span><span class="fl fl-br">🌸</span>
+    <span class="fl fl-tm">❀</span><span class="fl fl-bm">❀</span>
+    <span class="fl fl-lm">✿</span><span class="fl fl-rm">✿</span>
+    <div id="imageBox"></div>
+    <!-- 作画中的动图由 JS 注入到 #imageBox 内部（占用图片位置，不额外占高） -->
+    <!-- 绘画过程：环形进度 + 阶段 + 步进 + 耗时/预计 + 分块网格 -->
+    <div id="procArea">
+      <svg id="ring" width="72" height="72" viewBox="0 0 132 132">
+        <circle cx="66" cy="66" r="56" fill="none" stroke="rgba(233,190,210,.45)" stroke-width="9"></circle>
+        <circle id="ringFg" cx="66" cy="66" r="56" fill="none" stroke="#e98fb4" stroke-width="9"
+                stroke-linecap="round" transform="rotate(-90 66 66)"></circle>
+        <text id="ringTxt" x="66" y="73" text-anchor="middle" font-size="22"
+              fill="#8a5b74" font-weight="700">0%</text>
+      </svg>
+      <div class="pinfo">
+        <div id="stageText">已入队</div>
+        <div id="stepText"></div>
+        <div id="timeText"></div>
+      </div>
+      <div id="blocksWrap">
+        <div id="blocks"></div>
+        <div id="blocksText"></div>
+      </div>
     </div>
+    <div id="reviewArea">
+      <button class="btn btn-ok" onclick="review(1)">✓ 通过，展示吧</button>
+      <button class="btn btn-no" onclick="review(0)">✗ 不给看</button>
+    </div>
+    <div id="rejectedText">不给看不给看 awa</div>
+    <div id="statusBar"></div>
+    <div id="progressBar"><div id="progressFill"></div></div>
   </div>
-  <div class="stage">
-    <div class="panel side">
-      <div class="label">AI 思考 / 提示词</div>
-      <div id="promptBox">（等待任务…）</div>
-      <div id="promptArea" class="hidden">
-        <div class="label" style="margin-top:12px">最终提示词</div>
-        <div id="positiveBox"></div>
-        <div class="label" style="margin-top:10px">负向</div>
-        <div id="negativeBox"></div>
-      </div>
-      <div id="statusBar"></div>
-      <div id="progressBar"><div id="progressFill"></div></div>
-    </div>
-    <div class="panel main">
-      <div id="imageBox"></div>
-      <div id="reviewArea">
-        <div class="label">主人检察一下这幅画~</div>
-        <button class="btn btn-ok" onclick="review(1)">✓ 通过，展示吧</button>
-        <button class="btn btn-no" onclick="review(0)">✗ 不给看</button>
-      </div>
-      <div id="rejectedText">不给看不给看awa</div>
-    </div>
+</div>
+<div id="infoPanel">
+  <div class="lbl">AI 思考 / 提示词</div>
+  <div id="promptBox">（等待任务…）</div>
+  <div id="promptArea" class="hidden" style="display:none">
+    <div class="lbl">最终提示词</div>
+    <div id="positiveBox"></div>
+    <div class="lbl">负向</div>
+    <div id="negativeBox"></div>
   </div>
 </div>
 <script>
 const params = new URLSearchParams(location.search);
 const channel = params.get('channel') || 'live';
+const showInfo = params.get('info') === '1';
+if (showInfo) document.body.classList.add('info');
 const ws = new WebSocket(`ws://${location.hostname}:8767/?channel=${encodeURIComponent(channel)}`);
 let promptBuf = '';
-let sites = [];
 
 function el(id){ return document.getElementById(id); }
 function setStatus(t){ el('statusBar').textContent = t || ''; }
-function gotoSite() {
-  const sel = el('siteSel');
-  const url = sites[sel.selectedIndex] && sites[sel.selectedIndex].url;
-  if (url) window.open(url, '_blank');
+
+/* 作画中动图：hello 消息带 resource/*.gif 的 URL 列表，随机挑一张注入 #imageBox
+   —— 与出图共用同一位置；作画中该框不带最小尺寸，所以画框不会被撑长 */
+const BUSY_GIFS = [];
+function showBusy(on){
+  const box = el('imageBox');
+  if (!box) return;
+  if (!on){
+    if (box.dataset.busy === '1'){
+      box.dataset.busy = '';
+      box.classList.remove('busy');
+      box.innerHTML = '';
+    }
+    return;
+  }
+  if (!BUSY_GIFS.length || box.dataset.busy === '1') return;  // 已在播：别重建 img，否则动图会重播
+  box.dataset.busy = '1';
+  box.classList.add('busy');
+  box.innerHTML = '<img id="busyGif" alt="作画中" src="'
+    + BUSY_GIFS[Math.floor(Math.random() * BUSY_GIFS.length)] + '">';
+}
+
+/* ===== 绘画过程可视化：环形进度 + 阶段 + 步进 + 耗时/预计 + 分块网格 ===== */
+const RING_C = 2 * Math.PI * 56;
+function fmtSec(s){
+  s = Math.max(0, Math.round(Number(s) || 0));
+  const m = Math.floor(s / 60), r = s % 60;
+  return m ? (m + ' 分 ' + r + ' 秒') : (r + ' 秒');
+}
+/* 进度带里的紧凑写法（1:20 / 45s），避免时间文案把卡片撑宽 */
+function fmtShort(s){
+  s = Math.max(0, Math.round(Number(s) || 0));
+  const m = Math.floor(s / 60), r = s % 60;
+  return m ? (m + ':' + String(r).padStart(2, '0')) : (r + 's');
+}
+function renderBlocks(done, total){
+  const box = el('blocks');
+  if (!box) return;
+  if (total > 240 || total <= 0){ box.innerHTML = ''; }
+  else {
+    let h = '';
+    for (let i = 0; i < total; i++) h += '<span class="blk' + (i < done ? ' on' : '') + '"></span>';
+    box.innerHTML = h;
+  }
+  el('blocksText').textContent = done + ' / ' + total + ' 块完成';
+  el('blocksWrap').style.visibility = 'visible';
+}
+function setProgress(m){
+  const pct = Math.max(0, Math.min(100, Number(m.percent) || 0));
+  el('procArea').style.visibility = 'visible';
+  showBusy(true);
+  const bar = el('progressBar'), fill = el('progressFill');
+  if (bar && fill){
+    fill.classList.remove('indet');
+    bar.style.display = 'block';
+    fill.style.width = pct + '%';
+  }
+  const fg = el('ringFg');
+  if (fg) fg.style.strokeDashoffset = String(RING_C * (1 - pct / 100));
+  el('ringTxt').textContent = pct + '%';
+  el('stageText').textContent = m.stage || '作画中';
+  el('stepText').textContent = m.step ? ('步进 ' + m.step) : '';
+  const used = Number(m.elapsed || 0);
+  const eta = Number(m.eta || 0);
+  const parts = [];
+  if (used) parts.push('已用 ' + fmtShort(used));
+  if (eta > 0){
+    if (used) parts.push('剩 ' + fmtShort(Math.max(0, eta - used)) + '（上次 ' + fmtShort(eta) + '）');
+    else parts.push('上次 ' + fmtShort(eta));
+  }
+  el('timeText').textContent = parts.join(' · ');
+  if (Array.isArray(m.blocks) && Number(m.blocks[1]) > 0) renderBlocks(Number(m.blocks[0]), Number(m.blocks[1]));
+  else el('blocksWrap').style.visibility = 'hidden';
+  setStatus('⏳ ' + (m.stage || '作画中'));
+}
+function hideProgress(){
+  el('procArea').style.visibility = 'hidden';
+  el('blocksWrap').style.visibility = 'hidden';
+  el('progressBar').style.display = 'none';
+  showBusy(false);
+}
+
+/* ===== 画作：尺寸交给 CSS「包围盒」等比 contain，JS 不再算任何 px ===== */
+function showImage(url) {
+  const box = el('imageBox');
+  box.dataset.busy = '';
+  box.classList.remove('busy');
+  box.innerHTML = '';
+  const img = document.createElement('img');
+  img.alt = '画作';
+  img.className = 'enter';                       // 起始态：透明 + 0.94
+  img.onload = () => {
+    img.classList.remove('enter');               // 触发淡入 + 0.94→1 缩放
+    setStatus(`· 画好啦 ${img.naturalWidth}×${img.naturalHeight}`);
+  };
+  img.onerror = () => setStatus('⚠ 图片加载失败');
+  img.src = url;
+  box.appendChild(img);
 }
 
 ws.onmessage = (ev) => {
   let m; try { m = JSON.parse(ev.data); } catch(e){ return; }
   switch (m.type) {
     case 'hello':
-      setStatus('已连接画板频道 ' + channel);
-      if (Array.isArray(m.artist_sources) && m.artist_sources.length) {
-        sites = m.artist_sources;
-        const sel = el('siteSel');
-        sel.innerHTML = '';
-        m.artist_sources.forEach(s => {
-          const o = document.createElement('option');
-          o.textContent = s.name || s.url;
-          o.value = s.url || '';
-          sel.appendChild(o);
-        });
+      setStatus('· ' + channel);
+      if (Array.isArray(m.busy_gifs) && m.busy_gifs.length){
+        BUSY_GIFS.length = 0;
+        BUSY_GIFS.push.apply(BUSY_GIFS, m.busy_gifs);
       }
       break;
     case 'producing':
@@ -110,43 +284,55 @@ ws.onmessage = (ev) => {
       el('promptBox').scrollTop = el('promptBox').scrollHeight;
       break;
     case 'prompt':
-      el('promptArea').classList.remove('hidden');
+      el('promptArea').style.display = 'block';
       el('positiveBox').textContent = m.positive || '';
       el('negativeBox').textContent = m.negative || '';
       break;
     case 'progress':
-      el('progressBar').style.display = 'block';
-      el('progressFill').style.width = (m.text === '生成完成') ? '100%' : '45%';
-      setStatus('⏳ ' + (m.text || ''));
+      if (m.stage !== undefined || m.percent !== undefined){
+        // 新的细粒度进度协议（painting_core 经 base.watch 广播）
+        setProgress(m);
+      } else {
+        // 兼容旧协议（仅 text，没有百分比）→ 进度条走「流动」动画，不再假装 45%
+        el('progressBar').style.display = 'block';
+        el('progressFill').classList.add('indet');
+        setStatus('⏳ ' + (m.text || '作画中'));
+        showBusy(true);
+      }
       break;
     case 'done':
       el('progressBar').style.display = 'none';
-      setStatus('✅ 画好啦');
-      el('imageBox').innerHTML = `<img src="${m.image}" alt="画作">`;
+      hideProgress();
+      setStatus('· 画好啦');
+      showImage(m.image);
       el('reviewArea').style.display = 'none';
       el('rejectedText').style.display = 'none';
       break;
     case 'review':
       el('progressBar').style.display = 'none';
+      el('procArea').style.visibility = 'hidden';
+      showBusy(false);
       el('imageBox').innerHTML = '';
       el('reviewArea').style.display = 'block';
       el('rejectedText').style.display = 'none';
-      setStatus('🔍 等你检查～');
+      setStatus('🔍 等你检查');
       break;
     case 'rejected':
       el('reviewArea').style.display = 'none';
-      el('rejectedText').style.display = 'block';
-      setStatus('主人说不给看呢 awa');
+      hideProgress();
+      el('rejectedText').style.display = 'flex';    // 居中浮层（absolute + flex）
+      setStatus('· 已收起');
       break;
     case 'error':
-      setStatus('⚠️ ' + (m.text || '出错了'));
+      hideProgress();
+      setStatus('⚠ ' + (m.text || '出错'));
       break;
   }
 };
-ws.onclose = () => setStatus('连接断开');
+ws.onclose = () => setStatus('· 连接断开');
 function review(pass) {
   fetch(`/api/review?channel=${encodeURIComponent(channel)}&pass=${pass ? 1 : 0}`);
-  setStatus(pass ? '通过啦，展示中…' : '收到，不给看awa');
+  setStatus(pass ? '· 展示中' : '· 已收起');
 }
 </script>
 </body>

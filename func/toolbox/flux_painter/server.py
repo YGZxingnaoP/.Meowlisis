@@ -5,7 +5,7 @@ import json
 import os
 import threading
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 import websockets
 
@@ -24,6 +24,9 @@ class TBFluxPainterServer:
         self._clients = {}
         self._loop = None
         self._http_thread = None
+        # 项目根（server.py: 文件→flux_painter→toolbox→func→根，共4级）
+        self._root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.abspath(__file__)))))
 
     # ==================== WebSocket ====================
     @staticmethod
@@ -39,6 +42,18 @@ class TBFluxPainterServer:
             channel = "live"
         return str(channel or "live")
 
+    def _busy_gifs(self):
+        """作画中展示的动图：扫 html 同级的 resource/ 目录（gif/webp/png），返回可访问 URL"""
+        d = os.path.join(os.path.dirname(os.path.abspath(self.html_path)), "resource")
+        urls = []
+        try:
+            for n in sorted(os.listdir(d)):
+                if n.lower().endswith((".gif", ".webp", ".png")):
+                    urls.append("/resource/" + quote(n))
+        except Exception:
+            self.log.warning(f"[flux_painter] resource 目录读取失败: {d}")
+        return urls
+
     async def _websocket_handler(self, websocket):
         channel = self._channel_of(websocket)
         self._clients.setdefault(channel, set()).add(websocket)
@@ -48,6 +63,7 @@ class TBFluxPainterServer:
                 "canvas_sizes": self.config.canvas_sizes,
                 "review": bool(self.config.review_enabled),
                 "artist_sources": self.config.artist_sources,
+                "busy_gifs": self._busy_gifs(),
                 "painting_board": f"http://127.0.0.1:{self.http_port}/painting_board.html",
             }, ensure_ascii=False))
             await websocket.wait_closed()
@@ -67,10 +83,87 @@ class TBFluxPainterServer:
         self._loop.run_until_complete(self._run_websocket_server())
 
     # ==================== HTTP ====================
+    def _allow_dirs(self):
+        """图片可访问白名单：backup/comfy_output/temp，相对路径按项目根绝对化，
+        不依赖服务启动 cwd（避免 403 误杀）"""
+        allow = []
+        for p in (self.config.backup_dir, self.config.comfy_output_dir,
+                  getattr(self.config, "temp_dir", "")):
+            if not p:
+                continue
+            ap = p if os.path.isabs(p) else os.path.join(self._root, p)
+            rp = os.path.realpath(ap)
+            if os.path.isfile(rp):
+                rp = os.path.dirname(rp)
+            if rp and rp not in allow:
+                allow.append(rp)
+        return allow
+
+    @staticmethod
+    def _inside(path, dirs):
+        """path 是否在某允许目录内（Windows 大小写不敏感、防前缀伪匹配）"""
+        pl = path.casefold()
+        for d in dirs:
+            dl = d.casefold().rstrip("/\\")
+            if pl == dl or pl.startswith(dl + "\\"):
+                return True
+        return False
+
+    @staticmethod
+    def _dir_main_image(d):
+        """目录内主图：优先 image.*，其次按名序取首个图片"""
+        for name in ("image.png", "image.jpg", "image.jpeg"):
+            cand = os.path.join(d, name)
+            if os.path.isfile(cand):
+                return cand
+        try:
+            for fn in sorted(os.listdir(d)):
+                if fn.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp")):
+                    return os.path.join(d, fn)
+        except Exception:
+            pass
+        return None
+
+    def _paint_candidate(self, raw, allow):
+        """把 /paint_img?path= 解析为真实文件：支持 相对/绝对、目录(取主图)、
+        无扩展名补后缀等形态，且必须落在允许目录内；找不到返回 None"""
+        if not raw:
+            return None
+        raw = raw.strip().strip("\"'")
+        cands = []
+
+        def _add(p):
+            if not p:
+                return
+            try:
+                p = os.path.realpath(p)
+            except Exception:
+                return
+            if p not in cands:
+                cands.append(p)
+
+        _add(raw)
+        if not os.path.isabs(raw):
+            _add(os.path.join(self._root, raw))
+        # 形态展开：目录→主图；无扩展名→尝试常见图像后缀
+        for c in list(cands):
+            if os.path.isdir(c):
+                m = self._dir_main_image(c)
+                if m:
+                    _add(m)
+            elif not os.path.isfile(c) and not os.path.splitext(c)[1]:
+                for ext in (".png", ".jpg", ".jpeg", ".webp", ".gif"):
+                    _add(c + ext)
+        for c in cands:
+            try:
+                if os.path.isfile(c) and self._inside(c, allow):
+                    return c
+            except Exception:
+                continue
+        return None
+
     def _make_handler(self, base_dir):
-        allow = [os.path.realpath(p) for p in
-                 (self.config.backup_dir, self.config.comfy_output_dir)
-                 if p]
+        allow = self._allow_dirs()
 
         class _Handler(SimpleHTTPRequestHandler):
             def __init__(self, *args, **kwargs):
@@ -96,10 +189,31 @@ class TBFluxPainterServer:
                 parsed = urlparse(self.path)
                 q = parse_qs(parsed.query)
                 if parsed.path == "/paint_img":
+                    # 兼容两种 query：?path=<enc>（标准）与 ?<enc>（历史版本漏写 path= 前缀）
                     path = (q.get("path") or [""])[0]
-                    rp = os.path.realpath(path) if path else ""
-                    if any(rp.startswith(a) for a in allow) and os.path.isfile(rp):
-                        self._send_file(rp, "image/png")
+                    if not path and parsed.query:
+                        try:
+                            import urllib.parse as _up
+                            path = _up.unquote(parsed.query.split("&")[0])
+                        except Exception:
+                            path = ""
+                    serve = outer._paint_candidate(path, allow)
+                    outer.log.info(
+                        f"[flux_painter] paint_img 请求: raw_query={parsed.query!r} "
+                        f"path={path!r} -> {'OK ' + serve if serve else 'REJECT(403)'}")
+                    if serve:
+                        low = serve.lower()
+                        if low.endswith(".png"):
+                            ctype = "image/png"
+                        elif low.endswith((".jpg", ".jpeg")):
+                            ctype = "image/jpeg"
+                        elif low.endswith((".webp",)):
+                            ctype = "image/webp"
+                        elif low.endswith(".gif"):
+                            ctype = "image/gif"
+                        else:
+                            ctype = "application/octet-stream"
+                        self._send_file(serve, ctype)
                     else:
                         self.send_error(403)
                     return
@@ -117,6 +231,7 @@ class TBFluxPainterServer:
                     return
                 return super().do_GET()
 
+        outer = self
         return _Handler
 
     def _start_http_server(self):

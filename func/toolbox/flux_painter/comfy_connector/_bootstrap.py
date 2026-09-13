@@ -8,14 +8,25 @@ import shutil
 import subprocess
 import time
 
-SRC_DEFAULT = r"D:\ComfyUI\ComfyUI_windows_portable\ComfyUI"
-EXCLUDE = {".git", ".github", ".ci", ".gitignore", "tests", "tests-unit", "models",
-           "custom_nodes", "update", "output", "input", "temp", "user", "web",
-           "manager_requirements.txt", "new_updater.py", "pyproject.toml",
-           "README.md", "LICENSE", "CONTRIBUTING.md", "CODEOWNERS", "QUANTIZATION.md",
-           "requirements.txt", "pytest.ini", ".flake8", "script_examples"}
+# 内置内核的可选外部源目录：仅当 .ComfyNode/ComfyUI 缺失、需要重建时才会用到。
+# 项目自带内核后无需此项；需要时用环境变量指定：FLUXPAINTER_COMFY_SRC=D:\...\ComfyUI
+SRC_DEFAULT = (os.environ.get("FLUXPAINTER_COMFY_SRC", "").strip()
+               or r"D:\ComfyUI\ComfyUI_windows_portable\ComfyUI")
+# 任意层级都应排除的垃圾/缓存
+EXCLUDE_ANY = {".git", ".github", ".ci", "__pycache__", ".pytest_cache", ".mypy_cache"}
+# 仅“顶层”排除（模型/插件/前端等大目录或文档）。
+# 注意：不能按名字全局匹配 —— 否则 comfy/ldm/models、comfy_api_nodes 这类
+# 内核必需的子目录会被误伤，导致启动即崩（No module named 'comfy.ldm.models'）。
+EXCLUDE_TOP = {".git", ".github", ".ci", ".gitignore", "tests", "tests-unit", "models",
+               "custom_nodes", "update", "output", "input", "temp", "user", "web",
+               "manager_requirements.txt", "new_updater.py", "pyproject.toml",
+               "README.md", "LICENSE", "CONTRIBUTING.md", "CODEOWNERS", "QUANTIZATION.md",
+               "requirements.txt", "pytest.ini", ".flake8", "script_examples"}
+# 兼容旧名
+EXCLUDE = EXCLUDE_TOP
 EMPTY_DIRS = ["input", "temp", "user", "custom_nodes"]
-MODEL_SUBS = ["diffusion_models", "text_encoders", "vae", "loras", "upscale_models"]
+MODEL_SUBS = ["diffusion_models", "text_encoders", "vae", "loras", "upscale_models",
+              "ultralytics", "sams"]
 CFG_FILE = "comfyui_builtin.json"
 
 
@@ -101,7 +112,11 @@ def ensure_installed(config):
         os.makedirs(dst, exist_ok=True)
 
         def _ignore(d, names):
-            return {n for n in names if n in EXCLUDE}
+            """顶层按 EXCLUDE_TOP 精确排除；子层只排垃圾，避免误伤 comfy/ldm/models 等"""
+            skip = {n for n in names if n in EXCLUDE_ANY}
+            if os.path.normcase(os.path.abspath(d)) == os.path.normcase(os.path.abspath(src)):
+                skip |= {n for n in names if n in EXCLUDE_TOP}
+            return skip
 
         shutil.copytree(src, dst, ignore=_ignore, dirs_exist_ok=True)
         for d in EMPTY_DIRS:
@@ -114,5 +129,17 @@ def ensure_installed(config):
     if not junction_ok:
         _write_extra_yaml(config)
     _save_cfg(config, cfg)
-    note = f"内置内核 {'已安装' if fresh else '已就绪'}（模型/输出 junction={'成功' if junction_ok else '回退extra'}）"
+    # 给 Impact-Pack 的 FaceDetailer 打「尺寸 16 对齐」补丁（Anima 要求 latent 偶数，幂等）
+    patch_note = ""
+    try:
+        from func.toolbox.flux_painter.comfy_connector import _patch_align
+        if _patch_align.is_patched(config.comfy_node_dir):
+            patch_note = "，16 对齐补丁已就绪"
+        else:
+            pok, pnote = _patch_align.apply(config.comfy_node_dir)
+            patch_note = "，" + (pnote if pok else f"补丁失败: {pnote}")
+    except Exception as e:
+        patch_note = f"，补丁异常: {e}"
+    note = (f"内置内核 {'已安装' if fresh else '已就绪'}"
+            f"（模型/输出 junction={'成功' if junction_ok else '回退extra'}）{patch_note}")
     return True, note

@@ -28,13 +28,15 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         out = ""
         for ch in text:
             if ch in cls.SPLIT_IGNORE:
-                if out.strip():
-                    segs.append(out.strip())
+                cleaned = cls._clean_segment(out)
+                if cleaned:
+                    segs.append(cleaned)
                 out = ""
             else:
                 out += ch
-        if out.strip():
-            segs.append(out.strip())
+        cleaned = cls._clean_segment(out)
+        if cleaned:
+            segs.append(cleaned)
         return segs
 
     def _system_prompt(self, username, group_name, group_info_text, current_message,

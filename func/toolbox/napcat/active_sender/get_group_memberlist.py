@@ -2,6 +2,7 @@
 # func/toolbox/napcat/active_sender/get_group_memberlist.py
 # 获取群成员列表：用于识别群机器人（按昵称/群名片找 QQ 号）
 
+import re
 from typing import List, Dict, Optional
 
 from func.log.default_log import DefaultLog
@@ -14,11 +15,15 @@ class TBGetGroupMemberList:
         self.log = DefaultLog().getLogger()
 
     def get(self, group_id) -> List[dict]:
-        """返回群成员列表 [{user_id, nickname, card, role}]"""
+        """返回群成员列表 [{user_id, nickname, card, role}]；group_id 可为群号或群名（自动解析）"""
+        gid, err = self._resolve_group(group_id)
+        if not gid:
+            self.log.warning(f"获取群成员列表失败: {err}")
+            return []
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             ret = TBNapCatCore().call_action_sync(
-                "get_group_member_list", {"group_id": int(group_id)}
+                "get_group_member_list", {"group_id": int(gid)}
             )
             data = self._extract(ret)
             result = []
@@ -35,6 +40,20 @@ class TBGetGroupMemberList:
         except Exception:
             self.log.exception(f"获取群成员列表失败: {group_id}")
             return []
+
+    @staticmethod
+    def _resolve_group(group_id):
+        """群号直通；群名交给 TBGetGroupList 在线解析；空/异常返回错误信息"""
+        raw = str(group_id or "").strip().strip("\"'")
+        if not raw:
+            return None, "群目标为空"
+        if re.fullmatch(r"\d+", raw):
+            return raw, ""
+        try:
+            from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
+            return TBGetGroupList().resolve_id(raw)
+        except Exception as e:
+            return None, f"解析群名失败: {e}"
 
     def find_by_name(self, group_id, name: str) -> Optional[dict]:
         """按昵称/群名片匹配群成员，返回第一个匹配（用于 @ 特定成员）。
@@ -86,12 +105,15 @@ class TBGetGroupMemberList:
     def dispatch(self, name: str, arguments: dict) -> str:
         if name == "get_group_member_list":
             group_id = arguments.get("group_id", "")
-            members = self.get(group_id)
+            gid, err = self._resolve_group(group_id)
+            if not gid:
+                return f"获取群成员列表失败：{err}"
+            members = self.get(gid)
             if not members:
-                return f"未获取到群 {group_id} 的成员列表"
+                return f"未获取到群 {gid} 的成员列表"
             lines = [
                 f"{m.get('card') or m.get('nickname') or m.get('user_id')}: {m.get('user_id')} (role={m.get('role')})"
                 for m in members
             ]
-            return f"群 {group_id} 成员列表：\n" + "\n".join(lines)
+            return f"群 {gid} 成员列表：\n" + "\n".join(lines)
         return f"错误：未知工具 {name}"

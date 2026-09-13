@@ -271,7 +271,8 @@ class SystemPromptBridge:
                 word_count = 10
             front = (
                 f"{front}\n你在QQ群【{group_name}】里聊天，必须使用网络用语\n"
-                f"每次回复{word_count}个字左右，严格控制在{word_count + 10}字以内"
+                f"每次回复{word_count}个字左右，严格控制在{word_count + 10}字以内\n"
+                f"只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
             )
         post = self.get_post_prompt()
         if post:

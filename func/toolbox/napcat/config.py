@@ -2,6 +2,8 @@
 # func/toolbox/napcat/config.py
 # NapCat 全部配置项统一管理
 
+import re
+
 from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
@@ -92,6 +94,35 @@ class TBNapCatConfig:
         self.group_per_group = cfg.get('group_per_group', {}) or {}
         # 群机器人 QQ 号映射（可选，如 {"幻梦": "123456789"}，便于识别群机器人）
         self.group_bots = cfg.get('group_bots', {}) or {}
+
+        # ========== 群聊关键词命中回复（默认关闭，与 @ 同等待遇） ==========
+        kw = cfg.get('group_keyword_reply', {}) or {}
+        self.group_keyword_enabled = bool(kw.get('enabled', False))
+        raw_kw = kw.get('keywords')
+        if isinstance(raw_kw, (list, tuple)):
+            self.group_keywords = [str(x).strip() for x in raw_kw if str(x).strip()]
+        elif isinstance(raw_kw, str):
+            self.group_keywords = [x.strip() for x in re.split(r'[\s,，;；|]+', raw_kw) if x.strip()]
+        else:
+            self.group_keywords = []
+        self.group_keyword_case_sensitive = bool(kw.get('case_sensitive', False))
+        # 关键词命中后回复是否 @ 发送者
+        self.group_keyword_reply_with_at = bool(kw.get('reply_with_at', True))
+
+        # ========== 群聊回复合并（多人 / 多触发 2 秒窗口合并，防刷屏） ==========
+        mg = cfg.get('group_merge', {}) or {}
+        self.group_merge_enabled = bool(mg.get('enabled', True))
+        # 跨触发合并窗口（秒）：多人/多触发在该窗口内合并为一次回复
+        self.group_merge_window = float(mg.get('window', 2.0))
+        # 是否滑动延长窗口（默认固定窗口，从第一个触发起算）
+        self.group_merge_sliding = bool(mg.get('sliding', False))
+        # 滑动的最大等待时间（秒），防无限延后
+        self.group_merge_max_wait = float(mg.get('max_wait', 6.0))
+        # 单用户续聊窗口（@ / 关键词后等待该用户后续消息），随机区间
+        self.group_merge_user_window_min = float(mg.get('user_window_min', 5))
+        self.group_merge_user_window_max = float(mg.get('user_window_max', 15))
+        # 生成期间新触发最多再补聚合的轮数
+        self.group_merge_max_extra_rounds = int(mg.get('max_extra_rounds', 1))
 
         # ========== 主动发送（active_sender 触发型工具，受 toolcalls 控制） ==========
         as_cfg = cfg.get('active_sender', {}) or {}

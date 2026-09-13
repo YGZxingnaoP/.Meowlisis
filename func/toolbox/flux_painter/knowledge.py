@@ -8,7 +8,22 @@ import os
 import re
 import shutil
 
-MD_SOURCE = r"D:\ComfyUI\ANIMA3 提示词生成模板 v3.0.md"
+MD_SOURCE_ENV = "FLUXPAINTER_KNOWLEDGE_MD"
+# 法典源搜索顺序：环境变量 → 项目内已有副本 → 旧外置路径（兼容保留）
+MD_SOURCE_FALLBACK = r"D:\ComfyUI\ANIMA3 提示词生成模板 v3.0.md"
+
+
+def knowledge_md_source(ref_dir=None):
+    """提示词法典 md 源路径（自包含优先，不再硬依赖 D:\\ComfyUI）"""
+    env = os.environ.get(MD_SOURCE_ENV, "").strip()
+    if env and os.path.isfile(env):
+        return env
+    if ref_dir:
+        for name in ("ANIMA3 提示词生成模板 v3.0.md", "ANIMA3_prompt_law.md"):
+            p = os.path.join(ref_dir, name)
+            if os.path.isfile(p):
+                return p
+    return MD_SOURCE_FALLBACK
 STOP_WORDS = {"的", "了", "画", "一个", "一张", "想要", "想", "给我", "帮我", "来张",
               "我", "你", "她", "他", "它", "我们", "你们", "她们", "他们", "和",
               "就", "在", "把", "像", "一样", "那种", "这个", "那个", "么", "呢",
@@ -56,8 +71,9 @@ class TBAnimaKnowledge:
         target = os.path.join(ref_dir, "ANIMA3_prompt_law.md")
         if os.path.isfile(target):
             return True, target
-        if os.path.isfile(MD_SOURCE):
-            shutil.copy(MD_SOURCE, target)
+        src = knowledge_md_source(ref_dir)
+        if os.path.isfile(src):
+            shutil.copy(src, target)
             return True, target
         return False, target
 
@@ -110,16 +126,104 @@ class TBAnimaKnowledge:
                 out.append(w)
         return out[:24]
 
-    def retrieve(self, query, top=6, per_limit=1600):
-        """返回 (规则区文本, 命中最相关章节拼接文本)；无命中则章节区为空串"""
+    # 总是注入的关键章节（标题前缀 / 标题关键词）。
+    # 法典大量章节是"术语驱动"的（§11 镜头库、§4 槽位规则、互斥表…），
+    # 而用户需求多为角色/场景日常词，纯关键词检索几乎打不中 → 必须常驻，否则 LLM 根本看不到。
+    ALWAYS_PREFIX = ("0.", "1.", "2.", "3.", "4.", "11.", "15.")
+    ALWAYS_WORDS = ("互斥", "冲突", "镜头", "视角", "景别", "POV", "构图", "分镜", "视线",
+                    "TAG COUNT", "SLOT ORDER", "OUTPUT PROTOCOL", "SELF-CHECK")
+
+    def retrieve(self, query, top=10, per_limit=2600, budget=42000):
+        """返回 (规则区文本, 章节文本)。
+        规则区=§0~4/§15 全文；章节区=检索命中 + 常驻关键章节（§11 镜头库等），总量受 budget 限制。
+        """
+        self._read()
+        words = self._words(query)
+        scored = []
+        if words:
+            for idx, s in enumerate(self._sections):
+                title = s["title"]
+                body = "\n".join(s["text"])[:2500]
+                score = 0
+                for w in words:
+                    if w in title:
+                        score += 8
+                    elif w in body:
+                        score += 2
+                if score > 0:
+                    scored.append((score, idx, s))
+            scored.sort(key=lambda x: (-x[0], x[1]))
+
+        picked, seen, total = [], set(), 0
+
+        def take(idx, s, limit):
+            nonlocal total
+            txt = f"### [{s['title']}]\n" + "\n".join(s["text"])[:limit]
+            if total + len(txt) > budget:
+                return False
+            picked.append(txt)
+            seen.add(idx)
+            total += len(txt)
+            return True
+
+        for _, idx, s in scored[:top]:
+            take(idx, s, per_limit)
+        for idx, s in enumerate(self._sections):          # 兜底常驻（检索打不中时法典依然生效）
+            if idx in seen:
+                continue
+            t = s["title"]
+            if t.startswith(self.ALWAYS_PREFIX) or any(w in t for w in self.ALWAYS_WORDS):
+                take(idx, s, per_limit)
+        return (self._head or ""), "\n\n".join(picked)
+
+    # ==================== 供提示词 LLM 自主检索的接口 ====================
+
+    def index(self, with_digest=True, line_limit=110):
+        """法典目录：全部章节标题（+首行摘要），供 LLM 自己决定要读哪些章节"""
+        self._read()
+        out = []
+        for s in self._sections:
+            t = s["title"]
+            if with_digest:
+                body = " ".join(x.strip() for x in s["text"] if x.strip())
+                body = re.sub(r"\s+", " ", body)[:line_limit]
+                out.append(f"- {t} :: {body}" if body else f"- {t}")
+            else:
+                out.append(f"- {t}")
+        return "\n".join(out)
+
+    def read(self, section, per_limit=3600, max_sections=3):
+        """按章节名/编号读全文（支持 '11.2'、'视角方向'、'POV' 等模糊匹配）"""
+        self._read()
+        key = str(section or "").strip().lower()
+        if not key:
+            return "（未指定章节名；可先调 law_index 看目录）"
+        secs = self._sections
+        exact = [s for s in secs if s["title"].lower() == key]
+        starts = [s for s in secs if s["title"].lower().startswith(key)]
+        contains = [s for s in secs if key in s["title"].lower()]
+        pick = exact or starts or contains
+        if not pick:
+            return f"（法典中找不到章节「{section}」。请用 law_index 查看可用章节名）"
+        out, total = [], 0
+        for s in pick[:max_sections]:
+            txt = f"### [{s['title']}]\n" + "\n".join(s["text"])[:per_limit]
+            if total and total + len(txt) > per_limit * 2:
+                break
+            out.append(txt)
+            total += len(txt)
+        return "\n\n".join(out)
+
+    def search(self, query, top=4, per_limit=2000):
+        """关键词检索（与 retrieve 同一套打分），返回最相关章节片段"""
         self._read()
         words = self._words(query)
         if not words:
-            return (self._head or "")[:4500], ""
+            return "（查询词为空；请给出画面/主题/场景等关键词）"
         scored = []
         for idx, s in enumerate(self._sections):
             title = s["title"]
-            body = "\n".join(s["text"])[:2500]
+            body = "\n".join(s["text"])[:3000]
             score = 0
             for w in words:
                 if w in title:
@@ -128,8 +232,14 @@ class TBAnimaKnowledge:
                     score += 2
             if score > 0:
                 scored.append((score, idx, s))
+        if not scored:
+            return f"（未命中「{query}」；可换词，或用 law_index 按目录挑章节）"
         scored.sort(key=lambda x: (-x[0], x[1]))
-        parts = []
+        parts, total = [], 0
         for _, _, s in scored[:top]:
-            parts.append(f"### [{s['title']}]\n" + "\n".join(s["text"])[:per_limit])
-        return (self._head or "")[:4500], "\n\n".join(parts)
+            txt = f"### [{s['title']}]\n" + "\n".join(s["text"])[:per_limit]
+            if total and total + len(txt) > per_limit * top:
+                break
+            parts.append(txt)
+            total += len(txt)
+        return "\n\n".join(parts)

@@ -51,6 +51,26 @@ Object.assign(Config, {
                 'qq_groupchat 类型仅存 assistant 消息，最多容纳条数') +
             this._kvDictEditor('群机器人映射（机器人名 → QQ号）', 'napcat.group_bots', {},
                 '识别群机器人，如 幻梦 → 3889006601', '机器人名', 'QQ号') +
+            this._section('群聊关键词命中回复') +
+            this._check('启用关键词命中回复', 'napcat.group_keyword_reply.enabled', false,
+                '默认关闭；开启后群消息命中关键词即触发回复（与 @ 同等待遇）') +
+            this._wordTagEditor('关键词（回车添加，命中即回复）', 'napcat.group_keyword_reply.keywords', [],
+                '子串匹配；命中后走与 @ 相同的回复链路；@ 等待期内的关键词只合并、不另起回复') +
+            this._check('回复时 @ 发送者', 'napcat.group_keyword_reply.reply_with_at', true) +
+            this._check('区分大小写', 'napcat.group_keyword_reply.case_sensitive', false) +
+            this._section('群聊回复合并（多人/多触发防刷屏）') +
+            this._check('启用回复合并', 'napcat.group_merge.enabled', true,
+                '开启后同群窗口内的多人/多触发合并为一次回复，给 AI 的消息也合并为一条') +
+            this._num('合并窗口(秒)', 'napcat.group_merge.window', 2, 0.5, 10, 0.5,
+                '多人在该窗口内触发即合并为一条回复') +
+            this._check('滑动延长窗口', 'napcat.group_merge.sliding', false,
+                '关闭=从第一个触发起算固定窗口；开启=每次新触发重置（受最大等待限制）') +
+            this._num('最大等待(秒)', 'napcat.group_merge.max_wait', 6, 1, 60, 1) +
+            this._num('单用户续聊窗口-下限(秒)', 'napcat.group_merge.user_window_min', 5, 1, 60, 1,
+                '@ / 关键词后等待该用户后续消息的窗口下限') +
+            this._num('单用户续聊窗口-上限(秒)', 'napcat.group_merge.user_window_max', 15, 1, 120, 1) +
+            this._num('在途补聚合轮数', 'napcat.group_merge.max_extra_rounds', 1, 0, 5, 1,
+                '回复生成期间的新触发最多再补聚合的轮数') +
             this._section('群聊主动插话（按消息数判断）') +
             this._check('启用群聊主动插话', 'napcat.group_active_enabled', true) +
             this._num('触发基数（更新 N 次后判断）', 'napcat.group_reply_base', 6, 1, 100, 1,
