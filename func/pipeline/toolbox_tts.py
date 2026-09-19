@@ -18,6 +18,10 @@ class ToolboxTtsBridge:
     # 分段标点（与主 LLM 一致，按这些标点切分成多个 TTS 片段）
     SPLIT_CHARS = [",", "，", "。", "!", "！", "?", "？", "；", ";"]
 
+    # 分段最小长度（字）：不足该长度即使遇到标点也不切，继续累积到下一句
+    # 可在 config.yml 的 tts.seg_min_len 修改；0 = 遇标点就切（旧行为）
+    DEFAULT_SEG_MIN_LEN = 24
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         # pipeline 层自己持有 TTS 回答队列所属状态，封装 llm 层运行时对象
@@ -26,7 +30,7 @@ class ToolboxTtsBridge:
 
     def send_to_answer_queue(self, text: str, traceid: str = "",
                              seg_index: int = 0, chat_status: str = "end",
-                             source: str = "toolbox"):
+                             source: str = "toolbox", emotion: str = ""):
         """将 toolbox 输出文本片段推送到 TTS 回答队列（空文本 + end 作为结束标记仍发送）
 
         - source 仅作来源标注（如 toolbox / toolbox_watching），不作为 TTS 分组键。
@@ -46,9 +50,11 @@ class ToolboxTtsBridge:
             "language": "AutoChange",
             "seg_index": seg_index,
         }
+        if emotion:
+            json_msg["emotion"] = emotion
         self.llm_data.AnswerList.put(json_msg)
 
-    def send_stream(self, text: str, source: str = "toolbox"):
+    def send_stream(self, text: str, source: str = "toolbox", emotion: str = ""):
         """把整段文本按标点切分后逐段送入 TTS（seg_index 递增，最后 end）。
 
         实现「边合成边播放」的流式效果：与主 LLM 分段逻辑一致，
@@ -57,15 +63,17 @@ class ToolboxTtsBridge:
         if not text or not text.strip():
             return
         traceid = str(uuid.uuid4())
-        segments = self._split(text.strip())
+        segments = self._split(text.strip(), self._seg_min_len())
         if not segments:
             self.send_to_answer_queue(text.strip(), traceid=traceid,
-                                      seg_index=0, chat_status="end", source=source)
+                                      seg_index=0, chat_status="end", source=source,
+                                      emotion=emotion)
             return
         for i, seg in enumerate(segments):
             chat_status = "end" if i == len(segments) - 1 else ""
             self.send_to_answer_queue(seg, traceid=traceid,
-                                      seg_index=i, chat_status=chat_status, source=source)
+                                      seg_index=i, chat_status=chat_status, source=source,
+                                      emotion=emotion)
 
     def is_busy(self) -> bool:
         """检测当前是否有 TTS 说话任务（供弹幕消费调度轮询）。
@@ -106,18 +114,39 @@ class ToolboxTtsBridge:
         except Exception:
             self.log.exception("toolbox → TTS 播放预合成音频异常")
 
+    def _seg_min_len(self) -> int:
+        """读取分段最小长度（config.yml → tts.seg_min_len，缺省 24）"""
+        try:
+            from func.pipeline.config_reader import ConfigReader
+            raw = (ConfigReader().get("tts", {}) or {}).get("seg_min_len", self.DEFAULT_SEG_MIN_LEN)
+            return max(0, int(raw))
+        except Exception:
+            return self.DEFAULT_SEG_MIN_LEN
+
     @classmethod
-    def _split(cls, text: str) -> list:
-        """按标点切分文本为多个片段（保留标点，过滤空段）"""
+    def _split(cls, text: str, min_len: int = None) -> list:
+        """按标点切分文本为多个片段（保留标点，过滤空段）
+
+        min_len：片段最小长度（字）。累积长度不足 min_len 时即使遇到标点也不切，
+        继续拼到下一句，避免出现「此外。」这类极短片段；末尾不足 min_len 的残留
+        并入前一个片段。
+        """
+        if min_len is None:
+            min_len = cls.DEFAULT_SEG_MIN_LEN
+        min_len = max(0, int(min_len))
         result = []
         buf = ""
         for ch in text:
             buf += ch
-            if ch in cls.SPLIT_CHARS:
+            if ch in cls.SPLIT_CHARS and len(buf.strip()) >= min_len:
                 seg = buf.strip()
                 if seg:
                     result.append(seg)
                 buf = ""
-        if buf.strip():
-            result.append(buf.strip())
+        tail = buf.strip()
+        if tail:
+            if result and len(tail) < min_len:
+                result[-1] = result[-1] + tail
+            else:
+                result.append(tail)
         return result

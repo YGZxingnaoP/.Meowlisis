@@ -125,6 +125,16 @@ class AudioHub:
                 while len(buf) > keep:
                     buf.popleft()
 
+    def pop_frames(self, sid):
+        """一次性取走指定源当前全部已采集帧（保持时序，识别链路不丢帧）"""
+        with self._lock:
+            buf = self._buffers.get(sid)
+            if not buf:
+                return []
+            frames = list(buf)
+            buf.clear()
+            return frames
+
     # ---------- 生命周期 ----------
     def open(self):
         for sid in list(self._sources.keys()):

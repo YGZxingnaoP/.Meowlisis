@@ -4,7 +4,7 @@
 
 from typing import List, Dict
 
-from func.catbrain.AbstractMem.tag_store import MeowTagStore
+from func.catbrain.AbstractMem.process.tag_store import MeowTagStore
 
 
 class MeowUserInfoTool:

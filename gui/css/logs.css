@@ -1,0 +1,210 @@
+/* =========================================================
+   日志中心页面（/logs）—— 独立于轨道那套，走同一套粉色变量
+   ========================================================= */
+:root {
+    --pink-light: #FFF0F5;
+    --pink-soft: #FFD1DC;
+    --pink-main: #FFB6C1;
+    --pink-deep: #FF69B4;
+    --text-main: #4A4A4A;
+    --text-light: #8A8A8A;
+    --ok: #2FA36B;
+    --warn: #C9871B;
+    --err: #D9464E;
+    --line: rgba(255, 105, 180, 0.18);
+    --side-bg: rgba(255, 255, 255, 0.72);
+    --log-bg: #1B1A1F;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    color: var(--text-main);
+    background: linear-gradient(135deg, #FAFAFA 0%, var(--pink-light) 50%, var(--pink-soft) 100%);
+    overflow: hidden;
+}
+
+.lh-app { display: flex; height: 100vh; }
+
+/* ---------------- 侧边栏 ---------------- */
+.lh-side {
+    width: 238px;
+    flex: 0 0 238px;
+    display: flex;
+    flex-direction: column;
+    background: var(--side-bg);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid var(--line);
+}
+
+.lh-brand {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 14px 6px;
+    font-size: 16px; font-weight: 700; color: var(--pink-deep);
+}
+.lh-brand-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--pink-deep);
+    box-shadow: 0 0 0 4px rgba(255, 105, 180, 0.18);
+}
+.lh-brand .lh-icon-btn { margin-left: auto; }
+
+.lh-side-hint {
+    padding: 0 14px 10px;
+    font-size: 11px; color: var(--text-light); line-height: 1.5;
+}
+
+.lh-list { flex: 1 1 auto; overflow: auto; padding: 4px 8px 8px; }
+
+.lh-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 8px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.16s ease;
+    border: 1px solid transparent;
+}
+.lh-item:hover { background: rgba(255, 182, 193, 0.22); }
+.lh-item.on {
+    background: rgba(255, 182, 193, 0.34);
+    border-color: var(--pink-main);
+}
+.lh-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px;
+    background: #C9C9C9;
+}
+.lh-dot.run { background: var(--ok); box-shadow: 0 0 0 3px rgba(47, 163, 107, 0.18); }
+.lh-name { font-size: 13px; font-weight: 600; }
+.lh-sub { font-size: 10px; color: var(--text-light); }
+.lh-meta { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.lh-meta .lh-name, .lh-meta .lh-sub {
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+}
+.lh-acts { display: flex; gap: 3px; flex: 0 0 auto; }
+.lh-act {
+    width: 22px; height: 22px; border-radius: 6px;
+    border: 1px solid var(--line); background: #fff;
+    font-size: 11px; line-height: 1; cursor: pointer; color: var(--text-main);
+    display: flex; align-items: center; justify-content: center;
+    transition: 0.15s ease;
+}
+.lh-act:hover { background: var(--pink-light); border-color: var(--pink-main); }
+.lh-act.start:hover { color: var(--ok); }
+.lh-act.stop:hover { color: var(--err); }
+.lh-act[disabled] { opacity: 0.35; cursor: default; }
+
+.lh-side-foot {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 14px; border-top: 1px solid var(--line);
+    font-size: 11px; color: var(--text-light);
+}
+.lh-switch { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+.lh-ts { margin-left: auto; }
+
+/* ---------------- 主区 ---------------- */
+.lh-main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; }
+
+.lh-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 16px; border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.55);
+}
+.lh-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.lh-title > span:first-child { font-size: 15px; font-weight: 700; }
+.lh-state { font-size: 11px; color: var(--text-light); }
+.lh-state.run { color: var(--ok); }
+.lh-file { font-size: 11px; color: var(--text-light); font-family: ui-monospace, Consolas, monospace; }
+.lh-tools { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+.lh-input {
+    height: 28px; padding: 0 9px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font-size: 12px; color: var(--text-main); outline: none;
+}
+.lh-input:focus { border-color: var(--pink-main); }
+.lh-select { padding-right: 4px; }
+#filter { width: 190px; }
+
+.lh-btn {
+    height: 28px; padding: 0 11px;
+    border: 1px solid var(--line); border-radius: 8px;
+    background: #fff; font-size: 12px; cursor: pointer; color: var(--text-main);
+    transition: 0.15s ease;
+}
+.lh-btn:hover { background: var(--pink-light); border-color: var(--pink-main); }
+.lh-btn-primary { color: var(--ok); }
+.lh-btn-danger { color: var(--err); }
+.lh-btn[disabled] { opacity: 0.4; cursor: default; }
+
+.lh-view {
+    position: relative;
+    flex: 1 1 auto; min-height: 0;
+    background: var(--log-bg);
+    overflow: auto;
+}
+.lh-empty {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: rgba(255, 255, 255, 0.32); font-size: 13px;
+}
+.lh-lines {
+    padding: 8px 0 20px;
+    font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    font-size: 12px; line-height: 1.62;
+    color: #D8D6DE;
+}
+.lh-line {
+    display: flex; gap: 10px;
+    padding: 0 14px;
+    white-space: pre-wrap; word-break: break-all;
+}
+.lh-line:hover { background: rgba(255, 255, 255, 0.045); }
+.lh-line .lv {
+    flex: 0 0 52px; text-align: right; opacity: 0.75;
+}
+.lh-line.INFO .lv { color: #63C88B; }
+.lh-line.WARNING .lv, .lh-line.WARN .lv { color: #E0B341; }
+.lh-line.ERROR .lv, .lh-line.CRITICAL .lv { color: #FF6B72; }
+.lh-line.line-ERROR { color: #FFB3B7; background: rgba(217, 70, 78, 0.10); }
+.lh-line.line-WARNING { color: #EBD9A8; }
+.lh-line .txt { flex: 1 1 auto; min-width: 0; }
+.lh-line.hit { outline: 1px solid rgba(255, 182, 193, 0.5); }
+
+.lh-foot {
+    display: flex; align-items: center; gap: 14px;
+    padding: 6px 16px; border-top: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.55);
+    font-size: 11px; color: var(--text-light);
+}
+.lh-grow { flex: 1 1 auto; }
+.lh-err { color: var(--err); }
+
+/* ---------------- NapCat 登录二维码 ---------------- */
+.lh-qr {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.72);
+    border-bottom: 1px solid var(--line);
+}
+.lh-qr[hidden] { display: none; }
+.lh-qr-img {
+    width: 128px; height: 128px; border-radius: 10px;
+    border: 1px solid var(--line); background: #fff; object-fit: contain;
+}
+.lh-qr-side { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.lh-qr-t { font-size: 14px; font-weight: 700; color: var(--pink-deep); }
+.lh-qr-hint { font-size: 12px; color: var(--text-light); }
+.lh-qr-side .lh-btn { text-decoration: none; display: inline-flex; align-items: center; }
+.lh-qr-token { font-size: 11px; color: var(--text-light); font-family: ui-monospace, Consolas, monospace; }
+
+/* ---------------- 轻提示 ---------------- */
+.lh-toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 20px);
+    padding: 9px 18px; border-radius: 999px;
+    background: rgba(74, 74, 74, 0.92); color: #fff; font-size: 12.5px;
+    opacity: 0; pointer-events: none; transition: 0.24s ease; z-index: 99;
+}
+.lh-toast.show { opacity: 1; transform: translate(-50%, 0); }
+.lh-toast.err { background: rgba(217, 70, 78, 0.95); }

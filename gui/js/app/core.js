@@ -16,6 +16,7 @@ const App = {
 
     async init() {
         Modal.init();
+        await this.loadPlugins();
         Orbit.init();
 
         // Toolbox 子视图关闭
@@ -167,6 +168,11 @@ const App = {
         return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     },
     onToolboxPlanetClick(id) {
+        const pluginRef = this.pluginMap && this.pluginMap[id];
+        if (pluginRef) {
+            this.openPluginPanel(pluginRef.id);
+            return;
+        }
         const map = {
             'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
             'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
@@ -182,6 +188,10 @@ const App = {
             'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() },
             'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() },
             'turtle_soup': { title: '海龟汤设置', fn: () => Config.turtle_soup() },
+            'flux_painter_service': { title: 'Flux 绘画 · 服务', fn: () => Config.fluxPainterService() },
+            'flux_painter_model': { title: 'Flux 绘画 · 模型', fn: () => Config.fluxPainterModel() },
+            'flux_painter_prompt': { title: 'Flux 绘画 · 提示词', fn: () => Config.fluxPainterPrompt() },
+            'flux_painter_workflow': { title: 'Flux 绘画 · 工作流', fn: () => Config.fluxPainterWorkflow() },
             'flux_painter': { title: 'Flux 绘画设置', fn: () => Config.fluxPainter() }
         };
         const panel = map[id];
@@ -192,11 +202,68 @@ const App = {
         this._openConfigPanel(panel.title, panel.fn);
     },
 
+    // ============ 插件卡片：一张「插件」父卡，子卡 = 各插件 ============,
+    async loadPlugins() {
+        try {
+            this.plugins = await API.getPlugins();
+        } catch (e) {
+            this.plugins = [];
+        }
+        this.pluginMap = {};
+        if (typeof Cards !== 'undefined' && Cards.META) {
+            Cards.META['plugins'] = { n: '插件', g: 'core', e: '🧩', img: '/api/plugins/card' };
+        }
+        const kids = [];
+        (this.plugins || []).forEach(p => {
+            if (typeof Cards !== 'undefined' && Cards.META) {
+                Cards.META[p.id] = {
+                    n: p.title || p.id, g: p.group || 'core', e: p.emoji || '🧩',
+                    img: '/api/plugins/' + p.id + '/card'
+                };
+            }
+            if (Config.pluginSchemas) Config.pluginSchemas[p.id] = p;
+            this.pluginMap[p.id] = { id: p.id };
+            kids.push({ id: p.id, label: p.title || p.id, card: p.id,
+                        tooltip: (p.title || p.id) + ' 插件配置与开关' });
+        });
+        if (typeof Orbit !== 'undefined' && Orbit.toolboxPlanets && kids.length) {
+            Orbit.toolboxPlanets.push({
+                id: 'plugins', label: '插件', card: 'plugins',
+                tooltip: '插件配置与开关', kids: kids
+            });
+        }
+        console.log('[Plugins] 插件子卡:', kids.map(k => k.id).join(', '));
+    },
+
+    async openPluginPanel(id) {
+        try {
+            await Config.preloadPluginConfig(id);
+        } catch (e) {
+            this.showToast('插件配置读取失败: ' + e.message, true);
+            return;
+        }
+        const schema = (Config.pluginSchemas || {})[id] || {};
+        this._openConfigPanel(schema.title || id, () => Config.pluginPanel(id), async () => {
+            const updates = Config.collectValues();
+            const cfg = Config.applyPluginUpdates(id, updates);
+            await API.savePluginConfig(id, cfg);
+            this.showToast('插件配置已保存（重启主程序生效）');
+        });
+    },
+
     // 普通配置面板（保存到 config.yml）,
-    _openConfigPanel(title, fn) {
+    _openConfigPanel(title, fn, onSave) {
         try {
             const html = fn();
             Modal.show(title, html, async () => {
+                if (typeof onSave === 'function') {
+                    try {
+                        await onSave();
+                    } catch (e) {
+                        this.showToast('保存失败: ' + e.message, true);
+                    }
+                    return;
+                }
                 const updates = Config.collectValues();
                 Config.applyUpdates(updates, this.config);
                 try {
@@ -266,16 +333,16 @@ const App = {
             const data = await res.json();
             const kinds = (data && data.kinds) || [];
             if (!kinds.length) {
-                box.innerHTML = '<div class="help-text">暂无奖励项，点击下方新建</div>';
+                box.innerHTML = '<div class="help-text">' + this._t('暂无奖励项，点击下方新建') + '</div>';
             } else {
                 box.innerHTML = kinds.map(k => this.rewardRowHtml(k)).join('');
             }
             box.insertAdjacentHTML('beforeend',
                 '<div style="margin-top:12px;">' +
-                '<button type="button" class="btn btn-primary" id="addRewardBtn">新建奖励种类</button></div>');
+                '<button type="button" class="btn btn-primary" id="addRewardBtn">' + this._t('新建奖励种类') + '</button></div>');
             this.bindRewardManage(box);
         } catch (e) {
-            box.innerHTML = '<div class="help-text">读取奖励失败: ' + this._esc(e.message) + '</div>';
+            box.innerHTML = '<div class="help-text">' + this._t('读取奖励失败: ') + this._esc(e.message) + '</div>';
         }
     },
 
@@ -294,16 +361,16 @@ const App = {
             '<b>' + this._esc(k.name) + '</b>' +
             '<span style="font-size:24px;font-weight:800;color:var(--pink-main,#ff7eb6);">' +
             this._esc(k.balance) + this._esc(unit) + '</span>' +
-            '<span class="help-text">累计获取 ' + this._esc(k.total_acquired) + this._esc(unit) + '</span></div>' +
+            '<span class="help-text">' + this._t('累计获取 ') + this._esc(k.total_acquired) + this._esc(unit) + '</span></div>' +
             '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;align-items:center;">' +
-            '<label>每</label><input type="number" data-f="battery_per_unit" step="0.5" min="0.1" value="' +
+            '<label>' + this._t('每') + '</label><input type="number" data-f="battery_per_unit" step="0.5" min="0.1" value="' +
             this._esc(k.battery_per_unit) + '" style="width:74px;">' +
-            '<label>电池 = 1</label><input type="text" data-f="unit" value="' + this._esc(unit) + '" style="width:52px;">' +
-            '<label>启动每次消耗</label><input type="number" data-f="startup_cost" step="0.1" min="0" value="' +
+            '<label>' + this._t('电池 = 1') + '</label><input type="text" data-f="unit" value="' + this._esc(unit) + '" style="width:52px;">' +
+            '<label>' + this._t('启动每次消耗') + '</label><input type="number" data-f="startup_cost" step="0.1" min="0" value="' +
             this._esc(k.startup_cost) + '" style="width:72px;">' +
             '<label>' + this._esc(unit) + '</label></div>' +
             '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">' +
-            '<button type="button" class="btn btn-secondary" data-act="set">保存配置</button>' +
+            '<button type="button" class="btn btn-secondary" data-act="set">' + this._t('保存配置') + '</button>' +
             '<button type="button" class="btn btn-primary" data-act="adjust" data-delta="1">+1</button>' +
             '<button type="button" class="btn btn-primary" data-act="adjust" data-delta="0.1">+0.1</button>' +
             '<button type="button" class="btn btn-secondary" data-act="adjust" data-delta="-1">-1</button>' +

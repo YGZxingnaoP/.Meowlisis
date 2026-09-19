@@ -594,7 +594,11 @@ class TTsCore:
 
         text = re.sub(r"(《|》|（|）)", "", text)
 
-        emotion, intensity = self._resolve_emotion()
+        override = str(json.get("emotion") or "").strip()
+        if override:
+            emotion, intensity = override, 3.0
+        else:
+            emotion, intensity = self._resolve_emotion()
 
         ref_audio = self._resolve_ref_audio(emotion)
 

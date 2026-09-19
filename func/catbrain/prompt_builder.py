@@ -2,6 +2,8 @@
 # func/catbrain/prompt_builder.py
 # 完整系统提示词构建：仅按顺序拼接各模块 load 产出的 markdown 提示词
 
+import datetime
+
 from func.log.default_log import DefaultLog
 from func.config.app_config import AppConfig
 from func.catbrain.CharacterCard.character_prompt import MeowCharacterPrompt
@@ -9,6 +11,7 @@ from func.catbrain.CharacterCard.load_refaudio import MeowLoadRefAudio
 from func.catbrain.CatValues.load_values import MeowLoadValues
 from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
 from func.catbrain.AbstractMem.load_abmem import MeowLoadAbstractMemory
+from func.catbrain.LongTermMem.load_memory import MeowLoadMemory
 from func.calendar.prompt_builder import DatePromptBuilder
 
 
@@ -21,8 +24,32 @@ class MeowPromptBuilder:
         self.values = MeowLoadValues()
         self.usrmem = MeowLoadUserMemory()
         self.abmem = MeowLoadAbstractMemory()
+        self.ltmem = MeowLoadMemory()
         self.ref_audio = MeowLoadRefAudio()
         self.calendar = DatePromptBuilder()
+        try:
+            from func.pipeline.msg_abmem import MeowMsgAbmemBridge
+            self.msg_abmem = MeowMsgAbmemBridge()
+        except Exception:
+            self.msg_abmem = None
+
+    @staticmethod
+    def _build_now() -> str:
+        """构建当前日期时间提示词"""
+        now = datetime.datetime.now()
+        weekday = "星期" + "一二三四五六日"[now.weekday()]
+        return f"# 现在是\n- {now.strftime('%Y-%m-%d %H:%M')} {weekday}"
+
+    def _decide_recall(self, current_message: str, username) -> dict:
+        """判定是否需要加强回忆，失败或未启用时按正常流程处理"""
+        empty = {"need_recall": False, "months": [], "label": ""}
+        if not self.msg_abmem or not current_message:
+            return empty
+        try:
+            return self.msg_abmem.decide(current_message, username or "")
+        except Exception:
+            self.log.exception("记忆回忆判定失败")
+            return empty
 
     def _current_emotion(self) -> str:
         """读取当前情绪（来自 pipeline 情绪桥接）"""
@@ -47,13 +74,17 @@ class MeowPromptBuilder:
                 username = MeowLLMLtMemBridge().last_username
             except Exception:
                 username = None
+        recall = self._decide_recall(current_message, username)
         parts = [
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
             self.usrmem.build(username),
             self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
+            self._build_now(),
             self.calendar.build(username, mark_first=mark_first),  # 日期块（节日/节气/生日）
-            self.abmem.build_prompt(current_message, username),
+            self.abmem.build_prompt(current_message, username,
+                                    need_recall=recall.get("need_recall", False), time_hint=recall),
+            self.ltmem.build(username),  # 原文兜底（默认关闭）
         ]
         return "\n\n".join([p for p in parts if p])
 
@@ -71,13 +102,17 @@ class MeowPromptBuilder:
         else:
             user_block = group_info_text or ""
             calendar_block = self.calendar.build_no_user()  # 群聊无特定用户：不检查生日
+        recall = self._decide_recall(current_message, username)
         parts = [
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
             user_block,
             self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
+            self._build_now(),
             calendar_block,
-            self.abmem.build_prompt(current_message, username or ""),
+            self.abmem.build_prompt(current_message, username or "",
+                                    need_recall=recall.get("need_recall", False), time_hint=recall),
+            self.ltmem.build(username or ""),  # 原文兜底（默认关闭）
         ]
         return "\n\n".join([p for p in parts if p])
 

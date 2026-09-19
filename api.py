@@ -76,7 +76,7 @@ SystemPromptBridge().register_builder(catbrain_builder)
 from func.catbrain.CatValues.values_timer import MeowValuesTimer
 MeowValuesTimer().start()
 # 摘要归档启动扫描（负分条目累计与归档）
-from func.catbrain.AbstractMem.archive import MeowArchive
+from func.catbrain.AbstractMem.process.archive import MeowArchive
 MeowArchive().scan()
 # ============================================
 

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>日志中心 · Meowlisis</title>
+<link rel="stylesheet" href="css/logs.css">
+</head>
+<body>
+<div class="lh-app">
+
+    <!-- ==================== 侧边栏：服务 + 启停 ==================== -->
+    <aside class="lh-side">
+        <div class="lh-brand">
+            <span class="lh-brand-dot"></span>
+            <span>日志中心</span>
+            <button class="lh-icon-btn" id="btnReload" title="刷新服务列表">⟳</button>
+        </div>
+        <div class="lh-side-hint">点服务名看日志 · ▶ 启动 / ■ 停止</div>
+        <nav class="lh-list" id="svcList"><!-- JS 渲染 --></nav>
+        <div class="lh-side-foot">
+            <label class="lh-switch">
+                <input type="checkbox" id="autoScroll" checked>
+                <span>自动跟随</span>
+            </label>
+            <span class="lh-ts" id="tsInfo"></span>
+        </div>
+    </aside>
+
+    <!-- ==================== 主区：日志 ==================== -->
+    <main class="lh-main">
+        <header class="lh-bar">
+            <div class="lh-title">
+                <span id="curName">主程序</span>
+                <span class="lh-state" id="curState">—</span>
+                <span class="lh-file" id="curFile"></span>
+            </div>
+            <div class="lh-tools">
+                <input type="text" id="filter" class="lh-input" placeholder="过滤关键字（支持 | 或）">
+                <select id="level" class="lh-input lh-select">
+                    <option value="">全部级别</option>
+                    <option value="ERROR">仅 ERROR</option>
+                    <option value="WARNING">WARNING+</option>
+                    <option value="INFO">INFO+</option>
+                </select>
+                <button class="lh-btn" id="btnPause" title="暂停/继续拉取">暂停</button>
+                <button class="lh-btn" id="btnClear" title="清空该服务的日志文件">清空</button>
+                <button class="lh-btn lh-btn-primary" id="btnStart">▶ 启动</button>
+                <button class="lh-btn lh-btn-danger" id="btnStop">■ 停止</button>
+            </div>
+        </header>
+
+        <section class="lh-qr" id="qrBox" hidden>
+            <img class="lh-qr-img" id="qrImg" alt="登录二维码">
+            <div class="lh-qr-side">
+                <div class="lh-qr-t">扫码登录 QQ</div>
+                <div class="lh-qr-hint" id="qrHint">用手机 QQ 扫上面的二维码</div>
+                <a class="lh-btn" id="qrWebui" target="_blank" rel="noopener">打开 NapCat WebUI</a>
+                <div class="lh-qr-token" id="qrToken"></div>
+            </div>
+        </section>
+
+        <section class="lh-view" id="view">
+            <div class="lh-empty" id="empty">选择左侧服务查看日志</div>
+            <div class="lh-lines" id="lines"></div>
+        </section>
+
+        <footer class="lh-foot">
+            <span id="statLines">0 行</span>
+            <span id="statSize">—</span>
+            <span id="statRate">—</span>
+            <span class="lh-grow"></span>
+            <span id="statErr" class="lh-err"></span>
+        </footer>
+    </main>
+</div>
+<div class="lh-toast" id="toast"></div>
+<script src="js/logs.js"></script>
+</body>
+</html>

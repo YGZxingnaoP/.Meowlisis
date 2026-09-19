@@ -70,6 +70,12 @@ class TBNapcatAnalysis:
 
         system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
 
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            plugin_hint = PluginManager().prompt_hint()
+        except Exception:
+            plugin_hint = ""
+
         # QQ 特定场景：命中哼唱关键词时，注入强制调用引导（仅 prompt 引导，不用 tool_choice 强制）
         hum_force = ""
         if text and ("哼唱" in text or "唱首歌" in text):
@@ -88,6 +94,7 @@ class TBNapcatAnalysis:
             f"- 想让角色唱歌，想听角色唱歌→ 调用 impromptu_sing；\n"
             f"- 明确想玩海龟汤/情境猜谜/猜谜游戏 → 调用 turtle_soup；\n"
             f"- 用户需要「画/画图/画画/画一幅/画个…/来张图/生成一张图/想要一张…的图/涩图」→ 调用 flux_paint（request 填用户原话）；\n"
+            f"{plugin_hint}\n"
             f"- 其它闲聊、普通话题 → 不调用任何工具。"
             f"{hum_force}"
         )
@@ -156,7 +163,16 @@ class TBNapcatAnalysis:
                                  qq_context, short_memory)
             handled = True
         else:
-            self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
+            from func.toolbox.plugins.manager import PluginManager
+            pm = PluginManager()
+            if pm.has_trigger(name):
+                pm.set_username(username)
+                pm.set_context({"username": username, "text": text,
+                                "short_memory": short_memory or []})
+                pm.dispatch_qq(name, args, qq_context)
+                handled = True
+            else:
+                self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
         return handled
 
     def _run_flux_paint(self, request: str, username: str, qq_context: Dict,
@@ -248,6 +264,11 @@ class TBNapcatAnalysis:
             tools.extend(TBFluxPainterCore().build_tools())
         except Exception:
             self.log.exception("构建 flux_paint 工具失败")
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            tools.extend(PluginManager().trigger_schemas())
+        except Exception:
+            self.log.exception("构建插件工具失败")
         return tools
 
     # ==================== LLM（复用 napcat 现有配置 func/llm） ====================

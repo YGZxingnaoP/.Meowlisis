@@ -98,14 +98,19 @@ class TBExcuse:
 
     # ==================== 内部 ====================
     def _save_memory(self, role: str, content: str):
-        """保存询问/确认到 public_short_memory，type=toolbox_excuse（user/assistant 成对）"""
+        """保存询问/确认到 public_short_memory，type=toolbox_excuse（user/assistant 成对）
+
+        - 按原文保存（不加【】前缀），模块归属靠 type 字段区分；
+        - 上限传 0 = 不做自身裁剪：清除交给 short_memory 的挂靠机制，
+          跟随「其下方第一条 llm_fast_response」被淘汰时一起删除。
+        """
         try:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save({
                 "role": role,
-                "content": f"【toolbox询问】{content}",
+                "content": str(content or ""),
                 "type": "toolbox_excuse",
-            }, 30)
+            }, 0)
         except Exception:
             self.log.exception("[Excuse] 保存短期记忆失败")
 

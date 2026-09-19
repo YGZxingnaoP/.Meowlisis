@@ -91,7 +91,8 @@ class TBDanmakuCore:
         tts_bridge = ToolboxTtsBridge()
         while self._running:
             try:
-                if not tts_bridge.is_busy() and not self._is_singing():
+                if (not tts_bridge.is_busy() and not self._is_singing()
+                        and self._allow_danmaku()):
                     self.reply.consume()
             except Exception:
                 self.log.exception("弹幕消费轮询异常")
@@ -104,6 +105,15 @@ class TBDanmakuCore:
             return SingingStateBridge().is_singing()
         except Exception:
             return False
+
+    @staticmethod
+    def _allow_danmaku():
+        """插件状态总线：有插件声明「不读弹幕」时跳过本轮消费（弹幕只留在队列里）"""
+        try:
+            from func.pipeline.plugins_state import PluginsStateBridge, CAP_DANMAKU
+            return PluginsStateBridge().allow(CAP_DANMAKU)
+        except Exception:
+            return True
 
     # ==================== 礼物/舰长感谢 ====================
     def thank_gift(self, username: str, gift_name: str, gift_num: int, price: int,

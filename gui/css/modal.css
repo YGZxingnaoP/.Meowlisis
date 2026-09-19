@@ -1,20 +1,49 @@
 .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(8px);
+    /* 不用 backdrop-filter：它会把下方元素当"背景根"采样，
+       和下层被合成提升的动画层抢绘制顺序（就是"启动球盖住面板"的成因） */
+    background: rgba(40, 30, 45, 0.45);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1700;
+    /* 图层顺序（全局统一刻度）：
+       轨道 0 → 工具箱浮层 2000 → 配置面板 5000 → 语言切换/toast 更高 */
+    z-index: 5000;
     opacity: 0;
+    /* 同 toolbox-overlay：隐藏时必须 visibility:hidden，
+       opacity:0 + pointer-events:none 会被子元素的 pointer-events:auto 突破 */
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
 }
 
 .modal-overlay.show {
     opacity: 1;
+    visibility: visible;
     pointer-events: all;
+    transition: opacity 0.3s ease;
+}
+
+/* ===== 面板打开时：背景整体虚化压暗 =====
+   性能要点（否则打开面板必掉帧）：
+   ① 只过渡 opacity，filter 不参与过渡 —— filter 一旦参与过渡，
+      浏览器会在过渡期间每帧重算整块模糊（1500×1500 的大层）。
+   ② 模糊层里不许有动画：.card-glow 的呼吸、.bg-stars 的闪烁全部暂停。
+      只要层内像素在变，模糊结果就必须每帧重算，这是掉帧的真正来源。
+   ③ .bg-stars 不参与模糊（全屏元素 + 动画 = 最贵的一项），只压暗。 */
+body.modal-open .container {
+    filter: blur(3.5px) saturate(0.92);
+    opacity: 0.45;
+    transition: opacity 0.22s ease;
+}
+body.modal-open .bg-stars {
+    opacity: 0.30;
+    transition: opacity 0.22s ease;
+}
+body.modal-open .card-glow,
+body.modal-open .bg-stars {
+    animation-play-state: paused;
 }
 
 .modal-window {
@@ -26,13 +55,14 @@
     display: flex;
     flex-direction: column;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
-    transform: scale(0.9) translateY(20px);
+    /* --ox/--oy/--os 由 Modal._applyOrigin 注入：从来源卡片的位置放大出来 */
+    transform: translate(var(--ox, 0px), var(--oy, 20px)) scale(var(--os, 0.9));
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
     overflow: hidden;
 }
 
 .modal-overlay.show .modal-window {
-    transform: scale(1) translateY(0);
+    transform: translate(0, 0) scale(1);
 }
 
 .modal-header {
@@ -69,6 +99,24 @@
     background: var(--pink-main);
     color: white;
     transform: rotate(90deg);
+}
+
+/* 从卡片打开时：头部按卡片主题着色，视觉上延续那张卡 */
+.modal-window.from-card .modal-header {
+    background: linear-gradient(160deg, var(--theme-a, var(--pink-main)), var(--theme-b, var(--pink-deep)));
+    padding: 16px 20px 14px;
+}
+.modal-window.from-card .modal-header h3 {
+    color: #fff;
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+.modal-window.from-card .modal-close {
+    background: rgba(255, 255, 255, 0.28);
+    color: #fff;
+}
+.modal-window.from-card .modal-close:hover {
+    background: rgba(255, 255, 255, 0.5);
+    color: #fff;
 }
 
 .modal-body {

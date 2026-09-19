@@ -7,7 +7,7 @@ import datetime
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.catbrain.LongTermMem.save_memory import MeowSaveMemory
-from func.catbrain.AbstractMem.get_memory import MeowGetMemory
+from func.catbrain.AbstractMem.record.get_memory import MeowGetMemory
 from func.catbrain.UserMemory.update_userinfo import MeowUpdateUserInfo
 
 

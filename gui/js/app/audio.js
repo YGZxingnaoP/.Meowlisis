@@ -130,14 +130,14 @@ Object.assign(App, {
             this.renderSpeakerList(speakers);
         } catch (e) {
             const list = document.getElementById('speakerList');
-            if (list) list.innerHTML = '<div class="help-text">加载声纹列表失败</div>';
+            if (list) list.innerHTML = '<div class="help-text">' + this._t('加载声纹列表失败') + '</div>';
         }
     },
     renderSpeakerList(speakers) {
         const container = document.getElementById('speakerList');
         if (!container) return;
         if (!speakers.length) {
-            container.innerHTML = '<div class="help-text">暂无声纹用户，请新建或一键生成</div>';
+            container.innerHTML = '<div class="help-text">' + this._t('暂无声纹用户，请新建或一键生成') + '</div>';
             return;
         }
         container.innerHTML = speakers.map(s => `

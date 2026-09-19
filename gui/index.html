@@ -6,13 +6,16 @@
     <title>喵呜配置管理器</title>
     <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="css/orbit.css">
+    <link rel="stylesheet" href="css/cards.css">
     <link rel="stylesheet" href="css/modal.css">
     <link rel="stylesheet" href="css/vts.css">
 </head>
 <body>
+    <!-- 主界面背景图（由 tools/gen_bg_main.py 生成；这里显示时才做模糊，原图是清晰的） -->
+    <div class="bg-main"></div>
     <div class="bg-stars"></div>
     <!-- 语言切换（右上角，白色圆角按钮组） -->
-    <div id="langSwitch" style="position:fixed;top:10px;right:14px;z-index:9999;display:flex;gap:3px;align-items:center;background:rgba(255,255,255,.95);padding:3px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.22);">
+    <div id="langSwitch" style="position:fixed;top:10px;right:14px;z-index:3000;display:flex;gap:3px;align-items:center;background:rgba(255,255,255,.95);padding:3px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.22);">
         <button type="button" data-lang="zh-CN" class="lang-btn">中文</button>
         <button type="button" data-lang="en" class="lang-btn">EN</button>
     </div>
@@ -88,9 +91,11 @@
     <script src="js/config/tts.js"></script>
     <script src="js/config/media.js"></script>
     <script src="js/config/toolbox.js"></script>
+    <script src="js/config/plugins.js"></script>
     <script src="js/config/song.js"></script>
     <script src="js/config/db.js"></script>
     <script src="js/config/character.js"></script>
+    <script src="js/cards.js"></script>
     <script src="js/orbit.js"></script>
     <script src="js/modal.js"></script>
     <!-- 应用控制器（App 对象，按功能域拆分） -->

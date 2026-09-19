@@ -58,6 +58,7 @@ class MeowSingerConfig:
         self.rvc_protect = float(cover.get('protect', 0.33) or 0.33)
         self.rvc_rms_mix_rate = float(cover.get('rms_mix_rate', 1) or 1)
         self.rvc_resample_sr = int(cover.get('resample_sr', 0) or 0)
+        # 远程 RVC：true=上传/下载模式（服务在另一台机器上），服务端无接口时自动回退
         # 目标音高与音色偏移（动态变调 + 共振峰，默认 tangyuan 少女声线）
         self.target_f0 = float(cover.get('target_f0', 325) or 325)
         self.formant = float(cover.get('formant', 0) or 0)

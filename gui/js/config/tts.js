@@ -11,6 +11,8 @@ Object.assign(Config, {
             this._text('输出目录', 'tts.output_dir', './output') +
             this._num('音量', 'tts.volume', 1.0, 0, 2, 0.1) +
             this._num('合成线程数', 'tts.synth_workers', 2, 1, 8, 1) +
+            this._num('分段最小长度(字)', 'tts.seg_min_len', 24, 0, 200, 1,
+                '整段朗读（工具箱/读书等）按标点切分的下限：不足该字数即使遇到标点也不切，继续累积；0=遇标点就切') +
             this._select('打断模式', 'tts.interrupt.mode', [
                 {value:'pipeline',label:'pipeline'},{value:'keyboard',label:'keyboard'},{value:'off',label:'off'}
             ], 'pipeline') +
@@ -71,6 +73,8 @@ Object.assign(Config, {
         h += this._section('播放与合成 (config.yml)');
         h += this._num('音量', 'tts.volume', 1.0, 0, 2, 0.1);
         h += this._num('合成线程数', 'tts.synth_workers', 2, 1, 8, 1);
+        h += this._num('分段最小长度(字)', 'tts.seg_min_len', 24, 0, 200, 1,
+            '整段朗读（工具箱/读书等）按标点切分的下限：不足该字数即使遇到标点也不切，继续累积；0=遇标点就切');
         return h;
     },
 

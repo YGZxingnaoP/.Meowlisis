@@ -5,8 +5,8 @@
 import json
 import random
 
-from func.catbrain.AbstractMem.summary_tool import MeowSummaryTool
-from func.catbrain.AbstractMem.tag_store import MeowTagStore
+from func.catbrain.AbstractMem.record.summary_tool import MeowSummaryTool
+from func.catbrain.AbstractMem.process.tag_store import MeowTagStore
 
 
 class AutoRandomTopic:

@@ -20,14 +20,26 @@ os.environ.setdefault("rmvpe_root", os.path.join(RVC_DIR, "assets", "rmvpe"))
 # 精简服务默认关闭 CUDA Graph，避免 torch nightly 下的兼容问题（如需可设 1 打开）
 os.environ.setdefault("RVC_CUDA_GRAPH", "0")
 
+import base64
+import re
+import shutil
+import time
+import uuid
+
 import numpy as np
 import soundfile as sf
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 
 from configs.config import Config
 from infer.vc.modules import VC
 
 app = Flask(__name__)
+
+# ---- 文件传输接口（服务在另一台机器时）----
+# 客户端上传音频 → 这里在临时工作目录里处理 → 客户端把产物下载回去。
+# 这样客户端不必与服务器共享任何路径，也不依赖目录同步。
+WORK_ROOT = os.environ.get("RVC_WORK_ROOT", os.path.join(RVC_DIR, "_work"))
+WORK_TTL = int(os.environ.get("RVC_WORK_TTL", 6 * 3600))
 
 _config = None
 _vc = None
@@ -71,10 +83,19 @@ def _classify_stem(filename):
     return "other"
 
 
+def _as_frames_first(arr):
+    """soundfile 要求数组形状为 (帧数, 声道)。若传进来的是 (声道, 帧) 就转回来，
+    否则会变成"几十万声道"导致 LibsndfileError: Format not recognised。"""
+    a = np.asarray(arr)
+    if a.ndim == 2 and a.shape[0] <= 8 < a.shape[1]:
+        return a.T
+    return a
+
+
 def _save_track(audio, sr, output_dir, base, stem):
     """保存单轨为标准命名 {base}_{stem}.wav，返回路径"""
     path = os.path.join(output_dir, f"{base}_{stem}.wav")
-    sf.write(path, audio, sr, format="WAV", subtype="PCM_16")
+    sf.write(path, _as_frames_first(audio), sr, format="WAV", subtype="PCM_16")
     return path
 
 
@@ -171,10 +192,10 @@ def _separate_pymss(input_path, output_dir):
         for stem, arr in results.items():
             stem_l = stem.lower()
             if "karaoke" in stem_l or "instru" in stem_l:
-                sf.write(accomp_path, arr.T if arr.ndim > 1 else arr, sr,
+                sf.write(accomp_path, _as_frames_first(arr), sr,
                          format="WAV", subtype="PCM_16")
             elif "voc" in stem_l or "other" in stem_l:
-                sf.write(vocal_path, arr.T if arr.ndim > 1 else arr, sr,
+                sf.write(vocal_path, _as_frames_first(arr), sr,
                          format="WAV", subtype="PCM_16")
         if not os.path.exists(vocal_path) or not os.path.exists(accomp_path):
             raise RuntimeError("pymss 分离结果不完整")
@@ -213,6 +234,7 @@ def separate():
         result['code'] = 200
         result['msg'] = 'ok'
         result['backend'] = 'uvr'
+        result['f0_up_key'] = _auto_f0(result.get('vocal_path'))
         return jsonify(result)
     except Exception as e:
         print("UVR 分离失败，回退 pymss:", str(e))
@@ -223,6 +245,7 @@ def separate():
         result['code'] = 200
         result['msg'] = 'ok'
         result['backend'] = 'pymss'
+        result['f0_up_key'] = _auto_f0(result.get('vocal_path'))
         return jsonify(result)
     except Exception as e:
         traceback.print_exc()
@@ -305,6 +328,103 @@ def convert():
     except Exception as e:
         traceback.print_exc()
         return jsonify({'code': 500, 'msg': str(e)}), 500
+
+
+
+# ==================== 文件传输 / 变调估算 ====================
+
+def _sweep_work():
+    """清理过期工作目录，避免临时音频堆积"""
+    try:
+        if not os.path.isdir(WORK_ROOT):
+            return
+        now = time.time()
+        for name in os.listdir(WORK_ROOT):
+            p = os.path.join(WORK_ROOT, name)
+            if os.path.isdir(p) and now - os.path.getmtime(p) > WORK_TTL:
+                shutil.rmtree(p, ignore_errors=True)
+                print("[work] 清理过期目录:", p)
+    except Exception:
+        pass
+
+
+def _safe_work_path(path):
+    """只允许工作目录内的文件（防目录穿越）"""
+    real = os.path.realpath(str(path or ""))
+    root = os.path.realpath(WORK_ROOT)
+    return real if real.startswith(root + os.sep) else ""
+
+
+def _auto_f0(vocal_path, target_f0=325.0):
+    """从干声估算变调半音数（远程模式下客户端拿不到干声，由这里代算）
+
+    返回 None 表示算不了（客户端会自己用本地原曲兜底），返回 0 表示不转调。
+    """
+    try:
+        if not vocal_path or not os.path.exists(vocal_path):
+            return None
+        import librosa
+        y, sr = librosa.load(vocal_path, sr=16000, mono=True)
+        f0, voiced, _ = librosa.pyin(y, fmin=60, fmax=800, sr=sr)
+        if voiced is None or not np.any(voiced):
+            return 0
+        med = float(np.median(f0[voiced]))
+        if med <= 0:
+            return 0
+        return int(round(np.clip(12.0 * np.log2(float(target_f0) / med), -24, 24)))
+    except Exception as e:
+        print("[auto_f0] 跳过:", e)
+        return None
+
+
+@app.route('/api/upload', methods=['POST'])
+def upload():
+    """接收音频并存入本次任务的工作目录。
+
+    body: multipart/form-data（字段 file）或 JSON {"name":"x.mp3","data":"<base64>"}
+    返回: {code, path, work_dir}
+    """
+    _sweep_work()
+    os.makedirs(WORK_ROOT, exist_ok=True)
+    work_dir = os.path.join(WORK_ROOT,
+                            "t" + time.strftime("%Y%m%d%H%M%S") + "_" + uuid.uuid4().hex[:6])
+    os.makedirs(work_dir, exist_ok=True)
+
+    name, raw = "", b""
+    f = request.files.get('file')
+    if f is not None:
+        name = os.path.basename(f.filename or "")
+        raw = f.read()
+    else:
+        data = request.get_json(force=True, silent=True) or {}
+        name = os.path.basename(str(data.get('name') or ""))
+        b64 = str(data.get('data') or "")
+        if b64:
+            try:
+                raw = base64.b64decode(b64.split(',')[-1])
+            except Exception:
+                raw = b""
+    if not raw or not name:
+        return jsonify({'code': 400, 'msg': '缺少文件内容或文件名'}), 400
+
+    name = re.sub(r'[\\/:*?"<>|]+', "_", name) or "input.wav"
+    dest = os.path.join(work_dir, name)
+    try:
+        with open(dest, "wb") as fp:
+            fp.write(raw)
+    except Exception as e:
+        return jsonify({'code': 500, 'msg': '写入失败: {}'.format(e)}), 500
+    print("[upload] {} {}KB -> {}".format(name, len(raw) // 1024, dest))
+    return jsonify({'code': 200, 'msg': 'ok', 'path': dest, 'work_dir': work_dir})
+
+
+@app.route('/api/download', methods=['GET'])
+def download():
+    """下载工作目录内的产物：GET /api/download?path=/root/autodl-tmp/.RVC/_work/xx/a.wav"""
+    p = _safe_work_path(request.args.get('path') or '')
+    if not p or not os.path.isfile(p):
+        return jsonify({'code': 404, 'msg': '文件不存在'}), 404
+    return send_file(p, as_attachment=True, download_name=os.path.basename(p))
 
 
 if __name__ == '__main__':

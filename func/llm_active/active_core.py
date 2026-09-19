@@ -70,11 +70,22 @@ class AutoActiveCore:
         self.timer.resume()
 
     def check_active(self):
-        """周期轮询：计时到期则异步触发主动回复"""
+        """周期轮询：计时到期则异步触发主动回复（插件占用时让位）"""
+        if not self._allow_active_reply():
+            return
         if self._running or not self.timer.is_due():
             return
         self._running = True
         Thread(target=self._trigger_safe).start()
+
+    @staticmethod
+    def _allow_active_reply():
+        """插件状态总线：有插件声明「暂停主动回复」时让位"""
+        try:
+            from func.pipeline.plugins_state import PluginsStateBridge, CAP_ACTIVE_REPLY
+            return PluginsStateBridge().allow(CAP_ACTIVE_REPLY)
+        except Exception:
+            return True
 
     def _trigger_safe(self):
         try:

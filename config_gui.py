@@ -96,6 +96,90 @@ def post_config():
     return jsonify({'status': 'ok'})
 
 
+# ==================== 插件（独立配置文件） ====================
+PLUGINS_DIR = BASE_DIR / "plugins"
+
+
+def _plugin_schema_io():
+    """延迟导入插件 schema 工具（避免未安装依赖时影响主配置）"""
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    from func.toolbox.plugins import schema_io
+    return schema_io
+
+
+def _plugin_dir(plugin_id):
+    """解析插件目录并防止路径穿越"""
+    if not plugin_id or plugin_id in (".", "..") or "/" in plugin_id or "\\" in plugin_id:
+        return None
+    try:
+        path = (PLUGINS_DIR / plugin_id).resolve()
+        root = PLUGINS_DIR.resolve()
+    except Exception:
+        return None
+    if root != path and root not in path.parents:
+        return None
+    return path if path.is_dir() else None
+
+
+@app.route('/api/plugins', methods=['GET'])
+def get_plugins():
+    """返回全部插件元信息与配置字段（含独立配置）"""
+    schema_io = _plugin_schema_io()
+    items = []
+    for pid, pdir, meta, cards, fields in schema_io.list_plugins(str(PLUGINS_DIR)):
+        cfg = schema_io.ensure_config(pdir, meta, fields)
+        items.append({
+            "id": pid,
+            "title": meta.get("title") or pid,
+            "version": meta.get("version") or "",
+            "group": meta.get("group") or "core",
+            "emoji": meta.get("emoji") or "\U0001F9E9",
+            "enabled": bool(cfg.get("enabled", meta.get("default_enabled", True))),
+            "cards": cards,
+            "fields": fields,
+        })
+    return jsonify(items)
+
+
+@app.route('/api/plugins/card', methods=['GET'])
+def get_plugins_card():
+    """插件父卡卡面（plugins/card.png，缺失返回 404，前端回落 emoji）"""
+    return send_from_directory(str(PLUGINS_DIR), 'card.png')
+
+
+@app.route('/api/plugins/<plugin_id>/card', methods=['GET'])
+def get_plugin_card(plugin_id):
+    """插件卡面（plugins/<id>/card.png）"""
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return jsonify({'status': 'error', 'message': 'invalid plugin id'}), 400
+    return send_from_directory(str(pdir), 'card.png')
+
+
+@app.route('/api/plugins/<plugin_id>/config', methods=['GET'])
+def get_plugin_config(plugin_id):
+    """读取插件独立配置文件"""
+    schema_io = _plugin_schema_io()
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return jsonify({'status': 'error', 'message': 'invalid plugin id'}), 400
+    meta, _cards, fields = schema_io.load_schema(str(pdir))
+    return jsonify(schema_io.ensure_config(str(pdir), meta, fields))
+
+
+@app.route('/api/plugins/<plugin_id>/config', methods=['POST'])
+def post_plugin_config(plugin_id):
+    """保存插件独立配置文件"""
+    schema_io = _plugin_schema_io()
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return jsonify({'status': 'error', 'message': 'invalid plugin id'}), 400
+    data = request.get_json() or {}
+    schema_io.write_config(str(pdir), data)
+    return jsonify({'status': 'ok'})
+
+
 @app.route('/api/rewards', methods=['GET'])
 def get_rewards():
     from func.rewards.fishcake_store import FishCakeStore
@@ -935,6 +1019,13 @@ def web_browse_collected():
             pass
     return jsonify(items)
 
+
+# ===== 日志中心：/logs 页面 + 各服务无窗口启动（gui/tools/loghub.py） =====
+try:
+    from gui.tools import loghub
+    loghub.register(app, BASE_DIR, GUI_DIR)
+except Exception as _loghub_e:
+    print('[loghub] 注册失败:', _loghub_e)
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=1801, debug=False)

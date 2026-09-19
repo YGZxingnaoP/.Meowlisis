@@ -24,6 +24,11 @@ class AudioConfig:
         self.chunk_size_ms = int(cfg.get('chunk_size_ms', 300))
         self.chunk = int(self.rate * self.chunk_size_ms / 1000)
 
+        # 重采样质量档：sinc_best / sinc_medium / sinc_fastest / linear / zero_order_hold
+        self.resample_converter = cfg.get('resample_converter', 'sinc_medium')
+        # 是否优先按目标采样率直接打开设备（免重采样；设备不支持时自动回退）
+        self.prefer_native_rate = bool(cfg.get('prefer_native_rate', False))
+
         # 采集源：{id: {type, enabled, device_index}}
         self.sources = cfg.get('sources', {}) or {}
         if not self.sources:

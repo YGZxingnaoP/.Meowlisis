@@ -158,6 +158,12 @@ class TBoxAnalysis:
         except Exception:
             self.log.exception("注册群机器人指令入口失败")
 
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            PluginManager().register_into(self)
+        except Exception:
+            self.log.exception("注册插件模块失败")
+
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
@@ -193,6 +199,24 @@ class TBoxAnalysis:
         """
         self.current_username = username
 
+        # ===== 插件会话拦截 + 关键词硬触发（语音与弹幕共用 decide 入口） =====
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            pm = PluginManager()
+            if pm.route_text(text, username):
+                self.log.info(f"插件会话拦截: {(text or '')[:30]}")
+                return
+            hit = pm.match_keyword(text)
+            if hit:
+                name, arguments = hit
+                context = {"username": username, "text": text,
+                           "short_memory": self._load_short_memory(), "system_prompt": ""}
+                result = self.dispatch(name, arguments, username, context)
+                self.log.info(f"插件关键词触发 {name}: {(text or '')[:30]} -> {result}")
+                return
+        except Exception:
+            self.log.exception("插件会话/关键词处理失败")
+
         # ===== 规则硬触发层（零 LLM）：看屏幕是确定性高频需求，不交给 LLM 自觉 =====
         if self._vision_rule_hit(text):
             self.log.info(f"父级 toolcalls 规则硬触发 use_vision: {(text or '')[:30]}")
@@ -225,6 +249,12 @@ class TBoxAnalysis:
                             "short_memory": history_messages,
                             "system_prompt": base_prompt}
 
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            plugin_hint = PluginManager().prompt_hint()
+        except Exception:
+            plugin_hint = ""
+
         system_prompt = (
             f"{base_prompt}\n\n"
             f"【MISSION-1 · 最高使命 · use_vision 视觉】\n"
@@ -252,7 +282,8 @@ class TBoxAnalysis:
             f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send；\n"
             f"- 有让你提醒TA事情，需要新建/记录待办或提醒事项（如提醒我几点做什么）→ add_backlog。\n"
             f"- 用户想玩海龟汤/情境猜谜/猜谜游戏 → turtle_soup。\n"
-            f"- 用户需要「画/画图/画画/画一幅/画个…/绘一幅/来张图/生成一张图/想要一张…的图」→ flux_paint"
+            f"- 用户需要「画/画图/画画/画一幅/画个…/绘一幅/来张图/生成一张图/想要一张…的图」→ flux_paint\n"
+            f"{plugin_hint}\n"
             f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
             f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
             f"- 用户明确「点歌」「放歌」且指定了歌名/要完整唱（属于点歌工具，不属于本工具箱）；\n"

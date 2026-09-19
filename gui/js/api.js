@@ -20,6 +20,28 @@ const API = {
         return res.json();
     },
 
+    async getPlugins() {
+        const res = await fetch('/api/plugins');
+        if (!res.ok) return [];
+        return res.json();
+    },
+
+    async getPluginConfig(id) {
+        const res = await fetch('/api/plugins/' + encodeURIComponent(id) + '/config');
+        if (!res.ok) return {};
+        return res.json();
+    },
+
+    async savePluginConfig(id, cfg) {
+        const res = await fetch('/api/plugins/' + encodeURIComponent(id) + '/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(cfg)
+        });
+        if (!res.ok) throw new Error('Failed to save plugin config');
+        return res.json();
+    },
+
     async getTtsConfig() {
         const res = await fetch('/api/tts_config');
         if (!res.ok) return {};

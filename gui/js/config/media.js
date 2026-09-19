@@ -126,10 +126,10 @@ Object.assign(Config, {
         });
         h += this._section('表情绑定（左：槽位ID，右：桌宠热键ID）') +
             '<div class="emotion-slots">' +
-                '<div class="emotion-slots-head"><span>槽位 ID</span><span>桌宠热键 ID</span></div>' +
+                '<div class="emotion-slots-head"><span>' + this._t('槽位 ID') + '</span><span>' + this._t('桌宠热键 ID') + '</span></div>' +
                 rows +
             '</div>' +
-            '<div class="help-text">槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填桌宠（模型 vtube.json）里配置的热键 ID。</div>';
+            '<div class="help-text">' + this._t('槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填桌宠（模型 vtube.json）里配置的热键 ID。') + '</div>';
 
         return h;
     },
@@ -157,10 +157,10 @@ Object.assign(Config, {
         });
         return this._section('表情绑定（左：槽位ID，右：VTS 热键ID）') +
             '<div class="emotion-slots">' +
-                '<div class="emotion-slots-head"><span>槽位 ID</span><span>VTS 热键 ID</span></div>' +
+                '<div class="emotion-slots-head"><span>' + this._t('槽位 ID') + '</span><span>' + this._t('VTS 热键 ID') + '</span></div>' +
                 rows +
             '</div>' +
-            '<div class="help-text">槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填 VTS 里配置的热键 ID。</div>';
+            '<div class="help-text">' + this._t('槽位 id = 情绪 + 强度档；强度固定 &lt;3=weak、≥3=strong。右侧填 VTS 里配置的热键 ID。') + '</div>';
     },
     _emotionSlotRow(key, val) {
         return `<div class="emotion-slot-row">
@@ -173,10 +173,10 @@ Object.assign(Config, {
     vts_params() {
         return this._section('VTS 模型参数查询') +
             '<div class="vts-params-toolbar">' +
-                '<button type="button" class="btn btn-primary" data-vts-query>查询模型参数</button>' +
+                '<button type="button" class="btn btn-primary" data-vts-query>' + this._t('查询模型参数') + '</button>' +
             '</div>' +
             '<div class="vts-params-result" data-vts-params-result>' +
-                '<div class="help-text">点击上方按钮查询 VTS 当前模型的可用输入参数（含嘴部、身体角度等）。</div>' +
+                '<div class="help-text">' + this._t('点击上方按钮查询 VTS 当前模型的可用输入参数（含嘴部、身体角度等）。') + '</div>' +
             '</div>';
     },
     _vtsParamsTable(data, params) {

@@ -10,7 +10,7 @@ from func.llm_active.origin.web_browse.config import AutoWebBrowseConfig
 def get_summary_topics() -> List[str]:
     """话题枚举：复用 catbrain 摘要话题（与随机话题一致）"""
     try:
-        from func.catbrain.AbstractMem.summary_tool import MeowSummaryTool
+        from func.catbrain.AbstractMem.record.summary_tool import MeowSummaryTool
         return list(MeowSummaryTool.TOPICS)
     except Exception:
         return ["日常", "爱好", "哲思", "闲聊", "情感"]
@@ -19,7 +19,7 @@ def get_summary_topics() -> List[str]:
 def get_tags_pool() -> List[str]:
     """已有 tags：从 character/abstract_memory/tags/tags.json 读取"""
     try:
-        from func.catbrain.AbstractMem.tag_store import MeowTagStore
+        from func.catbrain.AbstractMem.process.tag_store import MeowTagStore
         return list(MeowTagStore().load())
     except Exception:
         return []

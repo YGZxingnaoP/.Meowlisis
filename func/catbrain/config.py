@@ -24,6 +24,10 @@ class MeowCatBrainConfig:
         lt = cfg.get('long_term_mem', {})
         # 长期记忆加载的回溯天数（从当天往前算）
         self.memory_days = lt.get('memory_days', 300)
+        # 原文兜底：是否把当前用户最近的原始记录追加到提示词（默认关闭）
+        self.memory_inject_recent = lt.get('inject_recent', False)
+        # 原文兜底：追加的最近条数
+        self.memory_inject_recent_lines = lt.get('inject_recent_lines', 20)
 
         # ========== 记忆摘要 ==========
         am = cfg.get('abstract_mem', {})
@@ -31,6 +35,18 @@ class MeowCatBrainConfig:
         self.summary_rounds = am.get('summary_rounds', 30)
         # 摘要提示词检索时加载的摘要条数上限
         self.summary_top_limit = am.get('summary_top_limit', 20)
+        # 摘要排序：证据分饱和上限（超过该值按该值计，避免历史虚高分一票通吃）
+        self.rank_evidence_saturation = am.get('rank_evidence_saturation', 5.0)
+        # 摘要排序：新近度半衰期（天，越小越偏向近期记忆）
+        self.rank_recency_half_life_days = am.get('rank_recency_half_life_days', 14)
+        # 摘要注入：相关性保底条数（至少保留与当前消息相关的条数）
+        self.summary_relevance_guarantee = am.get('summary_relevance_guarantee', 8)
+        # 摘要写入：importance 低于该值的事件是否丢弃（0 表示不做重要度过滤，全部保留）
+        self.summary_min_importance = am.get('min_importance', 0)
+        # 单次概括最多写入的事件数（防止一次对话产生过多摘要）
+        self.summary_max_events = am.get('max_events', 10)
+        # 概括提示词附带的「近期已记忆要点」条数（0 表示不附带，用于让模型避免重复记录）
+        self.summary_recent_memory_lines = am.get('recent_memory_lines', 12)
         # 当前话题更新间隔（秒）
         self.topic_update_interval = am.get('topic_update_interval', 60)
         # 摘要独立后端类型：deepseek / aliyun
@@ -62,6 +78,11 @@ class MeowCatBrainConfig:
 
         # 摘要 tags 上限（事件概括的标签数量上限）
         self.summary_tags_limit = am.get('tags_limit', 3)
+        self.summary_grep_limit = am.get('grep_limit', 10)
+        self.summary_tool_rounds = am.get('tool_rounds', 80)
+        self.summary_scope_reply_limit = am.get('scope_reply_limit', 80)
+        self.abmem_recall_enabled = am.get('recall_enabled', True)
+        self.abmem_recall_months_limit = am.get('recall_months_limit', 3)
 
         # ========== 摘要证据 ==========
         ev = am.get('evidence', {})

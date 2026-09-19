@@ -114,30 +114,29 @@ class SenseVoiceSession:
                 await asyncio.sleep(wait)
 
     def _vad_tick(self):
-        """能量 VAD 模式（mic/loopback）：检测说话状态，说话中才发帧"""
-        # 消费追赶：丢弃积压旧帧，只保留最近帧，保证打断/VAD 检测实时
-        self.hub.drain_to_latest(self.source_id)
-        frame = self.hub.next_frame(self.source_id)
-        if frame is None:
-            frame = self.silence_frame
+        """能量 VAD 模式（mic/loopback）：VAD 用最新帧保证实时，送 ASR 用完整序列保证不丢字"""
+        # 取走当前已采集的全部帧：VAD 只看最新一帧，音频按序整段送给服务端
+        frames = self.hub.pop_frames(self.source_id)
+        latest = frames[-1] if frames else self.silence_frame
 
         if self.source_id == 'loopback':
             try:
                 from func.pipeline.audio_state import AudioState
                 if AudioState().is_playing():
-                    frame = self.silence_frame
+                    latest = self.silence_frame
+                    frames = []
             except Exception:
                 pass
 
         if self.source_id == 'mic':
             try:
                 from func.pipeline.toolbox_audio import ToolboxAudioBridge
-                ToolboxAudioBridge().dispatch_frame(frame)
+                ToolboxAudioBridge().dispatch_frame(latest)
             except Exception:
                 pass
 
-        vad_event = self.interrupt.update_vad(frame)
-        interrupt_event = self.interrupt.update_interrupt(frame)
+        vad_event = self.interrupt.update_vad(latest)
+        interrupt_event = self.interrupt.update_interrupt(latest)
 
         if vad_event == 'started':
             self.manager.send_speaking(True)
@@ -150,7 +149,11 @@ class SenseVoiceSession:
             self.tts_bridge.set_speaking(interrupt_event == 'started')
 
         if self.interrupt.is_speaking:
-            self.manager.send_audio(frame)
+            if frames:
+                for frame in frames:
+                    self.manager.send_audio(frame)
+            else:
+                self.manager.send_audio(self.silence_frame)
 
     def _ptt_tick(self):
         """按住说话模式（inject）：有注入帧即说话段，end 事件/断流立即判停"""

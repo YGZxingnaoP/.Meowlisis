@@ -3,6 +3,9 @@
  * 由 config.js 拆分而来，统一挂载到全局 Config 对象
  */
 
+// B站分享（已收藏）视频列表最多展示条数
+const WEB_BROWSE_COLLECT_LIMIT = 5;
+
 Object.assign(Config, {
     napcat() {
         // 总览（向后兼容，实际由四个子球分别配置）
@@ -189,17 +192,20 @@ Object.assign(Config, {
         h += this._section('待使用缓存（' + caches.length + '）');
         h += `<div id="webBrowseCacheList">` + this._videoList(caches, false) + `</div>`;
 
-        h += this._section('已收藏（' + collecteds.length + '）');
+        h += this._section('已收藏（' + Math.min(collecteds.length, WEB_BROWSE_COLLECT_LIMIT) + '）');
         h += `<div id="webBrowseCollectedList">` + this._videoList(collecteds, true) + `</div>`;
         return h;
     },
     _videoList(items, isCollected) {
-        if (!items || !items.length) {
+        let list = items || [];
+        // B站分享（已收藏）视频列表：仅展示最近 5 条
+        if (isCollected) list = list.slice(-WEB_BROWSE_COLLECT_LIMIT);
+        if (!list.length) {
             return isCollected
                 ? `<div class="help-text">${this._t('暂无已收藏视频。主动回复使用过的视频会移动到此处。')}</div>`
                 : `<div class="help-text">${this._t('暂无缓存视频，等待后台采集或先扫码登录并配置视觉 API Key。')}</div>`;
         }
-        return items.map(v => this._videoCard(v, isCollected)).join('');
+        return list.map(v => this._videoCard(v, isCollected)).join('');
     },
     _videoCard(v, isCollected) {
         v = v || {};

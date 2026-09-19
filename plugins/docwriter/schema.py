@@ -1,0 +1,83 @@
+PLUGIN = {
+    "id": "docwriter",
+    "title": "文档助手",
+    "version": "2.0.0",
+    "group": "core",
+    "emoji": "\U0001F4C4",
+    "default_enabled": True,
+}
+
+FIELDS = [
+    {"key": "enabled", "label": "启用文档助手", "type": "check", "default": True,
+     "help": "关闭后不再触发写文档/做 PPT"},
+    {"key": "output_dir", "label": "输出目录", "type": "text", "default": "./character/catfiles",
+     "help": "成品文件与 assets/ 图片落盘目录"},
+    {"key": "agent_rounds", "label": "工具循环上限", "type": "num", "default": 20,
+     "min": 4, "max": 60, "step": 1},
+
+    # ---------------- LLM ----------------
+    {"key": "llm.provider", "label": "接口平台", "type": "select", "default": "deepseek",
+     "options": [{"value": "deepseek", "label": "DeepSeek"}, {"value": "aliyun", "label": "阿里云"},
+                 {"value": "gemini", "label": "Gemini"}, {"value": "openai", "label": "OpenAI"}]},
+    {"key": "llm.api_key", "label": "API Key", "type": "password", "default": "",
+     "help": "必填；留空则任务直接失败并提示"},
+    {"key": "llm.base_url", "label": "Base URL", "type": "text", "default": "",
+     "help": "留空使用平台默认"},
+    {"key": "llm.model", "label": "模型", "type": "text", "default": "",
+     "help": "留空使用平台默认"},
+    {"key": "llm.temperature", "label": "温度", "type": "num", "default": 0.7,
+     "min": 0, "max": 2, "step": 0.1},
+    {"key": "llm.max_tokens", "label": "max_tokens", "type": "num", "default": 8192,
+     "min": 256, "max": 65536, "step": 256},
+
+    # ---------------- 排版 ----------------
+    {"key": "style.theme", "label": "主题配色", "type": "select", "default": "auto",
+     "options": [{"value": "auto", "label": "自动（由模型按内容选）"},
+                 {"value": "tech", "label": "科技蓝"}, {"value": "business", "label": "商务墨蓝"},
+                 {"value": "warm", "label": "暖阳橙"}, {"value": "forest", "label": "森野绿"},
+                 {"value": "violet", "label": "夜紫"}, {"value": "mono", "label": "极简黑白"}]},
+    {"key": "style.cover", "label": "Word 自动生成封面", "type": "check", "default": True},
+    {"key": "style.toc", "label": "Word 预留目录页", "type": "check", "default": False},
+
+    # ---------------- 配图 / 搜图 ----------------
+    {"key": "image.enabled", "label": "启用配图", "type": "check", "default": True,
+     "help": "关闭后只写文字与图表"},
+    {"key": "image.source", "label": "配图来源", "type": "select", "default": "both",
+     "options": [{"value": "both", "label": "生图 + 网络搜图"}, {"value": "search", "label": "只用网络搜图"},
+                 {"value": "gen", "label": "只用 AI 生图"}]},
+    {"key": "image.max_per_doc", "label": "单篇配图上限", "type": "num", "default": 4,
+     "min": 0, "max": 20, "step": 1},
+    {"key": "image.min_w", "label": "网络图最小宽度(px)", "type": "num", "default": 700,
+     "min": 200, "max": 4000, "step": 50},
+    {"key": "image.min_h", "label": "网络图最小高度(px)", "type": "num", "default": 450,
+     "min": 150, "max": 4000, "step": 50},
+
+    # ---------------- 生图（硅基流动） ----------------
+    {"key": "image.api_key", "label": "生图 API Key", "type": "password", "default": "",
+     "help": "硅基流动 API Key；留空则自动跳过 AI 生图，仅用网络搜图"},
+    {"key": "image.base_url", "label": "生图 Base URL", "type": "text",
+     "default": "https://api.siliconflow.cn/v1"},
+    {"key": "image.model", "label": "生图模型", "type": "text", "default": "Kwai-Kolors/Kolors",
+     "help": "默认为快手可图 Kolors，中文提示词友好"},
+    {"key": "image.steps", "label": "推理步数", "type": "num", "default": 28,
+     "min": 10, "max": 50, "step": 1, "help": "默认 28；低于 20 容易出噪点"},
+    {"key": "image.guidance", "label": "引导强度", "type": "num", "default": 9.0,
+     "min": 1, "max": 20, "step": 0.5, "help": "默认 9.0；偏低画面会松散发虚"},
+    {"key": "image.style_suffix", "label": "自动补风格词", "type": "check", "default": True,
+     "help": "给生图提示词自动追加「专业配图、无文字」等后缀"},
+
+    # ---------------- 检索 ----------------
+    {"key": "search.engine", "label": "搜索引擎", "type": "select", "default": "both",
+     "options": [{"value": "both", "label": "百度+必应协同"}, {"value": "baidu", "label": "仅百度"},
+                 {"value": "bing", "label": "仅必应"}]},
+    {"key": "search.top_n", "label": "每次结果数", "type": "num", "default": 5,
+     "min": 1, "max": 20, "step": 1},
+    {"key": "search.timeout", "label": "请求超时(秒)", "type": "num", "default": 15,
+     "min": 5, "max": 120, "step": 1},
+    {"key": "search.page_chars", "label": "单页正文上限", "type": "num", "default": 4000,
+     "min": 500, "max": 20000, "step": 500},
+    {"key": "search.dynamic", "label": "动态页渲染", "type": "select", "default": "auto",
+     "options": [{"value": "auto", "label": "静态失败自动用浏览器"}, {"value": "off", "label": "关闭"}]},
+    {"key": "search.driver_dir", "label": "Edge 驱动缓存目录", "type": "text",
+     "default": "./.temp/edgedriver"},
+]

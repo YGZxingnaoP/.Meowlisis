@@ -159,12 +159,12 @@ Object.assign(Config, {
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('稳定帧占比 ')}<code>f0_stable_ratio</code></span>
-                    <span class="formula-expr">stable_ratio = ( 相邻帧 |Δ半音| &lt; 0.5 ) 帧占比 ≥ 0.6</span>
+                    <span class="formula-expr">${this._t('stable_ratio = ( 相邻帧 |Δ半音| &lt; 0.5 ) 帧占比 ≥ 0.6')}</span>
                     <span class="formula-cond">${this._t('哼唱音符内稳定；说话音高连续乱飘')}</span>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('稳定帧半音差 ')}<code>f0_stable_half_step</code></span>
-                    <span class="formula-expr">|Δ半音| &lt; 0.5 视为稳定帧</span>
+                    <span class="formula-expr">${this._t('|Δ半音| &lt; 0.5 视为稳定帧')}</span>
                     <span class="formula-cond">${this._t('相邻帧音高差阈值')}</span>
                 </div>
                 <div class="formula-row">

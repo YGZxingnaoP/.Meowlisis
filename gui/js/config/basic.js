@@ -10,7 +10,7 @@ Object.assign(Config, {
             this._num('API 端口', 'app.port', 1800, 1, 65535, 1) +
             this._section('奖励收纳篮（礼物入账）') +
             '<div id="rewardManage"></div>' +
-            '<div class="help-text">礼物按 1000瓜子=1元=10电池 折算，随机入账到某个奖励项</div>';
+            '<div class="help-text">' + this._t('礼物按 1000瓜子=1元=10电池 折算，随机入账到某个奖励项') + '</div>';
     },
 
     // ============ SenseVoice ============,
@@ -65,7 +65,17 @@ Object.assign(Config, {
                 '声纹识别关闭时使用') +
             this._num('采样率(Hz)', 'audio.rate', 16000, 8000, 48000, 1000) +
             this._num('声道数', 'audio.channels', 1, 1, 2, 1) +
-            this._num('分块大小(ms)', 'audio.chunk_size_ms', 300, 50, 500, 10);
+            this._num('分块大小(ms)', 'audio.chunk_size_ms', 300, 50, 500, 10) +
+            this._section('采集与重采样') +
+            this._check('优先按目标采样率打开设备（免重采样）', 'audio.prefer_native_rate', false,
+                '设备支持时跳过重采样；若人声变调请关闭') +
+            this._select('重采样质量', 'audio.resample_converter', [
+                { value: 'sinc_best', label: 'sinc_best（最高质量）' },
+                { value: 'sinc_medium', label: 'sinc_medium（推荐）' },
+                { value: 'sinc_fastest', label: 'sinc_fastest（最省 CPU）' },
+                { value: 'linear', label: 'linear' },
+                { value: 'zero_order_hold', label: 'zero_order_hold' },
+            ], 'sinc_medium', '仅当设备采样率不等于上方采样率时生效');
     },
 
     // ============ 静默（闭麦）配置 ============,

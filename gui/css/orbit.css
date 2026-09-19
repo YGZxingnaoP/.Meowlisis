@@ -1,3 +1,8 @@
+/* =========================================================
+   轨道系统：中心球（保留球形态）+ 椭圆轨道（卡片定位由 JS 计算）
+   半径见 js/orbit.js 的 Orbit.CFG：外层 RX 620 / RY 310，工具箱 430 / 215
+   ========================================================= */
+
 /* 轨道系统容器 */
 .orbit-system {
     position: relative;
@@ -18,14 +23,14 @@
     z-index: 10;
 }
 
-/* ========== 外层倾斜轨道（仅视觉倾斜，无动画）========== */
+/* ========== 外层轨道（卡片定位基准 + 拖动区） ========== */
 .orbit-outer {
     position: absolute;
-    width: 1200px;
-    height: 1200px;
+    width: 1500px;
+    height: 1500px;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) scaleY(0.5);
+    transform: translate(-50%, -50%);
     z-index: 5;
     pointer-events: auto;
     cursor: grab;
@@ -35,7 +40,38 @@
     cursor: grabbing;
 }
 
-/* 轨道环视觉 */
+/* ===== 摊开子卡时：让轨道层压在主球之上 =====
+   父卡会被推到屏幕正中（scale 1.5），而主球（210px）也在正中。
+   正常状态下 .launcher-cluster(z10) > .orbit-outer(z5)，父卡哪怕内部 z-index=900
+   也翻不过去（不同层叠上下文比的是容器），结果就是：
+     ① 主球把点开的父卡整张盖住
+     ② 再点正中时点到的是主球 → 触发 toggleLauncher → 启动器弹出来
+   所以摊开期间把两者顺序反过来。 */
+#orbitSystem.focusing .orbit-outer {
+    z-index: 30;
+}
+#orbitSystem.focusing .launcher-cluster {
+    z-index: 1;
+}
+#orbitSystem.focusing .center-launcher {
+    opacity: 0.18;
+}
+#orbitSystem.focusing .launcher-glow {
+    animation: none;
+}
+
+/* 工具箱同理：父卡推到正中时会撞上工具箱中心球 */
+#toolboxSystem.focusing .toolbox-orbit {
+    z-index: 30;
+}
+#toolboxSystem.focusing .toolbox-center-cluster {
+    z-index: 1;
+}
+#toolboxSystem.focusing .toolbox-center {
+    opacity: 0.18;
+}
+
+/* 轨道环视觉（椭圆，穿过卡片中心） */
 .orbit-ring {
     position: absolute;
     border-radius: 50%;
@@ -43,203 +79,73 @@
 }
 
 .ring-outer {
-    width: 1200px;
-    height: 1200px;
-    top: 0;
-    left: 0;
+    width: 1320px;
+    height: 660px;
+    top: 50%;
+    left: 50%;
+    margin: -330px 0 0 -660px;
     border: 1px solid rgba(255, 182, 193, 0.4);
     box-shadow: 0 0 40px rgba(255, 182, 193, 0.2), inset 0 0 40px rgba(255, 182, 193, 0.1);
-}
-
-/* ========== 服务启动球 ========== */
-.launch-planet {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 76px;
-    height: 76px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 12px;
-    text-align: center;
-    line-height: 1.2;
-    color: white;
-    background: rgba(255, 154, 158, 0.3);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    box-shadow: 0 4px 20px rgba(255, 105, 180, 0.35), inset 0 0 20px rgba(255, 255, 255, 0.25);
-    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
-    user-select: none;
-    z-index: 9;
-}
-
-.launch-planet:hover {
-    box-shadow: 0 8px 32px rgba(255, 105, 180, 0.55), inset 0 0 24px rgba(255, 255, 255, 0.35);
-}
-
-.launch-label {
-    pointer-events: none;
-    padding: 2px 6px;
-}
-
-/* ========== CatBrain 子球 ========== */
-.catbrain-sub {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 38px;
-    height: 38px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 9px;
-    text-align: center;
-    line-height: 1.2;
-    color: white;
-    background: rgba(161, 140, 209, 0.55);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.5);
-    box-shadow: 0 4px 18px rgba(161, 140, 209, 0.45), inset 0 0 16px rgba(255, 255, 255, 0.25);
-    transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
-    user-select: none;
-    z-index: 25;
-}
-
-.catbrain-sub:hover {
-    box-shadow: 0 8px 28px rgba(161, 140, 209, 0.65), inset 0 0 20px rgba(255, 255, 255, 0.35);
-}
-
-.catbrain-sub::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%) scale(0);
-    padding: 5px 12px;
-    background: rgba(255, 255, 255, 0.95);
-    color: var(--text-main);
-    font-size: 12px;
-    border-radius: 8px;
-    white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    opacity: 0;
-    transition: all 0.2s ease;
-    pointer-events: none;
-}
-
-.catbrain-sub:hover::after {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
-}
-
-/* ========== 行星基础样式 ========== */
-.planet {
-    position: absolute;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-weight: 600;
-    text-align: center;
-    line-height: 1.2;
-    transition: box-shadow 0.3s ease;
-    user-select: none;
-    pointer-events: auto;
-    z-index: 10;
-}
-
-/* 外层行星 - 毛玻璃质感（白字） */
-.planet-outer {
-    width: 100px;
-    height: 100px;
-    font-size: 15px;
-    color: white;
-    background: rgba(161, 140, 209, 0.25);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 4px 20px rgba(161, 140, 209, 0.25), inset 0 0 20px rgba(255, 255, 255, 0.15);
-}
-
-/* 行星悬停效果 */
-.planet-outer:hover {
-    z-index: 20;
-    box-shadow: 0 8px 32px var(--shadow-deep);
-}
-
-/* 标签文字 */
-.planet-label {
-    pointer-events: none;
-    padding: 2px 6px;
-}
-
-/* Tooltip */
-.planet::after,
-.launch-planet::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%) scale(0);
-    padding: 6px 14px;
-    background: rgba(255, 255, 255, 0.95);
-    color: var(--text-main);
-    font-size: 13px;
-    border-radius: 8px;
-    white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    opacity: 0;
-    transition: all 0.2s ease;
-    pointer-events: none;
-}
-
-.planet:hover::after,
-.launch-planet:hover::after {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
 }
 
 /* ========== Toolbox 子视图 ========== */
 .toolbox-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(6px);
+    /* 同 modal-overlay：不用 backdrop-filter，避免和下层合成层抢绘制顺序 */
+    background: rgba(40, 30, 45, 0.42);
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1500;
+    z-index: 2000;
     opacity: 0;
+    /* ★ 关键：光靠 opacity:0 + pointer-events:none 挡不住命中测试 ——
+       浮层里的卡片是 .slot{pointer-events:auto}，会把 none 重新打开，
+       于是隐藏浮层的 10 张卡仍然可点，而它们就悬在屏幕中心固定偏移上，
+       正好盖住主界面的子卡（点 LLM 子卡实际点了隐形的 NapCat 卡）。
+       visibility:hidden 让整棵子树既不绘制也不参与命中测试。 */
+    visibility: hidden;
     pointer-events: none;
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, visibility 0s linear 0.3s;
 }
 
 .toolbox-overlay.show {
     opacity: 1;
+    visibility: visible;
     pointer-events: all;
+    transition: opacity 0.3s ease;
 }
 
 .toolbox-panel {
     position: relative;
-    width: 1120px;
-    height: 740px;
+    width: 1180px;
+    height: 800px;
     background: #ffffff;
     border: 10px solid var(--pink-soft);
     border-radius: 32px;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
     padding: 20px;
+    overflow: hidden;                  /* 让背景层的模糊不外溢到圆角之外 */
     transform: scale(0.9) translateY(20px);
     transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 工具箱背景图（tools/gen_bg_toolbox.py 生成）：同样在"图"这一层做显示时模糊 */
+.toolbox-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: url('../resource/bg/toolbox.jpg') center center / cover no-repeat;
+    filter: blur(4px) saturate(1.06) brightness(1.04);
+    opacity: 0.6;
+}
+
+.toolbox-header,
+.toolbox-system {
+    position: relative;
+    z-index: 1;
 }
 
 .toolbox-overlay.show .toolbox-panel {
@@ -261,9 +167,9 @@
 
 .toolbox-system {
     position: relative;
-    width: 1040px;
-    height: 620px;
-    margin: 12px auto 0;
+    width: 1080px;
+    height: 720px;
+    margin: 8px auto 0;
     cursor: grab;
 }
 
@@ -282,11 +188,11 @@
 
 .toolbox-orbit {
     position: absolute;
-    width: 760px;
-    height: 760px;
+    width: 1080px;
+    height: 720px;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%) scaleY(0.5);
+    transform: translate(-50%, -50%);
     z-index: 5;
     pointer-events: none;
     cursor: grab;
@@ -302,12 +208,17 @@
 
 .toolbox-ring {
     position: absolute;
-    inset: 0;
+    width: 900px;
+    height: 410px;
+    top: 50%;
+    left: 50%;
+    margin: -205px 0 0 -450px;
     border-radius: 50%;
     border: 1px solid rgba(255, 182, 193, 0.6);
     box-shadow: 0 0 40px rgba(255, 182, 193, 0.3), inset 0 0 40px rgba(255, 182, 193, 0.1);
 }
 
+/* 工具箱父级模型球（保留球形态，不做成卡片） */
 .toolbox-center {
     position: absolute;
     top: 50%;
@@ -335,58 +246,4 @@
     font-weight: 600;
     color: var(--pink-deep);
     text-align: center;
-}
-
-.toolbox-planet {
-    position: absolute;
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 13px;
-    text-align: center;
-    line-height: 1.2;
-    color: white;
-    background: rgba(161, 140, 209, 0.45);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 4px 20px rgba(161, 140, 209, 0.4), inset 0 0 20px rgba(255, 255, 255, 0.2);
-    transition: box-shadow 0.3s ease;
-    user-select: none;
-}
-
-.toolbox-overlay.show .toolbox-planet {
-    pointer-events: auto;
-}
-
-.toolbox-planet:hover {
-    box-shadow: 0 8px 32px rgba(161, 140, 209, 0.65), inset 0 0 24px rgba(255, 255, 255, 0.35);
-}
-
-.toolbox-planet::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    bottom: calc(100% + 10px);
-    left: 50%;
-    transform: translateX(-50%) scale(0);
-    padding: 6px 14px;
-    background: rgba(255, 255, 255, 0.95);
-    color: var(--text-main);
-    font-size: 13px;
-    border-radius: 8px;
-    white-space: nowrap;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-    opacity: 0;
-    transition: all 0.2s ease;
-    pointer-events: none;
-}
-
-.toolbox-planet:hover::after {
-    transform: translateX(-50%) scale(1);
-    opacity: 1;
 }

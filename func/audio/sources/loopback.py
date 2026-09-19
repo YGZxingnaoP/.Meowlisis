@@ -2,15 +2,15 @@
 # func/audio/sources/loopback.py
 # 电脑扬声器回环采集（WASAPI loopback，需 pyaudiowpatch）
 
-from collections import deque
-
-import numpy as np
-
+from func.audio.resample import StreamResampler
 from func.audio.sources.base import BaseAudioSource
 
 
 class LoopbackSource(BaseAudioSource):
-    """采集电脑扬声器输出（loopback），重采样到 16k 单声道"""
+    """采集电脑扬声器输出（loopback），流式降混并重采样到 16k 单声道"""
+
+    # 重采样输出持续不足时的最大补喂次数
+    MAX_FEED_TRIES = 16
 
     def __init__(self, config, log, device_index=None):
         super().__init__(config, log)
@@ -19,12 +19,9 @@ class LoopbackSource(BaseAudioSource):
         self._stream = None
         self._device_rate = config.rate
         self._device_channels = config.channels
-        self._need_resample = False
-        self._need_downmix = False
-        self._resample_buffer = bytearray()
-        self._output_buffer = deque()
         self._read_chunk = config.chunk
-        self._max_resample_buffer = 512 * 1024
+        self._passthrough = True
+        self._resampler = None
 
     @staticmethod
     def list_devices():
@@ -63,20 +60,7 @@ class LoopbackSource(BaseAudioSource):
         device = self._pick_device(self._pyaudio)
         self._device_rate = int(device.get('defaultSampleRate', self.config.rate))
         self._device_channels = int(device.get('maxInputChannels', self.config.channels))
-        self._need_resample = (self._device_rate != self.config.rate)
-        self._need_downmix = (self._device_channels > 1)
-
-        if self._need_resample:
-            try:
-                import samplerate
-                self._resampler = samplerate
-            except ImportError:
-                self.log.error("需要重采样但未安装 samplerate 库，请运行: pip install samplerate")
-                self._need_resample = False
-
-        self._read_chunk = self.config.chunk
-        if self._need_resample:
-            self._read_chunk = int(self.config.chunk * self._device_rate / self.config.rate)
+        self._read_chunk = self._chunk_for(self._device_rate)
 
         self._stream = self._pyaudio.open(
             format=pyaudio.paInt16,
@@ -87,11 +71,25 @@ class LoopbackSource(BaseAudioSource):
             frames_per_buffer=self._read_chunk,
         )
 
-        self._resample_buffer.clear()
-        self._output_buffer.clear()
+        self._resampler = StreamResampler(
+            self._device_rate, self.config.rate, self.config.chunk,
+            in_channels=self._device_channels, log=self.log,
+            converter=self.config.resample_converter,
+        )
+        self._passthrough = (self._device_rate == self.config.rate and self._device_channels == 1)
+        if not self._passthrough and not self._resampler.available:
+            self.log.error("重采样不可用且设备采样率不等于目标采样率，音频时序将不准确")
 
         self.log.info(f"🔊 扬声器回环设备: {device.get('name')}, "
-                      f"采样率: {self._device_rate}Hz, 声道: {self._device_channels}")
+                      f"采样率: {self._device_rate}Hz, 声道: {self._device_channels}, "
+                      f"读取块: {self._read_chunk} samples, "
+                      f"重采样: {'否' if self._passthrough else self.config.resample_converter}")
+
+    def _chunk_for(self, device_rate: int) -> int:
+        """按设备采样率换算每次读取的输入帧数（与输出帧等时）"""
+        if device_rate == self.config.rate and self._device_channels == 1:
+            return self.config.chunk
+        return max(1, int(round(self.config.chunk * device_rate / self.config.rate)))
 
     def _pick_device(self, pa):
         """选择 loopback 设备：默认输出设备或按索引/名称匹配"""
@@ -124,51 +122,34 @@ class LoopbackSource(BaseAudioSource):
     def read(self):
         if self._stream is None:
             return None
-        if self._output_buffer:
-            return self._output_buffer.popleft()
-
+        if self._passthrough:
+            return self._read_raw(self.config.chunk)
+        tries = 0
         while True:
-            try:
-                raw = self._stream.read(self._read_chunk, exception_on_overflow=False)
-            except Exception as e:
-                self.log.error(f"扬声器读取错误: {e}")
+            frame = self._resampler.read_frame()
+            if frame is not None:
+                return frame
+            tries += 1
+            if tries > self.MAX_FEED_TRIES:
+                self.log.warning("重采样输出持续不足，返回静音帧占位")
+                return b'\x00' * (self.config.chunk * 2)
+            raw = self._read_raw(self._read_chunk)
+            if raw is None:
                 return None
+            self._resampler.feed(raw)
 
-            if not self._need_resample and not self._need_downmix:
-                return raw
+    def _read_raw(self, frames: int):
+        """读取原始帧，异常返回 None"""
+        try:
+            return self._stream.read(frames, exception_on_overflow=False)
+        except Exception as e:
+            self.log.error(f"扬声器读取错误: {e}")
+            return None
 
-            self._resample_buffer.extend(raw)
-            self._process()
-            if self._output_buffer:
-                return self._output_buffer.popleft()
-
-    def _process(self):
-        # 每帧原始字节数（含多声道）
-        frame_bytes = self._read_chunk * self._device_channels * 2
-        while len(self._resample_buffer) >= frame_bytes:
-            raw = self._resample_buffer[:frame_bytes]
-            del self._resample_buffer[:frame_bytes]
-
-            audio = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-
-            # 多声道降混为单声道（取平均）
-            if self._need_downmix:
-                audio = audio.reshape(-1, self._device_channels).mean(axis=1)
-
-            if self._need_resample:
-                audio = self._resampler.resample(
-                    audio,
-                    self.config.rate / self._device_rate,
-                    converter_type='sinc_fastest',
-                )
-
-            if len(audio) > self.config.chunk:
-                audio = audio[:self.config.chunk]
-            elif len(audio) < self.config.chunk:
-                audio = np.pad(audio, (0, self.config.chunk - len(audio)))
-
-            out = np.clip(audio * 32768, -32768, 32767).astype(np.int16)
-            self._output_buffer.append(out.tobytes())
+    def clear(self):
+        """清空重采样缓冲（丢弃在途残块）"""
+        if self._resampler is not None:
+            self._resampler.reset()
 
     def close(self):
         if self._stream is not None:

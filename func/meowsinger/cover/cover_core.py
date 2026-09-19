@@ -21,12 +21,40 @@ class MeowCoverCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = MeowSingerConfig()
+        self._last_source = ""
+        self._last_remote_f0 = None
 
     def separate(self, input_path, output_dir):
-        """调 RVC 服务分离人声/伴奏/和声，返回三轨路径 dict"""
-        # RVC 服务是独立进程，cwd 不在项目根目录，必须传绝对路径
         input_path = os.path.abspath(input_path)
         output_dir = os.path.abspath(output_dir)
+        self._last_source = input_path
+        self._last_remote_f0 = None
+
+        data = self._post_separate(input_path, output_dir, quiet=True)
+        if data is not None:
+            return {
+                "vocal": data.get("vocal_path"),
+                "accomp": data.get("accomp_path"),
+                "harmony": data.get("harmony_path"),
+            }
+
+        remote_in, work_dir = self._upload(input_path)
+        if not remote_in:
+            return None
+        data = self._post_separate(remote_in, work_dir)
+        if data is None:
+            return None
+
+        self._last_remote_f0 = data.get("f0_up_key")
+        base = os.path.splitext(os.path.basename(input_path))[0]
+        out = {"vocal": data.get("vocal_path") or ""}
+        for key, suffix in (("accomp", "_accomp.wav"), ("harmony", "_harmony.wav")):
+            remote_path = data.get(f"{key}_path") or ""
+            local_path = os.path.join(output_dir, f"{base}{suffix}")
+            out[key] = local_path if (remote_path and self._download(remote_path, local_path)) else ""
+        return out
+
+    def _post_separate(self, input_path, output_dir, quiet=False):
         try:
             resp = requests.post(
                 f"{self.config.rvc_url}/api/separate",
@@ -34,53 +62,132 @@ class MeowCoverCore:
                 timeout=3600,
             )
             data = resp.json()
-            if data.get("code") != 200:
-                self.log.error(f"[Cover] 分离失败: {data.get('msg')}")
-                return None
-            return {
-                "vocal": data.get("vocal_path"),
-                "accomp": data.get("accomp_path"),
-                "harmony": data.get("harmony_path"),
-            }
         except Exception:
-            self.log.exception("[Cover] 调 RVC 分离异常")
+            if not quiet:
+                self.log.exception("[Cover] 调 RVC 分离异常")
             return None
+        if not isinstance(data, dict) or data.get("code") != 200:
+            if not quiet:
+                msg = data.get("msg") if isinstance(data, dict) else f"HTTP {resp.status_code}"
+                self.log.error(f"[Cover] 分离失败: {msg}")
+            return None
+        return data
+
+    @staticmethod
+    def _is_remote_path(path):
+        p = str(path or "")
+        return bool(p) and p.startswith("/") and not os.path.exists(p)
+
+    def _upload(self, local_path):
+        name = os.path.basename(local_path)
+        try:
+            with open(local_path, "rb") as f:
+                resp = requests.post(
+                    f"{self.config.rvc_url}/api/upload",
+                    files={"file": (name, f, "application/octet-stream")},
+                    timeout=1800,
+                )
+        except Exception:
+            self.log.exception("[Cover] 上传音频异常")
+            return "", ""
+        if resp.status_code == 404:
+            return "", ""
+        if resp.status_code != 200:
+            self.log.error(f"[Cover] 上传失败 HTTP {resp.status_code}: {resp.text[:120]}")
+            return "", ""
+        data = resp.json() or {}
+        self.log.info(f"[Cover] 已上传 {name} -> {data.get('path')}")
+        return data.get("path", ""), data.get("work_dir", "")
+
+    def _download(self, remote_path, local_path, timeout=1800):
+        try:
+            resp = requests.get(f"{self.config.rvc_url}/api/download",
+                                params={"path": remote_path}, stream=True,
+                                timeout=(30, timeout))
+            if resp.status_code != 200:
+                self.log.error(f"[Cover] 下载失败 HTTP {resp.status_code}: {remote_path}")
+                return False
+            parent = os.path.dirname(local_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            tmp = local_path + ".part"
+            with open(tmp, "wb") as f:
+                for chunk in resp.iter_content(1 << 20):
+                    if chunk:
+                        f.write(chunk)
+            if os.path.getsize(tmp) <= 0:
+                os.remove(tmp)
+                return False
+            os.replace(tmp, local_path)
+            self.log.info(f"[Cover] 已下载 {os.path.basename(local_path)}")
+            return True
+        except Exception:
+            self.log.exception("[Cover] 下载产物异常")
+            return False
 
     def convert(self, vocal_path, output_path, f0_up_key=None, formant=None):
-        """调 RVC 服务把分离出的人声变声，返回输出路径"""
-        # RVC 服务是独立进程，cwd 不在项目根目录，必须传绝对路径
-        vocal_path = os.path.abspath(vocal_path)
         output_path = os.path.abspath(output_path)
+        remote_vocal = self._is_remote_path(vocal_path)
+
         if f0_up_key is None:
-            f0_up_key = self._resolve_f0_up_key(vocal_path)
+            if remote_vocal and self._last_remote_f0:
+                f0_up_key = int(self._last_remote_f0)
+                self.log.info(f"[Cover] 使用服务端变调值: {f0_up_key}")
+            else:
+                f0_up_key = self._resolve_f0_up_key(
+                    self._last_source if (remote_vocal and self._last_source) else vocal_path)
         if formant is None:
             formant = self._resolve_formant()
-        try:
-            resp = requests.post(
-                f"{self.config.rvc_url}/api/convert",
-                json={
-                    "model": self.config.rvc_model,
-                    "index": self.config.rvc_index,
-                    "input_path": vocal_path,
-                    "output_path": output_path,
-                    "f0_up_key": f0_up_key,
-                    "formant": formant,
-                    "f0_method": self.config.rvc_f0_method,
-                    "index_rate": self.config.rvc_index_rate,
-                    "protect": self.config.rvc_protect,
-                    "rms_mix_rate": self.config.rvc_rms_mix_rate,
-                    "resample_sr": self.config.rvc_resample_sr,
-                },
-                timeout=3600,
-            )
-            data = resp.json()
-            if data.get("code") != 200:
-                self.log.error(f"[Cover] 变声失败: {data.get('msg')}")
+
+        out_req = output_path
+        if remote_vocal:
+            out_req = str(vocal_path).rsplit("/", 1)[0] + "/cover.wav"
+        data = self._post_convert(vocal_path, out_req, f0_up_key, formant, quiet=True)
+        if data is None and not remote_vocal:
+            remote_in, work_dir = self._upload(os.path.abspath(vocal_path))
+            if not remote_in:
                 return ""
-            return data.get("output_path", "")
-        except Exception:
-            self.log.exception("[Cover] 调 RVC 变声异常")
+            data = self._post_convert(remote_in, os.path.join(work_dir, "cover.wav"),
+                                     f0_up_key, formant)
+        if data is None:
             return ""
+
+        produced = data.get("output_path") or ""
+        if not self._is_remote_path(produced):
+            return produced
+        if self._download(produced, output_path):
+            return output_path
+        self.log.error("[Cover] 变声产物下载失败")
+        return ""
+
+    def _post_convert(self, input_path, output_path, f0_up_key, formant, quiet=False):
+        payload = {
+            "model": self.config.rvc_model,
+            "index": self.config.rvc_index,
+            "input_path": input_path,
+            "output_path": output_path,
+            "f0_up_key": f0_up_key,
+            "formant": formant,
+            "f0_method": self.config.rvc_f0_method,
+            "index_rate": self.config.rvc_index_rate,
+            "protect": self.config.rvc_protect,
+            "rms_mix_rate": self.config.rvc_rms_mix_rate,
+            "resample_sr": self.config.rvc_resample_sr,
+        }
+        try:
+            resp = requests.post(f"{self.config.rvc_url}/api/convert", json=payload, timeout=3600)
+            data = resp.json()
+        except Exception:
+            if not quiet:
+                self.log.exception("[Cover] 调 RVC 变声异常")
+            return None
+        if not isinstance(data, dict) or data.get("code") != 200:
+            if not quiet:
+                msg = data.get("msg") if isinstance(data, dict) else f"HTTP {resp.status_code}"
+                self.log.error(f"[Cover] 变声失败: {msg}")
+            return None
+        return data
+
 
     def _resolve_f0_up_key(self, vocal_path):
         """动态变调：实测干声 F0 中位，向目标音高靠拢（不分男女，只认实际音高）"""

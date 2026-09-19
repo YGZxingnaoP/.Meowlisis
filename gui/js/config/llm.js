@@ -94,7 +94,7 @@ Object.assign(Config, {
                 <div class="formula-row">
                     <span class="formula-name">${this._t('超长惩罚')}</span>
                     <span class="formula-expr">${this._t('Penalty = 0，当 L ≤ L')}<sub>0</sub></span>
-                    <span class="formula-expr">Penalty = min( P<sub>cap</sub>, ( L − L<sub>0</sub> ) × r )，当 L &gt; L<sub>0</sub></span>
+                    <span class="formula-expr">${this._t('Penalty = min( P<sub>cap</sub>, ( L − L<sub>0</sub> ) × r )，当 L &gt; L<sub>0</sub>')}</span>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('原始得分')}</span>
@@ -107,12 +107,11 @@ Object.assign(Config, {
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('清洗档位')}</span>
-                    <span class="formula-expr">S ≥ 60 不清洗；30 ≤ S &lt; 60 清部分；S &lt; 30 全清</span>
+                    <span class="formula-expr">${this._t('S ≥ 60 不清洗；30 ≤ S &lt; 60 清部分；S &lt; 30 全清')}</span>
                 </div>
             </div>
             <div class="formula-params">
-                W = 命中水词字符数，L = 回复总字符数，θ = 密度阈值，L<sub>0</sub> = 超长阈值，
-                r = 惩罚系数，P<sub>cap</sub> = 惩罚封顶，λ = 惯性系数
+                ${this._t('W = 命中水词字符数，L = 回复总字符数，θ = 密度阈值，L<sub>0</sub> = 超长阈值，r = 惩罚系数，P<sub>cap</sub> = 惩罚封顶，λ = 惯性系数')}
             </div>
         </div>`;
     },
@@ -168,7 +167,9 @@ Object.assign(Config, {
     // 长期记忆,
     catbrain_ltmem() {
         return this._section('长期记忆 (long_term_mem)') +
-            this._num('长期记忆回溯天数', 'catbrain.long_term_mem.memory_days', 300, 1, 3650, 1);
+            this._num('长期记忆回溯天数', 'catbrain.long_term_mem.memory_days', 300, 1, 3650, 1) +
+            this._check('注入最近原文', 'catbrain.long_term_mem.inject_recent', false) +
+            this._num('注入原文条数', 'catbrain.long_term_mem.inject_recent_lines', 20, 1, 200, 1);
     },
 
     // 记忆摘要,
@@ -177,8 +178,18 @@ Object.assign(Config, {
         let h = this._section('记忆摘要 (abstract_mem)');
         h += this._num('摘要触发条数', 'catbrain.abstract_mem.summary_rounds', 30, 1, 500, 1,
             '这里指单条消息数（user/assistant 各算一条），与短期记忆的"轮数"不同：短期记忆一轮 = 用户 + AI 两条') +
-            this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 20, 1, 200, 1) +
+            this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 30, 1, 200, 1) +
             this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);
+        h += this._fold('写入过滤 (write)',
+            this._num('最小重要度', 'catbrain.abstract_mem.min_importance', 5, 0, 10, 1) +
+            this._num('单次最多事件数', 'catbrain.abstract_mem.max_events', 10, 1, 100, 1) +
+            this._num('附带近期记忆条数', 'catbrain.abstract_mem.recent_memory_lines', 12, 0, 100, 1)
+        );
+        h += this._fold('检索排序 (rank)',
+            this._num('证据分饱和上限', 'catbrain.abstract_mem.rank_evidence_saturation', 5.0, 0.1, 100, 0.1) +
+            this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1) +
+            this._num('相关性保底条数', 'catbrain.abstract_mem.summary_relevance_guarantee', 8, 0, 100, 1)
+        );
         h += this._fold('证据分数 (evidence)',
             this._num('强化值半衰期(天)', 'catbrain.abstract_mem.evidence.rein_half_life_days', 30, 1, 3650, 1) +
             this._num('质疑值半衰期(天)', 'catbrain.abstract_mem.evidence.disp_half_life_days', 180, 1, 3650, 1) +

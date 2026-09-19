@@ -11,6 +11,12 @@ Object.assign(App, {
     closeToolbox() {
         const overlay = document.getElementById('toolboxOverlay');
         if (overlay) overlay.classList.remove('show');
+        // 关浮层时把工具箱子卡收起 + 来源卡翻回正面：
+        // 否则摊开的子卡会留在浮层里（和主界面子卡同位置），继续挡主界面的点击
+        if (typeof Orbit !== 'undefined' && Orbit) {
+            if (Orbit.closeAll) Orbit.closeAll();
+            if (Orbit.unflipOverlayCard) Orbit.unflipOverlayCard();
+        }
     },
 
     // ============ 待办提醒面板 ============,
@@ -35,7 +41,7 @@ Object.assign(App, {
         if (!list) return;
         const users = Object.keys(this.calendarData);
         if (!users.length) {
-            list.innerHTML = '<div class="help-text">暂无用户，输入用户名新建</div>';
+            list.innerHTML = '<div class="help-text">' + this._t('暂无用户，输入用户名新建') + '</div>';
             return;
         }
         list.innerHTML = users.map(u => {
@@ -506,10 +512,10 @@ window.FluxLoraRows = {
             .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
             .replace(/</g, '&lt;').replace(/>/g, '&gt;');
         return `<div class="kv-lora-row" style="display:flex;align-items:center;gap:6px;margin:4px 0;">
-            <input type="checkbox" data-lora-enabled title="启用" style="flex:none;" ${item.enabled ? 'checked' : ''}>
-            <input type="text" data-lora-name value="${name}" placeholder="lora 文件名（loras 目录内）" style="flex:1;min-width:0;">
-            <input type="number" data-lora-strength value="${Number(item.strength) || 0}" min="0" max="2" step="0.05" title="权重" style="flex:none;width:90px;">
-            <button type="button" class="kv-remove" title="删除该 LoRA" onclick="FluxLoraRows.remove(this)">&times;</button>
+            <input type="checkbox" data-lora-enabled title="${_t('启用')}" style="flex:none;" ${item.enabled ? 'checked' : ''}>
+            <input type="text" data-lora-name value="${name}" placeholder="${_t('lora 文件名（loras 目录内）')}" style="flex:1;min-width:0;">
+            <input type="number" data-lora-strength value="${Number(item.strength) || 0}" min="0" max="2" step="0.05" title="${_t('权重')}" style="flex:none;width:90px;">
+            <button type="button" class="kv-remove" title="${_t('删除该 LoRA')}" onclick="FluxLoraRows.remove(this)">&times;</button>
         </div>`;
     },
     collect() {
@@ -545,110 +551,52 @@ window.FluxLoraRows = {
 };
 
 if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
+    // 绘画（Flux）总览：四个子球面板拼接（向后兼容入口）
     fluxPainter() {
-        const canvasVals = FluxChips.norm(this._val('flux_painter.canvas_sizes', ['1024x1024', '1080x1960']));
-        const chipsHtml = canvasVals.map(v =>
-            `<span class="split-tag" data-v="${v}">${v}<button type="button" class="split-tag-remove" onclick="FluxChips.remove(this)">&times;</button></span>`).join('');
-        const opts = (arr, cur) => arr.map(o => {
-            const sel = String(o.value) === String(cur) ? 'selected' : '';
-            return `<option value="${o.value}" ${sel}>${o.label}</option>`;
-        }).join('');
-        const samplerCur = this._val('flux_painter.sampler_name', 'er_sde');
-        const schedCur = this._val('flux_painter.sampler_scheduler', 'simple');
-        // LoRA 链当前值：config.yml 有则用之，无则回退默认两条
-        const loraCur = FluxLoraRows.norm(this._val('flux_painter.lora_chain', []));
-        const loraDefaults = loraCur.length ? loraCur : FluxDefaultLoras;
-        // 长文本 / 数组型字段的当前值（textarea 需预填，否则保存会清空）
-        const esc = (s) => String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
-        const qpCur = esc(this._val('flux_painter.quality_prefix', '') || '');
-        const negCur = esc(this._val('flux_painter.negative_prompt', '') || '');
-        const styleOnCur = esc(Array.isArray(this._val('flux_painter.style_on_keywords', []))
-            ? this._val('flux_painter.style_on_keywords', []).join(' ')
-            : String(this._val('flux_painter.style_on_keywords', '') || ''));
-        const srcRaw = this._val('flux_painter.artist_sources', []);
-        const srcCur = esc(Array.isArray(srcRaw)
-            ? srcRaw.map(x => `${(x && x.name) || ''} | ${(x && x.url) || ''}`).join('\n') : '');
-        const posHandCur = esc(this._val('flux_painter.pro.pos_hand', 'hand') || 'hand');
-        const negHandCur = esc(this._val('flux_painter.pro.neg_hand', '') || '');
+        return this.fluxPainterService() + this.fluxPainterModel()
+            + this.fluxPainterPrompt() + this.fluxPainterWorkflow();
+    },
 
-        let h = this._section('Flux 绘画') +
+    // ===== 子球①服务：绘画引擎服务与运行环境 =====
+    fluxPainterService() {
+        return this._section('绘画引擎服务') +
             this._check('启用绘画', 'flux_painter.enabled', true) +
             this._select('绘图引擎', 'flux_painter.comfy.mode', [
                 { value: 'internal', label: '内置' },
                 { value: 'external', label: '外部' }
             ], 'internal') +
-            this._select('画质档位', 'flux_painter.quality_mode', [
-                { value: 'fast', label: '快速（单段采样，出图快）' },
-                { value: 'pro', label: '清晰（Pro：放大+分块重绘+局部细化）' }
-            ], 'fast') +
+            this._text('监听地址', 'flux_painter.comfy.host', '127.0.0.1') +
             this._num('HTTP 端口', 'flux_painter.http_port', 8090, 1, 65535, 1) +
             this._num('WebSocket 端口', 'flux_painter.ws_port', 8767, 1, 65535, 1) +
             this._num('ComfyUI 端口', 'flux_painter.comfy.port', 8188, 1, 65535, 1) +
-            this._check('角色查证(萌娘百科)', 'flux_painter.moegirl_lookup', true) +
-            `<div class="form-group"><label>${this._t('画布尺寸')}</label>
-                <div class="split-tags" id="flux-canvas-chips">${chipsHtml}</div>
-                <input type="hidden" data-path="flux_painter.canvas_sizes" id="flux-canvas-value" value="${canvasVals.join(' ')}">
-                <input type="text" placeholder="${this._t('输入一个尺寸后回车添加')}" onkeydown="FluxChips.key(event,this)">
-            </div>` +
-            `<div class="form-group"><label>${this._t('采样器')}</label>
-                <select data-path="flux_painter.sampler_name">${opts(FluxSamplerOptions, samplerCur)}</select></div>` +
-            `<div class="form-group"><label>${this._t('调度器')}</label>
-                <select data-path="flux_painter.sampler_scheduler">${opts(FluxSchedulerOptions, schedCur)}</select></div>` +
+            this._check('独立引擎窗口', 'flux_painter.comfy.engine_window', true) +
+            this._check('画板实时进度（阶段/百分比/步进）', 'flux_painter.progress_detail', true) +
+            this._section('运行环境与路径（改后需重启绘画引擎）') +
+            this._text('内核目录', 'flux_painter.comfy.comfy_node_dir', '.ComfyNode') +
+            this._text('输出目录', 'flux_painter.comfy.output_dir', '.ComfyNode/output') +
+            this._text('内核解释器（须指向装了 torch 的 python）',
+                'flux_painter.comfy.internal_python', '') +
+            this._text('内核 main.py（备用，当前版本固定用 .ComfyNode/ComfyUI/main.py）',
+                'flux_painter.comfy.internal_main', '') +
+            this._section('记忆与归档') +
             this._check('记录绘画记忆', 'flux_painter.memory_enabled', true) +
             this._num('记忆轮数', 'flux_painter.memory_rounds', 10, 1, 50, 1) +
-            this._text('归档目录', 'flux_painter.backup_dir', 'character/paints') +
-            this._num('基础采样 cfg', 'flux_painter.sampler_cfg', 5, 0, 30, 0.1) +
-            this._num('基础采样步数', 'flux_painter.sampler_steps', 30, 1, 200, 1) +
-            this._num('采样 shift', 'flux_painter.sampler_shift', 3, 0, 30, 0.1) +
-            this._check('破甲模式(成年向边界)', 'flux_painter.adult_mode', true) +
             this._num('仅保留最近会话', 'flux_painter.keep_last_sessions', 0, 0, 9999, 1) +
-            this._text('临时目录', 'flux_painter.temp_dir', '.temp/flux_paint') +
             this._text('记忆类型', 'flux_painter.memory_type', 'painting') +
-            this._text('语音来源', 'flux_painter.tts_source', 'toolbox_painting') +
-            this._section('画图改图（续画）') +
-            this._check('启用改图判定', 'flux_painter.edit_followup.enabled', true,
-                '出图后等待窗口内，对下一条 @/关键词消息判定是否改图；命中则在上一轮完整提示词基础上重绘') +
-            this._num('改图等待窗口(秒)', 'flux_painter.edit_followup.window', 120, 10, 3600, 10,
-                '画完后多少秒内视为可改图窗口') +
-            this._num('判定 max_tokens', 'flux_painter.edit_followup.llm_max_tokens', 512, 64, 4096, 64) +
-            this._num('判定温度', 'flux_painter.edit_followup.llm_temperature', 0.3, 0, 2, 0.1) +
-            `<div class="form-group"><label>${this._t('质量前缀（固定件，拼在画师串之后）')}</label>
-                <textarea data-path="flux_painter.quality_prefix" rows="3"
-                    style="width:100%;font-family:inherit;font-size:13px;">${qpCur}</textarea></div>` +
-            `<div class="form-group"><label>${this._t('负面提示词（长负库）')}</label>
-                <textarea data-path="flux_painter.negative_prompt" rows="4"
-                    style="width:100%;font-family:inherit;font-size:13px;">${negCur}</textarea></div>` +
-            this._wordTagEditor('风格化触发词（回车添加，空=不限制）', 'flux_painter.style_on_keywords', [],
-                '需求里出现这些词时，从 .ComfyNode/artist/data.js 画师库随机抽 1 个画师') +
-            `<div class="form-group"><label>${this._t('画师站列表（每行：名称 | URL，可用 {id}/{name} 占位）')}</label>
-                <textarea data-path="flux_painter.artist_sources" rows="3"
-                    style="width:100%;font-family:inherit;font-size:13px;">${srcCur}</textarea></div>`;
-        // ===== LoRA 链（行编辑器：启用 + 文件名 + 权重 → flux_painter.lora_chain JSON） =====
-        {
-            const loraRows = loraDefaults.map(x => FluxLoraRows.rowHtml(x)).join('');
-            const loraJson = JSON.stringify(loraDefaults).replace(/&/g, '&amp;').replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;').replace(/'/g, '&#39;');
-            h += this._section('LoRA 链（叠加到 UNET）') +
-                `<div class="form-group"><label>${this._t('启用 / LoRA 文件名 / 权重')}</label>
-                    <div class="kv-editor" id="flux-lora-editor"
-                         oninput="FluxLoraRows.sync()" onchange="FluxLoraRows.sync()">${loraRows}</div>
-                    <button type="button" class="btn btn-secondary" onclick="FluxLoraRows.add()">${this._t('添加 LoRA')}</button>
-                    <input type="hidden" data-path="flux_painter.lora_chain" id="flux-lora-value" value='${loraJson}'>
-                    <div class="help-text">${this._t('勾选=启用该 LoRA，取消勾选则不加载；权重范围 0~2（如 1.0 / 0.5）。保存后需重启绘画引擎生效。')}</div>
-                </div>`;
-        }
-        h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="flux_llm">提示词模型</button>
-            <button class="modal-tab" data-tab="flux_deepseek">DeepSeek</button>
-            <button class="modal-tab" data-tab="flux_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="flux_pro_hires">Pro·放大/分块</button>
-            <button class="modal-tab" data-tab="flux_pro_det">Pro·局部细化</button>
-            <button class="modal-tab" data-tab="flux_review">审查与安全</button>
-            <button class="modal-tab" data-tab="flux_engine">引擎与路径</button>
-        </div>`;
-        h += `<div class="tab-content active" data-tab-content="flux_llm">` +
+            this._text('归档目录', 'flux_painter.backup_dir', 'character/paints') +
+            this._text('临时目录', 'flux_painter.temp_dir', '.temp/flux_paint') +
+            this._text('语音来源', 'flux_painter.tts_source', 'toolbox_painting');
+    },
+
+    // ===== 子球②模型：底模 + 提示词模型 + LoRA =====
+    fluxPainterModel() {
+        const unetOptions = [
+            { value: 'anima_baseV10.safetensors', label: 'anima base V10（默认）' },
+            { value: 'miaomiaoHarem_anima16.safetensors', label: 'miaomiaoHarem anima16' }
+        ];
+        let h = this._section('绘画底模（UNET）') +
+            this._select('底模', 'flux_painter.unet_model', unetOptions, 'anima_baseV10.safetensors',
+                '切换底模后需重启绘画引擎生效；文本编码器与 VAE 为共用模型，无需单独设置') +
             this._section('提示词模型') +
             this._select('生效平台', 'flux_painter.llm_type', [
                 { value: 'deepseek', label: 'DeepSeek' },
@@ -656,9 +604,28 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             ], 'deepseek') +
             this._check('深度思考', 'flux_painter.thinking_enabled', true) +
             this._num('max_tokens', 'flux_painter.max_tokens', 8192, 256, 32768, 256) +
-            this._num('温度', 'flux_painter.temperature', 0.8, 0, 2, 0.1) +
-            `</div>`;
-        h += `<div class="tab-content" data-tab-content="flux_deepseek">` +
+            this._num('温度', 'flux_painter.temperature', 0.8, 0, 2, 0.1);
+
+        // ===== LoRA 链（行编辑器：启用 + 文件名 + 权重 → flux_painter.lora_chain JSON） =====
+        const loraCur = FluxLoraRows.norm(this._val('flux_painter.lora_chain', []));
+        const loraDefaults = loraCur.length ? loraCur : FluxDefaultLoras;
+        const loraRows = loraDefaults.map(x => FluxLoraRows.rowHtml(x)).join('');
+        const loraJson = JSON.stringify(loraDefaults).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/'/g, '&#39;');
+        h += this._section('LoRA 链（叠加到 UNET）') +
+            `<div class="form-group"><label>${this._t('启用 / LoRA 文件名 / 权重')}</label>
+                <div class="kv-editor" id="flux-lora-editor"
+                     oninput="FluxLoraRows.sync()" onchange="FluxLoraRows.sync()">${loraRows}</div>
+                <button type="button" class="btn btn-secondary" onclick="FluxLoraRows.add()">${this._t('添加 LoRA')}</button>
+                <input type="hidden" data-path="flux_painter.lora_chain" id="flux-lora-value" value='${loraJson}'>
+                <div class="help-text">${this._t('勾选=启用该 LoRA，取消勾选则不加载；权重范围 0~2（如 1.0 / 0.5）。保存后需重启绘画引擎生效。')}</div>
+            </div>`;
+
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="flux_deepseek">DeepSeek</button>
+            <button class="modal-tab" data-tab="flux_aliyun">${this._t('阿里云')}</button>
+        </div>`;
+        h += `<div class="tab-content active" data-tab-content="flux_deepseek">` +
             this._section('DeepSeek') +
             this._text('API Key', 'flux_painter.deepseek.api_key', '') +
             this._text('Base URL', 'flux_painter.deepseek.base_url', 'https://api.deepseek.com/v1') +
@@ -671,6 +638,88 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'flux_painter.aliyun.model', 'qwen3.7-flash') +
             `</div>`;
+        return h;
+    },
+
+    // ===== 子球③提示词：固定件 + 画师 + 局部词 + 改图判定 =====
+    fluxPainterPrompt() {
+        const esc = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+        const qpCur = esc(this._val('flux_painter.quality_prefix', '') || '');
+        const negCur = esc(this._val('flux_painter.negative_prompt', '') || '');
+        const srcRaw = this._val('flux_painter.artist_sources', []);
+        const srcCur = esc(Array.isArray(srcRaw)
+            ? srcRaw.map(x => `${(x && x.name) || ''} | ${(x && x.url) || ''}`).join('\n') : '');
+        const posHandCur = esc(this._val('flux_painter.pro.pos_hand', 'hand') || 'hand');
+        const negHandCur = esc(this._val('flux_painter.pro.neg_hand', '') || '');
+
+        return this._section('提示词固定件') +
+            `<div class="form-group"><label>${this._t('质量前缀（固定件，拼在画师串之后）')}</label>
+                <textarea data-path="flux_painter.quality_prefix" rows="3"
+                    style="width:100%;font-family:inherit;font-size:13px;">${qpCur}</textarea></div>` +
+            `<div class="form-group"><label>${this._t('负面提示词（长负库）')}</label>
+                <textarea data-path="flux_painter.negative_prompt" rows="4"
+                    style="width:100%;font-family:inherit;font-size:13px;">${negCur}</textarea></div>` +
+            this._wordTagEditor('风格化触发词（回车添加，空=不限制）', 'flux_painter.style_on_keywords', [],
+                '需求里出现这些词时，从 .ComfyNode/artist/data.js 画师库随机抽 1 个画师') +
+            `<div class="form-group"><label>${this._t('画师站列表（每行：名称 | URL，可用 {id}/{name} 占位）')}</label>
+                <textarea data-path="flux_painter.artist_sources" rows="3"
+                    style="width:100%;font-family:inherit;font-size:13px;">${srcCur}</textarea></div>` +
+            this._check('角色查证(萌娘百科)', 'flux_painter.moegirl_lookup', true) +
+            this._check('破甲模式(成年向边界)', 'flux_painter.adult_mode', true) +
+            this._section('局部提示词（手部区域）') +
+            `<div class="form-group"><label>${this._t('局部正向提示词（手部区域）')}</label>
+                <textarea data-path="flux_painter.pro.pos_hand" rows="2"
+                    style="width:100%;font-family:inherit;font-size:13px;">${posHandCur}</textarea></div>` +
+            `<div class="form-group"><label>${this._t('局部负向提示词（手部区域）')}</label>
+                <textarea data-path="flux_painter.pro.neg_hand" rows="3"
+                    style="width:100%;font-family:inherit;font-size:13px;">${negHandCur}</textarea></div>` +
+            this._section('画图改图（续画）') +
+            this._check('启用改图判定', 'flux_painter.edit_followup.enabled', true,
+                '出图后等待窗口内，对下一条 @/关键词消息判定是否改图；命中则在上一轮完整提示词基础上重绘') +
+            this._num('改图等待窗口(秒)', 'flux_painter.edit_followup.window', 120, 10, 3600, 10,
+                '画完后多少秒内视为可改图窗口') +
+            this._num('判定 max_tokens', 'flux_painter.edit_followup.llm_max_tokens', 512, 64, 4096, 64) +
+            this._num('判定温度', 'flux_painter.edit_followup.llm_temperature', 0.3, 0, 2, 0.1);
+    },
+
+    // ===== 子球④工作流：采样 / 画质 / Pro 流程 / 审查 / 路径 =====
+    fluxPainterWorkflow() {
+        const canvasVals = FluxChips.norm(this._val('flux_painter.canvas_sizes', ['1024x1024', '1080x1960']));
+        const chipsHtml = canvasVals.map(v =>
+            `<span class="split-tag" data-v="${v}">${v}<button type="button" class="split-tag-remove" onclick="FluxChips.remove(this)">&times;</button></span>`).join('');
+        const opts = (arr, cur) => arr.map(o => {
+            const sel = String(o.value) === String(cur) ? 'selected' : '';
+            return `<option value="${o.value}" ${sel}>${o.label}</option>`;
+        }).join('');
+        const samplerCur = this._val('flux_painter.sampler_name', 'er_sde');
+        const schedCur = this._val('flux_painter.sampler_scheduler', 'simple');
+
+        let h = this._section('采样与画质') +
+            this._select('画质档位', 'flux_painter.quality_mode', [
+                { value: 'fast', label: '快速（单段采样，出图快）' },
+                { value: 'pro', label: '清晰（Pro：放大+分块重绘+局部细化）' }
+            ], 'fast') +
+            `<div class="form-group"><label>${this._t('画布尺寸')}</label>
+                <div class="split-tags" id="flux-canvas-chips">${chipsHtml}</div>
+                <input type="hidden" data-path="flux_painter.canvas_sizes" id="flux-canvas-value" value="${canvasVals.join(' ')}">
+                <input type="text" placeholder="${this._t('输入一个尺寸后回车添加')}" onkeydown="FluxChips.key(event,this)">
+            </div>` +
+            `<div class="form-group"><label>${this._t('采样器')}</label>
+                <select data-path="flux_painter.sampler_name">${opts(FluxSamplerOptions, samplerCur)}</select></div>` +
+            `<div class="form-group"><label>${this._t('调度器')}</label>
+                <select data-path="flux_painter.sampler_scheduler">${opts(FluxSchedulerOptions, schedCur)}</select></div>` +
+            this._num('基础采样 cfg', 'flux_painter.sampler_cfg', 5, 0, 30, 0.1) +
+            this._num('基础采样步数', 'flux_painter.sampler_steps', 30, 1, 200, 1) +
+            this._num('采样 shift', 'flux_painter.sampler_shift', 3, 0, 30, 0.1);
+
+        h += `<div class="modal-tabs">
+            <button class="modal-tab active" data-tab="flux_pro_hires">${this._t('Pro·放大/分块')}</button>
+            <button class="modal-tab" data-tab="flux_pro_det">${this._t('Pro·局部细化')}</button>
+            <button class="modal-tab" data-tab="flux_review">${this._t('审查与安全')}</button>
+            <button class="modal-tab" data-tab="flux_engine">${this._t('工作流与路径')}</button>
+        </div>`;
 
         // ===== Pro·放大 / 分块（05 + 06） =====
         let hiresHtml = this._section('Pro·05 高清预处理（模型放大）') +
@@ -720,7 +769,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             this._check('允许第三方插件', 'flux_painter.pro.allow_custom_nodes', true) +
             this._num('基础 cfg（pro）', 'flux_painter.pro.base_cfg', 4, 0, 30, 0.1) +
             this._num('基础步数（pro）', 'flux_painter.pro.base_steps', 30, 1, 200, 1);
-        h += `<div class="tab-content" data-tab-content="flux_pro_hires">${hiresHtml}</div>`;
+        h += `<div class="tab-content active" data-tab-content="flux_pro_hires">${hiresHtml}</div>`;
 
         // ===== Pro·局部细化（07：hand / face / eye + SAM） =====
         const detDefs = [
@@ -746,7 +795,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 this._check('noise_mask', p + 'noise_mask', true) +
                 this._check('force_inpaint', p + 'force_inpaint', true);
         });
-        let samHtml = this._section('Pro·SAM 与局部提示词') +
+        let samHtml = this._section('Pro·SAM 参数') +
             this._text('SAM 模型', 'flux_painter.pro.sam_model', 'sam_vit_b_01ec64.pth') +
             this._select('SAM 检测提示', 'flux_painter.pro.sam.sam_detection_hint', [
                 { value: 'center-1', label: 'center-1' },
@@ -771,12 +820,6 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
         ].forEach(t => {
             samHtml += this._num(t[1], `flux_painter.pro.sam.${t[0]}`, t[2], t[3], t[4], t[5]);
         });
-        samHtml += `<div class="form-group"><label>${this._t('局部正向提示词（手部区域）')}</label>
-                <textarea data-path="flux_painter.pro.pos_hand" rows="2"
-                    style="width:100%;font-family:inherit;font-size:13px;">${posHandCur}</textarea></div>` +
-            `<div class="form-group"><label>${this._t('局部负向提示词（手部区域）')}</label>
-                <textarea data-path="flux_painter.pro.neg_hand" rows="3"
-                    style="width:100%;font-family:inherit;font-size:13px;">${negHandCur}</textarea></div>`;
         h += `<div class="tab-content" data-tab-content="flux_pro_det">${detHtml}${samHtml}</div>`;
 
         // ===== 审查与安全 =====
@@ -799,21 +842,12 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 'https://huggingface.co/vladmandic/nudenet/resolve/main/nudenet.onnx') +
             `</div>`;
 
-        // ===== 引擎与路径 =====
+        // ===== 工作流与路径 =====
         h += `<div class="tab-content" data-tab-content="flux_engine">` +
-            this._section('引擎与路径（改后需重启绘画引擎）') +
-            this._text('监听地址', 'flux_painter.comfy.host', '127.0.0.1') +
-            this._check('独立引擎窗口', 'flux_painter.comfy.engine_window', true) +
-            this._check('画板实时进度（阶段/百分比/步进）', 'flux_painter.progress_detail', true) +
-            this._text('内核目录', 'flux_painter.comfy.comfy_node_dir', '.ComfyNode') +
-            this._text('输出目录', 'flux_painter.comfy.output_dir', '.ComfyNode/output') +
+            this._section('工作流与数据路径（改后需重启绘画引擎）') +
             this._text('工作流文件', 'flux_painter.comfy.workflow_file', '.ComfyNode/node/workflow.json') +
             this._text('提示词参考目录', 'flux_painter.comfy.prompt_reference_dir', '.ComfyNode/prompt_reference') +
             this._text('画师数据', 'flux_painter.comfy.artist_data', '.ComfyNode/artist/data.js') +
-            this._text('内核解释器（须指向装了 torch 的 python）',
-                'flux_painter.comfy.internal_python', '') +
-            this._text('内核 main.py（备用，当前版本固定用 .ComfyNode/ComfyUI/main.py）',
-                'flux_painter.comfy.internal_main', '') +
             `</div>`;
         return h;
     },
