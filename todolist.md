@@ -830,3 +830,314 @@ ai需要回复
 - 2、保留原来类名必须要有Meow前缀
 - 3、设计必须模块化，禁止出现注释，仅在方法下写一行极为简短的介绍
 先分析项目，仅在写代码，向我提出问题确认
+
+
+
+# .Phone前端功能的更新与修改
+
+## 摄像机功能
+
+1. 增加摄像机前端，参照safari的前端参考，直接调用手机摄像机，30fps，尽量减轻手机性能消耗的负担
+2. 视频编码和传递可以参考```D:\.Cuckoo\OriginCode```的投屏模块
+3. 在主项目服务端的```.phone```下增加视频接受端，有前端，做一个简单的rec框，让前端更加美观
+4. 摄像机功能可以控制开关
+
+## 麦克风音频采集
+
+1. 检查当前逻辑是否遵循了Safari的标准
+2. 保留现有的麦克风逻辑，正确的发送音频到主项目，可以控制开关
+
+## 主项目的内容接受方案
+
+1. 传递回来的视频画面需要流畅的在前端展示
+2. 传递回来的音频采集目前没有问题，确认正确后保留
+3. 合成音频返回手机端现在有bug，会出现只要有合成任务就传递给手机端播放的问题，给出修复方案
+4. 手机触发说话和主动回复才需要传递给手机端播放
+
+## 关于前端的修改
+
+### 手机端
+
+1. 改成整个大屏幕是摄像机画面，如果没开摄像机就黑屏
+2. 把桌宠模型改成很小，可以稍微两指手指放大，但是有限制，不能无限放大
+3. 开视频和开麦克风按钮都直接两个简洁的按钮球，两个按钮都是点击触发，再点击关闭
+4. 把当前回复和说话改成聊天气泡，和桌宠位置绑定显示
+
+### 电脑端
+
+1. 只需要接受回复的视频
+2. 有极其简单的rec框，类似相机的外框特效
+3. 其它完全不需要
+
+## Safari的前端实现方案参考
+
+参考如下：
+````markdown
+在 Safari 前端开发中实现音频播放、摄像头和麦克风调用，需要重点关注 **自动播放策略、媒体格式支持、权限管理和 API 兼容性**。以下按功能模块梳理关键要点和代码示例。
+
+---
+
+## 一、音频播放
+
+### 1.1 支持的音频格式
+
+Safari 对音频格式的支持与 Chrome 差异较大：
+
+| 格式 | Safari 支持情况 |
+|------|----------------|
+| MP3 | ✅ 广泛支持 |
+| AAC | ✅ 支持 |
+| WAV | ✅ 支持（文件较大） |
+| OGG/Vorbis | ❌ Safari 14.1 之后已移除支持 |
+
+建议使用 `<source>` 标签提供多格式回退：
+
+```html
+<audio controls>
+  <source src="audio.mp3" type="audio/mpeg">
+  <source src="audio.aac" type="audio/aac">
+  您的浏览器不支持音频播放。
+</audio>
+```
+
+### 1.2 自动播放策略（关键）
+
+Safari 的自动播放策略极其严格，核心规则如下：
+
+**规则一：必须有用户手势触发。** Safari 使用手势追踪来决定是否允许 `play()` 调用，且**只允许在事件处理器的同步作用域内调用 `play()`**。这意味着 `setTimeout`、`await` 之后的 `play()` 调用会被阻止。
+
+```javascript
+// ✅ 正确：在 click 事件同步作用域内调用
+button.addEventListener('click', () => {
+  audioElement.play(); // 被允许
+});
+
+// ❌ 错误：异步调用会被阻止
+button.addEventListener('click', async () => {
+  await someAsyncOperation();
+  audioElement.play(); // 被阻止
+});
+```
+
+**规则二：Web Audio API 需要显式 resume。** AudioContext 在 Safari 中默认处于 `suspended` 状态，必须在用户手势中调用 `resume()`：
+
+```javascript
+const audioContext = new AudioContext();
+
+button.addEventListener('click', async () => {
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+  // 现在可以正常使用 audioContext 播放音频
+});
+```
+
+**规则三：首次手势后，Audio 元素仍受限制。** 在 Safari 11 中，即使用户已进行过一次交互，`<audio>` 元素的播放仍然受到限制，而 Web Audio API 则可以在首次手势后自由播放。如果需要频繁程序化播放音频，建议优先使用 Web Audio API。
+
+**实操建议**：设计一个“点击解锁音频”的初始交互按钮，在用户首次点击时同时解锁 AudioContext 并预加载音频资源。
+
+### 1.3 播放 MediaStream 音频
+
+如果音频来自 `getUserMedia` 或 WebRTC 的 MediaStream，可以直接设置到 `<audio>` 元素：
+
+```javascript
+const audioElement = document.getElementById('audio');
+audioElement.srcObject = mediaStream;
+audioElement.play();
+```
+
+注意：`play()` 同样需要在用户手势的同步作用域内调用。
+
+
+## 二、摄像头调用
+
+### 2.1 基础 API
+
+Safari 从 **11 版本**开始支持 `navigator.mediaDevices.getUserMedia()`。基础调用方式：
+
+```javascript
+async function startCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: false
+    });
+    const videoElement = document.getElementById('video');
+    videoElement.srcObject = stream;
+    await videoElement.play();
+  } catch (err) {
+    console.error('摄像头调用失败:', err);
+  }
+}
+```
+
+### 2.2 Safari 特有注意事项
+
+**必须设置 `playsinline` 属性。** iOS Safari 中，视频元素如果不设置 `playsinline`，会默认全屏播放，导致预览黑屏或行为异常：
+
+```html
+<video id="video" playsinline webkit-playsinline autoplay muted></video>
+```
+
+**HTTPS 要求。** `getUserMedia` 只能在安全上下文中调用，即 `https://`、`localhost` 或 `127.0.0.1`。
+
+**摄像头选择。** 可以通过 `facingMode` 指定前后摄像头：
+
+```javascript
+// 前置摄像头
+{ video: { facingMode: 'user' } }
+// 后置摄像头
+{ video: { facingMode: 'environment' } }
+```
+
+**分辨率约束。** 建议显式指定理想分辨率，避免 Safari 使用异常默认值：
+
+```javascript
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: {
+    width: { ideal: 1280 },
+    height: { ideal: 720 },
+    frameRate: { ideal: 30 }
+  }
+});
+```
+
+### 2.3 黑屏问题排查
+
+Safari 中摄像头预览黑屏是常见问题，排查顺序如下：
+
+1. **系统级权限**：macOS「系统设置 → 隐私与安全性 → 相机/麦克风」中勾选 Safari
+2. **网站级权限**：地址栏锁形图标 → 网站设置 → 摄像头/麦克风设为「允许」
+3. **清除权限缓存**：Safari 偏好设置 → 网站 → 移除该域名的旧权限记录
+4. **代码层面**：确保设置了 `playsinline`、`muted`、`autoplay`，并在 `onloadedmetadata` 后再调用 `play()`
+
+```javascript
+videoElement.onloadedmetadata = () => {
+  videoElement.play().catch(err => console.error(err));
+};
+```
+
+如果重新连接时出现黑屏，建议在断开后完全释放旧的 MediaStream（`track.stop()`），并延迟几秒再重新请求。
+
+
+## 三、麦克风调用
+
+### 3.1 基础调用
+
+```javascript
+async function startMicrophone() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: false
+    });
+    // stream 中包含音频轨道
+    const audioTrack = stream.getAudioTracks()[0];
+    console.log('麦克风已获取:', audioTrack.label);
+    return stream;
+  } catch (err) {
+    console.error('麦克风调用失败:', err);
+  }
+}
+```
+
+### 3.2 同时调用摄像头和麦克风
+
+```javascript
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: { facingMode: 'user' },
+  audio: true
+});
+```
+
+### 3.3 权限管理
+
+Safari 的摄像头和麦克风权限是**一次性权限**（one-time permission），用户关闭页面后权限即被遗忘。这意味着每次新会话都需要重新授权。`getUserMedia` 不需要 transient activation，但每次页面加载后首次调用仍会弹出权限请求。
+
+如果需要检测权限状态，可以使用 Permissions API 的有限支持：
+
+```javascript
+// Safari 对 Permissions API 支持有限，camera/microphone 查询可能不可用
+try {
+  const result = await navigator.permissions.query({ name: 'camera' });
+  console.log('摄像头权限:', result.state);
+} catch (e) {
+  // Safari 可能抛出 TypeError
+  console.log('无法查询权限状态');
+}
+```
+
+### 3.4 设备枚举限制
+
+Safari 对 `enumerateDevices()` 的支持有重要限制：
+
+- **音频输出设备**：Safari 18.4 之前完全不返回 `audiooutput` 类型的设备；18.4 引入了扬声器选择功能，但实际表现不稳定。如果需要在 Safari 上做扬声器切换，需要做好降级处理。
+- **设备标签和 ID**：在用户授予权限之前，`enumerateDevices()` 返回的设备信息中 `label`、`deviceId`、`groupId` 均为空字符串。需要先调用 `getUserMedia` 获取权限，再枚举设备。
+- **devicechange 事件**：Safari 是唯一会在设备变化时触发 `devicechange` 事件的浏览器，Chrome 和 Firefox 不会触发。
+
+```javascript
+// 先获取权限，再枚举设备
+await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+const devices = await navigator.mediaDevices.enumerateDevices();
+const cameras = devices.filter(d => d.kind === 'videoinput');
+const microphones = devices.filter(d => d.kind === 'audioinput');
+// 注意：audiooutput 在 Safari 18.4 之前不会返回
+```
+
+
+## 四、综合注意事项
+
+### 4.1 安全上下文
+
+摄像头、麦克风和 AudioContext 都要求 HTTPS 环境。开发时 `localhost` 被视为安全上下文，可以正常使用。
+
+### 4.2 用户交互设计
+
+建议在页面上提供一个明显的“开始”按钮，在用户点击后统一完成以下操作：
+
+```javascript
+startButton.addEventListener('click', async () => {
+  // 1. 解锁 AudioContext
+  if (audioContext.state === 'suspended') {
+    await audioContext.resume();
+  }
+
+  // 2. 请求摄像头和麦克风
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: true
+  });
+
+  // 3. 绑定到视频元素
+  videoElement.srcObject = stream;
+  videoElement.play(); // 同步作用域内调用，不被阻止
+});
+```
+
+### 4.3 错误处理
+
+`getUserMedia` 可能抛出多种错误，需要分别处理：
+
+- `NotAllowedError`：用户拒绝权限，或非安全上下文
+- `NotFoundError`：未找到摄像头/麦克风设备
+- `NotReadableError`：设备被其他应用占用
+- `OverconstrainedError`：约束条件无法满足（如请求的分辨率不支持）
+
+### 4.4 编码格式建议
+
+如果涉及音视频录制或传输，Safari 对 H.264 和 AAC 的支持最好。WebRTC 场景下，Safari 支持 H.264 和 VP8，建议在 SDP 协商中优先使用 H.264。
+
+总结：Safari 前端媒体开发的核心挑战在于**自动播放的同步手势要求**、**音频格式限制**和**权限的一次性特性**。开发时建议优先使用 Web Audio API 处理音频、始终为视频元素设置 `playsinline`、并在设计上引导用户通过明确的按钮交互来初始化所有媒体设备。
+````
+
+## 关于连接和接口
+
+1. 需要支持局域网，端口保持当前
+2. 需要支持tailscale vpn，不需要多余动作，确认现在能支持，且流量可控即可
+
+## 原则
+
+- 1、逐字分析我的需求，有任何疑问提出，确保没有歧义
+- 2、设计必须模块化，禁止出现注释，仅在方法下写一行极为简短的介绍
+  先分析项目，向我提出问题确认，禁止实施，先分析，提问，给出方案
+

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>喵呜 · 手机音频诊断</title>
+  <link rel="stylesheet" href="/static/css/debug.css">
+</head>
+<body>
+  <header>
+    <h1>手机音频诊断</h1>
+    <div class="sum">
+      <span class="pill" id="mode">模式 --</span>
+      <span class="pill" id="buf">缓冲 --</span>
+      <span class="pill" id="upd">--</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>当前推送（meta）</h2>
+    <pre id="meta">—</pre>
+  </section>
+
+  <section>
+    <h2>最近的流（越靠下越新）</h2>
+    <table>
+      <thead>
+        <tr><th>时间</th><th>模式</th><th>来源 source</th><th>保留</th><th>字节</th><th>结束</th><th>文本</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+
+  <p class="hint">本页每秒自动刷新：数据来自 <code>/api/tts/debug</code>。<br>
+     “保留 = 否”表示该来源在当前模式下被过滤（聊天模式只保留 source=phone）。</p>
+
+  <script type="module" src="/static/js/debug.js"></script>
+</body>
+</html>

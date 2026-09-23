@@ -368,7 +368,7 @@ class TTsCore:
                     # phone 语音：不本地播放，经 tts_phone 推给手机
                     self._play_stream_phone(source, full_text)
                 else:
-                    self._play_stream_source(source)
+                    self._play_stream_source(source, full_text)
             finally:
                 if lyric_syncer:
                     lyric_syncer.stop()
@@ -408,39 +408,53 @@ class TTsCore:
         except Exception as e:
             self.log.debug(f"段间停顿异常: {e}")
 
-    def _play_stream_source(self, source: StreamSource):
-        """阻塞播放一个流式源：边收边播直到结束/打断"""
+    def _play_stream_source(self, source: StreamSource, text: str = ""):
+        """阻塞播放一个流式源：边收边播直到结束/打断，同时旁路镜像给手机通道"""
         samplerate = int(source.sample_rate or self.config.sample_rate or 32000)
         channels = source.channels or 1
+        src_name = getattr(source, "source", "") or "other"
 
         if source.cancelled or self._is_paused():
             self._drain_stream(source)
             return
 
         if not self.player.open_stream(samplerate, channels):
-            # 播放器不可用：丢弃该流剩余数据
-            self._drain_stream(source)
+            self._play_stream_phone(source, text, src_name)
             return
 
+        self.tts_phone.start_stream(text or "", getattr(source, "traceid", ""),
+                                    sample_rate=samplerate, source=src_name,
+                                    seg_index=getattr(source, "seg_index", 0))
+        try:
+            self.log.info(f"[TTS->phone] source={src_name} bytes_text={len(text or '')}")
+        except Exception:
+            pass
         try:
             while True:
                 data, finished = source.pop(timeout=0.5)
                 if finished:
                     break
                 if data:
+                    try:
+                        self.tts_phone.push(data)
+                    except Exception:
+                        pass
                     if not self.player.write(data, self.config.volume):
                         break
         finally:
+            self.tts_phone.end_stream()
             self.player.close_stream()
 
-    def _play_stream_phone(self, source: StreamSource, text: str = ""):
+    def _play_stream_phone(self, source: StreamSource, text: str = "",
+                           src_name: str = "phone"):
         """phone 语音：不本地播放，经 tts_phone 逐块转发手机（可被暂停/打断中断）"""
         if source.cancelled or self._is_paused():
             self._drain_stream(source)
             return
         sr = int(getattr(source, "sample_rate", 0) or self.config.sample_rate or 32000)
         self.tts_phone.start_stream(text or "", getattr(source, "traceid", ""),
-                                    sample_rate=sr)
+                                    sample_rate=sr, source=src_name,
+                                    seg_index=getattr(source, "seg_index", 0))
         try:
             while True:
                 data, finished = source.pop(timeout=0.5)

@@ -1,0 +1,313 @@
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  background: #000;
+  color: #e8e8f0;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+#cam {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  z-index: 0;
+}
+
+#camView {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #000;
+  z-index: 1;
+}
+
+#petLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+}
+
+#petFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+  background: transparent;
+}
+
+.bubble {
+  position: fixed;
+  z-index: 3;
+  /* 自适应宽度：内容短就短，最宽不超过屏幕，超出自动换行（!important 防手机缓存旧样式） */
+  left: 50% !important;
+  right: auto !important;
+  width: -webkit-fit-content !important;
+  width: fit-content !important;
+  max-width: calc(100vw - 20px) !important;
+  padding: 9px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: #1b1b22;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  transform: translate(-50%, -100%) !important;
+  pointer-events: none;
+}
+
+.bubble.user {
+  background: rgba(255, 255, 255, 0.94);
+  color: #1b1b22;
+}
+
+.bubble.hidden {
+  display: none;
+}
+
+.flip {
+  position: fixed;
+  z-index: 4;
+  top: calc(8px + env(safe-area-inset-top));
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 50%;
+  background: rgba(18, 18, 30, 0.42);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.mode-pill {
+  position: fixed;
+  z-index: 4;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 52px;
+  padding: 5px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(18, 18, 30, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mode-toast {
+  position: fixed;
+  z-index: 4;
+  top: calc(46px + env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 12px;
+  background: rgba(18, 18, 30, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #eceff6;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.mode-toast.hidden {
+  opacity: 0;
+}
+
+.mode-pill.on {
+  background: rgba(72, 210, 140, 0.4);
+  border-color: rgba(72, 210, 140, 0.95);
+  color: #fff;
+}
+
+.chip {
+  position: fixed;  z-index: 4;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 90px);
+  padding: 6px 11px;
+  border-radius: 16px;
+  background: rgba(18, 18, 30, 0.52);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 13px;
+  color: #e8e8f0;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+.chip-label {
+  color: #9a9ab2;
+  flex: 0 0 auto;
+}
+
+.chip-value {
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-input {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 10px;
+  background: rgba(31, 31, 54, 0.95);
+  color: #fff;
+  font-size: 13px;
+  outline: none;
+}
+
+.chip.editing .chip-value,
+.chip.editing .chip-label {
+  display: none;
+}
+
+.chip.editing .chip-input {
+  display: block;
+}
+
+.say-line {
+  position: fixed;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  padding: 0 16px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85);
+  pointer-events: none;
+  transition: opacity 0.35s ease;
+  opacity: 1;
+}
+
+.say-line.hidden {
+  opacity: 0;
+}
+
+.dock {
+  position: fixed;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: center;
+  gap: 18px;
+  pointer-events: none;
+}
+
+.ball {
+  pointer-events: auto;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 50%;
+  background: rgba(18, 18, 30, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.ball:active {
+  transform: scale(0.94);
+}
+
+.ball.on {
+  background: rgba(72, 210, 140, 0.4);
+  border-color: rgba(72, 210, 140, 0.95);
+}
+
+.ball span {
+  opacity: 0.92;
+}
+
+.inputbar {
+  position: fixed;
+  z-index: 4;
+  left: 10px;
+  right: 10px;
+  bottom: calc(80px + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 8px;
+}
+
+.inputbar.hidden {
+  display: none;
+}
+
+.inputbar input {
+  flex: 1;
+  min-width: 0;
+  padding: 11px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  background: rgba(24, 24, 40, 0.92);
+  color: #fff;
+  font-size: 16px;
+  outline: none;
+}
+
+.inputbar .send {
+  flex: 0 0 auto;
+  padding: 11px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}

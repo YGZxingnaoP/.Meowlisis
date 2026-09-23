@@ -58,6 +58,19 @@
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
+  let _lastRectTs = 0;
+  function reportRect() {
+    if (!autoFitMode || !model) return;
+    const now = performance.now();
+    if (now - _lastRectTs < 120) return;
+    _lastRectTs = now;
+    try {
+      const b = model.getBounds();
+      window.parent.postMessage({ source: 'meow-desktopet', type: 'pet-rect',
+                                  x: b.x, y: b.y, w: b.width, h: b.height }, '*');
+    } catch (e) {}
+  }
+
   function clampDragOffset() {
     // 限制模型中心不越出画布（留 40px 余量），拖拽与尺寸变化时统一约束
     if (!app || !app.screen) return;
@@ -75,6 +88,7 @@
       app.screen.width / 2 + dragOffsetX,
       app.screen.height / 2 + dragOffsetY
     );
+    reportRect();
   }
 
   function recenter() {
@@ -201,23 +215,60 @@
     dragCanvas.style.touchAction = 'none'; // 防 iframe 内触摸滚动/缩放
     dragCanvas.style.cursor = 'grab';
 
+    const pointers = new Map();
+    let pinchBase = 0;
+    let pinchFactor = 1;
+    function pinchDistance() {
+      const pts = Array.from(pointers.values());
+      if (pts.length < 2) return 0;
+      const dx = pts[0].x - pts[1].x;
+      const dy = pts[0].y - pts[1].y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+    function applyManualFactor(factor) {
+      manualFactor = Math.max(0.35, Math.min(2.5, factor));
+      const fs = computeFitScale();
+      if (fs && fs > 0) applyScale(fs * manualFactor);
+    }
     dragCanvas.addEventListener('pointerdown', (e) => {
-      afDragging = true;
-      afLast = { x: e.clientX, y: e.clientY };
-      dragCanvas.style.cursor = 'grabbing';
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { dragCanvas.setPointerCapture(e.pointerId); } catch (err) {}
+      if (pointers.size === 1) {
+        afDragging = true;
+        afLast = { x: e.clientX, y: e.clientY };
+        dragCanvas.style.cursor = 'grabbing';
+      } else {
+        afDragging = false;
+        afLast = null;
+        pinchBase = pinchDistance();
+        pinchFactor = manualFactor;
+      }
     });
     dragCanvas.addEventListener('pointermove', (e) => {
+      if (pointers.has(e.pointerId)) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size >= 2) {
+        const d = pinchDistance();
+        if (pinchBase > 0 && d > 0) applyManualFactor(pinchFactor * (d / pinchBase));
+        return;
+      }
       if (!afDragging || !afLast) return;
       dragOffsetX += e.clientX - afLast.x;
       dragOffsetY += e.clientY - afLast.y;
       afLast = { x: e.clientX, y: e.clientY };
       setCenterPosition();
     });
-    function endAfDrag() {
-      afDragging = false;
-      afLast = null;
-      dragCanvas.style.cursor = 'grab';
+    function endAfDrag(e) {
+      if (e && e.pointerId !== undefined) pointers.delete(e.pointerId);
+      if (pointers.size < 2) pinchBase = 0;
+      if (pointers.size === 0) {
+        afDragging = false;
+        afLast = null;
+        dragCanvas.style.cursor = 'grab';
+      } else if (pointers.size === 1) {
+        const only = Array.from(pointers.values())[0];
+        afDragging = true;
+        afLast = { x: only.x, y: only.y };
+      }
     }
     dragCanvas.addEventListener('pointerup', endAfDrag);
     dragCanvas.addEventListener('pointercancel', endAfDrag);
@@ -349,6 +400,18 @@
         const fs = computeFitScale();
         if (fs && fs > 0) applyScale(fs * manualFactor);
       }
+    }
+  });
+
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || d.source !== 'meow-phone' || d.type !== 'pet-set') return;
+    const f = Number(d.factor);
+    if (!(f > 0)) return;
+    manualFactor = Math.max(0.35, Math.min(2.5, f));
+    if (autoFitMode) {
+      const fs = computeFitScale();
+      if (fs && fs > 0) applyScale(fs * manualFactor);
     }
   });
 })();

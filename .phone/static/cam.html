@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
+  <title>喵呜 · 手机画面</title>
+  <link rel="stylesheet" href="/static/css/cam.css">
+</head>
+<body>
+  <div class="stage">
+    <div class="frame" id="frame">
+      <canvas id="view"></canvas>
+      <div class="rec">
+        <span class="corner tl"></span>
+        <span class="corner tr"></span>
+        <span class="corner bl"></span>
+        <span class="corner br"></span>
+        <div class="hud">
+          <button id="sndBtn" class="snd" type="button" title="手机声音：开/关">🔇</button>
+          <span class="dot"></span>
+          <span class="label">REC</span>
+          <span class="meta" id="meta">连接中…</span>
+        </div>
+      </div>
+    </div>
+    <div class="idle" id="idle">等待手机画面…</div>
+  </div>
+  <script type="module" src="/static/js/viewer.js"></script>
+</body>
+</html>

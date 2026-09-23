@@ -1,0 +1,143 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #05060a;
+  color: #e8e8f0;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  overflow: hidden;
+}
+
+.stage {
+  position: fixed;
+  inset: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.frame {
+  position: relative;
+  width: 640px;
+  height: 360px;
+}
+
+#view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  border-radius: 8px;
+}
+
+.rec {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.corner {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border: 2px solid rgba(255, 255, 255, 0.55);
+}
+
+.corner.tl {
+  top: 0;
+  left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.corner.tr {
+  top: 0;
+  right: 0;
+  border-left: 0;
+  border-bottom: 0;
+}
+
+.corner.bl {
+  bottom: 0;
+  left: 0;
+  border-right: 0;
+  border-top: 0;
+}
+
+.corner.br {
+  bottom: 0;
+  right: 0;
+  border-left: 0;
+  border-top: 0;
+}
+
+.hud {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.82);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+
+.snd {
+  pointer-events: auto;
+  padding: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(18, 18, 30, 0.45);
+  color: #e8e8f0;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.snd.on {
+  border-color: rgba(72, 210, 140, 0.85);
+  background: rgba(72, 210, 140, 0.22);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff4d4d;
+  box-shadow: 0 0 8px rgba(255, 77, 77, 0.9);
+  animation: blink 1.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+.label {
+  font-weight: 700;
+  color: #ff6b6b;
+}
+
+.meta {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  letter-spacing: 0;
+}
+
+.idle {
+  position: absolute;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 15px;
+}
+
+.idle.hidden {
+  display: none;
+}

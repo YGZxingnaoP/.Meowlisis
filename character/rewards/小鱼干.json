@@ -3,8 +3,8 @@
   "unit": "条",
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
-  "total_acquired": 8.1,
-  "balance": 2.3,
+  "total_acquired": 10.6,
+  "balance": 4.3,
   "history": [
     {
       "ts": 1788600163,
@@ -405,6 +405,147 @@
     },
     {
       "ts": 1789574477,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1789996702,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1790079219,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1790080381,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "粉丝团灯牌x1",
+      "user": "小胆123"
+    },
+    {
+      "ts": 1790080382,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "粉丝团灯牌x1",
+      "user": "小胆123"
+    },
+    {
+      "ts": 1790080515,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "小胆123"
+    },
+    {
+      "ts": 1790081308,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "小胆123"
+    },
+    {
+      "ts": 1790081340,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "薯条x1",
+      "user": "小胆123"
+    },
+    {
+      "ts": 1790084920,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084921,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084922,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084922,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084922,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084922,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084923,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084923,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084923,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790084923,
+      "type": "gift",
+      "delta": 0.1,
+      "gift": "人气票x1",
+      "user": "LynxRain"
+    },
+    {
+      "ts": 1790162547,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1790174875,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1790175399,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1790175435,
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"
