@@ -20,6 +20,11 @@ output/*.wav
 output/*.mp3
 *.wav
 *.exe
+*.epub
+*.docx
+*.pptx
+*.pdf
+*.zip
 
 #配置项
 config.yml
