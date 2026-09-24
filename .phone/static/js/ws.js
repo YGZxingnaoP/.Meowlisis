@@ -1,11 +1,13 @@
 import { wsUrl } from './config.js';
 
 export class Bus {
-  constructor(role = 'phone') {
+  constructor(role = 'phone', opts) {
     this.role = role;
     this.url = wsUrl();
     this.ws = null;
     this.ready = false;
+    // queueBin=false：二进制帧在断线时直接丢（不做陈旧重放）
+    this.queueBin = !(opts && opts.queueBin === false);
     this._queue = [];
     this._text = [];
     this._bin = [];
@@ -13,6 +15,18 @@ export class Bus {
     this._status = [];
     this._retry = 0;
     this._closed = false;
+    this.dropped = 0;
+  }
+
+  /** 当前待发送字节数（拥塞判断用） */
+  backlog() {
+    const ws = this.ws;
+    if (!ws) return 0;
+    try {
+      return ws.bufferedAmount || 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   onText(cb) {
@@ -102,10 +116,16 @@ export class Bus {
     if (ws && ws.readyState === 1) {
       try {
         ws.send(payload);
-        return;
+        return true;
       } catch (e) {}
     }
+    // 断线时不缓存媒体帧（重连后灌回旧帧只会加重延迟/串音）
+    if (typeof payload !== 'string' && !this.queueBin) {
+      this.dropped += 1;
+      return false;
+    }
     if (this._queue.length < 240) this._queue.push(payload);
+    return false;
   }
 
   _retryLater() {

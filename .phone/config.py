@@ -29,7 +29,16 @@ VIDEO_HEIGHT = 720
 VIDEO_FPS = 30
 VIDEO_BITRATE = 2000000
 VIDEO_KEYFRAME_SECS = 2.0
-VIDEO_GOP_MAX = 300
+# viewer 不再重放 GOP 积压（改为主动 reqkey 要新关键帧），这里只保留很小的应急缓存
+VIDEO_GOP_MAX = 16
+# 编码器/发送队列上限：超过就丢帧（智能丢帧第一层）
+VIDEO_ENC_MAX_QUEUE = 2
+# 手机端音频与视频分两条 WS，音频永不被视频积压拖住
+AUDIO_SEPARATE_SOCKET = True
+# 麦克风 gate：AI 播放期间是否掐掉手机麦克风（1=掐，0=不掐，交给 iOS 回声消除）
+AUDIO_MIC_GATE = True
+# relay → 主程序：把 30ms 小帧攒成一批再 POST（秒），降低请求数并抗超时
+AUDIO_SEND_BATCH_SECS = 0.15
 
 TTS_MAX_BLOCKS = 600
 TTS_PENDING_LIMIT = 60

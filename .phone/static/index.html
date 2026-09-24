@@ -17,6 +17,9 @@
 
   <div id="bubble" class="bubble hidden"></div>
 
+  <input id="volRange" class="volrange" type="range" min="0" max="100" value="100"
+         title="语音音量">
+
   <button id="flipBtn" class="flip" title="切换前后摄像头">⇄</button>
 
   <button id="modePill" class="mode-pill" title="聊天=只听手机自己的对话 · 通话=听全部语音">聊天</button>
@@ -39,6 +42,7 @@
     <button id="camBtn" class="ball" type="button"><span>📷</span></button>
     <button id="micBtn" class="ball" type="button"><span>🎤</span></button>
     <button id="msgBtn" class="ball" type="button"><span>💬</span></button>
+    <button id="volBtn" class="ball vol" type="button" title="语音音量：点击静音/恢复"><span>🔊</span></button>
   </div>
 
   <audio id="phoneAudio" playsinline style="display:none"></audio>

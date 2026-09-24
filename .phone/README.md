@@ -108,12 +108,15 @@ https://<IP>:8443/debug
 
 - 气泡**只显示 AI 回复**，且为白底深字、**自适应宽度**（内容短就短，最长不超过屏幕，超出自动换行）。
 - 用户输入（手机打字 + 语音识别结果）**不进气泡**，只在底部显示一行小字（6 秒后淡出）。
-- 顶部胶囊：`通话·全部` / `聊天·仅我`；右上角迷你 ⇄：前后摄像头切换。
+- 顶部胶囊：`通话·全部` / `聊天·仅我`；
+- 左上角 `🔊/🔇` + 音量滑条：手机端播放 AI 语音的音量（记忆到 localStorage，刷新后保留）；
+- 右上角迷你 ⇄：前后摄像头切换。
+- 首次打开/刷新后**必须点一下屏幕**才会有声音（浏览器自动播放策略），未解锁时底部会提示「点一下屏幕开启声音」。
 
 ## 七、手机声音回传到观看端（直播间能听到你本人）
 
 - 手机开着 🎤 时，上行音频**一路给 SenseVoice 识别，另一路原样转发**给所有观看端（WS 二进制 `0x03` 帧：`[0x03][rate u32 BE][s16le mono]`）；
-- `/cam` 页面会自动播放（右上角 `🔊/🔇` 开关；普通浏览器首次需点一下页面解锁自动播放，OBS 浏览器源无此限制）；
+- `/cam` 页面会自动播放（右上角 `🔊/🔇` 开关 + 音量滑条，状态与音量都记忆在 localStorage）；普通浏览器首次需点一下页面解锁自动播放，OBS 浏览器源无此限制；
 - OBS 里：浏览器源勾选「控制音频」并路由到独立音轨 → 「你的声音」与「AI 语音（桌面音频）」可分开调音量/静音；
 - 手机在 AI 说话时会短暂静音上行（`audio.js` 的 gate），避免把 AI 的声音再采回去；
 - 观看端可用 `{"t":"audio","on":0|1}` 关闭/开启这条回放（默认开）。
@@ -133,8 +136,21 @@ https://<IP>:8443/debug
 | 文件 | 改动 |
 |---|---|
 | `func/pipeline/tts_phone.py` | `start_stream` 多带 `source`/`seg_index`；发送线程改单队列严格保序；不可达时打一次告警日志 |
-| `func/tts/tts_core.py` | `_play_worker` 把该段文本传给 `_play_stream_source`；`_play_stream_source` 增加"旁路镜像给手机"（本地 mpv 不可用时自动回退为纯手机播放）；`_play_stream_phone` 补 `source`/`seg_index`；镜像时打一行 `[TTS->phone]` 便于排查 |
+| `func/tts/tts_core.py` | `_play_worker` 把该段文本传给 `_play_stream_source`；`_play_stream_source` 增加"旁路镜像给手机"（本地 mpv 不可用时自动回退为纯手机播放）；`_play_stream_phone` 补 `source`/`seg_index`；镜像时打一行 `[TTS->phone]` 便于排查；**手机对话的回复默认也本地播放**（新开关 `tts.gpt-sovits.phone_local_play`，见下） |
 | `func/meowsinger/singerplayer.py` | 新增手机镜像（`source=hum`），本地播放与手机推送并行 |
+| `config.yml` | `tts.gpt-sovits` 下新增 `phone_local_play: true` |
+
+### 开关：手机对话的回复是否也本地播放
+
+```yaml
+tts:
+  gpt-sovits:
+    phone_local_play: true    # 默认 true
+```
+- `true`（默认）：手机对话的回复**电脑本地也播**（走 mpv → 桌面音频 → OBS 能采到），同时照旧推给手机 → 直播间能听到 AI 的回话；
+- `false`：回到旧行为，**只推手机、电脑不播**（人在室内不想双声、或担心电脑麦克风把 AI 的话再识别时用）；
+- 改动只影响 `source=phone`（手机语音 / 手机打字）；其它来源一直是"本地 + 手机都放"。
+- ⚠️ 开启后电脑会出声，若 `config.yml` 里 `audio.sources.mic.enabled: true`，电脑麦克风可能把 AI 的话再收进去 → 建议不用电脑麦时关掉它，或戴耳机。
 
 其余主项目代码（`llm_active` / `api.py` / `config.yml`）**完全未改**。
 

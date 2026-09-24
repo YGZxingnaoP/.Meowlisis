@@ -101,6 +101,78 @@ html, body {
   cursor: pointer;
 }
 
+/* 音量按钮 = 底部 dock 的第 4 个球（原来在左上角，和"我是 xxx"人名条完全重叠） */
+.vol {
+  font-size: 20px;
+}
+
+.vol.off {
+  background: rgba(120, 30, 40, 0.55);
+  border-color: rgba(255, 120, 120, 0.8);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.volrange {
+  position: fixed;
+  z-index: 6;
+  /* 放在 dock 正上方（原来在左上角压住人名条） */
+  bottom: calc(96px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 46%;
+  min-width: 130px;
+  max-width: 240px;
+  height: 26px;
+  margin: 0;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  /* iOS：不加这两条，拖动会被系统当成页面滚动手势而中断（滑到底弹回来） */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 弹出输入框时让位 */
+body.typing .volrange {
+  display: none;
+}
+
+.volrange::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.volrange::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -7.5px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+}
+
+.volrange::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.volrange::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
 .mode-pill {
   position: fixed;
   z-index: 4;

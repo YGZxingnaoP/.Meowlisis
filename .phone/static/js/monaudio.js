@@ -1,6 +1,8 @@
 export class MonitorAudio {
   constructor() {
     this.ctx = null;
+    this.gain = null;
+    this.volume = 1;
     this.on = false;
     this._next = 0;
     this._frames = 0;
@@ -13,6 +15,11 @@ export class MonitorAudio {
     if (!AC) return false;
     try {
       if (!this.ctx) this.ctx = new AC();
+      if (!this.gain) {
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = this.volume;
+        this.gain.connect(this.ctx.destination);
+      }
       if (this.ctx.state === 'suspended') this.ctx.resume();
       this._next = 0;
       this.on = true;
@@ -32,6 +39,18 @@ export class MonitorAudio {
       return false;
     }
     return this.unlock();
+  }
+
+  /** 0~1，静音/音量都只调这个增益，不影响 on/off 状态 */
+  setVolume(v) {
+    const n = Number(v);
+    this.volume = Math.max(0, Math.min(1, isNaN(n) ? 1 : n));
+    if (this.gain) {
+      try {
+        this.gain.gain.value = this.volume;
+      } catch (e) {}
+    }
+    return this.volume;
   }
 
   get locked() {
@@ -70,7 +89,7 @@ export class MonitorAudio {
       b.copyToChannel(f32, 0);
       const src = ctx.createBufferSource();
       src.buffer = b;
-      src.connect(ctx.destination);
+      src.connect(this.gain || ctx.destination);
       let t = this._next;
       if (t < ctx.currentTime) t = ctx.currentTime + 0.02;
       src.start(t);

@@ -107,6 +107,49 @@ html, body {
   background: rgba(72, 210, 140, 0.22);
 }
 
+.sndvol {
+  pointer-events: auto;
+  width: 84px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sndvol::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.sndvol::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.sndvol::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.35);
+}
+
+.sndvol::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #e8e8f0;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+}
+
 .dot {
   width: 9px;
   height: 9px;

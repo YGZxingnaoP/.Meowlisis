@@ -364,10 +364,12 @@ class TTsCore:
                     lyric_syncer = None
 
             try:
-                if getattr(source, "source", "") == "phone":
-                    # phone 语音：不本地播放，经 tts_phone 推给手机
+                src_tag = getattr(source, "source", "") or "other"
+                if src_tag == "phone" and not getattr(self.config, "phone_local_play", True):
+                    # 开关关闭：保持旧行为，不本地播放，只经 tts_phone 推手机
                     self._play_stream_phone(source, full_text)
                 else:
+                    # 默认：本地 mpv 播放 + 旁路镜像到手机（两边都放）
                     self._play_stream_source(source, full_text)
             finally:
                 if lyric_syncer:

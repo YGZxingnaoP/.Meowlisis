@@ -1,8 +1,10 @@
 import base64
+import collections
 import hashlib
 import json
 import struct
 import threading
+import time
 
 WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
@@ -52,7 +54,10 @@ def _encode_frame(opcode, payload):
 
 
 class WsConn:
-    """单条 WebSocket 连接：分帧收发 + 独立发送锁"""
+    """单条 WebSocket 连接：分帧收发 + 独立发送锁 + 有界发送队列（丢旧不堵上行）"""
+
+    # 每个 viewer 的发送队列上限（帧）：满了丢最旧的，绝不阻塞手机上行线程
+    Q_MAX = 24
 
     def __init__(self, sock):
         self._sock = sock
@@ -65,13 +70,61 @@ class WsConn:
         self.audio_on = True
         self._frag_op = None
         self._frag_buf = bytearray()
+        # 有界发送队列（只在 viewer 下行方向使用）
+        self._cv = threading.Condition()
+        self._q = collections.deque()
+        self.dropped = 0
+        self._sender = None
+
+    # ---------- 异步发送（防慢客户端拖死上行） ----------
+    def start_sender(self):
+        """启动发送线程：所有下行媒体帧都走队列"""
+        if self._sender is not None:
+            return
+        self._sender = threading.Thread(target=self._send_loop, daemon=True, name='ws-send')
+        self._sender.start()
+
+    def _send_loop(self):
+        while True:
+            with self._cv:
+                while not self._q and self.alive:
+                    self._cv.wait(0.5)
+                if not self.alive:
+                    return
+                payload = self._q.popleft()
+            if not self._send(OP_BIN, payload):
+                return
+
+    def enqueue_bin(self, payload):
+        """入队一帧媒体数据；队列满丢最旧。返回 True 表示发生了丢弃"""
+        with self._cv:
+            if not self.alive:
+                return False
+            dropped = False
+            while len(self._q) >= self.Q_MAX:
+                self._q.popleft()
+                self.dropped += 1
+                dropped = True
+            self._q.append(payload)
+            self._cv.notify()
+            return dropped
+
+    def wakeup(self):
+        """唤醒发送线程以便其退出"""
+        with self._cv:
+            self._cv.notify_all()
+
+    def pending(self):
+        """当前待发送帧数"""
+        with self._cv:
+            return len(self._q)
 
     def send_text(self, obj):
         """发送文本帧（JSON）"""
         self._send(OP_TEXT, json.dumps(obj, ensure_ascii=False).encode('utf-8'))
 
     def send_binary(self, payload):
-        """发送二进制帧"""
+        """发送二进制帧（同步，用于握手/小数据）"""
         self._send(OP_BIN, payload)
 
     def close(self):
@@ -84,6 +137,7 @@ class WsConn:
                 self._sock.sendall(_encode_frame(OP_CLOSE, b''))
             except Exception:
                 pass
+        self.wakeup()
         try:
             self._sock.shutdown(2)
         except Exception:
@@ -158,14 +212,14 @@ class WsConn:
 class WsHub:
     """手机/观看端复用同一 WS 端点：手机上行音视频，观看端下行视频"""
 
-    def __init__(self, on_audio=None, gop_max=300, log=None):
+    def __init__(self, on_audio=None, gop_max=16, log=None):
         self._lock = threading.Lock()
         self._conns = set()
         self._viewers = set()
         self._phones = set()
         self._vcfg = None
-        self._gop = []
-        self._gop_max = int(gop_max)
+        self._last_reqkey = 0.0
+        self._gop_max = int(gop_max)   # 兼容旧参数（已不再重放积压）
         self._on_audio = on_audio
         self._log = log
 
@@ -185,6 +239,7 @@ class WsHub:
         except Exception:
             return
         conn = WsConn(sock)
+        conn.start_sender()
         with self._lock:
             self._conns.add(conn)
         try:
@@ -220,13 +275,11 @@ class WsHub:
                 with self._lock:
                     self._viewers.add(conn)
                     vcfg = self._vcfg
-                    gop = list(self._gop)
                 conn.send_text({'t': 'hello', 'role': 'hub'})
                 if vcfg:
                     conn.send_text(dict(vcfg, t='vcfg'))
-                for item in gop:
-                    conn.send_binary(item)
-                self.request_keyframe()
+                # 不再重放 GOP 积压（最多 10 秒的旧画面 = 延迟源头），改为要一个新关键帧
+                self.request_keyframe(force=True)
             elif role == 'phone':
                 with self._lock:
                     self._phones.add(conn)
@@ -236,14 +289,12 @@ class WsHub:
                    'h': obj.get('h'), 'fps': obj.get('fps')}
             with self._lock:
                 self._vcfg = cfg
-                self._gop = []
                 viewers = list(self._viewers)
             for v in viewers:
                 v.send_text(dict(cfg))
         elif t == 'vstop':
             with self._lock:
                 self._vcfg = None
-                self._gop = []
                 viewers = list(self._viewers)
             for v in viewers:
                 v.send_text({'t': 'vstop'})
@@ -258,7 +309,7 @@ class WsHub:
             self.request_keyframe()
 
     def _on_binary(self, conn, data):
-        """处理二进制媒体帧"""
+        """处理二进制媒体帧（上行线程只做入队，绝不因慢 viewer 阻塞）"""
         if not data:
             return
         sub = data[0]
@@ -272,15 +323,14 @@ class WsHub:
                 return
             frame = bytes([flags]) + struct.pack('>Q', ts) + body
             with self._lock:
-                if flags & 0x01:
-                    self._gop = [frame]
-                else:
-                    self._gop.append(frame)
-                    if len(self._gop) > self._gop_max:
-                        self._gop = self._gop[-self._gop_max:]
                 viewers = list(self._viewers)
+            overflow = False
             for v in viewers:
-                v.send_binary(frame)
+                if v.enqueue_bin(frame):
+                    overflow = True
+            if overflow:
+                # 丢过帧 → viewer 的解码链断了，补一个关键帧（限流）
+                self.request_keyframe()
         elif sub == SUB_AUDIO:
             if len(data) > 1:
                 pcm = data[1:]
@@ -299,13 +349,14 @@ class WsHub:
         with self._lock:
             viewers = [v for v in self._viewers if v.audio_on]
         for v in viewers:
-            try:
-                v.send_binary(frame)
-            except Exception:
-                pass
+            v.enqueue_bin(frame)
 
-    def request_keyframe(self):
-        """请求手机端产生关键帧"""
+    def request_keyframe(self, force=False):
+        """请求手机端产生关键帧（默认 0.5s 内只发一次，避免抖动时风暴）"""
+        now = time.time()
+        if not force and (now - self._last_reqkey) < 0.5:
+            return
+        self._last_reqkey = now
         with self._lock:
             phones = list(self._phones)
         for p in phones:
@@ -314,6 +365,7 @@ class WsHub:
     def _drop(self, conn):
         """移除断开的连接"""
         conn.alive = False
+        conn.wakeup()
         with self._lock:
             self._conns.discard(conn)
             self._viewers.discard(conn)

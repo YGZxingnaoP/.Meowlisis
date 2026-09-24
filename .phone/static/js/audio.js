@@ -1,7 +1,9 @@
 export class Mic {
-  constructor(bus, gate) {
+  constructor(bus, gate, opts) {
     this.bus = bus;
     this.gate = gate || null;
+    // AI 说话时是否掐掉手机麦克风（音频回声消除足够好时可以关掉，避免"你说话被吞"）
+    this.gateOn = !(opts && opts.gateOn === false);
     this.stream = null;
     this.ctx = null;
     this.node = null;
@@ -10,6 +12,9 @@ export class Mic {
     this.on = false;
     this.onError = null;
     this._holdUntil = 0;
+    this._watch = 0;
+    this._restarts = 0;
+    this.held = 0;
   }
 
   async start() {
@@ -43,12 +48,42 @@ export class Mic {
     this.source = source;
     this.gain = gain;
     this.on = true;
+    this._restarts = 0;
     this.bus.send({ t: 'acfg', rate: ctx.sampleRate, ch: 1 });
+    this._watch = setInterval(() => this._check(), 2000);
+  }
+
+  /** 看门狗：iOS 来电/Siri/切后台会让音频上下文挂起或轨道结束，自动救回来 */
+  async _check() {
+    if (!this.on) return;
+    try {
+      if (this.ctx && this.ctx.state === 'suspended') {
+        await this.ctx.resume();
+      }
+    } catch (e) {}
+    const track = this.stream ? this.stream.getAudioTracks()[0] : null;
+    if (!track || track.readyState === 'ended') {
+      if (this._restarts >= 5) return;
+      this._restarts += 1;
+      if (this.onError) {
+        try {
+          this.onError(new Error('麦克风中断，正在自动恢复(' + this._restarts + ')'));
+        } catch (e) {}
+      }
+      try {
+        await this.stop();
+        await this.start();
+      } catch (e) {}
+    }
   }
 
   async stop() {
     if (!this.on && !this.stream) return;
     this.on = false;
+    if (this._watch) {
+      clearInterval(this._watch);
+      this._watch = 0;
+    }
     if (this.node) {
       try {
         this.node.port.onmessage = null;
@@ -88,8 +123,11 @@ export class Mic {
 
   _onPcm(f32) {
     const now = performance.now();
-    if (this.gate && this.gate()) this._holdUntil = now + 150;
-    if (now < this._holdUntil) return;
+    if (this.gateOn && this.gate && this.gate()) this._holdUntil = now + 150;
+    if (now < this._holdUntil) {
+      this.held += 1;
+      return;
+    }
     const n = f32.length;
     const pcm = new Int16Array(n);
     for (let i = 0; i < n; i++) {

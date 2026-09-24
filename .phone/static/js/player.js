@@ -11,10 +11,31 @@ export class Player {
     this._nextStart = 0;
     this._lastSeq = -1;
     this._inflight = false;
+    this._firstBatch = true;
+    this.volume = 1;
+    this.gain = null;
     this._timer = null;
     this._idleSrc = null;
     this._keep = null;
     this._lastTrace = '';
+  }
+
+  /** 0~1：调 WebAudio 增益（在 MediaStreamDestination 之前，改的是进流的 PCM，iOS 拦不住），
+   *  同时设 <audio>.muted（iOS 唯一一定认的静音开关）和 .volume（桌面/安卓） */
+  setVolume(v) {
+    const n = Number(v);
+    this.volume = Math.max(0, Math.min(1, isNaN(n) ? 1 : n));
+    this._applyGain();
+    this._applyAudio();
+    return this.volume;
+  }
+
+  _applyAudio() {
+    if (!this.audio) return;
+    try {
+      this.audio.volume = this.volume;
+      this.audio.muted = this.volume <= 0.001;
+    } catch (e) {}
   }
 
   unlock() {
@@ -24,12 +45,17 @@ export class Player {
     try {
       if (!this.ctx) this.ctx = new AC();
       if (!this.dest) this.dest = this.ctx.createMediaStreamDestination();
+      this._out();
       if (!this.audio) this.audio = document.getElementById('phoneAudio');
       if (!this.audio) {
         this.audio = new Audio();
         this.audio.setAttribute('playsinline', '');
         document.body.appendChild(this.audio);
       }
+      try {
+        this.audio.volume = this.volume;
+        this.audio.muted = this.volume <= 0.001;
+      } catch (e) {}
       if (this.audio.srcObject !== this.dest.stream) this.audio.srcObject = this.dest.stream;
       const p = this.audio.play();
       if (p && p.catch) p.catch(() => {});
@@ -51,6 +77,8 @@ export class Player {
 
   isPlaying() {
     if (!this.ctx || !this.dest) return false;
+    // 静音时不算"在播"：不要再压手机麦克风（否则静音后你说话会被丢掉）
+    if (this.volume <= 0.001) return false;
     return this._nextStart > this.ctx.currentTime + 0.02;
   }
 
@@ -76,6 +104,11 @@ export class Player {
   _keepAlive() {
     if (this._keep) return;
     this._keep = setInterval(() => {
+      if (!this.on) {
+        try {
+          this.unlock();
+        } catch (e) {}
+      }
       if (this.ctx && this.ctx.state === 'suspended') {
         try {
           this.ctx.resume();
@@ -85,7 +118,7 @@ export class Player {
         const p = this.audio.play();
         if (p && p.catch) p.catch(() => {});
       }
-    }, 10000);
+    }, 5000);
   }
 
   _poll() {
@@ -104,21 +137,34 @@ export class Player {
     if (!d) return;
     const meta = d.meta || {};
     const blocks = d.blocks || [];
-    if (d.filtered > 0 && d.mode === 'chat' && typeof this.onFiltered === 'function') {
-      this.onFiltered(d.filtered);
-    }
-    if (meta.sample_rate) this._sr = Number(meta.sample_rate) || this._sr;
-    if (meta.text && typeof this.onMeta === 'function') {
-      const key = String(d.mid || 0) + '|' + String(meta.text);
-      if (key !== this._lastTrace) {
-        this._lastTrace = key;
-        this.onMeta(meta);
+    try {
+      if (d.filtered > 0 && d.mode === 'chat' && typeof this.onFiltered === 'function') {
+        this.onFiltered(d.filtered);
       }
+    } catch (e) {}
+    try {
+      if (meta.sample_rate) this._sr = Number(meta.sample_rate) || this._sr;
+      if (meta.text && typeof this.onMeta === 'function') {
+        const key = String(d.mid || 0) + '|' + String(meta.text);
+        if (key !== this._lastTrace) {
+          this._lastTrace = key;
+          this.onMeta(meta);
+        }
+      }
+    } catch (e) {}
+    if (!blocks.length) return;
+    if (this._firstBatch) {
+      this._firstBatch = false;
+      // 首次拿到数据：对齐到"最新位置"（只回退几块当缓冲），避免重放缓冲里的旧语音
+      const newest = Math.max(0, Number(d.seq || 0) - 1);
+      this._lastSeq = Math.max(-1, newest - 4);
     }
     for (const b of blocks) {
       if (b.seq > this._lastSeq) {
-        this._schedule(b.pcm);
         this._lastSeq = b.seq;
+        try {
+          this._schedule(b.pcm);
+        } catch (e) {}
       }
     }
   }
@@ -126,6 +172,7 @@ export class Player {
   _schedule(b64) {
     const ctx = this.ctx;
     if (!ctx || !this.dest || !b64) return;
+    if (this.volume <= 0.001) return;   // 静音：完全不排音频（最硬的一道）
     if (ctx.state === 'suspended') {
       try {
         ctx.resume();
@@ -152,11 +199,39 @@ export class Player {
       buf.copyToChannel(f32, 0);
       const src = ctx.createBufferSource();
       src.buffer = buf;
-      src.connect(this.dest);
+      src.connect(this._out());
       let t = this._nextStart;
       if (t < ctx.currentTime) t = ctx.currentTime + 0.02;
       src.start(t);
       this._nextStart = t + f32.length / sr;
+    } catch (e) {}
+  }
+
+  /** 输出节点：iOS 上 MediaStream 型 <audio> 的 volume 属性无效，
+   *  所以音量/静音必须做在 WebAudio 图里（buffer -> gain -> dest） */
+  _out() {
+    if (!this.ctx) return this.dest;
+    if (!this.gain) {
+      try {
+        this.gain = this.ctx.createGain();
+        this.gain.gain.value = this.volume;
+        this.gain.connect(this.dest);
+      } catch (e) {
+        this.gain = null;
+        return this.dest;
+      }
+    }
+    this._applyGain();
+    return this.gain;
+  }
+
+  _applyGain() {
+    const g = this.gain;
+    if (!g) return;
+    try {
+      const t = this.ctx ? this.ctx.currentTime : 0;
+      if (g.gain.setValueAtTime) g.gain.setValueAtTime(this.volume, t);
+      else g.gain.value = this.volume;
     } catch (e) {}
   }
 }

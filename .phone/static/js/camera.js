@@ -12,6 +12,7 @@ export class Camera {
     this.onError = null;
     this._raf = 0;
     this._last = -1;
+    this._next = 0;
     this._lastKey = 0;
     this._forceKey = true;
     this._busy = false;
@@ -19,6 +20,14 @@ export class Camera {
     this._cctx = null;
     this._w = MEDIA.videoWidth;
     this._h = MEDIA.videoHeight;
+    // 丢帧策略与统计
+    this._encMaxQueue = MEDIA.encMaxQueue;
+    this._sendBudget = MEDIA.sendBudget;
+    this._sent = 0;
+    this._dropEnc = 0;
+    this._dropWs = 0;
+    this._statTs = 0;
+    this.onStats = null;
   }
 
   async start() {
@@ -43,6 +52,15 @@ export class Camera {
     try {
       await this.video.play();
     } catch (e) {}
+    // 明确要求 30fps（有些机型给 60，会让主线程被 720p 绘制吃满）
+    try {
+      const track = stream.getVideoTracks()[0];
+      if (track && track.applyConstraints) {
+        await track.applyConstraints({
+          frameRate: { ideal: MEDIA.videoFps, max: MEDIA.videoFps }
+        });
+      }
+    } catch (e) {}
     await this._waitSize();
     const size = this._liveSize();
     this._w = size[0];
@@ -51,8 +69,13 @@ export class Camera {
     await this._setupEncoder(this._w, this._h);
     this.on = true;
     this._last = -1;
+    this._next = 0;
     this._lastKey = 0;
     this._forceKey = true;
+    this._sent = 0;
+    this._dropEnc = 0;
+    this._dropWs = 0;
+    this._statTs = 0;
     this._loop();
   }
 
@@ -226,29 +249,79 @@ export class Camera {
       if (!enc || this._busy) return;
       const now = performance.now();
       const interval = 1000 / MEDIA.videoFps;
-      if (this._last < 0 || now - this._last >= interval - 1) {
+      if (this._last < 0) {
         this._last = now;
-        let key = false;
-        if (this._forceKey || (now - this._lastKey) > MEDIA.keyframeSecs * 1000) {
-          key = true;
-          this._forceKey = false;
-          this._lastKey = now;
-        }
-        let frame = null;
-        try {
-          frame = this._makeFrame(Math.round(now * 1000));
-          enc.encode(frame, { keyFrame: key });
-        } catch (e) {
-        } finally {
-          if (frame) {
-            try {
-              frame.close();
-            } catch (e) {}
-          }
+        this._next = now;
+      }
+      if (now - this._next < interval - 1) return;
+      // 节奏用累加器（原来 this._last = now 会逐帧漂移，实际帧率被拉低）；
+      // 落后太多就直接对齐到现在，不补帧不爆队列
+      this._next += interval;
+      if (now - this._next > interval * 3) this._next = now;
+      this._last = now;
+
+      // ---- 智能丢帧的第一层：编码器排队 / WS 发送积压 → 直接丢这一帧 ----
+      const q = enc.encodeQueueSize || 0;
+      if (q > this._encMaxQueue) {
+        this._dropEnc += 1;
+        this._report(now);
+        return;
+      }
+      if (this.bus && this.bus.backlog && this.bus.backlog() > this._sendBudget) {
+        this._dropWs += 1;
+        this._report(now);
+        return;
+      }
+
+      let key = false;
+      if (this._forceKey || (now - this._lastKey) > MEDIA.keyframeSecs * 1000) {
+        key = true;
+        this._forceKey = false;
+        this._lastKey = now;
+      }
+      let frame = null;
+      try {
+        frame = this._makeFrame(Math.round(now * 1000));
+        enc.encode(frame, { keyFrame: key });
+        this._sent += 1;
+      } catch (e) {
+      } finally {
+        if (frame) {
+          try {
+            frame.close();
+          } catch (e) {}
         }
       }
+      this._report(now);
     };
     this._raf = requestAnimationFrame(step);
+  }
+
+  /** 每 2 秒回传一次真实帧率/丢帧数（手机悬浮窗与 /cam 都能看到） */
+  _report(now) {
+    if (!this._statTs) {
+      this._statTs = now;
+      return;
+    }
+    if (now - this._statTs < 2000) return;
+    const secs = (now - this._statTs) / 1000;
+    this._statTs = now;
+    const stat = {
+      t: 'vstat',
+      fps: Math.round((this._sent / secs) * 10) / 10,
+      sent: this._sent,
+      dropEnc: this._dropEnc,
+      dropWs: this._dropWs,
+      q: this.encoder ? (this.encoder.encodeQueueSize || 0) : 0,
+      buf: this.bus && this.bus.backlog ? this.bus.backlog() : 0
+    };
+    this._sent = 0;
+    if (this.bus) this.bus.send(stat);
+    if (this.onStats) {
+      try {
+        this.onStats(stat);
+      } catch (e) {}
+    }
   }
 
   _even(v) {

@@ -7,8 +7,17 @@ const ctx2d = canvas.getContext('2d');
 const metaEl = document.getElementById('meta');
 const idleEl = document.getElementById('idle');
 const sndBtn = document.getElementById('sndBtn');
+const sndVol = document.getElementById('sndVol');
 
 const mon = new MonitorAudio();
+
+const VOL_KEY = 'meow.cam.sndVol';
+const ON_KEY = 'meow.cam.sndOn';
+try {
+  const v = parseFloat(localStorage.getItem(VOL_KEY));
+  if (!isNaN(v) && v >= 0 && v <= 1) mon.setVolume(v);
+  if (localStorage.getItem(ON_KEY) === '0') mon.mute();
+} catch (e) {}
 
 const bus = new Bus('viewer');
 let decoder = null;
@@ -18,6 +27,13 @@ let size = null;
 
 let decoded = 0;
 let fpsTs = performance.now();
+let dropped = 0;
+let droppedShown = 0;
+let lastTs = 0;
+
+// 解码器背压阈值：超过就丢非关键帧；再高就直接重置跳到直播点
+const DROP_ABOVE = 2;
+const RESET_ABOVE = 10;
 
 function setMeta(text) {
   metaEl.textContent = text;
@@ -100,6 +116,7 @@ function closeDecoder() {
     decoder.close();
   } catch (e) {}
   decoder = null;
+  lastTs = 0;
 }
 
 function requestKey() {
@@ -108,6 +125,13 @@ function requestKey() {
 
 function onFrame(frame) {
   try {
+    const ts = Number(frame.timestamp) || 0;
+    // 旧帧（迟到的）直接丢，画面只往前走不回头
+    if (ts && lastTs && ts < lastTs) {
+      dropped += 1;
+      return;
+    }
+    if (ts) lastTs = ts;
     const w = frame.displayWidth || frame.codedWidth;
     const h = frame.displayHeight || frame.codedHeight;
     applySize(w, h);
@@ -123,9 +147,14 @@ function onFrame(frame) {
   const now = performance.now();
   if (now - fpsTs >= 1000) {
     const fps = Math.round((decoded * 1000) / (now - fpsTs));
+    const d = dropped - droppedShown;
     decoded = 0;
+    droppedShown = dropped;
     fpsTs = now;
-    if (size) setMeta(codecName + ' · ' + size[0] + 'x' + size[1] + ' · ' + fps + 'fps');
+    if (size) {
+      setMeta(codecName + ' · ' + size[0] + 'x' + size[1] + ' · ' + fps + 'fps'
+        + (d > 0 ? ' · 丢' + d + '/s' : ''));
+    }
   }
 }
 
@@ -141,6 +170,22 @@ function onBinary(buf) {
   const ts = Number(dv.getBigUint64(1, false));
   const isKey = (flags & 0x01) === 1;
   if (!isKey && needKey) return;
+  // ---- 智能丢帧：解码跟不上就丢非关键帧，积压太多直接重置到直播点 ----
+  let q = 0;
+  try {
+    q = decoder.decodeQueueSize || 0;
+  } catch (e) {}
+  if (!isKey && q > DROP_ABOVE) {
+    dropped += 1;
+    if (q > RESET_ABOVE) {
+      try {
+        decoder.reset();
+      } catch (e) {}
+      needKey = true;
+      requestKey();
+    }
+    return;
+  }
   if (isKey) needKey = false;
   try {
     decoder.decode(new EncodedVideoChunk({
@@ -176,17 +221,22 @@ bus.onStatus((ok) => {
     closeDecoder();
     setIdle(true);
     setMeta('连接断开，重连中…');
+    return;
   }
+  // 重连后必须重发音频开关：新连接服务端默认是"开"，否则静音会失效
+  bus.send({ t: 'audio', on: mon.on ? 1 : 0 });
 });
 
 function syncSnd() {
-  if (!sndBtn) return;
-  sndBtn.textContent = mon.on ? '🔊' : '🔇';
-  sndBtn.classList.toggle('on', mon.on);
-  sndBtn.title = mon.on
-    ? '手机声音已开（点击关闭）'
-    : (mon.ctx && mon.ctx.state === 'suspended'
-      ? '点击画面或此按钮开启手机声音' : '手机声音已关（点击开启）');
+  if (sndBtn) {
+    sndBtn.textContent = mon.on ? '🔊' : '🔇';
+    sndBtn.classList.toggle('on', mon.on);
+    sndBtn.title = mon.on
+      ? '手机声音已开（点击关闭）'
+      : (mon.ctx && mon.ctx.state === 'suspended'
+        ? '点击画面或此按钮开启手机声音' : '手机声音已关（点击开启）');
+  }
+  if (sndVol) sndVol.value = String(Math.round(mon.volume * 100));
 }
 
 function setMonitor(on) {
@@ -194,6 +244,9 @@ function setMonitor(on) {
   else mon.mute();
   syncSnd();
   bus.send({ t: 'audio', on: on ? 1 : 0 });
+  try {
+    localStorage.setItem(ON_KEY, on ? '1' : '0');
+  } catch (e) {}
 }
 
 if (sndBtn) {
@@ -203,12 +256,24 @@ if (sndBtn) {
   });
 }
 
-// 自动解锁只做一次，且点"声音按钮"时跳过（否则会与按钮的开关互相打架）
+if (sndVol) {
+  sndVol.addEventListener('input', () => {
+    const v = mon.setVolume(Number(sndVol.value) / 100);
+    try {
+      localStorage.setItem(VOL_KEY, String(v));
+    } catch (e) {}
+    if (v > 0 && !mon.on) setMonitor(true);   // 拖音量即视为要听
+  });
+  sndVol.addEventListener('click', (e) => e.stopPropagation());
+}
+
+// 自动解锁只做一次，且点"声音控件"时跳过（否则会与手动开关互相打架）
 let autoUnlocked = false;
 document.addEventListener('pointerdown', (e) => {
   if (autoUnlocked) return;
   autoUnlocked = true;
   if (sndBtn && (e.target === sndBtn || sndBtn.contains(e.target))) return;
+  if (sndVol && (e.target === sndVol || sndVol.contains(e.target))) return;
   if (!mon.on) setMonitor(true);
 });
 
@@ -219,4 +284,4 @@ window.addEventListener('resize', () => {
 bus.connect();
 setIdle(true);
 setMeta('连接中…');
-setMonitor(true);
+syncSnd();

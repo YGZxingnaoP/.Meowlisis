@@ -70,6 +70,8 @@ audio_gateway = AudioGateway(
     silence_secs=phone_config.AUDIO_SILENCE_SECS,
     max_utterance_secs=phone_config.AUDIO_MAX_UTTERANCE_SECS,
     send_timeout=phone_config.AUDIO_SEND_TIMEOUT,
+    batch_secs=phone_config.AUDIO_SEND_BATCH_SECS,
+    log=print,
 )
 ws_hub = WsHub(on_audio=audio_gateway.feed, gop_max=phone_config.VIDEO_GOP_MAX)
 

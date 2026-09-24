@@ -11,7 +11,7 @@ class AudioGateway:
 
     def __init__(self, api_base, target_rate=16000, frame_bytes=960, converter='sinc_medium',
                  energy_threshold=300.0, silence_secs=2.0, max_utterance_secs=30.0,
-                 send_timeout=2.0, log=None):
+                 send_timeout=2.0, batch_secs=0.15, log=None):
         self._api = api_base.rstrip('/')
         self._rate = int(target_rate)
         self._frame_bytes = int(frame_bytes)
@@ -20,6 +20,8 @@ class AudioGateway:
         self._silence_secs = float(silence_secs)
         self._max_secs = float(max_utterance_secs)
         self._timeout = float(send_timeout)
+        # 把 30ms 小帧攒成一批再 POST：请求数从 33/秒 降到 6~7/秒，抗主程序卡顿
+        self._batch_secs = max(0.03, float(batch_secs or 0.15))
         self._log = log
         self._q = queue.Queue(maxsize=512)
         self._username = '手机用户'
@@ -29,13 +31,18 @@ class AudioGateway:
         self._lock = threading.Lock()
         self._sess = None
         self._running = True
+        self.fails = 0
+        self.dropped = 0
         self._worker = threading.Thread(target=self._loop, daemon=True, name='phone-audio')
         self._worker.start()
 
     def set_username(self, name):
         """设置当前手机用户名（随 /audio/send 透传）"""
+        clean = (str(name) or '手机用户')[:20]
+        if clean == self._username:
+            return
         with self._lock:
-            self._username = (str(name) or '手机用户')[:20]
+            self._username = clean
 
     def feed(self, rate, channels, data, username=None):
         """接收手机上行原始 int16 PCM"""
@@ -51,6 +58,7 @@ class AudioGateway:
                 self._q.put_nowait((int(rate), int(channels), bytes(data)))
             except queue.Empty:
                 pass
+            self.dropped += 1
 
     def stop(self):
         """停止网关线程"""
@@ -63,11 +71,22 @@ class AudioGateway:
         return self._sess
 
     def _post(self, path, data=None, params=None):
-        """向主项目 POST，失败静默忽略"""
+        """向主项目 POST，返回是否成功；失败累计（原来失败是静默丢弃，查不出问题）"""
         try:
-            self._session().post(self._api + path, data=data, params=params, timeout=self._timeout)
+            r = self._session().post(self._api + path, data=data, params=params,
+                                     timeout=self._timeout)
+            if r is not None and r.status_code >= 400:
+                raise RuntimeError('http %d' % r.status_code)
+            self.fails = 0
+            return True
         except Exception:
-            pass
+            self.fails += 1
+            if self._log and (self.fails == 1 or self.fails % 50 == 0):
+                try:
+                    self._log('[phone-audio] 上行失败 x%d（主程序 /audio/send 无响应？）' % self.fails)
+                except Exception:
+                    pass
+            return False
 
     def _ensure_resampler(self, rate, channels):
         """按输入参数重建流式重采样器"""
@@ -99,21 +118,49 @@ class AudioGateway:
         return np.clip(x * 32768.0, -32768, 32767).astype(np.int16).tobytes()
 
     def _loop(self):
-        """主循环：转换 → 切帧 → VAD → 上行"""
+        """主循环：转换 → 切帧 → VAD → 批量上行"""
         pending = bytearray()
         speaking = False
         silence_frames = 0
         utter_frames = 0
+        outbuf = bytearray()
+        last_flush = time.time()
         silence_need = max(1, int(round(self._silence_secs * self._rate / (self._frame_bytes / 2))))
         utter_max = max(1, int(round(self._max_secs * self._rate / (self._frame_bytes / 2))))
+
+        def flush(force=False):
+            """把攒下的帧发出去（force=True 立即发，用于说话起点/结束）"""
+            nonlocal outbuf, last_flush
+            if not outbuf:
+                last_flush = time.time()
+                return
+            if not force and (time.time() - last_flush) < self._batch_secs:
+                return
+            payload = bytes(outbuf)
+            outbuf = bytearray()
+            last_flush = time.time()
+            try:
+                self._post('/audio/send', data=payload, params={'username': self._username})
+            except Exception:
+                # 上行异常绝不允许弄死采集线程（原来一旦抛出，麦克风就彻底哑了）
+                self.fails += 1
+
+        def end_utterance():
+            try:
+                self._post('/audio/end', data=b'')
+            except Exception:
+                pass
+
         while self._running:
             try:
-                rate, channels, data = self._q.get(timeout=0.2)
+                rate, channels, data = self._q.get(timeout=0.05)
             except queue.Empty:
+                flush()
                 if speaking:
                     silence_frames += 1
                     if silence_frames >= silence_need or utter_frames >= utter_max:
-                        self._post('/audio/end')
+                        flush(force=True)
+                        end_utterance()
                         speaking = False
                         silence_frames = 0
                         utter_frames = 0
@@ -132,21 +179,30 @@ class AudioGateway:
                     if not speaking:
                         speaking = True
                         utter_frames = 0
-                        self._post('/audio/send', data=frame, params={'username': self._username})
+                        outbuf.extend(frame)
+                        flush(force=True)     # 说话起点立刻发，别让 ASR 等批
                     else:
-                        self._post('/audio/send', data=frame, params={'username': self._username})
+                        outbuf.extend(frame)
                     silence_frames = 0
                     utter_frames += 1
                 elif speaking:
-                    self._post('/audio/send', data=frame, params={'username': self._username})
+                    outbuf.extend(frame)
                     silence_frames += 1
                     utter_frames += 1
                 if speaking and (silence_frames >= silence_need or utter_frames >= utter_max):
-                    self._post('/audio/end')
+                    flush(force=True)
+                    end_utterance()
                     speaking = False
                     silence_frames = 0
                     utter_frames = 0
                     pending = bytearray()
+                elif speaking:
+                    flush()
+            # 连续失败太久 → 收尾，避免 ASR 挂在半句话上
+            if self.fails >= 25 and speaking:
+                end_utterance()
+                speaking = False
+                outbuf = bytearray()
 
     @staticmethod
     def _energy_of(frame):

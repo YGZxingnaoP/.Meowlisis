@@ -73,17 +73,36 @@ class TBDanmakuCore:
         self.log.info("B站弹幕模块已停止")
 
     # ==================== 连接线程 ====================
+    # 重连退避（秒）：连不上 / 未开播 / 身份码失效都不再"一次失败就永久死"
+    BACKOFF = (5, 10, 20, 30)
+
     def _run_conn_loop(self):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self.web.loop = loop
-        try:
-            loop.run_until_complete(self.web.run())
-        except Exception:
-            self.log.exception("B站弹幕连接主协程异常")
-        finally:
-            self.web.loop = None
-            loop.close()
+        i = 0
+        while self._running:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self.web.loop = loop
+            t0 = time.time()
+            try:
+                loop.run_until_complete(self.web.run())
+            except Exception:
+                self.log.exception("B站弹幕连接主协程异常")
+            finally:
+                self.web.loop = None
+                try:
+                    loop.close()
+                except Exception:
+                    pass
+            if not self._running:
+                break
+            # 稳定跑满 5 分钟算一次健康运行，重置退避
+            i = 0 if (time.time() - t0) > 300 else i + 1
+            wait = self.BACKOFF[min(i, len(self.BACKOFF) - 1)]
+            self.log.warning(f"B站弹幕连接已退出，{wait} 秒后重连（第 {i} 次）")
+            for _ in range(int(wait * 10)):     # 可中断等待：stop() 能立刻生效
+                if not self._running:
+                    return
+                time.sleep(0.1)
 
     # ==================== 消费轮询线程 ====================
     def _run_poll_loop(self):

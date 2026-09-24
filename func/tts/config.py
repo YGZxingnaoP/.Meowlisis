@@ -40,6 +40,8 @@ class TTSConfig:
         self.pause_min_ms = int(gpt.get("pause_min_ms", 500))
         self.pause_max_ms = int(gpt.get("pause_max_ms", 1000))
         self.pause_sources = list(gpt.get("pause_sources", []) or [])
+        # phone_local_play: 手机对话的回复是否也本地播放（默认开；关=只推手机，同旧行为）
+        self.phone_local_play = bool(gpt.get("phone_local_play", True))
         # 合成文本语言：zh 最稳（中文 g2p 可读短英文词），auto 中英混合但可能误判成日文
         self.text_lang = gpt.get("text_lang", "zh")
         # 是否启用「整段语言自动切换」：整段英文/日文时覆盖 text_lang，其余落回 text_lang
