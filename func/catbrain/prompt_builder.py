@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 # func/catbrain/prompt_builder.py
 # 完整系统提示词构建：仅按顺序拼接各模块 load 产出的 markdown 提示词
+#
+# 【对话链路必须带当前时间】做法：在对应 build_* 的 parts 里加一行 self._build_now()
+# 已加时间的：build / build_group / build_watching / build_active / build_persona
+# 新增一个对话场景时，照抄下面这样在 parts 里插一行即可：
+#     parts = [
+#         self.character_prompt.build(),
+#         self.values.build(),
+#         self._build_now(),      # 输出 "# 现在是\n- 2026-09-27 01:22 星期日"
+#         self.calendar.build(username),
+#     ]
+# 注：build_persona 会被分析类（SystemPromptBridge.get_persona_prompt）复用，
+#     因此分析 prompt 也会带上当前时间；不需要时间的分析场景请不要复用 build_persona。
 
 import datetime
 
@@ -132,6 +144,7 @@ class MeowPromptBuilder:
             self.values.build(),
             self.usrmem.build(username),
             self._build_knowledge(username, current_message),  # 知识库（用户档案下方）
+            self._build_now(),
             self.calendar.build(username),  # 日期块
         ]
         return "\n\n".join([p for p in parts if p])
@@ -145,6 +158,7 @@ class MeowPromptBuilder:
             self.character_prompt.build(),  # 角色卡（已含当前情绪）
             self.values.build(),
             f"# 现在已经{cold_time}秒没人跟你说话了",
+            self._build_now(),
             self.calendar.build_no_user(),  # 日期块（仅节日/节气，不获取 username）
             self.abmem.build_prompt(current_message, None, topic_override=topic_override),
         ]
@@ -168,6 +182,7 @@ class MeowPromptBuilder:
         parts = [
             self.character_prompt.build(),
             self.values.build(),
+            self._build_now(),
         ]
         return "\n\n".join([p for p in parts if p])
 

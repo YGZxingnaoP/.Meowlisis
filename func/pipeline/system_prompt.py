@@ -2,6 +2,15 @@
 # func/pipeline/system_prompt.py
 # 系统提示词传递桥接（输入端为 catbrain 模块）
 # 提示词顺序：前置词(行为约束) → 主体(角色卡/记忆) → 后置词(人设)
+#
+# 【对话链路必须带当前时间】按场景分两种情况处理：
+# 1) 有 body 的场景（走 catbrain 的 build_*）：时间已在 build_* 里加好，本文件不用管。
+#    已加时间的：build / build_group / build_watching / build_active / build_persona
+#    新增此类场景：只在对应 build_* 的 parts 里加一行 self._build_now()，本文件不动。
+# 2) 无 body 的场景（只拼前置词+后置词，如 get_poke_prompt）：在本文件手动追加，示例：
+#        now_block = self._builder._build_now() if self._builder and hasattr(self._builder, "_build_now") else ""
+#        parts = [p for p in (front, now_block, post) if p]
+# 3) 纯分析、不面向用户的场景（get_character_prompt / get_persona_prompt）无需加时间。
 
 import os
 import re
@@ -138,7 +147,8 @@ class SystemPromptBridge:
         front = self.get_front_prompt()
         # 自定义后置词：被很多人戳，烦死了要骂他们
         post = "好多人在戳你，你觉得烦死了，骂他们！"
-        parts = [p for p in (front, post) if p]
+        now_block = self._builder._build_now() if self._builder and hasattr(self._builder, "_build_now") else ""
+        parts = [p for p in (front, now_block, post) if p]
         return "\n\n".join(parts)
 
     def get_tool_prompt(self, username=None, current_message: str = "") -> str:
