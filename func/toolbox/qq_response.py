@@ -669,7 +669,12 @@ class TBoxQQResponse:
             tools = ec.build_tools()
             tool_choice = ec.build_tool_choice()
             update_messages = [
-                {"role": "system", "content": "根据本轮对话，判断角色当前情绪、强度与性格。"},
+                {"role": "system", "content": (
+                    "根据本轮对话判断角色此刻的情绪、强度与性格。情绪是此刻的瞬时表情，"
+                    "会随每轮对话自然变化：默认 happy，只有本轮确实发生了对应情绪才选；"
+                    "angry 需要有明确理由（被辱骂、被反复挑衅），普通吐槽、玩笑、傲娇、"
+                    "被安排做事不算生气；情绪不激烈时用低强度表达，不要动辄切到极端情绪。"
+                )},
                 {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
             ]
             cfg = LLMConfig()
