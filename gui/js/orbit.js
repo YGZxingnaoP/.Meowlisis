@@ -315,7 +315,7 @@ const Orbit = {
         el._ang = (2 * Math.PI / total) * index - Math.PI / 2;
         el._node = node;   // 反向引用：捕获阶段仲裁后要用它走 _onCardClick
         // 启动卡加角标：和同名的配置卡区分开（绘画/NapCat/SenseVoice/桌宠）
-        const badge = node.badge || (id.indexOf('launcher_') === 0 ? '启动' : '');
+        const badge = node.badge || (id.indexOf('launcher_') === 0 ? I18n.text('启动') : '');
         el.innerHTML =
             (fx ? '<span class="card-glow"></span><span class="card-ripple"></span>' : '') +
             '<div class="card" style="--a:' + th.a + ';--b:' + th.b + '">' +

@@ -14,8 +14,8 @@
     <!-- 主界面背景图（由 tools/gen_bg_main.py 生成；这里显示时才做模糊，原图是清晰的） -->
     <div class="bg-main"></div>
     <div class="bg-stars"></div>
-    <!-- 语言切换（右上角，白色圆角按钮组） -->
-    <div id="langSwitch" style="position:fixed;top:10px;right:14px;z-index:3000;display:flex;gap:3px;align-items:center;background:rgba(255,255,255,.95);padding:3px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.22);">
+    <!-- 语言切换（右上角悬浮；样式走 .lang-switch / .lang-btn） -->
+    <div id="langSwitch" class="lang-switch lang-switch-fixed">
         <button type="button" data-lang="zh-CN" class="lang-btn">中文</button>
         <button type="button" data-lang="en" class="lang-btn">EN</button>
     </div>
@@ -95,6 +95,8 @@
     <script src="js/config/song.js"></script>
     <script src="js/config/db.js"></script>
     <script src="js/config/character.js"></script>
+    <!-- API 平台汇总（并让各卡片不再渲染重复的 API Key / Base URL） -->
+    <script src="js/api_platforms.js"></script>
     <script src="js/cards.js"></script>
     <script src="js/orbit.js"></script>
     <script src="js/modal.js"></script>

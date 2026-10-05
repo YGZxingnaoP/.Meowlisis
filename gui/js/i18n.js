@@ -46,22 +46,19 @@ const I18n = (() => {
     function init() {
         const lang = current();
         document.documentElement.setAttribute('lang', lang);
-        const metaTitle = text('喵呜配置管理器');
-        if (document.title) document.title = metaTitle;
+        // 标题按"各页自己的原文"翻译：主界面「喵呜配置管理器」、日志页「日志中心 · Meowlisis」
+        // （不要写死成主界面标题，否则日志页标题会被改掉）
+        if (document.title) document.title = text(document.title);
         applyStatic();
 
-        // 右上角白色圆角按钮组切换语言
+        // 语言切换按钮组（样式走 CSS 类 .lang-switch / .lang-btn.on，不再内联写样式）
         const sw = document.getElementById('langSwitch');
         if (sw) {
+            sw.classList.add('lang-switch');
             sw.querySelectorAll('button[data-lang]').forEach(btn => {
                 const active = btn.dataset.lang === lang;
-                btn.style.border = 'none';
-                btn.style.borderRadius = '999px';
-                btn.style.padding = '4px 12px';
-                btn.style.fontSize = '12px';
-                btn.style.cursor = 'pointer';
-                btn.style.background = active ? '#ff6b9d' : 'transparent';
-                btn.style.color = active ? '#fff' : '#333';
+                btn.classList.add('lang-btn');
+                btn.classList.toggle('on', active);
                 if (!active) {
                     btn.addEventListener('click', () => {
                         try { localStorage.setItem(LANG_KEY, btn.dataset.lang); } catch (e) { /* ignore */ }

@@ -36,7 +36,7 @@ const App = {
             window._config = this.config;
             Config.setConfig(this.config);
         } catch (e) {
-            this.showToast('加载配置失败: ' + e.message, true);
+            this.showToast('加载配置失败: {msg}', true, { msg: e.message });
         }
     },
 
@@ -55,11 +55,17 @@ const App = {
         };
         const item = map[id];
         if (!item) return;
+        const name = this._t(item.name);
         try {
-            await item.fn();
-            this.showToast(`${item.name} 已启动！`);
+            const r = await item.fn();
+            // 启动接口统一返回 200 + {status, message}（见 gui/tools/loghub.py）
+            if (r && r.status === 'error') {
+                this.showToast('{name} 启动失败: {msg}', true, { name: name, msg: r.message || '' });
+                return;
+            }
+            this.showToast('{name} 已启动！', false, { name: name });
         } catch (e) {
-            this.showToast(`${item.name} 启动失败: ${e.message}`, true);
+            this.showToast('{name} 启动失败: {msg}', true, { name: name, msg: e.message });
         }
     },
 
@@ -239,7 +245,7 @@ const App = {
         try {
             await Config.preloadPluginConfig(id);
         } catch (e) {
-            this.showToast('插件配置读取失败: ' + e.message, true);
+            this.showToast('插件配置读取失败: {msg}', true, { msg: e.message });
             return;
         }
         const schema = (Config.pluginSchemas || {})[id] || {};
@@ -260,7 +266,7 @@ const App = {
                     try {
                         await onSave();
                     } catch (e) {
-                        this.showToast('保存失败: ' + e.message, true);
+                        this.showToast('保存失败: {msg}', true, { msg: e.message });
                     }
                     return;
                 }
@@ -270,12 +276,12 @@ const App = {
                     await API.saveConfig(this.config);
                     this.showToast('配置已保存');
                 } catch (e) {
-                    this.showToast('保存失败: ' + e.message, true);
+                    this.showToast('保存失败: {msg}', true, { msg: e.message });
                 }
             });
         } catch (e) {
             console.error('Error rendering panel:', e);
-            this.showToast('面板渲染失败: ' + e.message, true);
+            this.showToast('面板渲染失败: {msg}', true, { msg: e.message });
         }
         setTimeout(() => {
             this.bindTabs();
@@ -289,10 +295,45 @@ const App = {
         }, 10);
     },
 
-    // ============ 基本设置面板（含奖励收纳篮） ============,
+    // ============ 基本设置面板：礼物 / API / 端口 三个页签 ============,
+    // 备注：原来的 Config.basic()（js/config/basic.js）是"一长条"，这里重建为页签式。
+    // 所有字段仍是普通的 data-path 输入，保存走同一套 collectValues。
+    _basicPanelHtml() {
+        const C = Config;
+        const tabs =
+            '<div class="modal-tabs">' +
+                '<button type="button" class="modal-tab active" data-tab="basic_gift">' + this._t('礼物') + '</button>' +
+                '<button type="button" class="modal-tab" data-tab="basic_api">' + this._t('API') + '</button>' +
+                '<button type="button" class="modal-tab" data-tab="basic_port">' + this._t('端口') + '</button>' +
+            '</div>';
+
+        const giftTab =
+            '<div class="tab-content active" data-tab-content="basic_gift">' +
+                C._section('奖励收纳篮（礼物入账）') +
+                '<div id="rewardManage"></div>' +
+                '<div class="help-text">' + this._t('礼物按 1000瓜子=1元=10电池 折算，随机入账到某个奖励项') + '</div>' +
+            '</div>';
+
+        const apiTab =
+            '<div class="tab-content" data-tab-content="basic_api">' +
+                (C.apiPlatforms ? C.apiPlatforms() : '') +
+            '</div>';
+
+        const portTab =
+            '<div class="tab-content" data-tab-content="basic_port">' +
+                C._section('端口') +
+                C._num('API 端口', 'app.port', 1800, 1, 65535, 1) +
+                '<div class="help-text">' + this._t('配置管理器自身的监听端口；改动后需重启配置管理器生效') + '</div>' +
+            '</div>';
+
+        return C._section('基础信息') +
+            C._text('AI名称', 'AiName', '喵呜') +
+            tabs + giftTab + apiTab + portTab;
+    },
+
     async openBasicPanel() {
         try {
-            const html = Config.basic();
+            const html = this._basicPanelHtml();
             Modal.show('基本设置', html, async () => {
                 const updates = Config.collectValues();
                 Config.applyUpdates(updates, this.config);
@@ -300,13 +341,14 @@ const App = {
                     await API.saveConfig(this.config);
                     this.showToast('配置已保存');
                 } catch (e) {
-                    this.showToast('保存失败: ' + e.message, true);
+                    this.showToast('保存失败: {msg}', true, { msg: e.message });
                 }
             });
             this.loadRewards();
+            setTimeout(() => this.bindTabs(), 10);   // 页签切换：礼物 / API / 端口
         } catch (e) {
             console.error('Error rendering basic panel:', e);
-            this.showToast('面板渲染失败: ' + e.message, true);
+            this.showToast('面板渲染失败: {msg}', true, { msg: e.message });
         }
     },
 
@@ -440,13 +482,13 @@ const App = {
             this.loadRewards();
             this.showToast('奖励已更新');
         } catch (e) {
-            this.showToast('奖励操作失败: ' + e.message, true);
+            this.showToast('奖励操作失败: {msg}', true, { msg: e.message });
         }
     },
 
-    showToast(msg, isError) {
+    showToast(msg, isError, vars) {
         const toast = document.getElementById('toast');
-        const txt = (typeof I18n !== 'undefined' && I18n.text) ? I18n.text(msg) : msg;
+        const txt = (typeof I18n !== 'undefined' && I18n.text) ? I18n.text(msg, vars) : msg;
         toast.textContent = txt;
         toast.style.background = isError ? 'linear-gradient(145deg, #ff6b6b, #ee5a5a)' : 'linear-gradient(145deg, var(--pink-main), var(--pink-deep))';
         toast.classList.add('show');

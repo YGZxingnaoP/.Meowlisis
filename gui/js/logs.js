@@ -1,9 +1,13 @@
 /**
  * 日志中心前端（/logs）
  *
- * 拉取策略：1s 轮询 /api/logs/tail?svc=&since=<字节偏移>，只取新增内容。
- * 比 SSE/WebSocket 简单，且不需要后端长连接（Flask 单线程下更稳）。
- * 首次不带 since，后端只回文件尾部（默认 192KB），避免几十 MB 老日志卡死页面。
+ * 拉取：1s 轮询 /api/logs/tail?svc=&since=<字节偏移>，只取新增内容。
+ * 展示：后端已把每行解析成 {lv, ts, src, msg, txt, more, t}
+ *   - t    转译后的人话（匹配不到规则则为空）
+ *   - msg  去掉时间/来源/级别后的正文
+ *   - txt  完整原始行（折叠在"原文"里，诊断用）
+ *   - more 归并进来的续行数（异常堆栈）
+ * 级别分成「日志 / 警告 / 错误」三个页签（另有"全部"），每个页签带计数。
  */
 (function () {
     'use strict';
@@ -13,9 +17,15 @@
     var LIST_MS = 3000;            // 服务状态轮询间隔
 
     var $ = function (id) { return document.getElementById(id); };
+
+    function _t(s, vars) {
+        try { if (window.I18n && I18n.text) return I18n.text(s, vars); } catch (e) { /* ignore */ }
+        return s;
+    }
+
     var elList = $('svcList'), elLines = $('lines'), elView = $('view');
     var elCurName = $('curName'), elCurState = $('curState'), elCurFile = $('curFile');
-    var elFilter = $('filter'), elLevel = $('level'), elEmpty = $('empty');
+    var elFilter = $('filter'), elEmpty = $('empty'), elTabs = $('levelTabs');
     var elQrBox = $('qrBox'), elQrImg = $('qrImg'), elQrHint = $('qrHint');
     var elQrWebui = $('qrWebui'), elQrToken = $('qrToken');
     var elStatLines = $('statLines'), elStatSize = $('statSize'), elStatRate = $('statRate');
@@ -26,6 +36,13 @@
     var paused = false;            // 暂停拉取
     var rate = 0, rateTick = 0, rateN = 0;
     var alive = true;
+    var level = '';                // 当前级别页签：'' | 'INFO' | 'WARN' | 'ERROR'
+    // 没有级别的行（第三方服务日志居多）归入「日志」一类
+    var counts = { 'INFO': 0, 'WARN': 0, 'ERROR': 0 };
+
+    function bucketOf(lv) {
+        return (lv === 'WARN' || lv === 'ERROR') ? lv : 'INFO';
+    }
 
     // ---------------- 工具 ----------------
     function toast(msg, isErr) {
@@ -56,7 +73,21 @@
     }
 
     function esc(s) {
-        return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function shortSrc(s) {
+        var seg = String(s || '').split(/[\\/]/).pop() || '';
+        return seg.length > 42 ? seg.slice(0, 42) + '…' : seg;
+    }
+
+    function fmtTime(d) {
+        try {
+            return d.toLocaleTimeString(I18n && I18n.current ? I18n.current() : 'zh-CN', { hour12: false });
+        } catch (e) {
+            return d.toLocaleTimeString();
+        }
     }
 
     // ---------------- 过滤 ----------------
@@ -72,18 +103,36 @@
         } catch (e) { return null; }
     }
 
-    function levelPass(lv) {
-        var want = elLevel.value;
-        if (!want) return true;
-        var rank = { DEBUG: 1, INFO: 2, WARNING: 3, WARN: 3, ERROR: 4, CRITICAL: 5 };
-        var need = want === 'WARNING' ? 3 : (want === 'INFO' ? 2 : 4);
-        return (rank[lv] || 0) >= need;
+    function lineOk(rec) {
+        if (level && bucketOf(rec.lv || '') !== level) return false;
+        var re = filterRe();
+        if (!re) return true;
+        return re.test(rec.txt || rec.msg || '');
     }
 
-    function lineOk(rec) {
-        if (!levelPass(rec.lv)) return false;
-        var re = filterRe();
-        return !re || re.test(rec.txt);
+    // ---------------- 计数（页签角标） ----------------
+    function setBadge(id, n) {
+        var el = $(id);
+        if (el) el.textContent = n > 999 ? '999+' : String(n);
+    }
+
+    function updateCounts() {
+        setBadge('cntAll', counts.INFO + counts.WARN + counts.ERROR);
+        setBadge('cntINFO', counts.INFO);
+        setBadge('cntWARN', counts.WARN);
+        setBadge('cntERROR', counts.ERROR);
+    }
+
+    function resetCounts() {
+        counts = { 'INFO': 0, 'WARN': 0, 'ERROR': 0 };
+        updateCounts();
+    }
+
+    function applyTabs() {
+        if (!elTabs) return;
+        Array.prototype.forEach.call(elTabs.querySelectorAll('.lh-tab'), function (t) {
+            t.classList.toggle('on', (t.dataset.lv || '') === level);
+        });
     }
 
     // ---------------- 渲染 ----------------
@@ -95,20 +144,44 @@
         if (elAuto.checked && wasBottom) elView.scrollTop = elView.scrollHeight;
     }
 
+    /** 一条日志 = 级别 + 摘要（转译后的人话，没有就用正文）+ 时间/来源 + 可折叠原文 */
+    function lineNode(rec) {
+        var lv = rec.lv || '';
+        var d = document.createElement('div');
+        d.className = 'lh-line' + (lv ? ' line-' + lv : '');
+
+        // 转译命中 → 显示人话（有 key 值就拼成「短句：值」）；否则回退原始正文
+        var seen = rec.t ? _t(rec.t) : '';
+        if (seen && rec.d) seen += '：' + rec.d;
+        var title = seen || rec.msg || rec.txt || '';
+        var html = '<span class="lv">' + esc(lv) + '</span><div class="body">';
+        html += '<div class="sum">' + esc(title);
+        if (rec.more) html += '<i class="more" title="' + esc(_t('展开原文可看到其余堆栈行')) + '">+' + rec.more + '</i>';
+        html += '</div>';
+
+        var meta = [];
+        if (rec.ts) meta.push('<span class="ts">' + esc(rec.ts) + '</span>');
+        if (rec.src) meta.push('<span class="src" title="' + esc(rec.src) + '">' + esc(shortSrc(rec.src)) + '</span>');
+        if (meta.length) html += '<div class="meta">' + meta.join(' · ') + '</div>';
+
+        if (rec.t) {
+            html += '<details class="raw"><summary>' + esc(_t('原文')) + '</summary><pre>' + esc(rec.txt || '') + '</pre></details>';
+        }
+        html += '</div>';
+        d.innerHTML = html;
+        return d;
+    }
+
     function append(records) {
         var keep = elAuto.checked ? atBottom() : false;
         var frag = document.createDocumentFragment(), added = 0;
         records.forEach(function (rec) {
+            counts[bucketOf(rec.lv || '')]++;
             if (!lineOk(rec)) return;
-            var d = document.createElement('div');
-            d.className = 'lh-line' + (rec.lv ? ' ' + rec.lv : '') +
-                          (rec.lv === 'ERROR' || rec.lv === 'CRITICAL' ? ' line-ERROR' :
-                           (rec.lv === 'WARNING' || rec.lv === 'WARN' ? ' line-WARNING' : ''));
-            d.innerHTML = '<span class="lv">' + esc(rec.lv || '') + '</span>' +
-                          '<span class="txt">' + esc(rec.txt) + '</span>';
-            frag.appendChild(d);
+            frag.appendChild(lineNode(rec));
             added++;
         });
+        updateCounts();
         if (added) {
             elEmpty.style.display = 'none';
             elLines.appendChild(frag);
@@ -117,18 +190,19 @@
             rateN += added;
             stick(keep);
         }
-        elStatLines.textContent = elLines.childElementCount + ' 行';
+        elStatLines.textContent = _t('{n} 行', { n: elLines.childElementCount });
     }
 
     function renderAll(records) {
         elLines.innerHTML = '';
+        resetCounts();
         elEmpty.style.display = 'none';
         append(records);
         elView.scrollTop = elView.scrollHeight;      // 首次直接到底
     }
 
     function refilter() {
-        // 过滤条件变了就从头重新拉一次（简单可靠，日志量可控）
+        // 过滤/页签变了就从头重新拉一次（简单可靠，日志量可控）
         offset = null;
         loadOnce(true);
     }
@@ -139,18 +213,21 @@
         if (offset !== null && !reset) q += '&since=' + offset;
         return api(q).then(function (j) {
             offset = j.offset;
-            elStatSize.textContent = '文件 ' + fmtSize(j.size);
-            elCurState.textContent = j.running
-                ? ('● 运行中' + (j.pid ? ' pid ' + j.pid : '') +
-                   (j.ports && j.ports.length ? ' · 端口 ' + j.ports.join(',') : ''))
-                : '○ 未运行';
+            elStatSize.textContent = _t('文件 {size}', { size: fmtSize(j.size) });
+            if (j.running) {
+                var extra = (j.pid ? ' pid ' + j.pid : '') +
+                            (j.ports && j.ports.length ? ' · ' + _t('端口 {ports}', { ports: j.ports.join(',') }) : '');
+                elCurState.textContent = _t('● 运行中') + extra;
+            } else {
+                elCurState.textContent = _t('○ 未运行');
+            }
             elCurState.className = 'lh-state' + (j.running ? ' run' : '');
             if (reset) renderAll(j.lines);
             else if (j.lines.length) append(j.lines);
             elStatErr.textContent = '';
             return j;
         }).catch(function (e) {
-            elStatErr.textContent = '读取失败: ' + e.message;
+            elStatErr.textContent = _t('读取失败: {msg}', { msg: e.message });
         });
     }
 
@@ -161,17 +238,12 @@
         if (now - rateTick >= 2000) {
             rate = Math.round(rateN / ((now - rateTick) / 1000));
             rateN = 0; rateTick = now;
-            elStatRate.textContent = rate ? rate + ' 行/秒' : '—';
+            elStatRate.textContent = rate ? _t('{n} 行/秒', { n: rate }) : '—';
         }
         setTimeout(tick, TAIL_MS);
     }
 
     // ---------------- NapCat 二维码 ----------------
-    /**
-     * 只有选中的服务带 qr 信息（目前是 NapCat）才显示。
-     * 图片地址用 mtime 当缓存串：NapCat 换了二维码 mtime 就变，
-     * 刷新服务列表时自然会拉到新图，不需要轮询图片本身。
-     */
     var qrShown = '';
     function renderQr(it) {
         if (!it || !it.qr) { elQrBox.hidden = true; return; }
@@ -182,45 +254,51 @@
             if (it.qr.exists) {
                 elQrImg.src = it.qr.url + token;
                 elQrImg.style.display = '';
-                elQrHint.textContent = '用手机 QQ 扫码登录（' +
-                    new Date(it.qr.mtime * 1000).toLocaleTimeString('zh-CN', { hour12: false }) + ' 生成）';
+                elQrHint.textContent = _t('用手机 QQ 扫码登录（{time} 生成）',
+                    { time: fmtTime(new Date(it.qr.mtime * 1000)) });
             } else {
                 elQrImg.removeAttribute('src');
                 elQrImg.style.display = 'none';
-                elQrHint.textContent = '还没有二维码：点左侧 ▶ 启动 NapCat，' +
-                    '若无需登录（已登录过）则不出现';
+                elQrHint.textContent = _t('还没有二维码：点左侧 ▶ 启动 NapCat；若无需登录（已登录过）则不出现');
             }
         }
         if (it.webui) {
             elQrWebui.href = it.webui.url;
-            elQrToken.textContent = it.webui.token ? ('WebUI 令牌：' + it.webui.token) : '';
+            elQrToken.textContent = it.webui.token ? _t('WebUI 令牌：{token}', { token: it.webui.token }) : '';
         }
     }
 
     // ---------------- 服务列表 ----------------
     var lastList = null;
 
-    function renderList(items, patched) {
+    function renderList(items) {
         lastList = items;
         elList.innerHTML = '';
         items.forEach(function (it) {
             var row = document.createElement('div');
             row.className = 'lh-item' + (it.key === cur ? ' on' : '');
             row.dataset.key = it.key;
+            row.dataset.running = it.running ? '1' : '0';
+            var sub;
+            if (it.running) {
+                sub = (it.ports && it.ports.length)
+                    ? _t('运行中 · {ports}', { ports: it.ports.join(',') })
+                    : _t('运行中');
+            } else {
+                sub = it.log_exists ? fmtSize(it.size) : _t('未运行');
+            }
             row.innerHTML =
                 '<span class="lh-dot' + (it.running ? ' run' : '') + '"></span>' +
                 '<span class="lh-meta">' +
-                    '<span class="lh-name">' + esc(it.name) + '</span>' +
-                    '<span class="lh-sub">' + (it.running
-                        ? (it.ports && it.ports.length ? '运行中 · ' + it.ports.join(',') : '运行中')
-                        : (it.log_exists ? fmtSize(it.size) : '未运行')) + '</span>' +
+                    '<span class="lh-name">' + esc(_t(it.name)) + '</span>' +
+                    '<span class="lh-sub">' + esc(sub) + '</span>' +
                 '</span>' +
                 '<span class="lh-acts">' +
-                    '<button class="lh-act start" title="启动">▶</button>' +
-                    '<button class="lh-act stop" title="停止">■</button>' +
+                    '<button class="lh-act start" data-i18n-title="启动">▶</button>' +
+                    '<button class="lh-act stop" data-i18n-title="停止">■</button>' +
                 '</span>';
             row.querySelector('.lh-act.start').disabled = it.running;
-            // ■ 停止永不置灰：状态可能因为服务是"手动启动的"而显示未运行，
+            // ■ 停止永不置灰：状态可能因"服务是手动启动的"而显示未运行，
             // 但后端会用命令行反查真的去找进程，所以必须让它点得动
             row.querySelector('.lh-act.stop').disabled = false;
             row.addEventListener('click', function (ev) {
@@ -235,19 +313,18 @@
             });
             elList.appendChild(row);
         });
-        elTs.textContent = '更新 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        if (patched && patched.length === 0) {
-            elStatErr.textContent = '提示：启动端点尚未被 loghub 接管（config_gui.py 未打补丁）';
-        }
+        if (window.I18n && I18n.applyStatic) I18n.applyStatic(elList);
+        elTs.textContent = _t('更新 {time}', { time: fmtTime(new Date()) });
     }
 
-    function refreshList() {
-        return api('/api/logs/services').then(function (j) {
-            renderList(j.items, j.patched);
+    function refreshList(deep) {
+        // deep=1：点 ⟳ 时让后端在后台重扫一遍命令行（认出手动启动的服务）
+        return api('/api/logs/services' + (deep ? '?deep=1' : '')).then(function (j) {
+            renderList(j.items || []);
             var it = (j.items || []).filter(function (x) { return x.key === cur; })[0];
             renderQr(it);              // 选中的是 NapCat 时同步二维码
         }).catch(function (e) {
-            elStatErr.textContent = '服务列表读取失败: ' + e.message;
+            elStatErr.textContent = _t('服务列表读取失败: {msg}', { msg: e.message });
         });
     }
 
@@ -255,14 +332,15 @@
         if (key === cur) return;
         cur = key;
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
-        elCurName.textContent = it ? it.name : key;
+        elCurName.textContent = it ? _t(it.name) : key;
         elCurFile.textContent = it ? it.log : '';
         elCurState.textContent = '—';
         elLines.innerHTML = '';
         elEmpty.style.display = '';
-        elEmpty.textContent = '加载中…';
+        elEmpty.textContent = _t('加载中…');
         offset = null;
-        elStatLines.textContent = '0 行';
+        resetCounts();
+        elStatLines.textContent = _t('{n} 行', { n: 0 });
         elStatRate.textContent = '—';
         qrShown = '';                  // 强制重画二维码区
         renderQr(it);
@@ -272,46 +350,78 @@
         loadOnce(true);
     }
 
+    /** 只让"这一行"的按钮进入忙碌态，其它服务的按钮照常可点 */
+    function setRowBusy(key, busy, what) {
+        var row = elList.querySelector('.lh-item[data-key="' + key + '"]');
+        if (!row) return;
+        var s = row.querySelector('.lh-act.start');
+        var t = row.querySelector('.lh-act.stop');
+        if (busy) {
+            if (s) { s.disabled = true; }
+            if (t) { t.disabled = true; }
+            var b = (what === 'start') ? s : t;
+            if (b) b.textContent = '…';
+        } else {
+            if (s) { s.textContent = '▶'; s.disabled = row.dataset.running === '1'; }
+            if (t) { t.textContent = '■'; t.disabled = false; }
+        }
+    }
+
     function act(what, key) {
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
-        var nm = it ? it.name : key;
-        var btns = elList.querySelectorAll('.lh-act');
-        Array.prototype.forEach.call(btns, function (b) { b.disabled = true; });
+        var nm = it ? _t(it.name) : key;
+        setRowBusy(key, true, what);
         api('/api/logs/' + what + '?svc=' + encodeURIComponent(key), { method: 'POST' })
             .then(function (j) {
-                toast(nm + '：' + (j.message || (what === 'start' ? '已启动' : '已停止')));
-                setTimeout(refreshList, 600);
+                var ok = !(j && j.status === 'error');
+                toast(nm + '：' + ((j && j.message) || _t('完成')), !ok);
             })
             .catch(function (e) {
-                toast(nm + ' ' + (what === 'start' ? '启动' : '停止') + '失败: ' + e.message, true);
-                refreshList();
+                toast(nm + ' ' + _t(what === 'start' ? '启动' : '停止') + _t('失败: ') + e.message, true);
+            })
+            .then(function () {
+                return refreshList();      // 立即刷新状态，不再固定等 600ms
             });
     }
 
     // ---------------- 绑定 ----------------
     function bind() {
+        elFilter.placeholder = _t('过滤关键字（支持 | 或）');
+        elEmpty.textContent = _t('选择左侧服务查看日志');
+        applyTabs();
+
         elFilter.addEventListener('input', function () {
             clearTimeout(bind._t);
             bind._t = setTimeout(refilter, 400);
         });
-        elLevel.addEventListener('change', refilter);
+        if (elTabs) {
+            elTabs.addEventListener('click', function (e) {
+                var b = e.target.closest ? e.target.closest('.lh-tab') : null;
+                if (!b) return;
+                var lv = b.dataset.lv || '';
+                if (lv === level) return;
+                level = lv;
+                applyTabs();
+                refilter();
+            });
+        }
         $('btnReload').addEventListener('click', function () {
-            refreshList().then(function () { toast('已刷新'); });
+            refreshList(true).then(function () { toast(_t('已刷新')); });
         });
         $('btnPause').addEventListener('click', function () {
             paused = !paused;
-            this.textContent = paused ? '继续' : '暂停';
+            this.textContent = _t(paused ? '继续' : '暂停');
             this.classList.toggle('lh-btn-primary', paused);
         });
         $('btnClear').addEventListener('click', function () {
-            if (!confirm('清空「' + elCurName.textContent + '」的日志文件？')) return;
+            if (!confirm(_t('清空「{name}」的日志文件？', { name: elCurName.textContent }))) return;
             api('/api/logs/clear?svc=' + encodeURIComponent(cur), { method: 'POST' })
                 .then(function (j) {
-                    toast(j.message || '已清空');
+                    toast((j && j.message) || _t('已清空'));
                     offset = null; elLines.innerHTML = '';
                     loadOnce(true);
                 })
-                .catch(function (e) { toast('清空失败: ' + e.message, true); });
+                .catch(function (e) { toast(_t('清空失败: ') + e.message, true); });
         });
         $('btnStart').addEventListener('click', function () { act('start', cur); });
         $('btnStop').addEventListener('click', function () { act('stop', cur); });

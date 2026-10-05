@@ -35,59 +35,20 @@ from pathlib import Path
 from flask import jsonify, request, send_from_directory, send_file
 
 # ============================================================================
-# 服务注册表：一处配置全局生效
-#   key       : 前端用的 id
-#   name      : 侧边栏显示名
-#   endpoint  : config_gui.py 里已有的启动端点（register 后就被接管成无窗口）
-#   log       : 日志文件（相对项目根）；{date} 会替换成当天日期
-#   builtin   : True = 这个日志文件是程序本来就写的，不需要重定向
-#   cmdline   : **停止/状态兜底**用的命令行关键字（服务不是从本界面启动、
-#               或 config_gui 重启后内存记录丢了，就靠它反查进程）。用绝对路径里的
-#               目录名做关键字，避免 'server.py' 这种互相撞车。
+# 服务注册表 / 统一启动器
+#   清单与"怎么启动"全部在 gui/tools/launcher.py（一处配置全局生效）；
+#   本文件只负责"看日志 / 查状态 / 停止 / 页面渲染"。
+#   启动入口（/api/logs/start 与 config_gui 的 /api/start_*）统一走 launcher。
 # ============================================================================
-SERVICES = {
-    'main': {
-        'name': '主程序', 'endpoint': 'start_main',
-        'log': 'logs/log_{date}.txt', 'builtin': True,
-        'cmdline': ['api.py'], 'desc': 'Meowlisis 主程序（语音/LLM/桌宠等）',
-    },
-    'painting': {
-        'name': '绘画引擎', 'endpoint': 'start_painting_comfy',
-        'log': 'logs/comfy_engine.log', 'builtin': True,
-        'cmdline': ['--disable-auto-launch'], 'desc': '内置 ComfyUI 内核（常驻）',
-        'force_nowindow': True,       # 顺手把 engine_window 关掉，不再弹引擎窗口
-    },
-    'sovits': {
-        'name': 'SoVITS', 'endpoint': 'start_sovits',
-        'log': 'logs/svc_sovits.log', 'cmdline': ['.Sovits'], 'desc': 'GPT-SoVITS 语音合成',
-    },
-    'sensevoice': {
-        'name': 'SenseVoice', 'endpoint': 'start_sensevoice',
-        'log': 'logs/svc_sensevoice.log', 'cmdline': ['.SenseVoice'], 'desc': '语音识别 + 声纹',
-    },
-    'napcat': {
-        'name': 'NapCat', 'endpoint': 'start_napcat',
-        'log': 'logs/svc_napcat.log', 'cmdline': ['NapCatWinBootMain'], 'desc': 'QQ 机器人',
-    },
-    'netease': {
-        'name': '网易云搜歌', 'endpoint': 'start_netease',
-        'log': 'logs/svc_netease.log', 'cmdline': ['.NeteaseMusic'], 'desc': '网易云搜歌服务',
-    },
-    'rvc': {
-        'name': 'RVC 翻唱', 'endpoint': 'start_rvc',
-        'log': 'logs/svc_rvc.log', 'cmdline': ['.RVC'], 'desc': 'RVC 翻唱服务',
-    },
-    'desktopet': {
-        'name': '桌宠', 'endpoint': 'start_desktopet',
-        'log': 'logs/svc_desktopet.log', 'cmdline': ['.desktopet'], 'desc': '桌宠',
-    },
-    'phone': {
-        'name': '手机接口', 'endpoint': 'start_phone',
-        'log': 'logs/svc_phone.log', 'cmdline': ['.phone'], 'desc': '手机端接口服务',
-    },
-}
-
-ORDER = ['main', 'painting', 'sovits', 'sensevoice', 'napcat', 'netease', 'rvc', 'desktopet', 'phone']
+try:
+    from gui.tools.launcher import SERVICES, ORDER
+    from gui.tools import launcher, log_rules
+except ImportError:                     # 兼容"只把 gui/tools 加进 sys.path"的导入方式
+    _ROOT = Path(__file__).resolve().parents[2]        # gui/tools/loghub.py -> 项目根
+    if str(_ROOT) not in sys.path:
+        sys.path.insert(0, str(_ROOT))
+    from gui.tools.launcher import SERVICES, ORDER
+    from gui.tools import launcher, log_rules
 
 _BASE = None            # 项目根 Path
 _GUI = None             # gui 目录 Path
@@ -100,7 +61,20 @@ _ANSI = re.compile(
     r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|[@-Z\\-_])')
 # 其余不可见控制字符（\t 保留）
 _CTRL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
-_LEVEL = re.compile(r'\b(CRITICAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACEBACK)\b')
+# 级别词：只认大写（Python logging 输出就是大写），避免正文里的 error/warn 被误判
+_LEVEL = re.compile(r'\b(CRITICAL|FATAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACE)\b')
+# 级别归一到三档：ERROR / WARN / INFO（前端就按这三类分页签）
+_LV_MAP = {'CRITICAL': 'ERROR', 'FATAL': 'ERROR', 'ERROR': 'ERROR',
+           'WARNING': 'WARN', 'WARN': 'WARN',
+           'INFO': 'INFO', 'DEBUG': 'INFO', 'TRACE': 'INFO'}
+# Python logging 标准行：时间 - logger[line:xx] - LEVEL: 正文
+_STD_LOG = re.compile(
+    r'^(?P<ts>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d{1,6})?)\s*-\s*'
+    r'(?P<src>.+?)\s*-\s*(?P<lv>CRITICAL|FATAL|ERROR|WARNING|WARN|INFO|DEBUG|TRACE)\s*:\s*'
+    r'(?P<msg>.*)$')
+# 异常堆栈：起点（Traceback...）、末尾（XxxError: ...）
+_TB_START = re.compile(r'Traceback \(most recent call last\)')
+_TB_TAIL = re.compile(r'\w+(?:Error|Exception|Warning)\b')
 
 # ============================================================================
 # 路径 / 日志文件
@@ -190,22 +164,41 @@ def _pid_alive(pid):
     return str(pid) in (out or '')
 
 
-def _ports_of(pid):
-    """netstat 反查该 pid 正在监听的端口（侧边栏展示用）"""
-    if not pid:
-        return []
-    want = str(pid)
+# netstat 结果整体缓存：一次调用拿到"pid → 端口集合"的全局映射，
+# 而不是每个在跑的服务各跑一次 netstat（侧边栏只是展示用，20 秒的新鲜度足够）。
+_ports_cache = {'ts': 0.0, 'map': {}}
+
+
+def _ports_map(max_age=20):
+    if _ports_cache['map'] and (time.time() - _ports_cache['ts']) < max_age:
+        return _ports_cache['map']
     code, out = _run(['netstat', '-ano'], timeout=15)
-    ports = set()
+    m = {}
     for line in (out or '').splitlines():
         if 'LISTENING' not in line:
             continue
         parts = line.split()
-        if len(parts) >= 5 and parts[-1] == want:
-            m = re.search(r':(\d+)$', parts[1])
-            if m:
-                ports.add(int(m.group(1)))
-    return sorted(ports)
+        if len(parts) >= 5:
+            mm = re.search(r':(\d+)$', parts[1])
+            if not mm:
+                continue
+            try:
+                m.setdefault(int(parts[-1]), set()).add(int(mm.group(1)))
+            except Exception:
+                continue
+    _ports_cache['ts'] = time.time()
+    _ports_cache['map'] = m
+    return m
+
+
+def _ports_of(pid):
+    """查该 pid 正在监听的端口（侧边栏展示用；走上面的整体缓存）"""
+    if not pid:
+        return []
+    try:
+        return sorted(_ports_map().get(int(pid), set()))
+    except Exception:
+        return []
 
 
 def _cmdline_pids(key):
@@ -265,7 +258,7 @@ def _scan_worker():
 
 
 def _ensure_scan(max_age=25):
-    if _scan['busy'] or (time.time() - _scan['ts']) < max_age:
+    if _scan['busy'] or (max_age > 0 and (time.time() - _scan['ts']) < max_age):
         return
     _scan['busy'] = True
     threading.Thread(target=_scan_worker, daemon=True).start()
@@ -362,22 +355,58 @@ def _napcat_info():
     }
 
 
-def _child_env(env):
-    """子进程环境：必须让 Python 子进程无缓冲输出。
-
-    stdout 被重定向到文件（不是终端）时，Python 会切成块缓冲，
-    日志要攒满 4~8KB 才落盘 —— 表现就是"点了启动但日志页半天没动静"。
-    PYTHONUNBUFFERED=1 关掉它；PYTHONIOENCODING 统一成 utf-8，前端就不用猜编码。
-    """
-    e = dict(env) if env else os.environ.copy()
-    e.setdefault('PYTHONUNBUFFERED', '1')
-    e.setdefault('PYTHONIOENCODING', 'utf-8')
-    return e
+# 子进程环境（PYTHONUNBUFFERED / PYTHONIOENCODING）已统一在 gui/tools/launcher.py 处理。
 
 
 # ============================================================================
 # 增量读日志
 # ============================================================================
+def _is_traceback_cont(ln, pending):
+    """是否属于上一条 Traceback 的续行（缩进行 / File 行 / 末尾的 XxxError: 行）"""
+    if ln.startswith((' ', '\t')):
+        return True
+    if pending is None:
+        return False
+    if _TB_TAIL.search(pending.get('txt') or ''):
+        return False            # 已经出现 XxxError: → 堆栈结束
+    return bool(re.match(r'^[\w.]*(?:Error|Exception|Warning)\b', ln))
+
+
+def _make_record(ln):
+    """把一行原始日志解析成结构化记录。
+
+    返回 {lv, ts, src, msg, txt, more, t}：
+        lv   归一后的级别（ERROR / WARN / INFO / ''）
+        ts   时间戳（非标准格式为空）
+        src  来源 logger（非标准格式为空）
+        msg  去掉时间/来源/级别后的正文（前端主行显示这个）
+        txt  完整原始行（前端"原文"折叠里显示）
+        more 归并进来的续行数（异常堆栈用）
+        t    转译短句（匹配不到规则则为空，前端回退显示 msg）
+    """
+    m = _STD_LOG.match(ln)
+    if m:
+        rec = {
+            'lv': _LV_MAP.get(m.group('lv'), ''),
+            'ts': m.group('ts'),
+            'src': (m.group('src') or '').strip(),
+            'msg': m.group('msg'),
+            'txt': ln,
+            'more': 0,
+        }
+    else:
+        lv = ''
+        mm = _LEVEL.search(ln)
+        if mm:
+            lv = _LV_MAP.get(mm.group(1), '')
+        elif _TB_START.search(ln):
+            lv = 'ERROR'
+        rec = {'lv': lv, 'ts': '', 'src': '', 'msg': ln, 'txt': ln, 'more': 0}
+    # t = 转译短句（稳定 i18n key，不含变量）；d = 关键值（工具名/用户名…）
+    rec['t'], rec['d'] = log_rules.translate(rec['msg'])
+    return rec
+
+
 def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
     """按字节偏移读日志。
 
@@ -409,6 +438,7 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
     root = str(_base())
     roots = [root + os.sep, root + '/']
     out = []
+    pending = None      # 正在归并的多行异常堆栈（Traceback 起 + 后续续行）
     for ln in raw:
         ln = _ANSI.sub('', ln)          # 去颜色 / 光标控制转义
         ln = _CTRL.sub('', ln)          # 去其余不可见控制字符
@@ -422,9 +452,16 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
             ln = ln.replace(p, '')
         if not ln.strip():
             continue
-        m = _LEVEL.search(ln)
-        lv = (m.group(1) if m else '').upper()
-        out.append({'lv': lv, 'txt': ln})
+        # 多行异常堆栈：Traceback 起的那条 + 后续续行，归并成一条（前端折叠展开）
+        if pending is not None and _is_traceback_cont(ln, pending):
+            pending['txt'] += '\n' + ln
+            pending['msg'] += '\n' + ln
+            pending['more'] += 1
+            pending['lv'] = 'ERROR'
+            continue
+        rec = _make_record(ln)
+        pending = rec if _TB_START.search(ln) else None
+        out.append(rec)
     return out, offset, size
 
 
@@ -441,96 +478,67 @@ def _decode(blob):
 # ============================================================================
 # 启动 / 停止
 # ============================================================================
-def _make_start_view(key, orig):
-    """把 config_gui.py 原有的启动函数包一层：无窗口 + 输出落盘。
+def _launch(key):
+    """启动某个服务 —— 唯一实现。
 
-    只替换 subprocess.Popen 的 creationflags / stdout / stderr / stdin，
-    其余（命令拼装、env、cwd、错误处理）原样复用 —— 这是改动最小的做法。
+    统一走 gui/tools/launcher.py：命令拼装 / 无窗口 / 日志落盘都在那边，
+    这里只做"是否已在运行 / 防连点 / 启动后补 pid 标记"。
+
+    返回 (ok: bool, body: dict)。
+    """
+    if key not in SERVICES:
+        return False, {'status': 'error', 'message': '未知服务: %s' % key}
+    if time.time() - _locks.get(key, 0) < 1.5:
+        return False, {'status': 'error', 'message': '操作太快了，稍等一下'}
+    _locks[key] = time.time()
+
+    run, pid, ports = _running(key)
+    if run:
+        return True, {'status': 'ok', 'message': '已在运行', 'pid': pid,
+                      'ports': ports, 'running': True}
+
+    ok, msg, proc = launcher.start(key, _base())
+    if not ok:
+        return False, {'status': 'error', 'message': msg}
+
+    # 直接持有 Popen 句柄：之后判断"在不在跑 / pid 是多少"是 O(1)，
+    # 不必再起 powershell 反查进程（这里原来有个 6×0.8s 的后台线程，已删除）。
+    if proc is not None:
+        _procs[key] = proc
+        try:
+            _write_pid(key, proc.pid)
+        except Exception:
+            pass
+    _scan['ts'] = 0.0        # 让状态缓存失效，下次刷新就是新状态
+    return True, {'status': 'ok', 'message': msg, 'running': True,
+                  'pid': (proc.pid if proc is not None else None)}
+
+
+def start(key, app=None):
+    """HTTP 入口：启动某个服务（统一启动器）"""
+    ok, body = _launch(key)
+    return jsonify(body)
+
+
+def _start_view(key):
+    """接管 config_gui.py 的 /api/start_<服务>：走同一个统一启动器。
+
+    这样"主界面启动卡"和"日志页的启动按钮"是同一份启动实现，
+    行为（无窗口 + 日志落盘 + 错误信息）完全一致。
     """
     def view(*a, **kw):
-        try:
-            s = SERVICES[key]
-            if s.get('force_nowindow'):
-                try:
-                    from func.toolbox.flux_painter.config import TBFluxPainterConfig
-                    TBFluxPainterConfig().engine_window = False
-                except Exception:
-                    pass
-            log_path = _log_path(key)
-            try:
-                log_path.parent.mkdir(parents=True, exist_ok=True)
-                logf = open(log_path, 'ab', buffering=0)
-            except Exception as e:
-                return jsonify({'status': 'error', 'message': '打不开日志文件: %s' % e}), 500
-
-            real_popen = subprocess.Popen
-            spawned = []
-
-            def fake_popen(*pa, **pk):
-                pk['creationflags'] = subprocess.CREATE_NO_WINDOW
-                pk['stdout'] = logf
-                pk['stderr'] = subprocess.STDOUT
-                pk['stdin'] = subprocess.DEVNULL
-                pk['env'] = _child_env(pk.get('env'))
-                p = real_popen(*pa, **pk)
-                spawned.append(p)
-                return p
-
-            subprocess.Popen = fake_popen
-            try:
-                resp = orig(*a, **kw)
-            finally:
-                subprocess.Popen = real_popen
-                try:
-                    logf.close()        # 父进程副本关掉；子进程持有自己的句柄，继续写
-                except Exception:
-                    pass
-            if spawned:
-                _procs[key] = spawned[-1]
-                _write_pid(key, spawned[-1].pid)
-            return resp
-        except Exception as e:
-            return jsonify({'status': 'error', 'message': str(e)}), 500
-
-    view.__name__ = getattr(orig, '__name__', 'start_' + key)
+        ok, body = _launch(key)
+        return jsonify(body)
+    view.__name__ = 'start_' + key
+    view.__loghub__ = True
     return view
 
 
-def start(key, app):
-    """HTTP 入口：启动某个服务（复用被接管的原端点函数）"""
-    if key not in SERVICES:
-        return jsonify({'status': 'error', 'message': '未知服务: %s' % key}), 400
-    if time.time() - _locks.get(key, 0) < 1.5:
-        return jsonify({'status': 'error', 'message': '操作太快了，稍等一下'}), 429
-    _locks[key] = time.time()
-    run, pid, ports = _running(key)
-    if run:
-        return jsonify({'status': 'ok', 'message': '已在运行', 'pid': pid, 'ports': ports,
-                        'running': True})
-    fn = app.view_functions.get(SERVICES[key].get('endpoint') or '')
-    if fn is None:
-        return jsonify({'status': 'error',
-                        'message': '找不到启动端点 %s（config_gui.py 可能没打补丁）'
-                                   % SERVICES[key].get('endpoint')}), 500
-    resp = fn()
-    # 原函数一般返回 jsonify 响应，这里原样返回；补一个运行状态
-    try:
-        code = resp.status_code
-        body = resp.get_json() or {}
-    except Exception:
-        code, body = 200, {}
-    if code != 200 or body.get('status') == 'error':
-        return resp
-    body['running'] = True
-    body.setdefault('message', '已启动')
-    return jsonify(body), code
-
-
 def stop(key):
-    """停止：内存句柄 + pid 标记 + **命令行反查**，三路全上。
+    """停止：**快路径优先**（内存句柄 + pid 文件），命令行反查只作兜底。
 
-    之前只查前两路，所以"打补丁之前就在跑的服务""手动起的服务"点停止完全没反应。
-    现在无论如何都会真的去找进程，并把结果如实回给前端。
+    快路径命中时全程只用 tasklist（毫秒级），不再起 powershell 全量扫进程；
+    只有"本界面没记录、pid 文件也没有"时才反查一次命令行，保证手动起的服务也能停。
     """
     if key not in SERVICES:
         return jsonify({'status': 'error', 'message': '未知服务: %s' % key}), 400
@@ -547,35 +555,51 @@ def stop(key):
         except Exception as e:
             msgs.append('引擎停止失败: %s' % e)
 
-    _procs.pop(key, None)
+    # ---- 快路径：内存句柄 + pid 文件（都是 O(1)/毫秒级）----
+    pids = []
+    proc = _procs.pop(key, None)
+    if proc is not None:
+        try:
+            if proc.poll() is None:
+                pids.append(proc.pid)
+        except Exception:
+            pass
+    pid_file = _read_pid(key)
+    if pid_file and _pid_alive(pid_file) and pid_file not in pids:
+        pids.append(pid_file)
     _clear_pid(key)
 
-    for pid in _all_pids(key):
-        if not _pid_alive(pid):          # 已经死了就别报"杀不掉"，那会污染 running 判断
-            continue
+    # ---- 兜底：快路径什么都没拿到，才反查一次命令行（1~2s）----
+    if not pids:
+        pids = [x for x in _cmdline_pids(key) if _pid_alive(x)]
+
+    for pid in pids:
         ok, out = _taskkill(pid)
         (killed if ok else failed).append(pid)
     if killed:
         msgs.append('已结束进程 ' + ','.join(str(x) for x in killed))
 
-    time.sleep(0.8)                      # 给系统一点时间回收
-    still = [x for x in _cmdline_pids(key) if _pid_alive(x)]
-    for pid in still:                    # 复查残留（-T 没带掉的子进程再补一刀）
-        ok, out = _taskkill(pid)
-        (killed if ok else failed).append(pid)
+    # 复查：只针对刚杀掉的 pid，用 tasklist 轮询（最多 1s），取代原来的 sleep(0.8)
+    deadline = time.time() + 1.0
+    leftover = list(killed)
+    while leftover and time.time() < deadline:
+        leftover = [x for x in leftover if _pid_alive(x)]
+        if leftover:
+            time.sleep(0.15)
+    if leftover:
+        failed.extend(leftover)
     if failed:
         msgs.append('这些杀不掉（权限？）: ' + ','.join(str(x) for x in failed))
-
-    _scan['ts'] = 0.0                    # 让状态缓存立刻失效，下次刷新就是新状态
-    final = [x for x in _cmdline_pids(key) if _pid_alive(x)]
-    if not killed and not failed and not final:
+    if not pids:
         msgs.append('没找到它的进程：可能本来就已停止，或不是从本界面启动的'
                     '（点 ⟳ 刷新可更新状态）')
+
+    _scan['ts'] = 0.0                    # 状态缓存立刻失效，下次刷新就是新状态
     return jsonify({
         'status': 'ok',
         'message': '；'.join(m for m in msgs if m),
         'killed': killed, 'failed': failed,
-        'running': bool(final),
+        'running': bool(leftover),
     })
 
 
@@ -591,7 +615,13 @@ def register(app, base_dir=None, gui_dir=None):
     if _GUI is None:
         _GUI = Path(__file__).resolve().parent.parent      # gui/
 
-    # ---- 1. 接管 config_gui.py 原有的启动端点（换成无窗口版）----
+    # 统一日志目录（launcher 落盘 / 本模块读取都用它）
+    launcher.set_base(_base())
+
+    # ---- 1. 接管 config_gui.py 的启动端点 ----
+    # 原实现是把 subprocess.Popen 临时换掉（猴补丁）；现在所有启动统一走
+    # gui/tools/launcher.py，这里只把端点替换成"调同一个启动器"的壳。
+    # 主界面启动卡（/api/start_*）与日志页按钮（/api/logs/start）因此行为一致。
     taken = []
     for key in ORDER:
         ep = SERVICES[key].get('endpoint')
@@ -600,13 +630,10 @@ def register(app, base_dir=None, gui_dir=None):
         fn = app.view_functions.get(ep)
         if fn is None:
             continue
-        # 已经接管过就不重复包装
         if getattr(fn, '__loghub__', False):
             taken.append(ep)
             continue
-        wrapped = _make_start_view(key, fn)
-        wrapped.__loghub__ = True
-        app.view_functions[ep] = wrapped
+        app.view_functions[ep] = _start_view(key)
         taken.append(ep)
 
     # ---- 2. 新路由 ----
@@ -616,7 +643,14 @@ def register(app, base_dir=None, gui_dir=None):
 
     @app.route('/api/logs/services')
     def _loghub_services():
-        _ensure_scan()          # 后台刷新"命令行反查"缓存，状态才认得出手动启动的服务
+        # 状态判断走快路径（内存句柄 + pid 文件 + tasklist），本接口不再等 powershell。
+        # deep=1（用户点 ⟳）时强制让后台重新扫一遍命令行，用于认出手动启动的服务；
+        # 扫描在后台线程里跑，本次响应照样立刻返回，下一次轮询就能看到新状态。
+        if request.args.get('deep') not in (None, '', '0', 'false'):
+            _scan['ts'] = 0.0
+            _ensure_scan(0)
+        else:
+            _ensure_scan()
         items = []
         for key in ORDER:
             s = SERVICES[key]

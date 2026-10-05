@@ -625,17 +625,13 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             <button class="modal-tab active" data-tab="flux_deepseek">DeepSeek</button>
             <button class="modal-tab" data-tab="flux_aliyun">${this._t('阿里云')}</button>
         </div>`;
+        // API Key / Base URL 已汇总到「基本设置 → API 平台」，这里只留模型
         h += `<div class="tab-content active" data-tab-content="flux_deepseek">` +
             this._section('DeepSeek') +
-            this._text('API Key', 'flux_painter.deepseek.api_key', '') +
-            this._text('Base URL', 'flux_painter.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'flux_painter.deepseek.model', 'deepseek-v4-flash') +
             `</div>`;
         h += `<div class="tab-content" data-tab-content="flux_aliyun">` +
             this._section('阿里云 Qwen') +
-            this._text('API Key', 'flux_painter.aliyun.api_key', '') +
-            this._text('Base URL', 'flux_painter.aliyun.base_url',
-                'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'flux_painter.aliyun.model', 'qwen3.7-flash') +
             `</div>`;
         return h;

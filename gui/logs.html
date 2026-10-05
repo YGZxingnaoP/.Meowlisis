@@ -7,21 +7,29 @@
 <link rel="stylesheet" href="css/logs.css">
 </head>
 <body>
+
 <div class="lh-app">
 
     <!-- ==================== 侧边栏：服务 + 启停 ==================== -->
     <aside class="lh-side">
         <div class="lh-brand">
             <span class="lh-brand-dot"></span>
-            <span>日志中心</span>
-            <button class="lh-icon-btn" id="btnReload" title="刷新服务列表">⟳</button>
+            <span data-i18n="日志中心">日志中心</span>
+            <button class="lh-icon-btn" id="btnReload" data-i18n-title="刷新服务列表">⟳</button>
         </div>
-        <div class="lh-side-hint">点服务名看日志 · ▶ 启动 / ■ 停止</div>
+        <!-- 语言切换：放进侧边栏，避免悬浮遮挡顶栏的启动/停止按钮 -->
+        <div class="lh-lang">
+            <div id="langSwitch" class="lang-switch">
+                <button type="button" data-lang="zh-CN" class="lang-btn">中文</button>
+                <button type="button" data-lang="en" class="lang-btn">EN</button>
+            </div>
+        </div>
+        <div class="lh-side-hint" data-i18n="点服务名看日志 · ▶ 启动 / ■ 停止">点服务名看日志 · ▶ 启动 / ■ 停止</div>
         <nav class="lh-list" id="svcList"><!-- JS 渲染 --></nav>
         <div class="lh-side-foot">
             <label class="lh-switch">
                 <input type="checkbox" id="autoScroll" checked>
-                <span>自动跟随</span>
+                <span data-i18n="自动跟随">自动跟随</span>
             </label>
             <span class="lh-ts" id="tsInfo"></span>
         </div>
@@ -37,31 +45,33 @@
             </div>
             <div class="lh-tools">
                 <input type="text" id="filter" class="lh-input" placeholder="过滤关键字（支持 | 或）">
-                <select id="level" class="lh-input lh-select">
-                    <option value="">全部级别</option>
-                    <option value="ERROR">仅 ERROR</option>
-                    <option value="WARNING">WARNING+</option>
-                    <option value="INFO">INFO+</option>
-                </select>
-                <button class="lh-btn" id="btnPause" title="暂停/继续拉取">暂停</button>
-                <button class="lh-btn" id="btnClear" title="清空该服务的日志文件">清空</button>
-                <button class="lh-btn lh-btn-primary" id="btnStart">▶ 启动</button>
-                <button class="lh-btn lh-btn-danger" id="btnStop">■ 停止</button>
+                <button class="lh-btn" id="btnPause" data-i18n="暂停">暂停</button>
+                <button class="lh-btn" id="btnClear" data-i18n="清空">清空</button>
+                <button class="lh-btn lh-btn-primary" id="btnStart">▶ <span data-i18n="启动">启动</span></button>
+                <button class="lh-btn lh-btn-danger" id="btnStop">■ <span data-i18n="停止">停止</span></button>
             </div>
         </header>
+
+        <!-- 级别分类页签：日志 / 警告 / 错误 分开看 -->
+        <div class="lh-tabs" id="levelTabs">
+            <button type="button" class="lh-tab on" data-lv=""><span data-i18n="全部">全部</span><i class="lh-badge" id="cntAll">0</i></button>
+            <button type="button" class="lh-tab" data-lv="INFO"><span data-i18n="日志">日志</span><i class="lh-badge" id="cntINFO">0</i></button>
+            <button type="button" class="lh-tab" data-lv="WARN"><span data-i18n="警告">警告</span><i class="lh-badge" id="cntWARN">0</i></button>
+            <button type="button" class="lh-tab" data-lv="ERROR"><span data-i18n="错误">错误</span><i class="lh-badge" id="cntERROR">0</i></button>
+        </div>
 
         <section class="lh-qr" id="qrBox" hidden>
             <img class="lh-qr-img" id="qrImg" alt="登录二维码">
             <div class="lh-qr-side">
-                <div class="lh-qr-t">扫码登录 QQ</div>
-                <div class="lh-qr-hint" id="qrHint">用手机 QQ 扫上面的二维码</div>
-                <a class="lh-btn" id="qrWebui" target="_blank" rel="noopener">打开 NapCat WebUI</a>
+                <div class="lh-qr-t" data-i18n="扫码登录 QQ">扫码登录 QQ</div>
+                <div class="lh-qr-hint" id="qrHint"></div>
+                <a class="lh-btn" id="qrWebui" target="_blank" rel="noopener" data-i18n="打开 NapCat WebUI">打开 NapCat WebUI</a>
                 <div class="lh-qr-token" id="qrToken"></div>
             </div>
         </section>
 
         <section class="lh-view" id="view">
-            <div class="lh-empty" id="empty">选择左侧服务查看日志</div>
+            <div class="lh-empty" id="empty" data-i18n="选择左侧服务查看日志">选择左侧服务查看日志</div>
             <div class="lh-lines" id="lines"></div>
         </section>
 
@@ -75,6 +85,11 @@
     </main>
 </div>
 <div class="lh-toast" id="toast"></div>
+
+<!-- 语言包与 i18n 运行时（先加载，保证渲染点可用） -->
+<script src="locales/zh-CN.js"></script>
+<script src="locales/en.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/logs.js"></script>
 </body>
 </html>

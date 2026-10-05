@@ -289,3 +289,20 @@ body {
     color: var(--text-light);
     margin-top: 2px;
 }
+
+/* ---------------- 语言切换（两张页面共用；样式集中在这里，不再由 JS 内联写） ---------------- */
+.lang-switch {
+    display: flex; gap: 3px; align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 3px; border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+}
+.lang-switch-fixed {
+    position: fixed; top: 10px; right: 14px; z-index: 3000;
+}
+.lang-btn {
+    border: none; border-radius: 999px;
+    padding: 4px 12px; font-size: 12px; font-family: inherit;
+    cursor: pointer; background: transparent; color: #333;
+}
+.lang-btn.on { background: #ff6b9d; color: #fff; }

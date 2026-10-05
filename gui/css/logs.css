@@ -151,26 +151,82 @@ body {
 }
 .lh-lines {
     padding: 8px 0 20px;
-    font-family: ui-monospace, Consolas, 'Courier New', monospace;
-    font-size: 12px; line-height: 1.62;
+    /* 摘要行用界面字体（好读），原始日志在 .raw pre 里才用等宽 */
+    font-size: 12.5px; line-height: 1.6;
     color: #D8D6DE;
 }
 .lh-line {
-    display: flex; gap: 10px;
-    padding: 0 14px;
-    white-space: pre-wrap; word-break: break-all;
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 4px 14px;
 }
 .lh-line:hover { background: rgba(255, 255, 255, 0.045); }
 .lh-line .lv {
-    flex: 0 0 52px; text-align: right; opacity: 0.75;
+    flex: 0 0 46px; text-align: right; opacity: 0.75;
+    font-family: ui-monospace, Consolas, monospace; font-size: 11px;
+    padding-top: 1px;
 }
 .lh-line.INFO .lv { color: #63C88B; }
 .lh-line.WARNING .lv, .lh-line.WARN .lv { color: #E0B341; }
 .lh-line.ERROR .lv, .lh-line.CRITICAL .lv { color: #FF6B72; }
 .lh-line.line-ERROR { color: #FFB3B7; background: rgba(217, 70, 78, 0.10); }
 .lh-line.line-WARNING { color: #EBD9A8; }
-.lh-line .txt { flex: 1 1 auto; min-width: 0; }
+.lh-line .body { flex: 1 1 auto; min-width: 0; }
+.lh-line .sum { white-space: pre-wrap; word-break: break-word; }
+.lh-line .sum .more {
+    font-style: normal; margin-left: 6px; font-size: 10.5px;
+    padding: 0 5px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.10); color: rgba(255, 255, 255, 0.55);
+}
+.lh-line .meta {
+    margin-top: 2px; font-size: 11px; color: rgba(255, 255, 255, 0.32);
+    font-family: ui-monospace, Consolas, monospace;
+}
+.lh-line .meta .src { margin-left: 2px; }
+.lh-line .raw { margin-top: 3px; }
+.lh-line .raw summary {
+    cursor: pointer; font-size: 11px; color: rgba(255, 182, 193, 0.75);
+    list-style: none; user-select: none;
+}
+.lh-line .raw summary::-webkit-details-marker { display: none; }
+.lh-line .raw summary::before { content: '▸ '; }
+.lh-line .raw[open] summary::before { content: '▾ '; }
+.lh-line .raw pre {
+    margin: 4px 0 2px; padding: 6px 9px;
+    background: rgba(255, 255, 255, 0.04); border-radius: 6px;
+    font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    font-size: 11.5px; line-height: 1.55; color: #B9B6C2;
+    white-space: pre-wrap; word-break: break-all;
+    max-height: 280px; overflow: auto;
+}
 .lh-line.hit { outline: 1px solid rgba(255, 182, 193, 0.5); }
+
+/* ---------------- 级别分类页签 ---------------- */
+.lh-tabs {
+    display: flex; gap: 4px; align-items: flex-end;
+    padding: 8px 16px 0;
+    background: rgba(255, 255, 255, 0.45);
+    border-bottom: 1px solid var(--line);
+}
+.lh-tab {
+    border: 1px solid transparent; border-bottom: none;
+    background: transparent; cursor: pointer;
+    padding: 6px 12px; font-size: 12.5px; font-family: inherit;
+    color: var(--text-main); border-radius: 9px 9px 0 0;
+    display: flex; align-items: center; gap: 6px;
+    transition: 0.15s ease;
+}
+.lh-tab:hover { background: rgba(255, 182, 193, 0.22); }
+.lh-tab.on {
+    background: #fff; color: var(--pink-deep); font-weight: 700;
+    border-color: var(--line);
+    box-shadow: 0 -1px 6px rgba(0, 0, 0, 0.05);
+}
+.lh-badge {
+    font-style: normal; font-size: 10.5px; line-height: 1.5;
+    padding: 0 6px; border-radius: 999px;
+    background: rgba(255, 105, 180, 0.16); color: var(--pink-deep);
+}
+.lh-tab.on .lh-badge { background: var(--pink-main); color: #fff; }
 
 .lh-foot {
     display: flex; align-items: center; gap: 14px;
@@ -208,3 +264,18 @@ body {
 }
 .lh-toast.show { opacity: 1; transform: translate(-50%, 0); }
 .lh-toast.err { background: rgba(217, 70, 78, 0.95); }
+
+/* ---------------- 语言切换（侧边栏内，不再悬浮遮挡顶栏） ---------------- */
+.lh-lang { padding: 0 14px 8px; }
+.lang-switch {
+    display: inline-flex; gap: 3px; align-items: center;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 3px; border-radius: 999px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+.lang-btn {
+    border: none; border-radius: 999px;
+    padding: 4px 12px; font-size: 12px; font-family: inherit;
+    cursor: pointer; background: transparent; color: #333;
+}
+.lang-btn.on { background: #ff6b9d; color: #fff; }
