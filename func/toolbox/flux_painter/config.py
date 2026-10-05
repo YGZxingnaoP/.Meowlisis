@@ -18,6 +18,11 @@ class TBFluxPainterConfig:
         self.http_port = int(cfg.get("http_port", 8090))
         self.ws_port = int(cfg.get("ws_port", 8767))
 
+        # ===== 底模（UNET）=====
+        # GUI「绘画底模」下拉写入的是 flux_painter.unet_model，但此前**没有任何地方读它**，
+        # 织图时一直用 base.py 里写死的 anima_baseV10，选什么都没用。这里读出来交给 base.py。
+        self.unet_model = str(cfg.get("unet_model") or "anima_baseV10.safetensors").strip()
+
         # ===== 画布两档（AI 调用时自选；后端换算到 ComfyUI 像素） =====
         raw = cfg.get("canvas_sizes") or [[1024, 1024], [1080, 1960]]
         self.canvas_sizes = []

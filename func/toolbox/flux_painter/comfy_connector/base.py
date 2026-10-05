@@ -25,6 +25,12 @@ class TBComfyBase:
         """当前 ComfyUI http 根地址"""
         return self.config.comfy_base()
 
+    def unet_name(self) -> str:
+        """底模文件名：优先用 config.yml 的 flux_painter.unet_model（GUI「底模」下拉），
+        没配置或为空时才回退到常量 ANIMA_UNET。"""
+        name = str(getattr(self.config, "unet_model", "") or "").strip()
+        return name or ANIMA_UNET
+
     @staticmethod
     def _align16(v):
         """像素尺寸对齐到 16 的倍数（Anima/Cosmos 的 latent 需被 spatial_patch_size=2 整除）"""
@@ -71,7 +77,7 @@ class TBComfyBase:
         scheduler = scheduler or self.config.sampler_scheduler
         shift = model_sampling_shift if model_sampling_shift is not None else getattr(self.config, "sampler_shift", None)
         graph = {
-            "1": {"class_type": "UNETLoader", "inputs": {"unet_name": ANIMA_UNET, "weight_dtype": "default"}},
+            "1": {"class_type": "UNETLoader", "inputs": {"unet_name": self.unet_name(), "weight_dtype": "default"}},
             "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ANIMA_CLIP, "type": clip_type}},
             "3": {"class_type": "VAELoader", "inputs": {"vae_name": ANIMA_VAE}},
             "4": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["2", 0]}},
@@ -190,7 +196,7 @@ class TBComfyBase:
 
         g = {
             "1": {"class_type": "UNETLoader",
-                  "inputs": {"unet_name": ANIMA_UNET, "weight_dtype": "default"}},
+                  "inputs": {"unet_name": self.unet_name(), "weight_dtype": "default"}},
             "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ANIMA_CLIP, "type": clip_type}},
             "3": {"class_type": "VAELoader", "inputs": {"vae_name": ANIMA_VAE}},
             "4": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["2", 0]}},
