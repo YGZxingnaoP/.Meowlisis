@@ -191,3 +191,21 @@ class PluginManager:
             except Exception:
                 self.log.exception("插件会话拦截失败")
         return False
+
+    def route_qq(self, channel, text, qq_context=None, username=""):
+        """QQ 消息拦截：把消息递给插件"""
+        self._ensure()
+        text = str(text or "")
+        if not text.strip():
+            return False
+        for plugin in self.registry.plugins():
+            handler = getattr(plugin, "route_qq", None)
+            if not callable(handler):
+                continue
+            try:
+                if handler(text, dict(qq_context or {}), str(username or "")):
+                    self.log.info(f"[插件] {getattr(plugin, 'id', '')} 接管 {channel}: {text[:30]}")
+                    return True
+            except Exception:
+                self.log.exception(f"[插件] {getattr(plugin, 'id', '')} 消息拦截失败")
+        return False

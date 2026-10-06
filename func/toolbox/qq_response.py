@@ -63,6 +63,15 @@ class TBoxQQResponse:
                     return
             except Exception:
                 self.log.exception("QQ 私聊改图判定异常")
+        # 0.75 插件消息拦截（插件自己判定，零 LLM）
+        if not is_bot:
+            try:
+                from func.toolbox.plugins.manager import PluginManager
+                qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
+                if PluginManager().route_qq(f"qq_private_{user_id}", text, qq_context, username):
+                    return
+            except Exception:
+                self.log.exception("QQ 私聊插件拦截异常")
         # 0.8 napcat 意图分析：命中工具则走工具流程（结果发 QQ），跳过原 LLM 回复
         if not is_bot:
             try:
@@ -328,6 +337,17 @@ class TBoxQQResponse:
                 return
         except Exception:
             self.log.exception("群聊改图判定异常")
+
+        # 插件消息拦截（插件自己判定，零 LLM；此处仅 @ / 关键词触发才会到达）
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            qq_context = {"message_type": "group", "target_id": gid, "group_id": gid,
+                          "group_name": group_name, "self_id": self_id, "user_id": primary_uid}
+            if PluginManager().route_qq(f"qq_group_{gid}", merged_text,
+                                        qq_context, primary_name):
+                return
+        except Exception:
+            self.log.exception("群聊插件拦截异常")
 
         from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
         from func.toolbox.napcat.groupchat.group_info import TBGroupInfo

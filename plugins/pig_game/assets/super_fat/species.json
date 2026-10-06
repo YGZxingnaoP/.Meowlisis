@@ -1,0 +1,28 @@
+{
+  "id": "super_fat",
+  "name": "超级肥猪",
+  "type": "base",
+  "aliases": [
+    "肥猪",
+    "超级猪"
+  ],
+  "steal_rate": 0.9,
+  "coin_per_day": 1,
+  "breed": {
+    "enabled": true,
+    "base_prob": 1,
+    "amount": 1,
+    "cap": 100,
+    "aff_influence": 0
+  },
+  "attack": 0,
+  "team_bonus": 0,
+  "stealable": true,
+  "tradable": true,
+  "base_price": 5,
+  "shop_price": 12,
+  "trade_count_max": 10,
+  "craft": null,
+  "obtain_dates": [],
+  "death_prob": 0
+}

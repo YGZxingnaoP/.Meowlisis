@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>pig_game card</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { background:transparent; }
+  body { width:720px; font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
+         -webkit-font-smoothing:antialiased; }
+
+  .card {
+    width:700px; margin:0 10px; padding:22px; border-radius:24px;
+    background:linear-gradient(165deg,#ffffff 0%, #fdf7ff 60%, #f2f7ff 100%);
+    border:2px solid #ffd7ea; box-shadow:0 8px 24px rgba(178,150,200,.16);
+  }
+
+  /* ---------- 图片位（img 为空则整块不显示） ---------- */
+  .banner { width:100%; height:300px; border-radius:18px; overflow:hidden; background:#f3eef8; }
+  .banner img { width:100%; height:100%; object-fit:cover; display:block; }
+
+  /* ---------- 标题 ---------- */
+  .head { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:20px; }
+  .title { font-size:34px; font-weight:800; color:#4a3a54; letter-spacing:.5px; }
+  .badge { flex:none; padding:8px 16px; border-radius:999px; font-size:16px; font-weight:700; color:#fff;
+           background:linear-gradient(135deg,#ff9ecb,#8fb8ff); white-space:nowrap; }
+  .sub { margin-top:8px; font-size:16px; color:#94849f; }
+
+  /* ---------- 数值 ---------- */
+  .stats { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+  .stat { flex:1 1 130px; padding:12px 14px; border-radius:14px; background:#f8f5ff; border:1px solid #eee4f7; }
+  .stat .k { font-size:13px; color:#a294ad; }
+  .stat .v { margin-top:4px; font-size:23px; font-weight:800; color:#5c4a68; }
+  /* 换行标记：把后面的数值强行推到下一行（军队这种要单独占一行） */
+  .brk { flex-basis:100%; width:100%; height:0; }
+
+  /* ---------- 榜单 / 行 ---------- */
+  .rows { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:18px; }
+  .row { display:flex; align-items:center; justify-content:space-between; gap:10px;
+         padding:11px 14px; border-radius:13px; background:#f8f5ff; border:1px solid #eee4f7;
+         font-size:16px; color:#63546e; }
+  .row b { color:#e072a8; font-size:17px; }
+
+  /* ---------- 纯文字行（菜单 / 规则） ---------- */
+  .lines { margin-top:16px; }
+  .line { padding:7px 2px; font-size:16px; color:#63546e; }
+  .line.h { font-weight:800; color:#4a3a54; padding-top:12px; }
+
+  /* ---------- LLM 点评（engine 里 llm.comment / battle_report 的那段） ---------- */
+  .comment { margin-top:18px; padding:14px 16px; border-radius:16px; background:#f5f1ff;
+             border-left:5px solid #b79bff; font-size:17px; color:#6a5b7a;
+             line-height:1.7; white-space:pre-wrap; }
+
+  /* ---------- 指令字典（分组 × 条目） ---------- */
+  .grp { margin-top:16px; }
+  .grp-title { display:flex; align-items:center; gap:9px; font-size:17px; font-weight:800; color:#5c4a68; }
+  .grp-title .bar { width:6px; height:18px; border-radius:3px; background:linear-gradient(#ffa9d3,#9cc0ff); }
+  .grp-items { margin-top:8px; border-radius:14px; background:#fff; border:1px solid #f0e4f6;
+               box-shadow:0 3px 10px rgba(180,160,200,.09); padding:2px 14px; }
+  .grp-item { padding:9px 0; border-bottom:1px dashed #f2e8f7; }
+  .grp-item:last-child { border-bottom:none; }
+  .grp-item .cmd { font-size:15px; font-weight:700; color:#e072a8;
+                   font-family:Consolas,"Microsoft YaHei",monospace; }
+  .grp-item .desc { margin-top:3px; font-size:14px; color:#a294ad; }
+
+  /* ---------- 底部一行提示 ---------- */
+  .tip { margin-top:18px; padding-top:14px; border-top:1px dashed #efe2f5;
+         font-size:15px; color:#a294ad; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="banner" id="banner" style="display:none"><img id="img" alt=""></div>
+    <div class="head">
+      <div class="title" id="title"></div>
+      <div class="badge" id="badge"></div>
+    </div>
+    <div class="sub" id="sub"></div>
+    <div class="stats" id="stats"></div>
+    <div class="rows" id="rows" style="display:none"></div>
+    <div class="lines" id="lines" style="display:none"></div>
+    <div id="groups"></div>
+    <div class="comment" id="comment" style="display:none"></div>
+    <div class="tip" id="tip" style="display:none"></div>
+  </div>
+
+<script>
+const DATA = __DATA__;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? "" : s);
+
+if (DATA.img) {
+  $("img").src = DATA.img;
+  $("banner").style.display = "";
+}
+$("title").textContent = esc(DATA.title);
+if (DATA.badge) $("badge").textContent = DATA.badge; else $("badge").style.display = "none";
+if (DATA.subtitle) $("sub").textContent = DATA.subtitle; else $("sub").style.display = "none";
+
+(DATA.stats || []).forEach(s => {
+  if (!s) return;
+  if (s.br) {                                  // 换行标记
+    const br = document.createElement("div");
+    br.className = "brk";
+    $("stats").appendChild(br);
+    return;
+  }
+  const d = document.createElement("div");
+  d.className = "stat";
+  d.innerHTML = `<div class="k">${esc(s.k)}</div><div class="v">${esc(s.v)}</div>`;
+  $("stats").appendChild(d);
+});
+
+if ((DATA.rows || []).length) {
+  $("rows").style.display = "";
+  // rows_cols = 1 时改单列（商店这种一行一只的纵向列表）
+  if (Number(DATA.rows_cols) === 1) $("rows").style.gridTemplateColumns = "1fr";
+  DATA.rows.forEach(r => {
+    const d = document.createElement("div");
+    d.className = "row";
+    d.innerHTML = `<span>${esc(r.name)}</span><b>${esc(r.v)}</b>`;
+    $("rows").appendChild(d);
+  });
+}
+
+if ((DATA.lines || []).length) {
+  $("lines").style.display = "";
+  DATA.lines.forEach(t => {
+    const d = document.createElement("div");
+    const head = typeof t === "object" && t.h;
+    d.className = "line" + (head ? " h" : "");
+    d.textContent = head ? t.h : t;
+    $("lines").appendChild(d);
+  });
+}
+
+if (DATA.comment) { $("comment").style.display = ""; $("comment").textContent = "🐱 " + DATA.comment; }
+if (DATA.tip) { $("tip").style.display = ""; $("tip").textContent = "🐽 " + DATA.tip; }
+
+(DATA.groups || []).forEach(g => {
+  const box = document.createElement("div");
+  box.className = "grp";
+  const items = (g.items || []).map(it => {
+    const cmd = esc(it.cmd), desc = esc(it.desc);
+    return `<div class="grp-item"><div class="cmd">${cmd}</div>` +
+           (desc ? `<div class="desc">${desc}</div>` : "") + `</div>`;
+  }).join("");
+  box.innerHTML = `<div class="grp-title"><span class="bar"></span>${esc(g.title)}</div>` +
+                  `<div class="grp-items">${items}</div>`;
+  $("groups").appendChild(box);
+});
+</script>
+</body>
+</html>

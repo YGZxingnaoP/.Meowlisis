@@ -1,0 +1,28 @@
+{
+  "id": "fish",
+  "name": "鱼猪",
+  "type": "base",
+  "aliases": [
+    "鱼",
+    "鱼猪猪"
+  ],
+  "steal_rate": 0.5,
+  "coin_per_day": 3,
+  "breed": {
+    "enabled": true,
+    "base_prob": 0.5,
+    "amount": 1,
+    "cap": 60,
+    "aff_influence": 0.5
+  },
+  "attack": 6,
+  "team_bonus": 0.0,
+  "stealable": true,
+  "tradable": true,
+  "base_price": 10,
+  "shop_price": 36,
+  "trade_count_max": 5,
+  "craft": null,
+  "obtain_dates": [],
+  "death_prob": 0.0
+}

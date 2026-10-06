@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>猪种配置工具</title>
+<style>
+  :root{
+    --pink:#e072a8; --pink-l:#ffa9d3; --blue:#9cc0ff; --purple:#5c4a68;
+    --gray:#a294ad; --line:#f0e4f6; --bg:#fbf7fd; --card:#fff; --ok:#3aa675; --bad:#e06b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.6 "Microsoft YaHei",system-ui,sans-serif;color:var(--purple);
+       background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+  button{font:inherit;cursor:pointer;border:none;border-radius:10px;padding:8px 14px;
+         background:#fff;color:var(--purple);border:1px solid var(--line);transition:.15s}
+  button:hover{background:#fdf1f8;border-color:var(--pink-l)}
+  button.primary{background:linear-gradient(135deg,var(--pink-l),var(--blue));color:#fff;
+                 border:none;font-weight:700}
+  button.primary:hover{filter:brightness(1.05)}
+  button.danger{color:var(--bad);border-color:#f6dede}
+  button.danger:hover{background:#fdf3f3}
+  button.sm{padding:5px 10px;font-size:13px;border-radius:8px}
+  input,select,textarea{font:inherit;color:var(--purple);background:#fff;
+       border:1px solid var(--line);border-radius:9px;padding:7px 10px;width:100%;outline:none}
+  input:focus,select:focus{border-color:var(--pink-l);box-shadow:0 0 0 3px #ffa9d326}
+  label{display:block;font-size:13px;font-weight:700;margin-bottom:4px}
+  .hint{font-size:12px;color:var(--gray);font-weight:400;margin-left:6px}
+
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;background:#fff;
+         border-bottom:1px solid var(--line);box-shadow:0 2px 10px #b4a0c818;z-index:5}
+  header h1{font-size:17px;margin:0;font-weight:800}
+  header h1 span{font-size:12px;font-weight:400;color:var(--gray);margin-left:8px}
+  header .sp{flex:1}
+  .path{font-size:12px;color:var(--gray);font-family:Consolas,monospace}
+
+  main{flex:1;display:flex;min-height:0}
+  aside{width:250px;border-right:1px solid var(--line);background:#fff;overflow:auto;padding:10px}
+  .item{display:flex;gap:10px;align-items:center;padding:8px;border-radius:12px;cursor:pointer;
+        margin-bottom:6px;border:1px solid transparent}
+  .item:hover{background:#fdf6fb}
+  .item.on{background:#fdf1f8;border-color:var(--pink-l)}
+  .item img{width:52px;height:34px;object-fit:cover;border-radius:7px;background:#f4eefa;flex:none}
+  .item .nm{font-weight:700;font-size:14px}
+  .item .sub{font-size:11px;color:var(--gray);font-family:Consolas,monospace}
+  .item .dt{font-size:11px;color:var(--pink);font-family:Consolas,monospace;margin-top:1px}
+  .nowline{margin-top:8px;font-size:12px;color:var(--gray)}
+  .nowline b{color:var(--pink);font-family:Consolas,monospace;font-weight:700}
+  .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:7px;margin-left:5px;
+         background:#f3ecfa;color:var(--gray)}
+  .badge.magic{background:#ffe9f5;color:var(--pink)}
+  .badge.none{background:#fdeeee;color:var(--bad)}
+
+  section{flex:1;overflow:auto;padding:18px 22px 90px}
+  .grid{display:flex;flex-wrap:wrap;gap:14px;max-width:1000px}
+  .f{width:100%}
+  .f.half{width:calc(50% - 7px)} .f.third{width:calc(33.333% - 9.4px)}
+  .f.full{width:100%}
+  .chk{display:flex;align-items:center;gap:8px;padding-top:22px}
+  .chk input{width:auto}
+
+  .drops{display:flex;gap:14px;margin-bottom:18px}
+  .drop{position:relative;border:2px dashed var(--line);border-radius:14px;background:#fff;
+        overflow:hidden;cursor:pointer;transition:.15s}
+  .drop:hover,.drop.over{border-color:var(--pink-l);background:#fdf6fb}
+  .drop.big{width:340px;height:150px}
+  .drop.small{width:120px;height:120px}
+  .drop img{width:100%;height:100%;object-fit:cover;display:block}
+  .drop .ph{display:flex;flex-direction:column;align-items:center;justify-content:center;
+            height:100%;color:var(--gray);font-size:12px;gap:4px}
+  .drop .ph b{font-size:13px;color:var(--purple)}
+  .drop .rm{position:absolute;right:6px;top:6px;background:#fff9;border-radius:8px;padding:2px 7px;
+            font-size:12px;display:none}
+  .drop:hover .rm{display:block}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px;padding:6px;border:1px solid var(--line);
+         border-radius:9px;background:#fff;min-height:38px}
+  .chip{background:#fdf1f8;border:1px solid #ffd6ea;border-radius:8px;padding:2px 8px;font-size:13px;
+        display:flex;gap:6px;align-items:center}
+  .chip b{cursor:pointer;color:var(--gray);font-weight:400}
+  .chip b:hover{color:var(--bad)}
+  .chips input{border:none;padding:2px;flex:1;min-width:120px;background:transparent}
+  .chips input:focus{box-shadow:none}
+
+  .rec{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+  .rec input{width:130px} .rec .n{width:80px}
+  .presets{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+
+  .advbox{margin-top:22px;border:1px solid var(--line);border-radius:14px;background:#fff}
+  .advbox>summary{padding:11px 16px;cursor:pointer;font-weight:700;font-size:13px;color:var(--gray);
+                  list-style:none;display:flex;align-items:center;gap:8px;user-select:none}
+  .advbox>summary::-webkit-details-marker{display:none}
+  .advbox>summary::before{content:"▸";transition:.15s;display:inline-block}
+  .advbox[open]>summary::before{transform:rotate(90deg)}
+  .advbox>summary:hover{color:var(--purple)}
+  .advbox .grid{padding:2px 16px 16px}
+  .empty{padding:40px 10px;color:var(--gray);text-align:center}
+
+  footer{position:fixed;left:250px;right:0;bottom:0;padding:12px 22px;background:#fffc;
+          border-top:1px solid var(--line);backdrop-filter:blur(6px);display:flex;gap:10px;
+          align-items:center}
+  footer .sp{flex:1}
+
+  #toast{position:fixed;right:20px;bottom:80px;display:flex;flex-direction:column;gap:8px;z-index:50}
+  .t{background:#fff;border-left:4px solid var(--ok);border-radius:10px;padding:10px 16px;
+     box-shadow:0 6px 24px #b4a0c833;max-width:460px;font-size:13px;animation:in .2s}
+  .t.err{border-color:var(--bad)}
+  @keyframes in{from{opacity:0;transform:translateY(8px)}}
+
+  #modal{position:fixed;inset:0;background:#5c4a6844;display:none;align-items:center;
+         justify-content:center;z-index:100}
+  #modal .box{background:#fff;border-radius:16px;width:min(680px,92vw);max-height:80vh;
+              display:flex;flex-direction:column;box-shadow:0 20px 60px #5c4a6844}
+  #modal .hd{padding:16px 20px;border-bottom:1px solid var(--line);font-weight:800;
+             display:flex;align-items:center}
+  #modal .bd{padding:16px 20px;overflow:auto}
+  #modal .ft{padding:12px 20px;border-top:1px solid var(--line);text-align:right}
+  .ck{display:flex;gap:10px;padding:8px 0;border-bottom:1px dashed var(--line)}
+  .ck:last-child{border:none}
+  .ck .who{font-weight:700;width:110px;flex:none;font-family:Consolas,monospace}
+  .ck .ps{color:var(--bad);font-size:13px}
+  .ck .ps div{margin:2px 0}
+  .ck.ok .ps{color:var(--ok)}
+  code{background:#f7f1fb;padding:2px 6px;border-radius:6px;font-family:Consolas,monospace;
+       font-size:13px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🐷 猪种配置工具<span id="where"></span></h1>
+  <div class="sp"></div>
+  <button onclick="newSpecies()">＋ 新增猪种</button>
+  <button onclick="doCheck()">体检</button>
+  <button onclick="doSync()">同步词表</button>
+</header>
+
+<main>
+  <aside id="list"></aside>
+  <section>
+    <div class="drops">
+      <div class="drop big" id="dropImage">
+        <div class="ph"><b>卡片图 image.png</b><span>点这里或把图片拖进来</span>
+          <span>自动裁成 1400×600</span></div>
+        <span class="rm" onclick="removeImg(event,'image')">移除</span>
+      </div>
+      <div class="drop small" id="dropIcon">
+        <div class="ph"><b>图标</b><span>icon.png</span><span>512×512</span></div>
+        <span class="rm" onclick="removeImg(event,'icon')">移除</span>
+      </div>
+    </div>
+    <div id="form"></div>
+  </section>
+</main>
+
+<footer>
+  <span id="flagname" class="path"></span>
+  <div class="sp"></div>
+  <button onclick="copyJson()">复制 JSON</button>
+  <button class="danger" onclick="removeSpecies()">删除</button>
+  <button class="primary" onclick="save()">保存</button>
+</footer>
+
+<div id="toast"></div>
+<div id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="box">
+    <div class="hd" id="mTitle">标题</div>
+    <div class="bd" id="mBody"></div>
+    <div class="ft"><button onclick="closeModal()">关闭</button></div>
+  </div>
+</div>
+
+<script>
+let SPEC = [];          // 猪种列表
+let FIELDS = [];        // 字段 spec
+let DEFAULTS = {};
+let CUR = null;         // 当前编辑的 id
+let MODEL = {};         // 当前表单数据
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const stamp = () => Date.now();
+
+/* ---------------- 取值 / 赋值（支持 a.b 路径） ---------------- */
+function get(obj, path){ return path.split('.').reduce((o,k)=> (o==null?undefined:o[k]), obj); }
+function set(obj, path, v){
+  const ks = path.split('.'); const last = ks.pop();
+  let o = obj; ks.forEach(k => o = (o[k] = o[k] || {})); o[last] = v;
+}
+
+/* ---------------- 启动 ---------------- */
+async function boot(){
+  const st = await (await fetch('/api/state')).json();
+  FIELDS = st.fields; DEFAULTS = st.defaults; SPEC = st.species;
+  $('#where').textContent = st.assets;
+  $('#where').className = 'path';
+  renderList();
+  if (SPEC.length) selectSpecies(SPEC[0].id); else newSpecies();
+}
+
+/* ---------------- 左侧列表 ---------------- */
+function renderList(){
+  $('#list').innerHTML = SPEC.map(s => `
+    <div class="item ${s.id===CUR?'on':''}" onclick="selectSpecies('${s.id}')">
+      <img src="/api/thumb/${s.id}?t=${stamp()}" onerror="this.style.opacity=.15">
+      <div>
+        <div class="nm">${esc(s.name||s.id)}
+          <span class="badge ${s.type==='magic'?'magic':''}">${s.type==='magic'?'魔法':'普通'}</span>
+        </div>
+        <div class="sub">${s.id}${s._has_image?'':' · 缺图'}${s.shop_price?' · '+s.shop_price+'币':''}</div>
+        <div class="dt">📅 ${(s.obtain_dates||[]).length
+            ? esc(s.obtain_dates.join('  ')) : '不限时'}</div>
+      </div>
+    </div>`).join('') || '<div class="path" style="padding:10px">还没有猪种，点右上角新增</div>';
+}
+
+/* ---------------- 表单 ---------------- */
+function fieldHtml(f){
+  const v = get(MODEL, f.k);
+  const w = f.width || 'full';
+  const lab = `<label>${esc(f.label)}${f.hint?`<span class="hint">${esc(f.hint)}</span>`:''}</label>`;
+  if (f.t === 'check')
+    return `<div class="f ${w}"><div class="chk"><input type="checkbox" ${v?'checked':''}
+      onchange="upd('${f.k}',this.checked)"> <span>${esc(f.label)}</span></div></div>`;
+  if (f.t === 'select')
+    return `<div class="f ${w}">${lab}<select onchange="${f.k==='type'
+      ? "setType(this.value)" : `upd('${f.k}',this.value)`}">
+      ${f.opts.map(o=>`<option value="${o[0]}" ${v===o[0]?'selected':''}>${esc(o[1])}</option>`).join('')}
+      </select></div>`;
+  if (f.t === 'num')
+    return `<div class="f ${w}">${lab}<input type="number" step="${f.step||1}" value="${v??0}"
+      oninput="upd('${f.k}', this.value===''?0:Number(this.value))"></div>`;
+  if (f.t === 'list')
+    return `<div class="f ${w}">${lab}
+      <div class="chips">${(v||[]).map((x,i)=>
+        `<span class="chip">${esc(x)}<b onclick="delChip('${f.k}',${i})">✕</b></span>`).join('')}
+        <input placeholder="输入后回车添加" onkeydown="addChip(event,'${f.k}')"></div>
+      ${f.k==='obtain_dates' ? datePresets() + dateNow() : ''}</div>`;
+  if (f.t === 'recipe')
+    return `<div class="f ${w}">${lab}
+      <div id="recs">${recipeRows(get(MODEL,'craft'))}</div>
+      <button class="sm" onclick="addRec()">＋ 加一条材料</button></div>`;
+  return `<div class="f ${w}">${lab}<input value="${esc(v??'')}"
+    ${f.lock_edit&&CUR?'disabled':''} oninput="upd('${f.k}',this.value)"></div>`;
+}
+
+function renderForm(){
+  const isMagic = MODEL.type === 'magic';
+  const basic = FIELDS.filter(f => f.sec !== 'adv' && !(f.magic_only && !isMagic));
+  const adv   = FIELDS.filter(f => f.sec === 'adv');
+  const open  = document.querySelector('.advbox')?.open ? 'open' : '';
+  $('#form').innerHTML =
+    `<div class="grid">${basic.map(fieldHtml).join('')}</div>` +
+    `<details class="advbox" ${open}><summary>高级数值（一般不用动）</summary>
+       <div class="grid">${adv.map(fieldHtml).join('')}</div></details>`;
+}
+
+/* 切类型：普通/魔法 的 可被偷 / 可交易 / 配方 自动跟着走 */
+function setType(v){
+  MODEL.type = v;
+  if (v === 'magic'){
+    MODEL.stealable = false; MODEL.tradable = false;
+    if (!MODEL.craft || !Object.keys(MODEL.craft).length) MODEL.craft = {fish: 2, flying: 1};
+    if (!MODEL.team_bonus) MODEL.team_bonus = 0.15;
+    if (!MODEL.attack) MODEL.attack = 15;
+  } else {
+    MODEL.stealable = true; MODEL.tradable = true; MODEL.craft = null;
+  }
+  renderForm();
+}
+
+function datePresets(){
+  // 注意：onclick 里不能再嵌双引号，否则属性会被截断（这就是日期点不出来的原因）
+  return `<div class="presets">
+    <button class="sm" onclick="presetClear()">不限时</button>
+    <button class="sm" onclick="presetRange(0,1)">今天一天</button>
+    <button class="sm" onclick="presetRange(1,1)">明天一天</button>
+    <button class="sm" onclick="presetRange(0,7)">今天起 7 天</button>
+    <button class="sm" onclick="presetRange(1,30)">明天起 30 天</button>
+    <button class="sm" onclick="presetAnnual('12-25')">每年圣诞</button>
+  </div>`;
+}
+function today(offset){
+  const d = new Date();
+  d.setDate(d.getDate() + Number(offset || 0));
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+function dateNow(){
+  const d = MODEL.obtain_dates || [];
+  return `<div class="nowline">今天 <b>${today(0)}</b> ｜ 已配置：<b>${
+    d.length ? d.map(esc).join('、') : '不限时（随时可获取）'}</b></div>`;
+}
+function presetClear(){ MODEL.obtain_dates = []; renderForm(); toast('已设为 不限时'); }
+function presetRange(from, days){
+  const s = today(from), e = today(from + days - 1);
+  MODEL.obtain_dates = [s + '~' + e];
+  renderForm();
+  toast('已设为 ' + s + ' ~ ' + e);
+}
+function presetAnnual(md){ MODEL.obtain_dates = [md]; renderForm(); toast('已设为 ' + md + '（每年）'); }
+
+/* ---------------- chips ---------------- */
+function addChip(e, k){
+  if (e.key !== 'Enter') return;
+  e.preventDefault();
+  const v = e.target.value.trim(); if (!v) return;
+  const arr = get(MODEL, k) || []; arr.push(v); set(MODEL, k, arr);
+  e.target.value = ''; renderForm();
+}
+function delChip(k, i){
+  const arr = get(MODEL, k) || []; arr.splice(i,1); set(MODEL, k, arr); renderForm();
+}
+
+/* ---------------- 配方 ---------------- */
+function recipeRows(recipe){
+  const ent = Object.entries(recipe || {});
+  if (!ent.length) return '<div class="path">（空 = 不是合成猪）</div>';
+  return ent.map(([k,v],i)=>`<div class="rec">
+    <input value="${esc(k)}" oninput="updRecipe(${i},this.value,null)" placeholder="材料 id">
+    <span>×</span>
+    <input class="n" type="number" value="${v}" oninput="updRecipe(${i},null,this.value)">
+    <button class="sm danger" onclick="delRecipe(${i})">删</button></div>`).join('');
+}
+function addRec(){
+  const c = MODEL.craft || {};
+  c[''] = 1; MODEL.craft = c; renderForm();
+}
+function updRecipe(i, k, v){
+  const ent = Object.entries(MODEL.craft || {});
+  if (!ent[i]) return;
+  const out = {};
+  ent.forEach(([kk,vv],idx)=>{
+    let nk = idx===i && k!==null ? k : kk;
+    let nv = idx===i && v!==null ? Number(v||0) : vv;
+    if (nk) out[nk] = nv;
+  });
+  MODEL.craft = out;
+}
+function delRecipe(i){
+  const ent = Object.entries(MODEL.craft || {});
+  ent.splice(i,1);
+  const out = {}; ent.forEach(([k,v])=>out[k]=v);
+  MODEL.craft = out; renderForm();
+}
+
+/* ---------------- 选择 / 新建 ---------------- */
+function selectSpecies(id){
+  const s = SPEC.find(x => x.id === id); if (!s) return;
+  CUR = id;
+  MODEL = JSON.parse(JSON.stringify(s));
+  delete MODEL._folder; delete MODEL._has_image; delete MODEL._has_icon;
+  if (!MODEL.breed) MODEL.breed = JSON.parse(JSON.stringify(DEFAULTS.breed));
+  renderList(); renderForm(); renderDrops();
+  $('#flagname').textContent = '编辑中：' + id;
+}
+function newSpecies(){
+  CUR = null;
+  MODEL = JSON.parse(JSON.stringify(DEFAULTS));
+  renderList(); renderForm(); renderDrops();
+  $('#flagname').textContent = '新建猪种（还没保存）';
+}
+
+/* ---------------- 图片 ---------------- */
+function renderDrops(){
+  const has = CUR && SPEC.find(x=>x.id===CUR);
+  const big = $('#dropImage'), sm = $('#dropIcon');
+  const mk = (el, kind, file) => {
+    const ok = has && (kind==='image' ? has._has_image : has._has_icon);
+    el.innerHTML = (ok
+      ? `<img src="/api/thumb/${CUR}__${kind}?t=${stamp()}">`
+      : `<div class="ph"><b>${kind==='image'?'卡片图 image.png':'图标 icon.png'}</b>
+         <span>${has?'点这里或把图片拖进来':'先保存猪种再传图'}</span>
+         <span>${kind==='image'?'自动裁成 1400×600':'512×512'}</span></div>`)
+      + `<span class="rm" onclick="removeImg(event,'${kind}')">移除</span>`;
+  };
+  mk(big,'image'); mk(sm,'icon');
+}
+
+function bindDrop(el, kind){
+  el.onclick = () => {
+    if (!CUR) return toast('先保存猪种，再传图', true);
+    const i = document.createElement('input');
+    i.type='file'; i.accept='image/*';
+    i.onchange = () => i.files[0] && upload(kind, i.files[0]);
+    i.click();
+  };
+  el.ondragover = e => { e.preventDefault(); el.classList.add('over'); };
+  el.ondragleave = () => el.classList.remove('over');
+  el.ondrop = e => {
+    e.preventDefault(); el.classList.remove('over');
+    if (!CUR) return toast('先保存猪种，再传图', true);
+    const f = e.dataTransfer.files[0]; if (f) upload(kind, f);
+  };
+}
+
+function upload(kind, file){
+  const r = new FileReader();
+  r.onload = async () => {
+    const res = await (await fetch('/api/image', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: CUR, kind, data: r.result})})).json();
+    toast(res.msg || (res.ok?'已上传':'失败'), !res.ok);
+    if (res.ok){ await refresh(); renderDrops(); }
+  };
+  r.readAsDataURL(file);
+}
+function removeImg(e, kind){
+  e.stopPropagation();
+  toast('想删图就直接去 assets/' + CUR + '/' + kind + '.png 删（这里只做导入）', true);
+}
+
+/* ---------------- 保存 / 删除 ---------------- */
+function upd(k, v){ set(MODEL, k, v); }
+function collect(){
+  const d = JSON.parse(JSON.stringify(MODEL));
+  delete d._folder; delete d._has_image; delete d._has_icon;
+  if (!d.craft || !Object.keys(d.craft).length) d.craft = null;
+  if (!Array.isArray(d.aliases)) d.aliases = [];
+  d.aliases = d.aliases.filter(Boolean);
+  d.obtain_dates = (d.obtain_dates || []).filter(Boolean);
+  return d;
+}
+async function save(){
+  const d = collect();
+  if (!/^[a-z][a-z0-9_]*$/.test(d.id || ''))
+    return toast('id 只能英文小写字母/数字/下划线，且英文开头', true);
+  if (!d.name) return toast('名字不能空', true);
+  const res = await (await fetch('/api/save', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({id: d.id, data: d})})).json();
+  toast(res.msg, !res.ok);
+  if (res.ok){ CUR = d.id; await refresh(); selectSpecies(d.id); }
+}
+async function removeSpecies(){
+  if (!CUR) return toast('还没保存，没什么可删的', true);
+  if (!confirm('确定删除「' + CUR + '」？会连整个 assets/' + CUR + '/ 文件夹一起删掉。')) return;
+  const res = await (await fetch('/api/delete', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: CUR})})).json();
+  toast(res.msg, !res.ok);
+  if (res.ok){ CUR = null; await refresh(); SPEC.length ? selectSpecies(SPEC[0].id) : newSpecies(); }
+}
+function copyJson(){
+  navigator.clipboard.writeText(JSON.stringify(collect(), null, 2));
+  toast('JSON 已复制到剪贴板');
+}
+
+/* ---------------- 体检 / 词表 ---------------- */
+async function doCheck(){
+  const r = await (await fetch('/api/check')).json();
+  const body = r.items.map(it => `
+    <div class="ck ${it.problems.length?'':'ok'}">
+      <div class="who">${esc(it.id)}</div>
+      <div class="ps">${it.problems.length ? it.problems.map(p=>`<div>· ${esc(p)}</div>`).join('')
+                                            : '<div>✓ 没问题</div>'}</div>
+    </div>`).join('');
+  modal(`体检 · ${r.count} 个猪种${r.bad?`（${r.bad} 个要注意）`:'（全部通过）'}`,
+    body + `<div style="margin-top:14px" class="path">场景：${esc((r.scenes||[]).join('、')||'（无）')}
+    <br>词表：${esc((r.words||[]).join('、')||'（空）')}</div>`);
+}
+async function doSync(){
+  const r = await (await fetch('/api/sync', {method:'POST'})).json();
+  toast(r.msg || (r.ok?'已同步':'同步失败'), !r.ok);
+  if (r.ok) doCheck();
+}
+
+/* ---------------- 小工具 ---------------- */
+function modal(title, html){
+  $('#mTitle').textContent = title; $('#mBody').innerHTML = html; $('#modal').style.display='flex';
+}
+function closeModal(){ $('#modal').style.display='none'; }
+function toast(msg, err){
+  const el = document.createElement('div');
+  el.className = 't' + (err?' err':''); el.textContent = msg;
+  $('#toast').appendChild(el);
+  setTimeout(()=>el.remove(), 4200);
+}
+async function refresh(){
+  const st = await (await fetch('/api/state')).json();
+  SPEC = st.species; renderList();
+}
+
+bindDrop($('#dropImage'), 'image');
+bindDrop($('#dropIcon'), 'icon');
+boot();
+</script>
+</body>
+</html>

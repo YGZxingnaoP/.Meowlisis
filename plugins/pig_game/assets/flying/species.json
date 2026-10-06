@@ -1,0 +1,28 @@
+{
+  "id": "flying",
+  "name": "神奇飞猪",
+  "type": "base",
+  "aliases": [
+    "飞猪",
+    "神奇猪"
+  ],
+  "steal_rate": 0.15,
+  "coin_per_day": 2,
+  "breed": {
+    "enabled": true,
+    "base_prob": 0.2,
+    "amount": 1,
+    "cap": 40,
+    "aff_influence": 0.5
+  },
+  "attack": 10,
+  "team_bonus": 0.0,
+  "stealable": true,
+  "tradable": true,
+  "base_price": 10,
+  "shop_price": 24,
+  "trade_count_max": 5,
+  "craft": null,
+  "obtain_dates": [],
+  "death_prob": 0.1
+}

@@ -1,0 +1,33 @@
+{
+  "id": "gudu",
+  "name": "咕嘟猪",
+  "type": "magic",
+  "aliases": [
+    "咕嘟",
+    "咕嘟魔法猪"
+  ],
+  "steal_rate": 0,
+  "coin_per_day": 5,
+  "breed": {
+    "enabled": true,
+    "base_prob": 0.1,
+    "amount": 1,
+    "cap": 10,
+    "aff_influence": 0.5
+  },
+  "attack": 15,
+  "team_bonus": 0.15,
+  "stealable": false,
+  "tradable": false,
+  "base_price": 0,
+  "shop_price": 60,
+  "trade_count_max": 0,
+  "craft": {
+    "fish": 2,
+    "flying": 1
+  },
+  "obtain_dates": [
+    "2026-10-06~2026-12-01"
+  ],
+  "death_prob": 0
+}

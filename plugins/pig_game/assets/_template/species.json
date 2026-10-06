@@ -1,0 +1,35 @@
+{
+  "_doc": [
+    "猪种模板：加新猪种 = 复制本文件夹 → 改名成 <新id> → 改下面各项 → 重启插件。",
+    "_ 开头的文件夹不会被加载，所以这份模板放这不会生效。",
+    "材质：同目录下 image.png 就是卡片横幅 + QQ 附图（icon.png 预留小图标）。",
+    "材质路径不用写在这里；想用别的路径才加 \"assets\": {\"image\": \"别的/路径.png\"}。",
+    "type: base=普通猪 / magic=魔法猪。魔法猪要 craft + team_bonus，stealable/tradable 设 false。",
+    "craft: {材料id: 数量}，普通猪填 null。",
+    "obtain_dates: [] = 不限时；[\"12-25\"] = 每年 12-25；[\"2026-10-06~2026-12-01\"] = 时间段。",
+    "base_price: 玩家之间交易的估价基准（估价 = base_price × (1 + 好感/20)）。",
+    "shop_price: 「天降猪猪」商店卖多少金币一只。0 = 商店不上架这种猪。",
+    "最省事：直接开 tool\\启动工具.bat，界面上点。"
+  ],
+
+  "id": "dragon",
+  "name": "龙猪",
+  "type": "magic",
+  "aliases": ["龙", "龙猪猪"],
+
+  "coin_per_day": 5,
+  "attack": 15,
+  "steal_rate": 0.0,
+  "stealable": false,
+  "tradable": false,
+
+  "craft": {"fish": 2, "flying": 1},
+  "obtain_dates": [],
+
+  "team_bonus": 0.15,
+  "base_price": 0,
+  "shop_price": 0,
+  "trade_count_max": 0,
+  "death_prob": 0.0,
+  "breed": {"enabled": true, "base_prob": 0.1, "amount": 1, "cap": 10, "aff_influence": 0.5}
+}
