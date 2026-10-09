@@ -389,20 +389,13 @@ class MeowLoadAbstractMemory:
         return re.sub(r"\s+", "", str(item.get("event") or ""))
 
     def _select(self, ranked: List, limit: int) -> List[Dict]:
-        """挑选注入条目：先保证相关性保底，再按综合分补齐，并做文本去重"""
-        guarantee = max(0, int(self.config.summary_relevance_guarantee or 0))
+        """挑选注入条目：只取相关性达标的前若干条，并做文本去重"""
         selected, seen = [], set()
         for _total, relevance, item in ranked:
-            if len(selected) >= guarantee:
-                break
-            key = self._event_key(item)
-            if key in seen or relevance < self.RELEVANCE_THRESHOLD:
-                continue
-            seen.add(key)
-            selected.append(item)
-        for _total, _relevance, item in ranked:
             if len(selected) >= limit:
                 break
+            if relevance < self.RELEVANCE_THRESHOLD:
+                continue
             key = self._event_key(item)
             if key in seen:
                 continue

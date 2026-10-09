@@ -78,8 +78,10 @@ class AutoOriginCore:
 
         ai_name = AppConfig().ai_name
         guide = (
-            f"# 你是{ai_name}，你之前看到了一个视频，想和别人分享：\n"
-            f"视频的标题是{title}，有{length}，由{uploader}上传，内容是{content}"
+            f"# 你脑海里刚看过的视频\n"
+            f"标题是{title}，时长{length}，由{uploader}上传，内容是{content}\n"
+            f"这是你主动开口和大家说话，直接说出你最想说的那一句，不要复述视频信息，"
+            f"不要出现“好的”“我来分享”这类话。"
         )
 
         # system 提示词的话题/tags 筛选用视频的 topic 与 tags

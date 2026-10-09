@@ -30,6 +30,7 @@ class MeowUpdateAbstractMemory:
         self._loader = MeowLoadAbstractMemory()
         self._dedup = MeowDedup()
         self._archive = MeowArchive()
+        self._review = None
         self._last_philosophy_trigger = 0.0
 
     def _ensure_llm(self):
@@ -37,6 +38,13 @@ class MeowUpdateAbstractMemory:
         if self.llm is None:
             self.llm = self._create_llm()
         return self.llm
+
+    def _ensure_review(self):
+        """懒加载记忆审查器"""
+        if self._review is None:
+            from func.catbrain.AbstractMem.review.review_core import MeowMemoryReview
+            self._review = MeowMemoryReview()
+        return self._review
 
     def _create_llm(self):
         """按配置创建摘要独立 LLM 客户端"""
@@ -392,10 +400,15 @@ class MeowUpdateAbstractMemory:
         for event in events:
             action = event.pop("action", "new")
             if action == "new":
-                self._dedup._init_evidence(event, now_iso)
                 new_events.append(event)
             else:
                 changed = True
+        if new_events:
+            new_events, dropped = self._ensure_review().review(new_events, content)
+            if dropped:
+                self.log.info(f"记忆审查丢弃 {len(dropped)} 条")
+        for event in new_events:
+            self._dedup._init_evidence(event, now_iso)
         if new_events:
             data.extend(new_events)
             self.tag_store.append([t for e in new_events for t in (e.get("tags") or [])])

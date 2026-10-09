@@ -100,6 +100,39 @@ class SystemPromptBridge:
         prompt = re.sub(r"\n\n# [^\n]*铭记在心[\s\S]*?(?=\n\n# |\Z)", "", prompt)
         return prompt
 
+    @staticmethod
+    def _psyche_start(scope: str = "main"):
+        """确保对应场景的心理生成线程已启动"""
+        try:
+            if scope == "qq":
+                from func.toolbox.napcat.psyche.psyche_core import TBNapCatPsycheCore
+                TBNapCatPsycheCore().ensure_started()
+            else:
+                from func.psyche.psyche_core import MeowPsycheCore
+                MeowPsycheCore().ensure_started()
+        except Exception:
+            pass
+
+    @staticmethod
+    def _psyche_block(scope: str = "main") -> str:
+        """构建心理 markdown 块，读取失败或无内容时返回空串"""
+        try:
+            from func.pipeline.llm_psyche import LLMPsycheBridge
+            data = LLMPsycheBridge().get_psyche(scope)
+        except Exception:
+            return ""
+        if not data:
+            return ""
+        theme = str(data.get("theme", "") or "").strip()
+        content = [str(c).strip() for c in (data.get("content") or []) if str(c).strip()]
+        if not (theme or content):
+            return ""
+        lines = ["# 我心里装着的"]
+        if theme:
+            lines.append(theme)
+        lines.extend(content)
+        return "\n".join(lines)
+
     # ==================== 前置词（行为约束，放最前） ====================
     def get_front_prompt(self) -> str:
         """获取主链路前置词（行为约束，放 system prompt 最前）"""
@@ -148,7 +181,9 @@ class SystemPromptBridge:
         # 自定义后置词：被很多人戳，烦死了要骂他们
         post = "好多人在戳你，你觉得烦死了，骂他们！"
         now_block = self._builder._build_now() if self._builder and hasattr(self._builder, "_build_now") else ""
-        parts = [p for p in (front, now_block, post) if p]
+        self._psyche_start()
+        psyche = self._psyche_block()
+        parts = [p for p in (front, psyche, now_block, post) if p]
         return "\n\n".join(parts)
 
     def get_tool_prompt(self, username=None, current_message: str = "") -> str:
@@ -183,7 +218,9 @@ class SystemPromptBridge:
         if post:
             name = username or "用户"
             post = f"{post}\n你现在在和{name}说话"
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start()
+        psyche = self._psyche_block()
+        parts = [p for p in (front, psyche, body, post) if p]
         prompt = "\n\n".join(parts)
         # 破甲原则词注入（主线程）：读 msg_rulebreak 桥接，读后即清
         try:
@@ -219,7 +256,9 @@ class SystemPromptBridge:
         else:
             name = username or "用户"
             post = f"{post}\n你在回复{name}的弹幕"
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start()
+        psyche = self._psyche_block()
+        parts = [p for p in (front, psyche, body, post) if p]
         prompt = "\n\n".join(parts)
         return self._append_turtle_soup(prompt, "live")
 
@@ -245,7 +284,9 @@ class SystemPromptBridge:
         if post:
             name = username or "用户"
             post = f"{post}\n你现在在和{name}说话"
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start("qq")
+        psyche = self._psyche_block("qq")
+        parts = [p for p in (front, psyche, body, post) if p]
         prompt = "\n\n".join(parts)
         session_key = f"qq_private:{user_id}" if user_id else ""
         # 破甲原则词注入（QQ 私聊）：读 toolbox_rulebreak 桥接，读后即清
@@ -287,7 +328,9 @@ class SystemPromptBridge:
         post = self.get_post_prompt()
         if post:
             post = f"{post}\n你现在在QQ群【{group_name}】内和大家聊天"
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start("qq")
+        psyche = self._psyche_block("qq")
+        parts = [p for p in (front, psyche, body, post) if p]
         prompt = "\n\n".join(parts)
         session_key = f"qq_group:{group_id}" if group_id else ""
         # 破甲原则词注入（QQ 群聊）：读 toolbox_rulebreak 桥接，读后即清
@@ -330,7 +373,9 @@ class SystemPromptBridge:
         else:
             post = f"你现在在看{name}的屏幕内容，正在陪{name}"
 
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start()
+        psyche = self._psyche_block()
+        parts = [p for p in (front, psyche, body, post) if p]
         return "\n\n".join(parts)
 
     def get_active_prompt(self, cold_time, current_message: str = "",
@@ -346,7 +391,9 @@ class SystemPromptBridge:
         post = self.get_post_prompt()
         if post:
             post = f"{post}\n已经{cold_time}秒没人跟你说话了，你必须自己找话题说话"
-        parts = [p for p in (front, body, post) if p]
+        self._psyche_start()
+        psyche = self._psyche_block()
+        parts = [p for p in (front, psyche, body, post) if p]
         return "\n\n".join(parts)
 
     # ==================== 其它（供摘要/价值观等模块，不含前后置词） ====================

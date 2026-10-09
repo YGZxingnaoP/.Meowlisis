@@ -36,11 +36,16 @@ class DateCalendarLLM:
         return DeepSeekLLM(self.config)
 
     def remind(self, username, time_str, content):
-        prompt = SystemPromptBridge().get_system_prompt(username, "", mark_first=False)
-        guide = f"现在是{time_str}，你必须提醒{username}，{content}"
+        base = SystemPromptBridge().get_system_prompt(username, "", mark_first=False)
+        prompt = (
+            f"{base}\n\n"
+            f"【你此刻想到的事】现在是{time_str}，你想起了要提醒{username}：{content}\n"
+            f"这是你主动开口说话，第一句就是你要说给{username}听的话；不要复述提醒内容，"
+            f"不要出现“好的”“收到”“我这就”这类回应指令的话。"
+        )
         messages = [
             {"role": "system", "content": prompt},
-            {"role": "user", "content": guide},
+            {"role": "user", "content": f"提醒事项：{content}"},
         ]
         traceid = str(uuid.uuid4())
         output = Output(self.config, self.llm_data)
