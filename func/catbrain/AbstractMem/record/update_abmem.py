@@ -93,13 +93,13 @@ class MeowUpdateAbstractMemory:
         if not items:
             return ""
         items = items[-lines:]
-        return "【近期已记忆要点】\n" + "\n".join(f"- {d.get('event')}" for d in items)
+        return "【近期已记忆要点】\n" + self._render(items)
 
     def _build_messages(self, content: str, data=None) -> List[Dict]:
         """构建概括消息：摘要指令 + 角色提示词 + tags附件 + 近期记忆 + 待概括内容"""
         instruction = self._load_instruction().format(
             ai_name=AppConfig().ai_name,
-            max_events=int(self.config.summary_max_events or 0) or 10,
+            max_events=self.summary_tool.MAX_EVENTS,
         )
         system_text = instruction
         character_prompt = self._get_character_prompt()
@@ -236,11 +236,11 @@ class MeowUpdateAbstractMemory:
     def _scope_reply(self, scope: List[Dict]) -> str:
         """生成范围内候选记忆回复"""
         if not scope:
-            return "该话题与标签范围内没有已有记忆，请调用 judge_memory_relation 以 action=new 新建"
+            return "该话题与标签范围内没有已有记忆，action 填 new、target_id 留空即可"
         cap = self._render_cap()
         text = self._render(scope, cap)
         if len(scope) > cap:
-            text += f"\n（范围内共 {len(scope)} 条，此处仅列出前 {cap} 条，其余请用 grep_memories 按关键词检索）"
+            text += f"\n（范围内共 {len(scope)} 条，此处仅列出前 {cap} 条）"
         return "该话题与标签范围内的已有记忆：\n" + text
 
     def _render_cap(self) -> int:
@@ -259,9 +259,7 @@ class MeowUpdateAbstractMemory:
                   now_str: str, now_iso: str):
         """工具循环：归类、范围内检索、判定加强削弱或新建"""
         messages = self._build_messages(content, data)
-        tools = (self.summary_tool.build_tools()
-                 + self.summary_tool.build_grep_tool()
-                 + self.summary_tool.build_judge_tool())
+        tools = self.summary_tool.build_tools()
         grep_limit = int(self.config.summary_grep_limit or 0) or 10
         max_rounds = int(self.config.summary_tool_rounds or 0) or 80
         render_cap = self._render_cap()
@@ -290,34 +288,48 @@ class MeowUpdateAbstractMemory:
                 args = self.summary_tool.parse_arguments(tc.function.arguments)
                 reply = "已忽略"
                 if name == self.summary_tool.TOOL_NAME:
-                    if current is not None and save_reject < 2:
-                        save_reject += 1
-                        reply = "请先调用 judge_memory_relation 判定上一条事件，再输出新的概括"
-                    else:
-                        if current is not None:
-                            current["action"] = "new"
-                            scope, current, grep_used = [], None, 0
-                        save_reject = 0
-                        event = self._register_event(args, content)
+                    items = args.get("events") if isinstance(args, dict) else None
+                    if not isinstance(items, list) or not items:
+                        items = [args] if isinstance(args, dict) else []
+                    replies = []
+                    for item in items[:self.summary_tool.MAX_EVENTS]:
+                        event = self._register_event(item, content)
                         if event is None:
-                            reply = "参数不合法，请重新调用工具"
-                        else:
-                            event["time"] = now_str
-                            event["id"] = self._dedup.make_id(event)
-                            events.append(event)
-                            exist = lookup.get(event["id"])
-                            if exist is not None:
-                                self._dedup._apply_same(exist, event, now_iso)
-                                event["action"] = "origin"
-                                scope, current, grep_used = [], None, 0
-                                reply = "该事件与已有记忆完全一致，已加强"
-                            else:
-                                scope = self._scope(event, data + pending)
-                                pending.append(event)
-                                lookup[event["id"]] = event
-                                current, grep_used = event, 0
-                                event["action"] = "new"
-                                reply = self._scope_reply(scope)
+                            replies.append("参数不合法，请重新调用工具")
+                            continue
+                        event.pop("target_id", None)
+                        event["time"] = now_str
+                        event["id"] = self._dedup.make_id(event)
+                        events.append(event)
+                        exist = lookup.get(event["id"])
+                        if exist is not None and any(exist is p for p in pending):
+                            event["action"] = "origin"
+                            if isinstance(item, dict) and str(item.get("action") or "new") != "new":
+                                replies.append(self._apply_judge({
+                                    "action": str(item.get("action")),
+                                    "target_id": str(item.get("target_id") or "")
+                                }, exist, lookup, self._scope(exist, data + pending), now_iso))
+                            replies.append("本次已提交过该事件，已按你的判定更新")
+                            continue
+                        if exist is not None:
+                            self._dedup._apply_same(exist, event, now_iso)
+                            event["action"] = "origin"
+                            replies.append("该事件与已有记忆完全一致，已加强")
+                            continue
+                        scope = self._scope(event, data + pending)
+                        pending.append(event)
+                        lookup[event["id"]] = event
+                        event["action"] = "new"
+                        if isinstance(item, dict) and str(item.get("action") or "new") != "new":
+                            replies.append(self._apply_judge({
+                                "action": str(item.get("action")),
+                                "target_id": str(item.get("target_id") or "")
+                            }, event, lookup, scope, now_iso))
+                        replies.append(self._scope_reply(scope))
+                    if isinstance(items, list) and len(items) > self.summary_tool.MAX_EVENTS:
+                        replies.append(f"超过 {self.summary_tool.MAX_EVENTS} 条上限，只处理了前 {self.summary_tool.MAX_EVENTS} 条，请合并后重新提交")
+                    scope, current, grep_used = [], None, 0
+                    reply = "\n".join(replies) if replies else "已忽略"
                 elif name == self.summary_tool.GREP_TOOL_NAME:
                     if current is None:
                         reply = "请先调用 save_memory_summary 提供事件与归类"

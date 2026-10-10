@@ -11,6 +11,7 @@ class MeowSummaryTool:
     """摘要工具定义类"""
 
     TOOL_NAME = "save_memory_summary"
+    MAX_EVENTS = 6
     GREP_TOOL_NAME = "grep_memories"
     JUDGE_TOOL_NAME = "judge_memory_relation"
     RECALL_TOOL_NAME = "decide_abmem_recall"
@@ -64,40 +65,60 @@ class MeowSummaryTool:
             "type": "function",
             "function": {
                 "name": self.TOOL_NAME,
-                "description": "概括一条事件记忆并给出其话题与标签，每次调用只输出一个事件，可多次调用；系统会返回该话题与标签范围内的已有记忆",
+                "description": "一次性提交本段对话里的全部事件，同一件事只允许出现一条；系统会返回这些话题与标签范围内的已有记忆编号",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "event": {"type": "string", "description": "事件内容，50字以内，包含人物与具体事件"},
-                        "accuracy": {
-                            "type": "integer",
-                            "enum": self.ACCURACY_VALUES,
-                            "description": "概括置信度：完全确定5，有疑问3，严重质疑1"
-                        },
-                        "importance": {
-                            "type": "number",
-                            "description": "事件重要程度，满分10分，涉及价值观、用户爱好习惯等内容分数偏高",
-                            "minimum": 0,
-                            "maximum": 10
-                        },
-                        "tags": {
+                        "events": {
                             "type": "array",
-                            "items": {"type": "string"},
-                            "description": "事件标签短语列表，按重点从大到小排列，优先从已有tags附件选择",
-                            "maxItems": self.config.summary_tags_limit
-                        },
-                        "topics": {
-                            "type": "array",
-                            "items": {"type": "string", "enum": self.TOPICS},
-                            "description": "事件所属话题列表，仅从限定话题中选择，可多个"
-                        },
-                        "joint": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "该事件涉及的用户名列表（不含AI自己），可多人"
+                            "maxItems": self.MAX_EVENTS,
+                            "description": "事件列表，同一件事只占一条，能合并的必须合并",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "event": {"type": "string", "description": "事件内容，50字以内，包含人物与具体事件"},
+                                    "accuracy": {
+                                        "type": "integer",
+                                        "enum": self.ACCURACY_VALUES,
+                                        "description": "概括置信度：完全确定5，有疑问3，严重质疑1"
+                                    },
+                                    "importance": {
+                                        "type": "number",
+                                        "description": "事件重要程度，满分10分，涉及价值观、用户爱好习惯等内容分数偏高",
+                                        "minimum": 0,
+                                        "maximum": 10
+                                    },
+                                    "tags": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "事件标签短语列表，按重点从大到小排列，优先从已有tags附件选择",
+                                        "maxItems": self.config.summary_tags_limit
+                                    },
+                                    "topics": {
+                                        "type": "array",
+                                        "items": {"type": "string", "enum": self.TOPICS},
+                                        "description": "事件所属话题列表，仅从限定话题中选择，可多个"
+                                    },
+                                    "joint": {
+                                        "type": "array",
+                                        "items": {"type": "string"},
+                                        "description": "该事件涉及的用户名列表（不含AI自己），可多人"
+                                    },
+                                    "action": {
+                                        "type": "string",
+                                        "enum": self.ACTIONS,
+                                        "description": "与已有记忆相关时填 strengthen 或 weaken，确无相关填 new"
+                                    },
+                                    "target_id": {
+                                        "type": "string",
+                                        "description": "相关已有记忆的编号，action 为 new 时留空"
+                                    }
+                                },
+                                "required": ["event", "accuracy", "importance", "tags", "topics", "joint", "action"]
+                            }
                         }
                     },
-                    "required": ["event", "accuracy", "importance", "tags", "topics", "joint"]
+                    "required": ["events"]
                 }
             }
         }]
