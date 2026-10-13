@@ -83,7 +83,7 @@ class CatLearnLearning:
         content_path = os.path.join(task_dir, "content.txt")
         text = self._read_text(content_path)
         if not text.strip():
-            self._archive_task(batch_id, task_dir)
+            self._delete_task(task_dir)
             return 0
 
         search_keys = str(task_meta.get("search_keys", "") or "").strip()

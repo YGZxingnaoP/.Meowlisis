@@ -15,6 +15,7 @@ from func.catbrain.AbstractMem.process.tag_store import MeowTagStore
 from func.catbrain.AbstractMem.load_abmem import MeowLoadAbstractMemory
 from func.catbrain.AbstractMem.process.dedup import MeowDedup
 from func.catbrain.AbstractMem.process.archive import MeowArchive
+from func.catbrain.AbstractMem import joint_util
 
 
 class MeowUpdateAbstractMemory:
@@ -164,18 +165,18 @@ class MeowUpdateAbstractMemory:
         return v
 
     def _normalize_joint(self, joint, content) -> List[str]:
-        """规范化 joint：清洗后为空则程序化提取"""
+        """规范化 joint 为 [{id, nickname}]：清洗后为空则程序化提取"""
         if isinstance(joint, str):
             joint = [joint]
         ai_name = AppConfig().ai_name or "喵呜"
-        result = []
+        names = []
         for n in (joint or []):
             n = str(n).strip()
-            if n and n != ai_name and n not in result:
-                result.append(n)
-        if not result:
-            result = self._extract_joint(content)
-        return result
+            if n and n != ai_name and n not in names:
+                names.append(n)
+        if not names:
+            names = self._extract_joint(content)
+        return joint_util.normalize(names)
 
     def _clean_text(self, text: str) -> str:
         """清洗事件文本前缀"""

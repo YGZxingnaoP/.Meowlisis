@@ -148,6 +148,9 @@ class CatLearnCrawler:
         merged = "\n\n".join([
             f"【{d.get('title','')}】\n{d.get('content','')}" for d in details
         ])
+        if not merged.strip():
+            self.log.warning(f"task {task.get('task_id')} 无可写内容，跳过落盘")
+            return
         task_id = str(task.get("task_id", "0"))
         task_dir = os.path.join(self.web_result_dir, str(batch_id), task_id)
         os.makedirs(task_dir, exist_ok=True)

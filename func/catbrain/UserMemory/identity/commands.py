@@ -105,7 +105,6 @@ class IdentityCommands:
         if uid and uid != mine:
             if not self.store.is_temp(uid):
                 return f"这个{label}账号已经绑在 {uid} 名下了，请先解绑或改用其它账号"
-            # 目标账号还挂在临时身份上，说明就是你本人 → 直接转正
             uid = self.store.promote(uid)
         if not uid:
             uid = mine or self.store.ensure_temp(platform, account, nickname=name)

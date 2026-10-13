@@ -14,6 +14,7 @@ from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.AbstractMem.record.summary_tool import MeowSummaryTool
 from func.catbrain.AbstractMem.process.evidence import MeowEvidence
 from func.catbrain.AbstractMem.port import force_tool_call
+from func.catbrain.AbstractMem import joint_util
 from func.catbrain.txt_reader.jieba_segment import MeowJiebaSegmentTool
 from func.pipeline.short_memory import ShortMemory
 
@@ -268,11 +269,10 @@ class MeowLoadAbstractMemory:
         return best
 
     def _joint_similarity(self, item: Dict, username: str) -> float:
-        """计算 joint 相似度"""
-        joint = item.get("joint") or []
+        """计算 joint 相似度（编号或昵称命中都算）"""
         if not username:
             return 0.0
-        return 1.0 if username in joint else 0.0
+        return 1.0 if joint_util.match(item, joint_util.uid_of(username), username) else 0.0
 
     @staticmethod
     def _format_time(item: Dict) -> str:
@@ -418,7 +418,7 @@ class MeowLoadAbstractMemory:
         for item in self._select(ranked, limit):
             topics = "、".join(item.get("topics") or [])
             tags = "、".join(item.get("tags") or [])
-            joint = "、".join(item.get("joint") or [])
+            joint = joint_util.text(item)
             meta = f"话题:{topics}"
             if tags:
                 meta += f" | 标签:{tags}"

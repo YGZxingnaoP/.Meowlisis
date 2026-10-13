@@ -53,7 +53,7 @@ class CatLearnConfig:
         # ========== search Agent 配置 ==========
         agent = s.get('agent', {}) or {}
         # 单 task 工具调用最大轮数（AI 一直调工具时强制结束）
-        self.agent_max_rounds = int(agent.get('max_rounds', 5))
+        self.agent_max_rounds = int(agent.get('max_rounds', 10))
         # visit_url 单次回传正文截断长度（字符）
         self.agent_visit_max_chars = int(agent.get('visit_max_chars', 8000))
 

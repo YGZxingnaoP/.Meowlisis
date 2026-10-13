@@ -109,6 +109,10 @@ class CatLearnSearch:
         """单个 task：跑 Agent → 落盘 web_result/{batch_id}/{task_id}/"""
         result = self.agent.run(task)
 
+        if not str(result.get("content", "") or "").strip():
+            self.log.warning(f"task {task.get('task_id')} 状态 {result.get('status')} 无内容，跳过落盘")
+            return
+
         task_id = str(task.get("task_id", "0"))
         task_dir = os.path.join(self.crawler.web_result_dir, str(batch_id), task_id)
         os.makedirs(task_dir, exist_ok=True)

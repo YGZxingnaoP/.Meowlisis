@@ -4,6 +4,7 @@ import hashlib
 
 from func.catbrain.catbrain import MeowCatBrainConfig
 from func.catbrain.AbstractMem.process.evidence import MeowEvidence
+from func.catbrain.AbstractMem import joint_util
 
 
 class MeowDedup:
@@ -21,8 +22,7 @@ class MeowDedup:
 
     def make_id(self, event):
         """生成事件稳定主键（归一化文本 + 首个参与用户）"""
-        joint = event.get("joint") or []
-        owner = str(joint[0]).strip() if joint else ""
+        owner = joint_util.owner(event)
         raw = f"{self._norm_text(event.get('event', ''))}|{owner}"
         return "mem_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
@@ -44,7 +44,7 @@ class MeowDedup:
         item["accuracy"] = min(5, acc + self.config.accuracy_same_increment)
         self._merge_list(item, "tags", event.get("tags"))
         self._merge_list(item, "topics", event.get("topics"))
-        self._merge_list(item, "joint", event.get("joint"))
+        item["joint"] = joint_util.merge(item.get("joint"), event.get("joint"))
         try:
             old_imp = float(item.get("importance", 0) or 0)
             new_imp = float(event.get("importance", 0) or 0)

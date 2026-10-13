@@ -31,6 +31,7 @@ from func.catbrain.AbstractMem.load_abmem import MeowLoadAbstractMemory
 from func.catbrain.AbstractMem.record.summary_tool import MeowSummaryTool
 from func.catbrain.AbstractMem.process.dedup import MeowDedup
 from func.catbrain.AbstractMem.process.tag_store import MeowTagStore
+from func.catbrain.AbstractMem import joint_util
 
 # 归一化时剔除的空白与标点（与 dedup.py 保持一致）
 PUNCT_PATTERN = r"[\s。，！？、,.!?;；:：~～·…—\-—_\"'“”‘’（）()【】\[\]]+"
@@ -91,7 +92,7 @@ class MeowMemorySlimmer:
             base["time"] = item.get("time")
         base["tags"] = self._merge_list(base.get("tags"), item.get("tags"))
         base["topics"] = self._merge_list(base.get("topics"), item.get("topics"))
-        base["joint"] = self._merge_list(base.get("joint"), item.get("joint"))
+        base["joint"] = joint_util.merge(base.get("joint"), item.get("joint"))
         base["accuracy"] = int(max(self._num(base.get("accuracy")), self._num(item.get("accuracy"))))
         base["importance"] = max(self._num(base.get("importance")), self._num(item.get("importance")))
         be, ie = base.setdefault("evidence", {}), item.get("evidence") or {}
@@ -145,12 +146,7 @@ class MeowMemorySlimmer:
             topics = [str(t).strip() for t in (item.get("topics") or [])
                       if str(t).strip() in self.summary_tool.TOPICS]
             item["topics"] = topics or ["日常"]
-            joint = []
-            for j in (item.get("joint") or []):
-                j = str(j).strip()
-                if j and j not in joint:
-                    joint.append(j)
-            item["joint"] = joint
+            item["joint"] = joint_util.normalize(item.get("joint"))
             ev = item.get("evidence")
             if not isinstance(ev, dict):
                 ev = {}
@@ -301,14 +297,10 @@ class MeowMemorySlimmer:
                 tags.append(t)
         topics = [str(t).strip() for t in (raw.get("topics") or [])
                   if str(t).strip() in self.summary_tool.TOPICS]
-        joint = []
-        for j in (raw.get("joint") or []):
-            j = str(j).strip()
-            if j and j not in joint:
-                joint.append(j)
+        joint = joint_util.normalize(raw.get("joint"))
         if not joint:
             for x in items:
-                joint = self._merge_list(joint, x.get("joint"))
+                joint = joint_util.merge(joint, x.get("joint"))
         item = {
             "event": event,
             "accuracy": acc,
