@@ -145,6 +145,17 @@ class AutoOriginCore:
         from func.llm.config import LLMConfig
         return LLMConfig().short_term_rounds
 
+    @staticmethod
+    def _speaker_name(name):
+        """记录文件名可能是编号，换成统一昵称"""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            if len(str(name)) == 6 and str(name).isdigit():
+                return IdSignupBridge().nickname_of(str(name)) or str(name)
+        except Exception:
+            pass
+        return str(name)
+
     def _recent_speakers(self, limit):
         """从 .temp/*_record.txt 按修改时间倒序取最近说话人"""
         try:
@@ -155,7 +166,7 @@ class AutoOriginCore:
                 base = os.path.basename(f)
                 name = base[:-len("_record.txt")]
                 if name:
-                    speakers.append(name)
+                    speakers.append(self._speaker_name(name))
             return speakers[:limit]
         except Exception:
             self.log.exception("读取最近说话人失败")

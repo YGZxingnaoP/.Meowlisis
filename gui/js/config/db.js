@@ -74,7 +74,7 @@ Object.assign(Config, {
                 '每条消息提取 keys 后检索的知识库条数') +
             this._num('关键词触发检索条数', 'database.store.keyword_top_k', 15, 1, 50, 1,
                 '命中"知道/了解"关键词时检索的知识库条数') +
-            this._text('向量库目录', 'database.store.db_dir', '.DataBase',
+            this._text('向量库目录', 'database.store.db_dir', '.vendor/.DataBase',
                 'ChromaDB 持久化目录（项目根目录）');
         return h;
     },
@@ -88,7 +88,7 @@ Object.assign(Config, {
                 `<div class="help-text">${this._t('未读取到预填充配置（gui/tools/prefill_seed.json），请检查文件是否存在。')}</div>`;
         }
         let h = this._section('知识库预填充') +
-            `<div class="help-text">${this._t('选择数据来源站点并添加搜索词条（回车添加、点击 × 删除），点击「一键预填」后将模拟现有 search 模块：搜索 → 抓详情页正文 → 分块 → 向量化 → 入库。源文件归档到 .DataBase/raw_seed。')}</div>`;
+            `<div class="help-text">${this._t('选择数据来源站点并添加搜索词条（回车添加、点击 × 删除），点击「一键预填」后将模拟现有 search 模块：搜索 → 抓详情页正文 → 分块 → 向量化 → 入库。源文件归档到 .vendor/.DataBase/raw_seed。')}</div>`;
 
         siteKeys.forEach(site => {
             const cfg = sites[site] || {};

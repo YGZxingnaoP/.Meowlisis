@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 
 rem ============================================================
-rem  分享整合包（同样含运行环境 runtime .ComfyNode .Sovits .SenseVoice .RVC）
+rem  分享整合包（同样含运行环境 runtime .vendor/.ComfyNode .vendor/.Sovits .vendor/.SenseVoice .vendor/.RVC）
 rem  在开发文件之外，再去掉密钥、配置、运行数据和角色的私人内容
 rem  排除清单见下面那段，想留下哪一项就把对应那行 -x 删掉
 rem  注意：config.yml 被排除，包里带的是脱敏模板 config.example.yml；
@@ -32,7 +32,7 @@ if exist "%OUT%\%NAME%.zip" del /q "%OUT%\%NAME%.zip"
 
 pushd "%ROOT%"
 
-for %%D in (runtime .ComfyNode .Sovits .SenseVoice .RVC) do (
+for %%D in (runtime .vendor/.ComfyNode .vendor/.Sovits .vendor/.SenseVoice .vendor/.RVC) do (
   if not exist "%%D" echo [警告] 缺环境目录：%%D
 )
 
@@ -45,11 +45,11 @@ rem 想让它缩到托盘后台跑，就在下面这行加 -ibck（那样脚本�
  -x"config.yml" ^
  -x".temp\*" ^
  -x"logs\*" ^
- -x".DataBase\*" ^
- -x".NapCat\*" ^
- -x".NeteaseMusic\*" ^
- -x".phone\*" ^
- -x".desktopet\config.json" -x".desktopet\.run.log" ^
+ -x".vendor/.DataBase\*" ^
+ -x".vendor/.NapCat\*" ^
+ -x".vendor/.NeteaseMusic\*" ^
+ -x".vendor/.cam\*" ^
+ -x".vendor/.desktopet\config.json" -x".vendor/.desktopet\.run.log" ^
  -x"character\memory\*" ^
  -x"character\abstract_memory\*" ^
  -x"character\info\users_info\*" ^

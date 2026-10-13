@@ -4,17 +4,18 @@
 
 import os
 import json
+import re
 import sys
 import subprocess
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SENSEVOICE_DIR = os.path.join(BASE_DIR, ".SenseVoice")
+SENSEVOICE_DIR = os.path.join(BASE_DIR, ".vendor/.SenseVoice")
 VOICETEXTURE_DIR = os.path.join(SENSEVOICE_DIR, "voicetexture")
 SPEAKER_DB = os.path.join(VOICETEXTURE_DIR, "speaker_db.json")
 SPEAKER_ENABLED = os.path.join(VOICETEXTURE_DIR, "speaker_enabled.json")
 BUILD_SCRIPT = os.path.join(SENSEVOICE_DIR, "build_speaker_db.py")
 BUILD_LOG = os.path.join(VOICETEXTURE_DIR, "build_progress.log")
-RUNTIME_PYTHON = os.path.join(BASE_DIR, "runtime", "python.exe")
+RUNTIME_PYTHON = os.path.join(BASE_DIR, "runtime", "311", "python.exe")
 
 
 def _load_json(path, default):
@@ -35,13 +36,59 @@ def _save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
+SPEAKER_NAME_RE = re.compile(r"^(?P<nickname>.*?)\s*[（(]\s*(?P<uid>\d{6})\s*[)）]\s*$")
+
+
+def split_speaker_name(name):
+    """声纹名拆成 (昵称, 编号)：纯编号（000001）和「昵称(000001)」两种写法都认"""
+    text = str(name or "").strip()
+    if not text:
+        return "", ""
+    if len(text) == 6 and text.isdigit():
+        return "", text
+    match = SPEAKER_NAME_RE.match(text)
+    if not match:
+        return text, ""
+    nickname = match.group("nickname").strip() or text
+    return nickname, match.group("uid")
+
+
+def compose_speaker_name(nickname, uid=""):
+    """声纹文件名：填了编号就用编号，没填才退回昵称"""
+    uid = str(uid or "").strip()
+    if uid:
+        return uid
+    return str(nickname or "").strip()
+
+
+def _nickname_of(uid):
+    """顺手问一下这个编号叫什么（读不到就留空，声纹本身不依赖档案）"""
+    if not uid:
+        return ""
+    try:
+        if BASE_DIR not in sys.path:
+            sys.path.insert(0, BASE_DIR)
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().nickname_of(uid) or ""
+    except Exception:
+        return ""
+
+
 def list_speakers():
-    """返回声纹用户列表（含启用状态，默认启用）"""
+    """返回声纹用户列表（编号、昵称、启用状态，默认启用）"""
     db = _load_json(SPEAKER_DB, {})
     enabled = _load_json(SPEAKER_ENABLED, {})
     result = []
     for name in db.keys():
-        result.append({"name": name, "enabled": bool(enabled.get(name, True))})
+        nickname, uid = split_speaker_name(name)
+        if uid and not nickname:
+            nickname = _nickname_of(uid)
+        result.append({
+            "name": name,
+            "nickname": nickname,
+            "id": uid,
+            "enabled": bool(enabled.get(name, True)),
+        })
     return result
 
 
@@ -105,15 +152,15 @@ def get_build_status():
     return {"running": not done, "progress": progress}
 
 
-def create_speaker(name, wav_bytes):
-    """新建用户：保存 wav 为 用户名.wav 并立即提取声纹写入库"""
-    if not name:
-        raise ValueError("用户名不能为空")
-    # 清洗文件名
-    import re
-    safe = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(name)).strip()
+def create_speaker(nickname, wav_bytes, uid=""):
+    """新建用户：按「昵称(编号)」命名保存 wav 并立即提取声纹写入库"""
+    safe = compose_speaker_name(nickname, uid)
     if not safe:
-        raise ValueError("用户名不合法")
+        raise ValueError("昵称不能为空")
+    # 清洗文件名
+    safe = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(safe)).strip()
+    if not safe:
+        raise ValueError("昵称不合法")
     wav_path = os.path.join(VOICETEXTURE_DIR, f"{safe}.wav")
     os.makedirs(VOICETEXTURE_DIR, exist_ok=True)
     with open(wav_path, "wb") as f:

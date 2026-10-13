@@ -572,11 +572,11 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             this._check('独立引擎窗口', 'flux_painter.comfy.engine_window', true) +
             this._check('画板实时进度（阶段/百分比/步进）', 'flux_painter.progress_detail', true) +
             this._section('运行环境与路径（改后需重启绘画引擎）') +
-            this._text('内核目录', 'flux_painter.comfy.comfy_node_dir', '.ComfyNode') +
-            this._text('输出目录', 'flux_painter.comfy.output_dir', '.ComfyNode/output') +
+            this._text('内核目录', 'flux_painter.comfy.comfy_node_dir', '.vendor/.ComfyNode') +
+            this._text('输出目录', 'flux_painter.comfy.output_dir', '.vendor/.ComfyNode/output') +
             this._text('内核解释器（须指向装了 torch 的 python）',
                 'flux_painter.comfy.internal_python', '') +
-            this._text('内核 main.py（备用，当前版本固定用 .ComfyNode/ComfyUI/main.py）',
+            this._text('内核 main.py（备用，当前版本固定用 .vendor/.ComfyNode/ComfyUI/main.py）',
                 'flux_painter.comfy.internal_main', '') +
             this._section('记忆与归档') +
             this._check('记录绘画记忆', 'flux_painter.memory_enabled', true) +
@@ -658,7 +658,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 <textarea data-path="flux_painter.negative_prompt" rows="4"
                     style="width:100%;font-family:inherit;font-size:13px;">${negCur}</textarea></div>` +
             this._wordTagEditor('风格化触发词（回车添加，空=不限制）', 'flux_painter.style_on_keywords', [],
-                '需求里出现这些词时，从 .ComfyNode/artist/data.js 画师库随机抽 1 个画师') +
+                '需求里出现这些词时，从 .vendor/.ComfyNode/artist/data.js 画师库随机抽 1 个画师') +
             `<div class="form-group"><label>${this._t('画师站列表（每行：名称 | URL，可用 {id}/{name} 占位）')}</label>
                 <textarea data-path="flux_painter.artist_sources" rows="3"
                     style="width:100%;font-family:inherit;font-size:13px;">${srcCur}</textarea></div>` +
@@ -833,7 +833,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 { value: 'pass', label: 'pass（放行）' }
             ], 'dm') +
             this._text('检测模式名', 'flux_painter.nsfw_check.mode', 'nudenet') +
-            this._text('模型路径', 'flux_painter.nsfw_check.model_path', '.ComfyNode/nsfw/nudenet.onnx') +
+            this._text('模型路径', 'flux_painter.nsfw_check.model_path', '.vendor/.ComfyNode/nsfw/nudenet.onnx') +
             this._text('模型下载源', 'flux_painter.nsfw_check.model_url',
                 'https://huggingface.co/vladmandic/nudenet/resolve/main/nudenet.onnx') +
             `</div>`;
@@ -841,9 +841,9 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
         // ===== 工作流与路径 =====
         h += `<div class="tab-content" data-tab-content="flux_engine">` +
             this._section('工作流与数据路径（改后需重启绘画引擎）') +
-            this._text('工作流文件', 'flux_painter.comfy.workflow_file', '.ComfyNode/node/workflow.json') +
-            this._text('提示词参考目录', 'flux_painter.comfy.prompt_reference_dir', '.ComfyNode/prompt_reference') +
-            this._text('画师数据', 'flux_painter.comfy.artist_data', '.ComfyNode/artist/data.js') +
+            this._text('工作流文件', 'flux_painter.comfy.workflow_file', '.vendor/.ComfyNode/node/workflow.json') +
+            this._text('提示词参考目录', 'flux_painter.comfy.prompt_reference_dir', '.vendor/.ComfyNode/prompt_reference') +
+            this._text('画师数据', 'flux_painter.comfy.artist_data', '.vendor/.ComfyNode/artist/data.js') +
             `</div>`;
         return h;
     },

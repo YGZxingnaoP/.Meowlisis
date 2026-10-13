@@ -4,10 +4,10 @@
 # 默认 dry-run（只预览不写入）；--apply 才落盘，写入前整体备份到 _backup/cleanup_<时间戳>/
 #
 # 用法：
-#   runtime\python.exe func\catbrain\AbstractMem\cleanup_mem.py                        # 预览
-#   runtime\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --no-llm       # 规则清理（默认不做重要度过滤）
-#   runtime\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --llm          # 规则+LLM语义归纳
-#   runtime\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --min-importance=5   # 可选：开启重要度过滤
+#   runtime\311\python.exe func\catbrain\AbstractMem\cleanup_mem.py                        # 预览
+#   runtime\311\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --no-llm       # 规则清理（默认不做重要度过滤）
+#   runtime\311\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --llm          # 规则+LLM语义归纳
+#   runtime\311\python.exe func\catbrain\AbstractMem\cleanup_mem.py --apply --min-importance=5   # 可选：开启重要度过滤
 
 import os
 import re

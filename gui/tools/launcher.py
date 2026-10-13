@@ -59,36 +59,36 @@ SERVICES = {
         'name': 'SenseVoice', 'endpoint': 'start_sensevoice',
         'log': 'logs/svc_sensevoice.log', 'cmdline': ['.SenseVoice'], 'desc': '语音识别 + 声纹',
         'launch': {'kind': 'bat_or_py',
-                   'bat': '.SenseVoice/start.bat',
-                   'script': '.SenseVoice/server/sensevoice_server.py',
-                   'cwd': '.SenseVoice'},
+                   'bat': '.vendor/.SenseVoice/start.bat',
+                   'script': '.vendor/.SenseVoice/server/sensevoice_server.py',
+                   'cwd': '.vendor/.SenseVoice'},
     },
     'napcat': {
         'name': 'NapCat', 'endpoint': 'start_napcat',
         'log': 'logs/svc_napcat.log', 'cmdline': ['NapCatWinBootMain'], 'desc': 'QQ 机器人',
-        'launch': {'kind': 'bat', 'bat': '.NapCat/NapCat.Shell/napcat.quick.bat',
-                   'cwd': '.NapCat/NapCat.Shell'},
+        'launch': {'kind': 'bat', 'bat': '.vendor/.NapCat/NapCat.Shell/napcat.quick.bat',
+                   'cwd': '.vendor/.NapCat/NapCat.Shell'},
     },
     'netease': {
         'name': '网易云搜歌', 'endpoint': 'start_netease',
         'log': 'logs/svc_netease.log', 'cmdline': ['.NeteaseMusic'], 'desc': '网易云搜歌服务',
-        'launch': {'kind': 'python', 'script': '.NeteaseMusic/server/server.py',
-                   'cwd': '.NeteaseMusic'},
+        'launch': {'kind': 'python', 'script': '.vendor/.NeteaseMusic/server/server.py',
+                   'cwd': '.vendor/.NeteaseMusic'},
     },
     'rvc': {
         'name': 'RVC 翻唱', 'endpoint': 'start_rvc',
         'log': 'logs/svc_rvc.log', 'cmdline': ['.RVC'], 'desc': 'RVC 翻唱服务',
-        'launch': {'kind': 'python', 'script': '.RVC/cover_server.py', 'cwd': '.RVC'},
+        'launch': {'kind': 'python', 'script': '.vendor/.RVC/cover_server.py', 'cwd': '.vendor/.RVC'},
     },
     'desktopet': {
         'name': '桌宠', 'endpoint': 'start_desktopet',
         'log': 'logs/svc_desktopet.log', 'cmdline': ['.desktopet'], 'desc': '桌宠',
-        'launch': {'kind': 'bat', 'bat': '.desktopet/start.bat', 'cwd': '.desktopet'},
+        'launch': {'kind': 'bat', 'bat': '.vendor/.desktopet/start.bat', 'cwd': '.vendor/.desktopet'},
     },
     'phone': {
         'name': '手机接口', 'endpoint': 'start_phone',
-        'log': 'logs/svc_phone.log', 'cmdline': ['.phone'], 'desc': '手机端接口服务',
-        'launch': {'kind': 'python', 'script': '.phone/serve.py', 'cwd': '.phone'},
+        'log': 'logs/svc_phone.log', 'cmdline': ['.cam'], 'desc': '手机端接口服务',
+        'launch': {'kind': 'python', 'script': '.vendor/.cam/serve.py', 'cwd': '.vendor/.cam'},
     },
 }
 
@@ -100,7 +100,7 @@ ORDER = ['main', 'painting', 'sovits', 'sensevoice', 'napcat', 'netease', 'rvc',
 # ============================================================================
 def python_exe(base: Path) -> str:
     """优先用主项目自带 runtime 解释器（依赖齐全），否则回退当前解释器"""
-    runtime_python = Path(base) / "runtime" / "python.exe"
+    runtime_python = Path(base) / "runtime" / "311" / "python.exe"
     return str(runtime_python) if runtime_python.exists() else sys.executable
 
 
@@ -225,7 +225,7 @@ def build_command(key: str, base):
         return [python_exe(base), str(script)], cwd, env
 
     if kind == 'sovits':
-        d = base / '.Sovits'
+        d = base / '.vendor' / '.Sovits'
         api_path = d / 'api_v2.py'
         if not api_path.exists():
             return None, 'api_v2.py not found'

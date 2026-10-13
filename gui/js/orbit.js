@@ -432,13 +432,15 @@ const Orbit = {
         if (card) card.classList.remove('flipped');
     },
 
-    /** 椭圆轨道定位 + 景深缩放（uniform scale，不会把卡拉斜） */
-    _place(el, baseAngle, rotDeg, RX, RY) {
+    /** 椭圆轨道定位 + 景深缩放（uniform scale，不会把卡拉斜）+ 惯性倾角 */
+    _place(el, baseAngle, rotDeg, RX, RY, tiltDeg) {
         const a = baseAngle + rotDeg * Math.PI / 180;
         const depth = Math.cos(a);
         const sc = this.CFG.SCALE_MIN + (depth + 1) / 2 * this.CFG.SCALE_SPAN;
-        el.style.transform = 'translate3d(' + (RX * Math.sin(a)).toFixed(1) + 'px, ' +
-                             (RY * Math.cos(a)).toFixed(1) + 'px, 0) scale(' + sc.toFixed(3) + ')';
+        let tf = 'translate3d(' + (RX * Math.sin(a)).toFixed(1) + 'px, ' +
+                 (RY * Math.cos(a)).toFixed(1) + 'px, 0) scale(' + sc.toFixed(3) + ')';
+        if (tiltDeg) tf += ' rotate(' + tiltDeg.toFixed(2) + 'deg)';
+        el.style.transform = tf;
         el.style.zIndex = String(Math.round((depth + 1) * 50 + 5));
         el.style.setProperty('--inv', (1 / sc).toFixed(3));
     },
@@ -715,24 +717,52 @@ const Orbit = {
         let lastX = 0;
         let velocity = 0;
         let rafId = null;
+        let spin = 0;        // 当前角速度（度/帧），驱动卡片倾角
+        let tilt = 0;        // 当前倾角（度）
+        let tiltVel = 0;     // 倾角速度（弹簧用）
+        let tickId = null;   // 倾角弹簧的动画句柄
+        const TILT_GAIN = 0.55;
+        const TILT_MAX = 7;
+        const TILT_STIFF = 0.03;    // 弹簧刚度：越小摆动越慢
+        const TILT_DAMP = 0.94;     // 阻尼：越大摇晃越久，越小收敛越快
 
-        const apply = () => {
+        const place = () => {
             // 启动轨道展开时，拖空白转的是启动轨道（外环此时是暗的，转了也看不见）
             if (deckName === 'outer' && this.launcherOpen) { this._syncLauncher(); return; }
             const d = this._deck[deckName];
             if (!d) return;
-            d.els.forEach(el => this._place(el, el._ang, getRot(), d.radius[0], d.radius[1]));
+            const r0 = d.radius[0], r1 = d.radius[1];
+            d.els.forEach(el => this._place(el, el._ang, getRot(), r0, r1, tilt));
+        };
+
+        // 倾角走弹簧：目标 = 角速度，松手后带左右摇晃地回到 0
+        const tick = () => {
+            const target = Math.max(-TILT_MAX, Math.min(TILT_MAX, -spin * TILT_GAIN));
+            tiltVel = (tiltVel + (target - tilt) * TILT_STIFF) * TILT_DAMP;
+            tilt += tiltVel;
+            place();
+            const lively = dragging || rafId !== null || Math.abs(tilt) > 0.05 || Math.abs(tiltVel) > 0.05;
+            if (lively) { tickId = requestAnimationFrame(tick); return; }
+            tilt = 0;
+            tiltVel = 0;
+            place();
+            tickId = null;
+            this._setAnim(true);
+        };
+
+        const wake = () => {
+            if (tickId === null) {
+                this._setAnim(false);
+                tickId = requestAnimationFrame(tick);
+            }
         };
 
         const inertia = () => {
             setRot(getRot() + velocity);
+            spin = velocity;
             velocity *= 0.92;          // 惯性衰减
-            apply();
-            if (Math.abs(velocity) < 0.05) {
-                rafId = null;
-                this._setAnim(true);
-                return;
-            }
+            wake();
+            if (Math.abs(velocity) < 0.05) { rafId = null; spin = 0; return; }
             rafId = requestAnimationFrame(inertia);
         };
 
@@ -740,9 +770,10 @@ const Orbit = {
             if (!dragging) return;
             const dx = e.clientX - lastX;
             velocity = dx * 0.35;
+            spin = dx * 0.3;
             lastX = e.clientX;
             setRot(getRot() + dx * 0.3);
-            apply();
+            wake();
             if (Math.abs(dx) > 5) this.suppressClick = true;
         };
 
@@ -753,7 +784,8 @@ const Orbit = {
             setTimeout(() => { this.suppressClick = false; }, 50);
             if (rafId !== null) cancelAnimationFrame(rafId);
             if (Math.abs(velocity) > 0.05) rafId = requestAnimationFrame(inertia);
-            else { rafId = null; this._setAnim(true); }
+            else { rafId = null; spin = 0; }
+            wake();
         };
 
         container.addEventListener('mousedown', (e) => {
@@ -762,9 +794,10 @@ const Orbit = {
             dragging = true;
             lastX = e.clientX;
             velocity = 0;
-            this.suppressClick = false;
-            this._setAnim(false);
+            spin = 0;
             if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+            this.suppressClick = false;
+            wake();
             e.preventDefault();
             document.addEventListener('mousemove', onMove);
             document.addEventListener('mouseup', onUp);

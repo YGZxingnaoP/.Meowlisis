@@ -131,6 +131,35 @@ class SenseVoiceManager:
             self.log.info(f"   说话人: {spk_name}, 置信度: {spk_score:.3f}")
             await self._handle_result(text, spk_name, spk_score)
 
+    @staticmethod
+    def speaker_allowed(spk_name, targets):
+        """白名单校验：声纹名和配置里写的一样就通过
+
+        声纹文件名用编号（000001），配置里一般写昵称（YGZ醒脑片），
+        两边随便写哪边都认——编号认昵称、昵称认编号都试一遍。
+        """
+        wanted = [str(t).strip() for t in (targets or []) if str(t).strip()]
+        if not wanted:
+            return False
+        name = str(spk_name or "").strip()
+        if not name:
+            return False
+        if name in wanted:
+            return True
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            bridge = IdSignupBridge()
+            if len(name) == 6 and name.isdigit():
+                nickname = bridge.nickname_of(name)
+                if nickname and nickname in wanted:
+                    return True
+            uid = bridge.id_by_name(name)
+            if uid and uid in wanted:
+                return True
+        except Exception:
+            pass
+        return False
+
     async def _handle_result(self, text: str, spk_name: str, spk_score: float):
         """说话人验证并按说话人合并断句"""
         if not text.strip():
@@ -146,7 +175,7 @@ class SenseVoiceManager:
                 self.log.exception("写入用户字幕失败")
 
         if self.speaker_verify:
-            if spk_name not in self.config.target_speakers:
+            if not self.speaker_allowed(spk_name, self.config.target_speakers):
                 self.log.warning(f"⚠️ 说话人 '{spk_name}' 不在目标列表中 {self.config.target_speakers}，忽略")
                 return
             if spk_score < self.config.speaker_threshold:
@@ -157,6 +186,13 @@ class SenseVoiceManager:
         else:
             username = self.username or '手机用户'
             self.log.info(f"✅ 跳过声纹验证，用户名: {username}")
+
+        # 声纹登记为当前说话人：声纹名写编号就用编号，否则查声纹绑定，再退回原名
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            username = IdSignupBridge().voice_begin(username)
+        except Exception:
+            self.log.exception("登记声纹说话人失败")
 
         # ASR 字幕：识别内容推字幕服务器（桌面字幕顶部人名；保持原逻辑——声纹通过后显示）
         try:

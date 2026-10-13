@@ -33,8 +33,13 @@ class TBDanmakuReply:
 
     # ==================== 消费入口 ====================
     def consume(self):
-        # 消费一次：SC 优先，普通弹幕先选取再分发
+        # 消费一次：先处理绑定指令（文字弹幕回，不进 TTS），SC 优先，普通弹幕先选取再分发
         try:
+            # 0. 绑定指令优先：命中即用文字弹幕回，并把该条移出队列
+            from func.toolbox.danmaku.identity.bili_cmd import TBDanmakuIdentityCmd
+            if TBDanmakuIdentityCmd().handle_queue(self.receiver):
+                return
+
             # 1. SC 优先
             sc = self.receiver.pop_sc()
             if sc:
@@ -53,6 +58,12 @@ class TBDanmakuReply:
             if not picked:
                 self.receiver.clear_danmaku()
                 return
+
+            # 2.5 统一身份：逐条登记发送者并换成统一昵称（没绑定原样）
+            from func.pipeline.id_signup import IdSignupBridge
+            for d in picked:
+                d["username"] = IdSignupBridge().begin(
+                    "bili", d.get("uid", ""), d.get("username", "用户"))
 
             # 3. 海龟汤游玩阶段：单条走判定，统一回复走主 LLM
             if self._is_turtle_soup_active():
@@ -171,7 +182,8 @@ class TBDanmakuReply:
         )
 
     def _reply_single(self, d: dict):
-        username = d.get("username", "用户")
+        from func.pipeline.id_signup import IdSignupBridge
+        username = IdSignupBridge().begin("bili", d.get("uid", ""), d.get("username", "用户"))
         content = d.get("content", "")
         wrapped = f"【弹幕】{username}: {content}"
         read_text = ""
@@ -186,7 +198,8 @@ class TBDanmakuReply:
 
     # ==================== SC 回复 ====================
     def _reply_sc(self, sc: dict):
-        username = sc.get("username", "用户")
+        from func.pipeline.id_signup import IdSignupBridge
+        username = IdSignupBridge().begin("bili", sc.get("uid", ""), sc.get("username", "用户"))
         content = sc.get("content", "")
         read_text = self.read_aloud.render_sc(username, content)
 

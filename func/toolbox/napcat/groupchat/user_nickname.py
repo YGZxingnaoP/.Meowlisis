@@ -18,7 +18,7 @@ class TBUserNicknameMap:
     优先级：profile_name（手动绑定/稳定的用户档案昵称） > card（群名片） > nickname（QQ 昵称）
     """
 
-    MAP_PATH = os.path.join(".NapCat", "user_nickname_map.json")
+    MAP_PATH = os.path.join(".vendor", ".NapCat", "user_nickname_map.json")
 
     def __init__(self):
         self.log = DefaultLog().getLogger()

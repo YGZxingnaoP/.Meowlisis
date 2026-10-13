@@ -8,8 +8,8 @@ r"""主界面背景图生成 —— 自动拉起本地内置 ComfyUI 出图，�
   千万别把模糊加到 .container 上——那里面全是会动的卡片，会每帧重算 → 掉帧。
 
 用法（从哪跑都行，脚本自己 chdir 到项目根）：
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\gen_bg_main.py --check
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\gen_bg_main.py
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\gen_bg_main.py --check
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\gen_bg_main.py
     ... --size 2560x1440          按你的屏幕分辨率出（默认 1920x1080）
     ... --seed 12345              固定种子，不满意就换
     ... --out  D:\...\main.jpg    自定义输出位置

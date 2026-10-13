@@ -47,6 +47,13 @@ class TBNapCatEventHandler:
                     if TBTurtleSoupCore().route_qq_private(str(_uid or ""), _text.strip()):
                         self.log.info(f"[NapCat] 海龟汤拦截命中，消费: {_text[:20]}")
                         return
+                    # 绑定指令（身份表）：命中即回结果并吃掉这条消息
+                    from func.toolbox.napcat.identity.qq_cmd import TBNapcatIdentityCmd
+                    if TBNapcatIdentityCmd().handle_private(
+                            str(_uid or ""), _text.strip(),
+                            str((event.get("sender") or {}).get("nickname") or "")):
+                        self.log.info(f"[NapCat] 私聊绑定指令命中，消费: {_text[:20]}")
+                        return
             except Exception:
                 pass
             # 私聊回复开关
@@ -235,6 +242,17 @@ class TBNapCatEventHandler:
             if self.get_group_message.in_blacklist(group_name):
                 self.log.info(f"[NapCat群聊] 群 {group_name}({group_id}) 命中黑名单，跳过")
                 return
+            # 绑定指令（身份表）：黑名单之后，只在被 @ 时处理，群里只放开查看与绑定类
+            try:
+                from func.toolbox.napcat.identity.qq_cmd import TBNapcatIdentityCmd
+                sender = (event.get("sender") or {})
+                if TBNapcatIdentityCmd().handle_group(
+                        str(parsed.get("user_id") or ""), group_id, str(parsed.get("text") or ""),
+                        str(sender.get("nickname", "")), bool(parsed.get("at_self"))):
+                    self.log.info("[NapCat] 群绑定指令命中，已消费")
+                    return
+            except Exception:
+                self.log.exception("群绑定指令处理异常")
             from func.toolbox.toolbox_core import TBoxCore
             TBoxCore().receive_group(parsed)
         except Exception:

@@ -341,7 +341,7 @@ def lan_ip():
 
 if __name__ == '__main__':
     print('=' * 58)
-    print('  喵呜手机界面服务 (.phone)')
+    print('  喵呜手机界面服务 (.cam)')
     print('=' * 58)
     ip = lan_ip()
     cert = ensure_cert()

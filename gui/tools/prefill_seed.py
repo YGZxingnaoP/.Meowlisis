@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # gui/tools/prefill_seed.py
-# 用法：runtime\python.exe gui\tools\prefill_seed.py [--no-reset] [--site mcmod]
+# 用法：runtime\311\python.exe gui\tools\prefill_seed.py [--no-reset] [--site mcmod]
 
 import os
 import sys

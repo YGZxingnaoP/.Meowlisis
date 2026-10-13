@@ -33,20 +33,20 @@ config.yml
 *.ico
 
 #内置Sovits
-.Sovits/FFmpeg
-.Sovits/GPT_SoVITS
-.Sovits/GPT_weights_v2Pro/*.ckpt
-.Sovits/SoVITS_weights_v2Pro/*.pth
+.vendor/.Sovits/FFmpeg
+.vendor/.Sovits/GPT_SoVITS
+.vendor/.Sovits/GPT_weights_v2Pro/*.ckpt
+.vendor/.Sovits/SoVITS_weights_v2Pro/*.pth
 
 #内置SenseVoice
-.SenseVoice/localmodels
-.SenseVoice/env
+.vendor/.SenseVoice/localmodels
+.vendor/.SenseVoice/env
 
 #NapCat 运行时（QQ 本体 + Shell + 登录数据，不入库）
-#注意：.NapCat 目录本身保留，仅忽略运行时，EmoteLab 表情与 emote_scenes.json 仍需入库
-.NapCat/NapCat.Shell/
-.NapCat/EmoteLab
-.NapCat/*.exe
+#注意：.vendor/.NapCat 目录本身保留，仅忽略运行时，EmoteLab 表情与 emote_scenes.json 仍需入库
+.vendor/.NapCat/NapCat.Shell/
+.vendor/.NapCat/EmoteLab
+.vendor/.NapCat/*.exe
 
 #CatBrain 运行时数据
 .temp/
@@ -62,37 +62,37 @@ character/svg_paints/
 character/shared_videos/
 
 #DataBase数据
-.DataBase/
+.vendor/.DataBase/
 
 #内置NeteaseMusic（仅忽略隐私与运行时缓存，MusicLibrary 的 DLL 保留入库）
-.NeteaseMusic/server/ncm_cookie.json
-.NeteaseMusic/server/songs_cache/
-.NeteaseMusic/MusicLibrary/lib/
+.vendor/.NeteaseMusic/server/ncm_cookie.json
+.vendor/.NeteaseMusic/server/songs_cache/
+.vendor/.NeteaseMusic/MusicLibrary/lib/
 
 #内置RVC（模型权重与索引不入库，代码与目录结构保留）
-.RVC/assets
+.vendor/.RVC/assets
 
 #音频文件
 character/songs/meow_list
 character/songs/raw_list
 
 #桌宠相关
-.desktopet/Live2d_resource
-.desktopet/node_modules
+.vendor/.desktopet/Live2d_resource
+.vendor/.desktopet/node_modules
 
 #todolist
 todolist.md
 
 #内置绘图内核 ComfyNode（内核/模型/输出/画师库均不入库）
 #仅保留：参考 prompt_reference、节点 node、脚本 scripts、json
-.ComfyNode/*
-!.ComfyNode/comfyui_builtin.json
-!.ComfyNode/prompt_reference/
-!.ComfyNode/prompt_reference/*
-!.ComfyNode/node/
-!.ComfyNode/node/*
-!.ComfyNode/scripts/
-!.ComfyNode/scripts/*
+.vendor/.ComfyNode/*
+!.vendor/.ComfyNode/comfyui_builtin.json
+!.vendor/.ComfyNode/prompt_reference/
+!.vendor/.ComfyNode/prompt_reference/*
+!.vendor/.ComfyNode/node/
+!.vendor/.ComfyNode/node/*
+!.vendor/.ComfyNode/scripts/
+!.vendor/.ComfyNode/scripts/*
 
 # ========== 环境 / 解释器（体积巨大，可重建，不入库）==========
 runtime/
@@ -119,22 +119,22 @@ env/
 *.h5
 *.tflite
 *.index
-.ComfyNode/python_embeded/
-.ComfyNode/ComfyUI/
-.ComfyNode/models/
-.ComfyNode/output/
-.ComfyNode/nsfw/
-.ComfyNode/artist/
-.SenseVoice/localmodels/
-.SenseVoice/env/
-.Sovits/**/*.ckpt
-.Sovits/**/*.pth
-.RVC/**/*.pth
-.RVC/**/*.index
-.RVC/assets/
+.vendor/.ComfyNode/python_embeded/
+.vendor/.ComfyNode/ComfyUI/
+.vendor/.ComfyNode/models/
+.vendor/.ComfyNode/output/
+.vendor/.ComfyNode/nsfw/
+.vendor/.ComfyNode/artist/
+.vendor/.SenseVoice/localmodels/
+.vendor/.SenseVoice/env/
+.vendor/.Sovits/**/*.ckpt
+.vendor/.Sovits/**/*.pth
+.vendor/.RVC/**/*.pth
+.vendor/.RVC/**/*.index
+.vendor/.RVC/assets/
 
 # ========== 运行态 / 备份（含密钥，不入库）==========
 config.yml.bak*
 *.bak*
-.ComfyNode/engine.pid
-.ComfyNode/extra_model_paths.yaml
+.vendor/.ComfyNode/engine.pid
+.vendor/.ComfyNode/extra_model_paths.yaml

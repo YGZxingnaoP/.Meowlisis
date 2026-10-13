@@ -22,7 +22,7 @@ class TBGroupInfo:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBNapCatConfig()
-        self.dir = os.path.join(".NapCat", "group_info")
+        self.dir = os.path.join(".vendor", ".NapCat", "group_info")
         # 群名 -> AI 已发送条数（持久化到 .temp/group_records，重启不重置）
         self._count_dir = os.path.join(".temp", "group_records")
         self._count_path = os.path.join(self._count_dir, "group_sent_count.json")

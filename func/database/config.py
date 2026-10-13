@@ -98,7 +98,7 @@ class CatLearnConfig:
         # 关键词（知道/了解）触发时检索条数
         self.store_keyword_top_k = int(st.get('keyword_top_k', 15))
         # 向量库持久化目录（项目根目录）
-        self.store_db_dir = st.get('db_dir', '.DataBase')
+        self.store_db_dir = st.get('db_dir', '.vendor/.DataBase')
 
     # ==================== 工具方法 ====================
     def site_keys(self) -> list:

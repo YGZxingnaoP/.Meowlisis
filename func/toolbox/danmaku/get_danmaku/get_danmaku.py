@@ -34,13 +34,23 @@ class TBDanmakuReceiver:
         self._clear_sc_file()
 
     # ==================== 普通弹幕 ====================
-    def add_danmaku(self, username: str, content: str):
-        """新增一条普通弹幕到内存队列"""
+    def add_danmaku(self, username: str, content: str, uid: str = ""):
+        """新增一条普通弹幕到内存队列（带发送者 uid）"""
         content = (content or "").strip()
         if not content:
             return
         with self._lock:
-            self.danmaku_list.append({"username": username or "用户", "content": content})
+            self.danmaku_list.append({
+                "username": username or "用户",
+                "content": content,
+                "uid": str(uid or ""),
+            })
+
+    def remove_danmaku(self, item: dict):
+        """移除指定弹幕（绑定指令处理完调用）"""
+        with self._lock:
+            if item in self.danmaku_list:
+                self.danmaku_list.remove(item)
 
     def snapshot_danmaku(self) -> list:
         """获取当前普通弹幕队列快照（不消费）"""
@@ -53,12 +63,13 @@ class TBDanmakuReceiver:
             self.danmaku_list = []
 
     # ==================== SC ====================
-    def add_sc(self, username: str, content: str, msg_id: str = ""):
-        """新增一条 SC 并落盘"""
+    def add_sc(self, username: str, content: str, msg_id: str = "", uid: str = ""):
+        """新增一条 SC 并落盘（带发送者 uid）"""
         content = (content or "").strip()
         if not content:
             return
-        item = {"username": username or "用户", "content": content, "msg_id": str(msg_id or "")}
+        item = {"username": username or "用户", "content": content,
+                "msg_id": str(msg_id or ""), "uid": str(uid or "")}
         with self._lock:
             self.sc_list.append(item)
             self._write_sc_locked()

@@ -22,7 +22,7 @@ class TBEmoteChoose:
         self.llm_cfg = LLMConfig()
         self.napcat_cfg = TBNapCatConfig()
         self.emote_dir = self.napcat_cfg.emote_dir
-        self.scenes_path = os.path.join(".NapCat", "emote_scenes.json")
+        self.scenes_path = os.path.join(".vendor", ".NapCat", "emote_scenes.json")
 
     def _list_emotes(self) -> List[str]:
         """列出 EmoteLab 下可用表情名（去 .gif 后缀）"""

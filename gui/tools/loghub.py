@@ -313,7 +313,7 @@ def _taskkill(pid):
 # NapCat 专用：登录二维码 + WebUI 信息
 # ============================================================================
 def _napcat_root():
-    return _base() / '.NapCat' / 'NapCat.Shell'
+    return _base() / '.vendor/.NapCat' / 'NapCat.Shell'
 
 
 def _napcat_qr_path():

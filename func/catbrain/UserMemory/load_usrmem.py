@@ -41,25 +41,18 @@ class MeowLoadUserMemory:
         return name or "空格"
 
     def _user_path(self, username: str) -> str:
-        """返回指定用户的档案文件路径（用户名_latest.json）"""
-        return os.path.join(self.dir, f"{self._safe_name(username)}_latest.json")
+        """返回指定用户的档案路径（有编号走 character/userinfo/{编号}/profile.json，未绑定照旧）"""
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().profile_path_of(username)
 
     def exists(self, username: str) -> bool:
-        """判断指定用户是否已有信息档案"""
-        return bool(username) and os.path.exists(self._user_path(username))
+        """判断指定用户是否已有信息档案（新老位置都算）"""
+        return bool(username) and bool(self.load(username))
 
     def load(self, username: str) -> dict:
-        """按用户名读取信息档案（缺失或损坏时返回空 dict）"""
-        path = self._user_path(username)
-        if not os.path.exists(path):
-            return {}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, dict) else {}
-        except Exception:
-            self.log.exception(f"读取用户档案失败: {path}")
-            return {}
+        """按用户名读取信息档案：先读编号目录，读不到再回老目录（缺失或损坏时返回空 dict）"""
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().profile_of(username)
 
     def build(self, username: str) -> str:
         """按用户名构建用户记忆 markdown（标题说明当前说话人，首行显示用户名，跳过 unknown，好感度 0 保留）"""

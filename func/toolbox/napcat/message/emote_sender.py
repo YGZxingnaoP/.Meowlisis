@@ -62,7 +62,7 @@ class TBEmoteSender:
         self.log.info(f"发送表情: {name}（target={target_type}）")
 
     def _affinity(self, username: str) -> int:
-        """读取用户档案好感度（character/info/users_info/{username}_latest.json）"""
+        """读取用户档案好感度（走统一入口：绑定过编号就读编号目录）"""
         try:
             from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
             data = MeowLoadUserMemory().load(username)

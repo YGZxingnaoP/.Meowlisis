@@ -118,16 +118,10 @@ class DateBacklog:
         ]
 
     def _load_backlogs(self):
+        """取全部待办条目：编号目录 + 老目录都算"""
+        from func.pipeline.id_signup import IdSignupBridge
         result = []
-        if not os.path.isdir(self.backlog_dir):
-            return result
-        for fname in os.listdir(self.backlog_dir):
-            if not fname.endswith(".json"):
-                continue
-            data = self._load_json(os.path.join(self.backlog_dir, fname))
-            if not isinstance(data, dict):
-                continue
-            username = str(data.get("username") or "").strip() or fname[:-5]
+        for username, data in IdSignupBridge().backlog_entries():
             todos = data.get("to_do_list")
             if isinstance(todos, list):
                 for item in todos:

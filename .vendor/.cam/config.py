@@ -1,8 +1,8 @@
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(BASE_DIR)
-DESKTOPET_DIR = os.path.join(PROJECT_DIR, '.desktopet')
+PROJECT_DIR = os.path.dirname(os.path.dirname(BASE_DIR))
+DESKTOPET_DIR = os.path.join(PROJECT_DIR, '.vendor', '.desktopet')
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 CERT_DIR = os.path.join(BASE_DIR, 'cert')
 CERT_PEM = os.path.join(CERT_DIR, 'cert.pem')

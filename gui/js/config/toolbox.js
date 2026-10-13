@@ -40,7 +40,7 @@ Object.assign(Config, {
             this._check('启用表情发送', 'napcat.emote_enabled', true) +
             this._num('表情触发概率(%)', 'napcat.emote_probability', 30, 0, 100, 1,
                 '最终概率 = 配置概率 + 用户好感度') +
-            this._text('表情文件目录', 'napcat.emote_dir', '.NapCat/EmoteLab');
+            this._text('表情文件目录', 'napcat.emote_dir', '.vendor/.NapCat/EmoteLab');
     },
     napcat_group() {
         return this._section('NapCat 群聊回复') +

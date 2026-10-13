@@ -4,7 +4,7 @@ chcp 65001 >nul
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
 
-if not exist "%ROOT%\runtime\python.exe" (
+if not exist "%ROOT%\runtime\311\python.exe" (
     echo 错误: 未找到 Python 运行环境
     pause
     exit /b 1
@@ -20,7 +20,7 @@ for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":1801 " ^| findstr "LISTENIN
 
 echo.
 echo 正在启动配置管理服务...
-start "喵呜配置服务-运行日志" /D "%ROOT%" cmd /k "runtime\python.exe config_gui.py"
+start "喵呜配置服务-运行日志" /D "%ROOT%" cmd /k "runtime\311\python.exe config_gui.py"
 
 echo 等待服务准备就绪...
 timeout /t 3 /nobreak >nul

@@ -33,11 +33,11 @@ class CatLearnDocLearning:
 
     @property
     def inbox_dir(self) -> str:
-        return os.path.join(".DataBase", "inbox")
+        return os.path.join(".vendor", ".DataBase", "inbox")
 
     @property
     def done_dir(self) -> str:
-        return os.path.join(".DataBase", "raw_docs")
+        return os.path.join(".vendor", ".DataBase", "raw_docs")
 
     def scan_and_learn(self) -> int:
         """扫描 inbox 全部文档入库，返回入库 chunk 数"""

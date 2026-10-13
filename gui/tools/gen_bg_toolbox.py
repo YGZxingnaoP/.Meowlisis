@@ -9,8 +9,8 @@ r"""工具箱（Toolbox）界面背景图生成 —— 和 gen_bg_main.py 同一
 猫娘放在画面右侧（工具箱面板内的卡片是绕中心排的，中间要留干净），色调同样要求明朗。
 
 用法：
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\gen_bg_toolbox.py --check
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\gen_bg_toolbox.py
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\gen_bg_toolbox.py --check
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\gen_bg_toolbox.py
     ... --size 1400x950 --seed 777
 
 输出： gui\resource\bg\toolbox.jpg

@@ -143,7 +143,10 @@ Object.assign(App, {
         container.innerHTML = speakers.map(s => `
             <div class="speaker-item">
                 <input type="checkbox" id="spk_${s.name}" ${s.enabled ? 'checked' : ''} data-speaker-name="${s.name}">
-                <label for="spk_${s.name}">${s.name}</label>
+                <div class="speaker-name-block">
+                    <label for="spk_${s.name}">${s.nickname || this._t('未设昵称')}</label>
+                    <div class="help-text">${this._t('编号')} ${s.id || this._t('未填')}</div>
+                </div>
             </div>
         `).join('');
         container.querySelectorAll('input[data-speaker-name]').forEach(cb => {
@@ -184,8 +187,11 @@ Object.assign(App, {
         const formHtml = `
             <div class="char-card" id="createSpeakerForm">
                 <div class="char-card-title">${this._t('新建声纹用户')}</div>
-                <div class="form-group"><label>${this._t('用户名')}</label>
-                    <input type="text" id="newSpeakerName" placeholder="${this._t('输入用户名')}"></div>
+                <div class="form-group"><label>${this._t('昵称')}</label>
+                    <input type="text" id="newSpeakerName" placeholder="${this._t('输入昵称')}"></div>
+                <div class="form-group"><label>${this._t('编号')}</label>
+                    <input type="text" id="newSpeakerId" placeholder="${this._t('填 6 位编号，例如 000001')}">
+                    <div class="help-text">${this._t('wav 文件名就用这个编号，语音识别靠它认人；昵称只用来显示')}</div></div>
                 <div class="form-group">
                     <label>${this._t('拖拽 wav 文件到下方区域')}</label>
                     <div class="drop-zone" id="dropZone">
@@ -226,10 +232,12 @@ Object.assign(App, {
 
         document.getElementById('submitSpeakerBtn').addEventListener('click', async () => {
             const name = document.getElementById('newSpeakerName').value.trim();
-            if (!name) { this.showToast('请输入用户名', true); return; }
+            const uid = (document.getElementById('newSpeakerId').value || '').trim();
+            if (!name) { this.showToast('请输入昵称', true); return; }
+            if (!/^\d{6}$/.test(uid)) { this.showToast('编号要填 6 位数字，例如 000001（wav 文件名用它）', true); return; }
             if (!selectedFile) { this.showToast('请选择 wav 文件', true); return; }
             try {
-                const result = await API.createSpeaker(name, selectedFile);
+                const result = await API.createSpeaker(name, selectedFile, uid);
                 if (result.status === 'ok') {
                     this.showToast('声纹用户已创建');
                     const form = document.getElementById('createSpeakerForm');

@@ -45,6 +45,9 @@ class TBoxQQResponse:
         # 0. 私聊回复开关
         if not self.napcat_config.private_reply_enabled:
             return
+        # 0.2 统一身份：登记当前说话人，并换成身份表里的统一昵称（没绑定原样）
+        from func.pipeline.id_signup import IdSignupBridge
+        username = IdSignupBridge().begin("qq", user_id, username)
         # 机器人消息（如幻梦）：仅参与当轮上下文，不写入任何记忆文件
         is_bot = self._is_bot(user_id)
         # 0.5 数据库关键词匹配（仅私聊，机器人消息不进入）
@@ -354,8 +357,10 @@ class TBoxQQResponse:
         short_memory = TBGetGroupRecord().fetch(gid, self_id)
         group_info_text = TBGroupInfo().build_prompt(group_name)
 
-        # 稳定档案昵称
-        reply_username = self._resolve_username(primary_uid) or primary_name
+        # 稳定档案昵称（有绑定就走身份表的统一昵称）
+        from func.pipeline.id_signup import IdSignupBridge
+        reply_username = IdSignupBridge().begin(
+            "qq", primary_uid, self._resolve_username(primary_uid) or primary_name)
 
         # 记录各参与者用户档案 + 短期记忆（仅真实文本，机器人跳过）
         for p in participants:
@@ -365,7 +370,8 @@ class TBoxQQResponse:
             ptext = str(p.get("text", "") or "")
             if not ptext.strip() or self._is_bot(uid):
                 continue
-            rn = self._resolve_username(uid) or str(p.get("username", "") or "")
+            # 按 QQ 号认人：绑定过就用统一昵称，没绑定原样用 QQ 昵称
+            rn = IdSignupBridge().begin("qq", uid, self._resolve_username(uid) or str(p.get("username", "") or ""))
             try:
                 self.napcat_ltmem.record_user(rn, ptext)
             except Exception:
@@ -376,6 +382,9 @@ class TBoxQQResponse:
                     "content": f"【来自QQ群的消息】{ptext}",
                     "type": "qq_response",
                 }, self.napcat_config.short_mem_rounds)
+
+        # 参与者记完，把当前说话人恢复成主发言人
+        IdSignupBridge().begin("qq", primary_uid, self._resolve_username(primary_uid) or primary_name)
 
         # 意图分析（工具：天气/新闻/待办/唱歌/海龟汤/画图等）
         try:

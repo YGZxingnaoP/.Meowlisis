@@ -13,7 +13,7 @@ r"""NapCat 无窗口化所需的配置改动（幂等，自动备份，可回退
     于是 NapCat 也能无窗口运行，扫的码在 /logs 页面里显示。
 
 用法：
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\napcat_setup.py           # 只看现状
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\napcat_setup.py           # 只看现状
     ... --apply                                                                          # 改（备份后）
     ... --revert                                                                         # 还原备份
 """
@@ -28,7 +28,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, '..', '..'))          # D:\.Meowlisis
-SHELL_DIR = os.path.join(ROOT, '.NapCat', 'NapCat.Shell')
+SHELL_DIR = os.path.join(ROOT, '.vendor/.NapCat', 'NapCat.Shell')
 CONFIG_GLOB = os.path.join(SHELL_DIR, 'versions', '*', 'resources', 'app', 'napcat', 'config', 'napcat.json')
 QR_GLOB = os.path.join(SHELL_DIR, 'versions', '*', 'resources', 'app', 'napcat', 'cache', 'qrcode.png')
 

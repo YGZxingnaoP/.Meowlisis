@@ -67,7 +67,7 @@ class TBNapCatConfig:
         # 表情触发基础概率（百分比，最终概率 = 基础概率 + 好感度）
         self.emote_probability = cfg.get('emote_probability', 30)
         # 表情文件目录
-        self.emote_dir = cfg.get('emote_dir', '.NapCat/EmoteLab')
+        self.emote_dir = cfg.get('emote_dir', '.vendor/.NapCat/EmoteLab')
 
         # ========== 群聊模块（接口型，自发进行） ==========
         # 群聊回复字数（独立于私聊 reply_word_count，默认10，严格上限 = 该值 + 10）

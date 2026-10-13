@@ -3,8 +3,8 @@
 # 从 config.yml 生成 config.example.yml：只清空密钥类字段的值，注释、缩进、结构全部原样保留
 #
 # 用法（在项目根目录执行）：
-#   runtime\python.exe scripts\make_config_example.py
-#   runtime\python.exe scripts\make_config_example.py --in config.yml --out config.example.yml
+#   runtime\311\python.exe scripts\make_config_example.py
+#   runtime\311\python.exe scripts\make_config_example.py --in config.yml --out config.example.yml
 #
 # 生成后自己打开看一遍，确认没有漏掉的密钥（搜 sk- 、token 、password 这几个词）
 

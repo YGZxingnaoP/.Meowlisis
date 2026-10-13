@@ -15,7 +15,7 @@ r"""模拟触发画图工具（flux_paint）—— 等价于 QQ/主程序里 AI 
     <本目录>/paint_<时间戳>.txt                          本次需求 / 参数 / 完整 positive
 
 用法：
-    双击 paint.bat      或者      runtime\python.exe scripts\paint.py
+    双击 paint.bat      或者      runtime\311\python.exe scripts\paint.py
 """
 
 import datetime

@@ -260,9 +260,10 @@ const API = {
         return res.json();
     },
 
-    async createSpeaker(name, wavFile) {
+    async createSpeaker(nickname, wavFile, uid) {
         const formData = new FormData();
-        formData.append('name', name);
+        formData.append('nickname', nickname);
+        formData.append('id', uid || '');
         formData.append('wav', wavFile);
         const res = await fetch('/api/speakers/create', {
             method: 'POST',

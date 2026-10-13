@@ -137,7 +137,7 @@ def _pcm_to_wav(pcm: bytes, sample_rate: int = 32000,
     return buf.getvalue()
 
 
-# http 文本转语音（返回 WAV 音频，供手机端 / .phone 代理使用）
+# http 文本转语音（返回 WAV 音频，供手机端 / .vendor/.cam 代理使用）
 @app.route("/tts/audio", methods=["POST", "GET"])
 def http_tts_audio():
     text = ""
@@ -248,7 +248,7 @@ def http_emote():
 @app.route("/api/start_napcat", methods=["POST"])
 def start_napcat():
     try:
-        napcat_dir = os.path.join(".NapCat", "NapCat.Shell")
+        napcat_dir = os.path.join(".vendor/.NapCat", "NapCat.Shell")
         start_bat = os.path.join(napcat_dir, "napcat.quick.bat")
         if os.path.exists(start_bat):
             if sys.platform == "win32":

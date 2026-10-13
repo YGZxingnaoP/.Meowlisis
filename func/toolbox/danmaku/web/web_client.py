@@ -188,16 +188,16 @@ class TBDanmakuWeb:
         return False
 
     # ==================== 消息回调 ====================
-    def _handle_danmaku(self, uname: str, msg: str):
+    def _handle_danmaku(self, uname: str, msg: str, uid: str = ""):
         if self._is_dup_danmaku(uname, msg):
             return
-        self.receiver.add_danmaku(uname, msg)
+        self.receiver.add_danmaku(uname, msg, uid)
         self.log.info(f"[弹幕] {uname}: {msg}")
 
-    def _handle_sc(self, uname: str, message: str, msg_id: str = ""):
+    def _handle_sc(self, uname: str, message: str, msg_id: str = "", uid: str = ""):
         if self._is_dup_sc(msg_id, uname, message):
             return
-        self.receiver.add_sc(uname, message, msg_id)
+        self.receiver.add_sc(uname, message, msg_id, uid)
         self.log.info(f"[SC] {uname}: {message}")
 
     def _handle_gift(self, uname: str, gift_name: str, gift_num: int, price: int,
@@ -220,8 +220,16 @@ class TBDanmakuWeb:
         def __init__(self, web: "TBDanmakuWeb"):
             self.web = web
 
+        @staticmethod
+        def _uid_of(message):
+            """取消息里的 uid，开放平台没有 uid 就退回 open_id"""
+            uid = getattr(message, "uid", "")
+            if uid in (None, ""):
+                uid = getattr(message, "open_id", "")
+            return str(uid or "")
+
         def _on_open_live_danmaku(self, client, message: open_models.DanmakuMessage):
-            self.web._handle_danmaku(message.uname, message.msg)
+            self.web._handle_danmaku(message.uname, message.msg, self._uid_of(message))
 
         def _on_open_live_gift(self, client, message: open_models.GiftMessage):
             self.web._handle_gift(message.uname, message.gift_name, message.gift_num,
@@ -231,7 +239,7 @@ class TBDanmakuWeb:
             self.web._handle_guard(message.user_info.uname, message.guard_level)
 
         def _on_open_live_super_chat(self, client, message: open_models.SuperChatMessage):
-            self.web._handle_sc(message.uname, message.message, message.msg_id)
+            self.web._handle_sc(message.uname, message.message, message.msg_id, self._uid_of(message))
 
         def _on_open_live_super_chat_delete(self, client, message: open_models.SuperChatDeleteMessage):
             self.web.log.info(f"[SC删除] message_ids={message.message_ids}")
@@ -241,8 +249,13 @@ class TBDanmakuWeb:
         def __init__(self, web: "TBDanmakuWeb"):
             self.web = web
 
+        @staticmethod
+        def _uid_of(message):
+            """取消息里的 uid"""
+            return str(getattr(message, "uid", "") or "")
+
         def _on_danmaku(self, client, message: web_models.DanmakuMessage):
-            self.web._handle_danmaku(message.uname, message.msg)
+            self.web._handle_danmaku(message.uname, message.msg, self._uid_of(message))
 
         def _on_gift(self, client, message: web_models.GiftMessage):
             self.web._handle_gift(message.uname, message.gift_name, message.num,
@@ -252,7 +265,7 @@ class TBDanmakuWeb:
             self.web._handle_guard(message.username, message.guard_level)
 
         def _on_super_chat(self, client, message: web_models.SuperChatMessage):
-            self.web._handle_sc(message.uname, message.message, str(message.id))
+            self.web._handle_sc(message.uname, message.message, str(message.id), self._uid_of(message))
 
         def _on_super_chat_delete(self, client, message: web_models.SuperChatDeleteMessage):
             self.web.log.info(f"[SC删除] ids={message.ids}")

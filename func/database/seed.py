@@ -59,7 +59,7 @@ class CatLearnSeed:
         return re.sub(r'[\\/:*?"<>|\r\n\t]', "_", str(name))
 
     def _archive(self, site, name, pages):
-        dest = os.path.join(".DataBase", "raw_seed", site, self._safe(name) + ".json")
+        dest = os.path.join(".vendor", ".DataBase", "raw_seed", site, self._safe(name) + ".json")
         try:
             os.makedirs(os.path.dirname(dest), exist_ok=True)
             with open(dest, "w", encoding="utf-8") as f:

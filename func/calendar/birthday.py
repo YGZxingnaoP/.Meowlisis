@@ -38,22 +38,47 @@ class DateBirthday:
         return names
 
     def _collect_birthdays(self) -> Dict[str, tuple]:
-        """遍历 users_info 下所有 json，收集 {用户名: (月, 日)}，latest 文件优先覆盖"""
+        """遍历新旧档案目录，收集 {用户名: (月, 日)}，profile 与 latest 文件优先覆盖"""
         result = {}
-        if not os.path.isdir(self.info_dir):
-            return result
-        for fname in os.listdir(self.info_dir):
-            if not fname.endswith(".json"):
-                continue
-            data = self._load(os.path.join(self.info_dir, fname))
-            name = str(data.get("name", "") or "").strip()
+        for uid, path in self._profile_entries():
+            fname = os.path.basename(path)
+            data = self._load(path)
+            name = self._name_of(uid, data)
             birthday = str(data.get("birthday", "") or "").strip()
             parsed = self._parse_birthday(birthday) if birthday else None
             if not name:
                 continue
-            if parsed and (name not in result or fname.endswith("_latest.json")):
+            if parsed and (name not in result or fname in ("profile.json",) or fname.endswith("_latest.json")):
                 result[name] = parsed
         return result
+
+    def _profile_entries(self) -> List[tuple]:
+        """列出（编号, 档案路径），编号为空表示老目录里的文件"""
+        entries = []
+        if os.path.isdir(self.info_dir):
+            for fname in sorted(os.listdir(self.info_dir)):
+                if fname.endswith(".json"):
+                    entries.append(("", os.path.join(self.info_dir, fname)))
+        user_root = os.path.join("character", "userinfo")
+        if os.path.isdir(user_root):
+            for uid in sorted(os.listdir(user_root)):
+                path = os.path.join(user_root, uid, "profile.json")
+                if os.path.isfile(path):
+                    entries.append((uid, path))
+        return entries
+
+    def _name_of(self, uid: str, data: dict) -> str:
+        """取称呼：有编号就用身份表里的昵称，否则用档案里的名字"""
+        if uid:
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                user = IdSignupBridge().find(uid)
+                nickname = str(user.get("nickname") or "").strip()
+                if nickname:
+                    return nickname
+            except Exception:
+                self.log.exception("取身份昵称失败")
+        return str(data.get("name", "") or "").strip()
 
     @staticmethod
     def _load(path: str) -> dict:

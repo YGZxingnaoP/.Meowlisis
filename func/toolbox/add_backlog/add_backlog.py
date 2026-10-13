@@ -18,29 +18,27 @@ class TBAddBacklog:
         self.backlog_dir = os.path.join("character", "backlog")
 
     def add_todo(self, username: str, item: dict) -> bool:
-        """追加一条待办到 character/backlog/{username}.json 的 to_do_list"""
+        """追加一条待办（有编号就写进编号目录的 backlog.json）"""
         if not username:
             self.log.warning("[AddBacklog] username 为空，无法写入待办")
             return False
         if not isinstance(item, dict) or not item:
             return False
 
-        path = os.path.join(self.backlog_dir, f"{username}.json")
-        data = self._load(path)
-        if data is None:
-            data = {"username": username, "to_do_list": []}
+        from func.pipeline.id_signup import IdSignupBridge
+        bridge = IdSignupBridge()
+        data = bridge.read_backlog(username) or {"username": username, "to_do_list": []}
         if not isinstance(data.get("to_do_list"), list):
             data["to_do_list"] = []
+        data["username"] = data.get("username") or username
         data["to_do_list"].append(item)
 
         try:
-            os.makedirs(self.backlog_dir, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
+            path = bridge.save_backlog(username, data)
             self.log.info(f"[AddBacklog] 已写入待办 {username}: {str(item.get('content', ''))[:20]}")
             return True
         except Exception:
-            self.log.exception(f"[AddBacklog] 写入待办失败: {path}")
+            self.log.exception(f"[AddBacklog] 写入待办失败: {username}")
             return False
 
     def _load(self, path: str):

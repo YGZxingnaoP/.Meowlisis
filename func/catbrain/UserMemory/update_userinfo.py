@@ -243,14 +243,23 @@ class MeowUpdateUserInfo:
                 result.append(t)
         return result
 
+    def _latest_path(self, username: str) -> str:
+        """定档案落地路径：本人已绑定才进编号目录，否则照旧（写侧严格，防同名污染）"""
+        from func.pipeline.id_signup import IdSignupBridge
+        bridge = IdSignupBridge()
+        uid = bridge.ensure_for(username)
+        if uid:
+            return bridge.profile_path(uid)
+        return bridge.legacy_profile_path(username)
+
     def _save_placeholder(self, username: str):
         """同步创建 unknown 占位档案（name 为用户名，其余字段 unknown）"""
         safe = self.loader._safe_name(username)
         if not safe:
             self.log.error("用户名清洗后为空，无法创建占位档案")
             return
-        os.makedirs(self.info_dir, exist_ok=True)
-        latest_path = os.path.join(self.info_dir, f"{safe}_latest.json")
+        latest_path = self._latest_path(username)
+        os.makedirs(os.path.dirname(latest_path), exist_ok=True)
         data = {field: "unknown" for field in self.tool.FIELDS}
         data["name"] = username
         data["affinity"] = 0
@@ -265,15 +274,16 @@ class MeowUpdateUserInfo:
 
     def _save(self, username: str, result: Dict, event_result: Optional[Dict] = None):
         """保存用户档案：旧文件重命名为 用户名-修改日期.json 保留，再写 latest（含近期事件）"""
-        os.makedirs(self.info_dir, exist_ok=True)
         safe = self.loader._safe_name(username)
-        latest_path = os.path.join(self.info_dir, f"{safe}_latest.json")
+        latest_path = self._latest_path(username)
+        os.makedirs(os.path.dirname(latest_path), exist_ok=True)
         # 读取旧档案（备份与近期事件兜底复用）
         old = self.loader.load(username) if os.path.exists(latest_path) else {}
         # 旧文件保留为 用户名-修改日期.json（占位档直接覆盖，避免垃圾备份）
         if old and not self._is_placeholder(old):
             date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            backup_path = os.path.join(self.info_dir, f"{safe}-{date_str}.json")
+            stem = "profile" if os.path.basename(latest_path) == "profile.json" else safe
+            backup_path = os.path.join(os.path.dirname(latest_path), f"{stem}-{date_str}.json")
             try:
                 os.replace(latest_path, backup_path)
             except Exception:

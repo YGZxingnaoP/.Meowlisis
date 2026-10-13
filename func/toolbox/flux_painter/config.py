@@ -78,7 +78,7 @@ class TBFluxPainterConfig:
         self.comfy_mode = str(cf.get("mode", "internal"))
         self.comfy_host = str(cf.get("host", "127.0.0.1"))
         self.comfy_port = int(cf.get("port", 8188))
-        self.comfy_node_dir = str(cf.get("comfy_node_dir", ".ComfyNode") or ".ComfyNode")
+        self.comfy_node_dir = str(cf.get("comfy_node_dir", ".vendor/.ComfyNode") or ".vendor/.ComfyNode")
         self.comfy_output_dir = str(cf.get("output_dir", os.path.join(self.comfy_node_dir, "output")) or "")
         self.workflow_file = str(cf.get("workflow_file") or
                                 os.path.join(self.comfy_node_dir, "node", "workflow.json"))
@@ -232,7 +232,7 @@ class TBFluxPainterConfig:
         self.nsfw_threshold = float(nc.get("threshold", 0.45))
         self.nsfw_fail = str(nc.get("fail_action", "dm"))
         self.nsfw_model_path = str(nc.get("model_path",
-                                          os.path.join(".ComfyNode", "nsfw", "nudenet.onnx")) or "")
+                                          os.path.join(".vendor", ".ComfyNode", "nsfw", "nudenet.onnx")) or "")
         self.nsfw_model_url = str(nc.get("model_url",
                                          "https://huggingface.co/vladmandic/nudenet/resolve/main/nudenet.onnx") or "")
 

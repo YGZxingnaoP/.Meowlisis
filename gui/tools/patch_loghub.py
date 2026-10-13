@@ -18,7 +18,7 @@ register() 做的事情：
     → 不再弹终端窗口，输出改为写入 logs/svc_<服务>.log
 
 用法：
-    D:\.Meowlisis\runtime\python.exe D:\.Meowlisis\gui\tools\patch_loghub.py            # 打补丁
+    D:\.Meowlisis\runtime\311\python.exe D:\.Meowlisis\gui\tools\patch_loghub.py            # 打补丁
     ... --dry                                                                           # 只看会改成什么
     ... --check                                                                         # 只体检，不写
     ... --revert                                                                        # 从最近的备份还原

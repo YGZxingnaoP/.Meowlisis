@@ -35,7 +35,7 @@ def save_config(cfg):
 
 
 def load_tts_config():
-    tts_yaml = BASE_DIR / ".Sovits" / "tts_infer.yaml"
+    tts_yaml = BASE_DIR / ".vendor/.Sovits" / "tts_infer.yaml"
     if not tts_yaml.exists():
         return {}
     with open(tts_yaml, 'r', encoding='utf-8') as f:
@@ -47,7 +47,7 @@ def load_tts_config():
 
 
 def save_tts_config(cfg):
-    tts_yaml = BASE_DIR / ".Sovits" / "tts_infer.yaml"
+    tts_yaml = BASE_DIR / ".vendor/.Sovits" / "tts_infer.yaml"
     if tts_yaml.exists():
         with open(tts_yaml, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
@@ -245,7 +245,7 @@ def start_main():
 @app.route('/api/start_sovits', methods=['POST'])
 def start_sovits():
     try:
-        sovits_dir = BASE_DIR / ".Sovits"
+        sovits_dir = BASE_DIR / ".vendor/.Sovits"
         api_path = sovits_dir / "api_v2.py"
         if not api_path.exists():
             return jsonify({'status': 'error', 'message': 'api_v2.py not found'}), 400
@@ -255,7 +255,7 @@ def start_sovits():
         host = parsed.hostname or '127.0.0.1'
         port = parsed.port or 9880
         infer_path = sovits_dir / "tts_infer.yaml"
-        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
         python = str(runtime_python) if runtime_python.exists() else sys.executable
         args = [python, str(api_path), "-c", str(infer_path), "-a", host, "-p", str(port)]
         env = os.environ.copy()
@@ -274,7 +274,7 @@ def start_sovits():
 @app.route('/api/start_sensevoice', methods=['POST'])
 def start_sensevoice():
     try:
-        sensevoice_dir = BASE_DIR / ".SenseVoice"
+        sensevoice_dir = BASE_DIR / ".vendor/.SenseVoice"
         start_bat = sensevoice_dir / "start.bat"
         if start_bat.exists():
             if sys.platform == "win32":
@@ -285,7 +285,7 @@ def start_sensevoice():
             server_path = sensevoice_dir / "server" / "sensevoice_server.py"
             if not server_path.exists():
                 return jsonify({'status': 'error', 'message': 'sensevoice_server.py not found'}), 400
-            runtime_python = BASE_DIR / "runtime" / "python.exe"
+            runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
             python = str(runtime_python) if runtime_python.exists() else sys.executable
             if sys.platform == "win32":
                 subprocess.Popen([python, str(server_path)], cwd=str(sensevoice_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
@@ -407,7 +407,7 @@ def save_audio_config():
 @app.route('/api/start_napcat', methods=['POST'])
 def start_napcat():
     try:
-        napcat_dir = BASE_DIR / ".NapCat" / "NapCat.Shell"
+        napcat_dir = BASE_DIR / ".vendor/.NapCat" / "NapCat.Shell"
         start_bat = napcat_dir / "napcat.quick.bat"
         if start_bat.exists():
             if sys.platform == "win32":
@@ -423,13 +423,13 @@ def start_napcat():
 
 @app.route('/api/start_netease', methods=['POST'])
 def start_netease():
-    """启动网易云搜歌子服务（.NeteaseMusic/server/server.py）"""
+    """启动网易云搜歌子服务（.vendor/.NeteaseMusic/server/server.py）"""
     try:
-        netease_dir = BASE_DIR / ".NeteaseMusic"
+        netease_dir = BASE_DIR / ".vendor/.NeteaseMusic"
         server_path = netease_dir / "server" / "server.py"
         if not server_path.exists():
             return jsonify({'status': 'error', 'message': 'server.py not found'}), 400
-        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
         python = str(runtime_python) if runtime_python.exists() else sys.executable
         if sys.platform == "win32":
             subprocess.Popen([python, str(server_path)], cwd=str(netease_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
@@ -442,13 +442,13 @@ def start_netease():
 
 @app.route('/api/start_rvc', methods=['POST'])
 def start_rvc():
-    """启动 RVC 翻唱子服务（.RVC/cover_server.py）"""
+    """启动 RVC 翻唱子服务（.vendor/.RVC/cover_server.py）"""
     try:
-        rvc_dir = BASE_DIR / ".RVC"
+        rvc_dir = BASE_DIR / ".vendor/.RVC"
         server_path = rvc_dir / "cover_server.py"
         if not server_path.exists():
             return jsonify({'status': 'error', 'message': 'cover_server.py not found'}), 400
-        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
         python = str(runtime_python) if runtime_python.exists() else sys.executable
         if sys.platform == "win32":
             subprocess.Popen([python, str(server_path)], cwd=str(rvc_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
@@ -461,9 +461,9 @@ def start_rvc():
 
 @app.route('/api/start_desktopet', methods=['POST'])
 def start_desktopet():
-    """启动桌宠（.desktopet/start.bat）"""
+    """启动桌宠（.vendor/.desktopet/start.bat）"""
     try:
-        desktopet_dir = BASE_DIR / ".desktopet"
+        desktopet_dir = BASE_DIR / ".vendor/.desktopet"
         start_bat = desktopet_dir / "start.bat"
         if not start_bat.exists():
             return jsonify({'status': 'error', 'message': 'start.bat not found'}), 400
@@ -478,13 +478,13 @@ def start_desktopet():
 
 @app.route('/api/start_phone', methods=['POST'])
 def start_phone():
-    """启动手机接口服务（.phone/serve.py）"""
+    """启动手机接口服务（.vendor/.cam/serve.py）"""
     try:
-        phone_dir = BASE_DIR / ".phone"
+        phone_dir = BASE_DIR / ".vendor/.cam"
         serve_path = phone_dir / "serve.py"
         if not serve_path.exists():
             return jsonify({'status': 'error', 'message': 'serve.py not found'}), 400
-        runtime_python = BASE_DIR / "runtime" / "python.exe"
+        runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
         python = str(runtime_python) if runtime_python.exists() else sys.executable
         if sys.platform == "win32":
             subprocess.Popen([python, str(serve_path)], cwd=str(phone_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
@@ -570,14 +570,15 @@ def build_status_speakers():
 
 @app.route('/api/speakers/create', methods=['POST'])
 def create_speaker():
-    name = request.form.get('name', '')
+    nickname = request.form.get('nickname', '') or request.form.get('name', '')
+    uid = request.form.get('id', '')
     file = request.files.get('wav')
-    if not name:
-        return jsonify({'status': 'error', 'message': '用户名不能为空'}), 400
+    if not nickname:
+        return jsonify({'status': 'error', 'message': '昵称不能为空'}), 400
     if not file:
         return jsonify({'status': 'error', 'message': '未上传 wav 文件'}), 400
     try:
-        result = speaker_db_tool.create_speaker(name, file.read())
+        result = speaker_db_tool.create_speaker(nickname, file.read(), uid)
         return jsonify(result)
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -616,8 +617,8 @@ def post_ref_audio():
 
 @app.route('/api/sovits_models', methods=['GET'])
 def get_sovits_models():
-    """扫描 .Sovits 下可用的 ckpt 与 pth 权重文件（仅用户模型，不含底模）"""
-    sovits_dir = BASE_DIR / ".Sovits"
+    """扫描 .vendor/.Sovits 下可用的 ckpt 与 pth 权重文件（仅用户模型，不含底模）"""
+    sovits_dir = BASE_DIR / ".vendor/.Sovits"
     search_dirs = [
         sovits_dir / "GPT_weights_v2Pro",
         sovits_dir / "SoVITS_weights_v2Pro",
@@ -636,8 +637,8 @@ def get_sovits_models():
 
 @app.route('/api/rvc_models', methods=['GET'])
 def get_rvc_models():
-    """扫描 .RVC 下可用的翻唱模型（weights）与特征索引（indices）"""
-    rvc_dir = BASE_DIR / ".RVC"
+    """扫描 .vendor/.RVC 下可用的翻唱模型（weights）与特征索引（indices）"""
+    rvc_dir = BASE_DIR / ".vendor/.RVC"
     weight_dir = rvc_dir / "assets" / "weights"
     index_dir = rvc_dir / "assets" / "indices"
     models = []
@@ -801,6 +802,83 @@ def verify_sessdata():
 
 
 # ============ 待办提醒（backlog） ============
+# ==================== 用户 ID（身份表） ====================
+def _identity_bridge():
+    """延迟导入身份桥接，避免未装依赖时影响配置管理器"""
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    from func.pipeline.id_signup import IdSignupBridge
+    return IdSignupBridge()
+
+
+@app.route('/api/identity/users', methods=['GET'])
+def identity_users():
+    """列出全部用户：编号、昵称、各平台账号、好感度"""
+    bridge = _identity_bridge()
+    users = []
+    for user in bridge.list_users():
+        uid = str(user.get('id') or '')
+        profile = bridge.profile_of(str(user.get('nickname') or ''))
+        users.append({
+            'id': uid,
+            'nickname': str(user.get('nickname') or ''),
+            'accounts': user.get('accounts') or {},
+            'affinity': profile.get('affinity', 0),
+            'birthday': str(profile.get('birthday') or ''),
+            'summary': bridge.summary(uid),
+        })
+    return jsonify(users)
+
+
+@app.route('/api/identity/user', methods=['GET'])
+def identity_user():
+    """查单个用户详情：编号、昵称、好感度、逐个平台的账号"""
+    return jsonify(_identity_bridge().user_detail(request.args.get('id', '')))
+
+
+@app.route('/api/identity/nickname', methods=['POST'])
+def identity_nickname():
+    """改昵称"""
+    data = request.get_json() or {}
+    ok, msg = _identity_bridge().set_nickname(str(data.get('id') or ''), str(data.get('nickname') or ''))
+    return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
+
+
+@app.route('/api/identity/bind', methods=['POST'])
+def identity_bind():
+    """绑定平台账号"""
+    data = request.get_json() or {}
+    ok, msg, _owner = _identity_bridge().bind(
+        str(data.get('id') or ''), str(data.get('platform') or ''), str(data.get('account') or ''))
+    return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
+
+
+@app.route('/api/identity/unbind', methods=['POST'])
+def identity_unbind():
+    """解绑平台账号"""
+    data = request.get_json() or {}
+    ok, msg = _identity_bridge().unbind(str(data.get('id') or ''), str(data.get('platform') or ''))
+    return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
+
+
+@app.route('/api/identity/lookup', methods=['GET'])
+def identity_lookup():
+    """按昵称反查 B站 uid"""
+    uid, err = _identity_bridge().lookup_bili(request.args.get('keyword', ''))
+    return jsonify({'uid': uid, 'message': err})
+
+
+@app.route('/api/identity/merge', methods=['POST'])
+def identity_merge():
+    """合并用户：默认只给方案，带 apply 才真动手"""
+    data = request.get_json() or {}
+    keys = data.get('keys') or []
+    if not data.get('apply'):
+        return jsonify({'status': 'ok', 'plan': _identity_bridge().merge_plan(keys), 'message': ''})
+    ok, msg = _identity_bridge().merge_apply(keys, keep=str(data.get('keep') or ''), dry_run=False)
+    return jsonify({'status': 'ok' if ok else 'error', 'plan': [], 'message': msg})
+
+
 def _backlog_dir():
     return BASE_DIR / "character" / "backlog"
 
@@ -814,33 +892,25 @@ def _safe_backlog_name(username):
 
 @app.route('/api/backlog/users', methods=['GET'])
 def list_backlog_users():
-    d = _backlog_dir()
-    if not d.exists():
-        return jsonify([])
-    names = [f.name[:-5] for f in d.glob('*.json')]
-    return jsonify(sorted(names))
+    """列出有待办的用户（编号目录 + 老目录）"""
+    return jsonify([name for name, _data in _identity_bridge().backlog_entries()])
 
 
 @app.route('/api/backlog', methods=['GET'])
 def get_backlog():
+    """读某个用户的待办"""
     user = request.args.get('user', '')
-    path = _backlog_dir() / (_safe_backlog_name(user) + '.json')
-    if not path.exists():
+    data = _identity_bridge().read_backlog(user)
+    if not data:
         return jsonify({'username': user, 'to_do_list': []})
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            data = {'username': user, 'to_do_list': []}
-        data.setdefault('username', user)
-        data.setdefault('to_do_list', [])
-        return jsonify(data)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+    data.setdefault('username', user)
+    data.setdefault('to_do_list', [])
+    return jsonify(data)
 
 
 @app.route('/api/backlog', methods=['POST'])
 def post_backlog():
+    """写某个用户的待办"""
     data = request.get_json() or {}
     username = str(data.get('username') or '').strip()
     if not username:
@@ -848,13 +918,8 @@ def post_backlog():
     todos = data.get('to_do_list', [])
     if not isinstance(todos, list):
         todos = []
-    content = {'username': username, 'to_do_list': todos}
-    d = _backlog_dir()
-    d.mkdir(parents=True, exist_ok=True)
-    path = d / (_safe_backlog_name(username) + '.json')
     try:
-        with open(path, 'w', encoding='utf-8') as f:
-            json.dump(content, f, ensure_ascii=False, indent=2)
+        _identity_bridge().save_backlog(username, {'username': username, 'to_do_list': todos})
         return jsonify({'status': 'ok'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

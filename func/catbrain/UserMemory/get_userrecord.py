@@ -31,8 +31,12 @@ class MeowGetUserRecord:
         return name.strip() or "空格"
 
     def _path(self, username: str) -> str:
-        """返回指定用户名的记录文件路径"""
-        return os.path.join(self.temp_dir, f"{self._safe_name(username)}_record.txt")
+        """记录文件路径：绑定了编号就按编号命名，没绑定照旧按名字命名"""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            return IdSignupBridge().record_path_of(username)
+        except Exception:
+            return os.path.join(self.temp_dir, f"{self._safe_name(username)}_record.txt")
 
     def record_message(self, username: str, line: str, is_user: bool):
         """记录一条消息：用户消息计数+1，达到配置轮数返回 True（触发更新）"""

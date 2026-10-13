@@ -4,8 +4,8 @@ title 筱狐必回机器人
 cd /d D:\.Meowlisis
 
 rem 优先使用主项目自带 runtime 解释器（依赖齐全：websockets / openai 等）
-if exist "runtime\python.exe" (
-    runtime\python.exe scripts\xiaohu_response\main.py
+if exist "runtime\311\python.exe" (
+    runtime\311\python.exe scripts\xiaohu_response\main.py
     goto end
 )
 
