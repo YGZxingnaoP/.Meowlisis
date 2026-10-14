@@ -2,6 +2,7 @@
 # func/database/search/crawler.py
 # 搜索爬取编排：站点规则 + 通用爬虫（http/api/direct），同站队列、异站并行，缓存到 web_result
 
+import re
 import os
 import json
 import time
@@ -51,7 +52,7 @@ class CatLearnCrawler:
         },
         "3dmgame": {
             "spider": "http",
-            "search_url": "https://so.3dmgame.com/?keyword={q}",
+            "search_url": "https://so.3dmgame.com/?keyword={q}&subsearch=1&type=1",
             "parse": {
                 "item_xpath": "//a[@class='bt']",
                 "title_xpath": ".",
@@ -220,6 +221,22 @@ class CatLearnCrawler:
             parse_rule = rule.get("parse", {}) or {}
             return self.api_spider.parse_results(data, parse_rule)
 
+        # selenium 策略：真实浏览器渲染（反爬站用）
+        if strategy == "selenium":
+            html = self._selenium_search(search_url)
+            if not html:
+                self.log.warning(f"[搜索] selenium 策略未取回内容: {search_url}")
+                return []
+            parse_rule = dict(rule.get("parse") or {})
+            parse_rule.setdefault("base_url", rule.get("base_url", site_cfg.get("base_url", "")))
+            if parse_rule.get("slug"):
+                return self._parse_gamesgg(html, rule)
+            return self._dedup(self.http_spider.parse_results(html, parse_rule))
+        # mediawiki 策略：走 MediaWiki API（HTML 被反爬，api.php 开放）
+        if strategy == "mediawiki":
+            return self._mediawiki_search(site, search_keys, rule, site_cfg)
+
+
         # http 默认
         html = self.http_spider.fetch_search(search_url)
         if not html:
@@ -265,6 +282,46 @@ class CatLearnCrawler:
             seen.add(url)
             out.append(r)
         return out
+    def _mediawiki_search(self, site: str, keyword: str, rule: dict, site_cfg: dict) -> list:
+        """mediawiki 策略：opensearch 找标题 → extracts 取正文（HTML 反爬也能用）"""
+        try:
+            from func.database.search.spider.mediawiki_spider import CatLearnMediaWikiSpider
+            if getattr(self, '_mw_spider', None) is None:
+                self._mw_spider = CatLearnMediaWikiSpider()
+            mw = self._mw_spider
+            wiki = rule.get("wiki") or site
+            limit = int(rule.get("limit") or 3)
+            base_url = (rule.get("base_url") or site_cfg.get("base_url") or "").rstrip("/")
+            titles = mw.opensearch(keyword, wiki, limit)
+            if not titles:
+                titles = [h.get("title") for h in mw.search(keyword, wiki, limit)]
+            out = []
+            for t in (titles or [])[:limit]:
+                if not t:
+                    continue
+                txt = mw.extract(t, wiki, chars=1500)
+                if not txt:
+                    continue
+                from urllib.parse import quote
+                out.append({"title": t, "url": base_url + "/" + quote(t),
+                            "snippet": re.sub(r"\s+", " ", txt)[:300], "content": txt})
+            self.log.info(f"[搜索] mediawiki {wiki} 关键词《{keyword}》命中 {len(out)} 条")
+            return self._dedup(out)
+        except Exception as e:
+            self.log.warning(f"[搜索] mediawiki 异常: {type(e).__name__} {str(e)[:80]}")
+            return []
+
+
+    def _selenium_search(self, url: str) -> str:
+        """用真实浏览器取搜索页（spider=selenium 策略）"""
+        try:
+            from func.database.search.spider.selenium_spider import CatLearnSeleniumSpider
+            if getattr(self, '_sel_spider', None) is None:
+                self._sel_spider = CatLearnSeleniumSpider()
+            return self._sel_spider.fetch(url) or ""
+        except Exception as e:
+            self.log.warning(f"[搜索] selenium 取页异常: {type(e).__name__} {str(e)[:80]}")
+            return ""
 
     def _search_url(self, site: str, search_keys: str, rule: dict, site_cfg: dict) -> str:
         """构造搜索 URL：config search_url > 内置模板 > base_url"""
@@ -315,3 +372,8 @@ class CatLearnCrawler:
             }
         except Exception as e:
             return {"ok": False, "message": f"验证异常: {e}", "sample": []}
+
+CatLearnCrawler.SITE_RULES.update({
+    "moegirl": {"name": "萌娘百科", "base_url": "https://mzh.moegirl.org.cn",
+                "spider": "mediawiki", "wiki": "moegirl", "limit": 3},
+})

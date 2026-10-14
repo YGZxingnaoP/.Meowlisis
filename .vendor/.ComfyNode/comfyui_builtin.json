@@ -1,5 +1,5 @@
 {
   "junction": true,
-  "main": ".ComfyNode\\ComfyUI\\main.py",
-  "extra_yaml": ".ComfyNode\\extra_model_paths.yaml"
+  "main": ".vendor/.ComfyNode\\ComfyUI\\main.py",
+  "extra_yaml": ".vendor/.ComfyNode\\extra_model_paths.yaml"
 }

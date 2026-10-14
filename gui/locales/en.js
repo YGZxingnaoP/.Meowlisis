@@ -815,7 +815,7 @@ window.__LOCALES__['en'] = {
     "追踪参数": "Tracking Params",
     "模型：": "Model: ",
     "（Live2D参数 {n} 个，追踪参数 {m} 个）": "({n} Live2D params, {m} tracking params)",
-    "策略：http=网页解析、api=JSON接口、direct=直连详情页。search_url 用 {q} 占位搜索关键词。": "Strategy: http=web parsing, api=JSON API, direct=direct detail page. Use {q} as the search-keyword placeholder in search_url.",
+    "策略：http=网页解析、api=JSON接口、direct=直连详情页、selenium=真实浏览器渲染（反爬站用）。search_url 用 {q} 占位搜索关键词。": "Strategy: http=web parsing, api=JSON API, direct=direct detail page. Use {q} as the search-keyword placeholder in search_url.",
 
     // ===== 边缘词条(2) =====
     "查询中，请稍候…": "Querying, please wait…",

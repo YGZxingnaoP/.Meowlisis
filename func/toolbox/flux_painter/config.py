@@ -92,6 +92,10 @@ class TBFluxPainterConfig:
         self.engine_window = bool(cf.get("engine_window", True))
         # 画板实时进度：订阅引擎 WebSocket 广播阶段/百分比/步进（关=退回粗粒度状态）
         self.progress_detail = bool(cfg.get("progress_detail", True))
+        try:
+            self.wait_timeout = max(60, int(cfg.get("wait_timeout", 5400)))
+        except (TypeError, ValueError):
+            self.wait_timeout = 5400
         # 画师站多源（画板前端“画师站”按钮跳转列表）
         self.artist_sources = []
         for item in (cf.get("artist_sources") or []):

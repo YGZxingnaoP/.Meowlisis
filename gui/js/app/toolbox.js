@@ -214,6 +214,42 @@ Object.assign(App, {
                 this.showToast('保存失败: ' + e.message, true);
             }
         });
+        // Selenium 驱动状态 / 一键下载（网页搜索真实浏览器抓取）
+        const _wdStatus = document.getElementById('webdriverStatusBtn');
+        const _wdInstall = document.getElementById('webdriverInstallBtn');
+        const _wdBox = document.getElementById('webdriverStatusText');
+        if (_wdStatus) {
+            _wdStatus.addEventListener('click', async () => {
+                const msgOf = async (resp) => {
+                    const txt = await resp.text();
+                    if (!resp.ok) return '接口未注册或出错（HTTP ' + resp.status + '）—— 请重启 config_gui 后再试';
+                    try { return JSON.parse(txt); } catch (e) { return '返回的不是 JSON：' + txt.slice(0, 80); }
+                };
+                try {
+                    const doc = await msgOf(await fetch('/api/webdriver/status'));
+                    if (typeof doc === 'string') { if (_wdBox) _wdBox.textContent = doc; else alert(doc); return; }
+                    const msg = 'Edge ' + doc.edge_version + ' / 驱动 ' + (doc.driver_version || '无') +
+                                ' / 匹配 ' + doc.match + ' / ' + (doc.driver_path || '-');
+                    if (_wdBox) _wdBox.textContent = msg; else alert(msg);
+                } catch (e) { alert('查询失败 ' + e); }
+            });
+        }
+        if (_wdInstall) {
+            _wdInstall.addEventListener('click', async () => {
+                if (_wdBox) _wdBox.textContent = '正在下载驱动…';
+                try {
+                    const resp = await fetch('/api/webdriver/install', {method: 'POST'});
+                    if (!resp.ok) {
+                        const msg = '接口未注册或出错（HTTP ' + resp.status + '）—— 请重启 config_gui 后再试';
+                        if (_wdBox) _wdBox.textContent = msg; else alert(msg);
+                        return;
+                    }
+                    const j = await resp.json();
+                    const msg = j.ok ? ('已安装驱动 ' + j.driver_version) : '安装失败，请检查网络';
+                    if (_wdBox) _wdBox.textContent = msg; else alert(msg);
+                } catch (e) { alert('安装失败 ' + e); }
+            });
+        }
         setTimeout(() => this.bindSourceSiteEvents(), 10);
     },
 
@@ -697,6 +733,9 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 { value: 'fast', label: '快速（单段采样，出图快）' },
                 { value: 'pro', label: '清晰（Pro：放大+分块重绘+局部细化）' }
             ], 'fast') +
+            this._num('单次出图等待上限(秒)', 'flux_painter.wait_timeout', 5400, 60, 21600, 60,
+                'Pro 档本机实测 42-47 分钟一张，且多任务会在引擎里排队等待；' +
+                '超过该秒数即使引擎后来画好也不会发出。建议不低于 3600') +
             `<div class="form-group"><label>${this._t('画布尺寸')}</label>
                 <div class="split-tags" id="flux-canvas-chips">${chipsHtml}</div>
                 <input type="hidden" data-path="flux_painter.canvas_sizes" id="flux-canvas-value" value="${canvasVals.join(' ')}">

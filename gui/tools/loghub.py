@@ -29,6 +29,11 @@ import json
 import time
 import subprocess
 import threading
+
+try:
+    import psutil as _psutil          # 有它就不必为每次存活判断去起 tasklist
+except Exception:
+    _psutil = None
 from datetime import date
 from pathlib import Path
 
@@ -54,6 +59,29 @@ _BASE = None            # 项目根 Path
 _GUI = None             # gui 目录 Path
 _procs = {}             # key -> Popen（本进程内启动的）
 _locks = {}             # key -> 最近一次操作时间（防连点）
+
+# 形状归一化：把一行里的时间/ID/路径/数字/引号串抹平成占位符，
+# 抹平后相同的行 = "同一件事在重复"，相邻的就能合并成一行 ×N。
+# 这是唯一的降噪机制，不用为任何服务写规则。
+_SHAPE = [
+    (re.compile(r'\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{2}:\d{2}:\d{2}(?:[,.]\d+)?'), '<T>'),
+    (re.compile(r'\b\d{2}:\d{2}:\d{2}\b'), '<T>'),
+    (re.compile(r'\b[0-9a-fA-F]{8,}\b'), '<ID>'),
+    (re.compile(r'[\u258f\u258e\u258d\u258c\u258b\u258a\u2589\u2588]{2,}'), '<BAR>'),
+    (re.compile(r"[A-Za-z]:\\[^\s\"']*"), '<P>'),
+    (re.compile(r'\d+\.\d+'), '<F>'),
+    (re.compile(r'\d+'), '<N>'),
+    (re.compile(r"[\"'][^\"']{0,40}[\"']"), '<S>'),
+]
+
+
+def shape_of(text):
+    """抹平变量后的"形状"，用于判断两行是否是同一件事"""
+    s = (text or '').strip()
+    for rx, rep in _SHAPE:
+        s = rx.sub(rep, s)
+    return re.sub(r'\s+', ' ', s)[:140]
+
 
 # CSI（\x1b[ + 参数 + 终结符，含 256 色/光标控制）、OSC（\x1b] ... \x07）、
 # 以及两字符 Fe 转义，统一剥掉。否则日志页会残留 [32m / [0m / [12;34H 这类乱码。
@@ -83,15 +111,34 @@ def _base():
     return _BASE if _BASE is not None else Path('.').resolve()
 
 
-def _log_path(key):
-    """该服务日志文件的绝对路径"""
+def _log_path(key, day=None):
+    """该服务日志文件的绝对路径：指定日 → 今天 → 最新一天 → 旧版无日期文件"""
     if key == 'napcat':
         inner = _napcat_inner_log()
         if inner:                      # NapCat 自己的文件日志（fileLog=true 之后才有）
             return inner
     s = SERVICES.get(key) or {}
-    rel = str(s.get('log') or '').format(date=date.today().strftime('%Y-%m-%d'))
-    return _base() / rel
+    rel = str(s.get('log') or '')
+    today = date.today().strftime('%Y-%m-%d')
+    if day:
+        p = _base() / rel.replace('{date}', day)
+        if p.is_file():
+            return p
+    if '{date}' in rel:
+        p = _base() / rel.format(date=today)
+        if p.is_file():
+            return p
+    pat = rel.replace('{date}', '*') if '{date}' in rel else ('logs/svc_%s_*.log' % key)
+    try:
+        cands = sorted(x for x in _base().glob(pat) if x.is_file())
+    except Exception:
+        cands = []
+    if cands:
+        return cands[-1]
+    legacy = _base() / ('logs/svc_%s.log' % key)
+    if legacy.is_file():
+        return legacy
+    return _base() / rel.format(date=today)
 
 
 def _napcat_inner_log():
@@ -160,6 +207,11 @@ def _run(args, timeout=20):
 def _pid_alive(pid):
     if not pid:
         return False
+    if _psutil is not None:
+        try:
+            return bool(_psutil.pid_exists(int(pid)))
+        except Exception:
+            pass
     code, out = _run(['tasklist', '/FI', 'PID eq %d' % int(pid), '/NH'], timeout=12)
     return str(pid) in (out or '')
 
@@ -243,11 +295,44 @@ def _cmdline_pids(key):
 _scan = {'ts': 0.0, 'pids': {}, 'busy': False, 'err': ''}
 
 
-def _scan_worker():
-    try:
-        found = {}
+def _scan_all_cmdlines():
+    """一次遍历进程表，同时算出每个服务匹配到的 pid。
+
+    原来是对 9 个服务各起一个 powershell（每个 ~400ms，合计 3.6s，还各自全表扫描），
+    这里改成进程内一趟走完；psutil 不在时才退回逐个 powershell。
+    """
+    found = {k: [] for k in ORDER}
+    if _psutil is None:
         for key in ORDER:
             found[key] = _cmdline_pids(key)
+        return found
+    pats = {k: [x for x in (SERVICES.get(k, {}).get('cmdline') or []) if x] for k in ORDER}
+    me = os.getpid()
+    try:
+        ppid = os.getppid()
+    except Exception:
+        ppid = 0
+    for p in _psutil.process_iter(['pid', 'cmdline']):
+        try:
+            pid = p.info['pid']
+            if pid == me or pid == ppid:
+                continue
+            cl = ' '.join(p.info.get('cmdline') or [])
+            if not cl:
+                continue
+            for key, keys in pats.items():
+                if keys and any(x in cl for x in keys):
+                    found[key].append(pid)
+        except Exception:
+            continue
+    for key in found:
+        found[key] = sorted(found[key])
+    return found
+
+
+def _scan_worker():
+    try:
+        found = _scan_all_cmdlines()
         _scan['pids'] = found
         _scan['ts'] = time.time()
         _scan['err'] = ''
@@ -302,6 +387,27 @@ def _all_pids(key):
         if x not in pids:
             pids.append(x)
     return pids
+
+
+def _fast_kill(pid):
+    """psutil 直接终止进程及其子进程；比 taskkill.exe 少起一个进程（省 ~180ms）"""
+    if _psutil is None:
+        return None
+    try:
+        p = _psutil.Process(int(pid))
+        try:
+            kids = p.children(recursive=True)
+        except Exception:
+            kids = []
+        for c in kids:
+            try:
+                c.kill()
+            except Exception:
+                pass
+        p.kill()
+        return True
+    except Exception:
+        return None
 
 
 def _taskkill(pid):
@@ -407,7 +513,7 @@ def _make_record(ln):
     return rec
 
 
-def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
+def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
     """按字节偏移读日志。
 
     since=None 首次读：只取文件尾部 first_bytes，避免几十 MB 老日志拖死浏览器。
@@ -415,7 +521,7 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
     返回 (lines, offset, size)。offset 永远停在最后一个换行之后，
     这样"半行"不会被截断返回，下次也不会重复。
     """
-    path = _log_path(key)
+    path = _log_path(key, day)
     if not path.is_file():
         return [], 0, 0
     size = path.stat().st_size
@@ -439,6 +545,7 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
     roots = [root + os.sep, root + '/']
     out = []
     pending = None      # 正在归并的多行异常堆栈（Traceback 起 + 后续续行）
+    prev_shape = None   # 上一条的形状，用于相邻合并
     for ln in raw:
         ln = _ANSI.sub('', ln)          # 去颜色 / 光标控制转义
         ln = _CTRL.sub('', ln)          # 去其余不可见控制字符
@@ -461,7 +568,32 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024):
             continue
         rec = _make_record(ln)
         pending = rec if _TB_START.search(ln) else None
+        shp = (rec.get('lv'), shape_of(rec['msg']))
+        if out and shp == prev_shape:
+            top = out[-1]
+            top['n'] = int(top.get('n') or 1) + 1
+            top['last'] = ln
+            continue
+        rec['n'] = 1
+        rec['_k'] = shp
+        prev_shape = shp
         out.append(rec)
+    if len(out) > 1:
+        freq = {}
+        for r in out:
+            freq[r['_k']] = freq.get(r['_k'], 0) + 1
+        keep, first = [], {}
+        for r in out:
+            k = r.pop('_k', None)
+            if freq.get(k, 0) >= REPEAT_MIN and r.get('lv') != 'ERROR':
+                if k in first:
+                    top = first[k]
+                    top['n'] = int(top.get('n') or 1) + int(r.get('n') or 1)
+                    top['last'] = r.get('last') or r.get('txt')
+                    continue
+                first[k] = r
+            keep.append(r)
+        out = keep
     return out, offset, size
 
 
@@ -547,13 +679,15 @@ def stop(key):
 
     # 绘画引擎走项目自带的 stop（它有自己的 pid 标记与常驻语义）
     if key == 'painting':
-        try:
-            from func.toolbox.flux_painter.config import TBFluxPainterConfig
-            from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
-            ok = get_managed_painter(TBFluxPainterConfig()).stop()
-            msgs.append('引擎已停止' if ok else '引擎未在运行')
-        except Exception as e:
-            msgs.append('引擎停止失败: %s' % e)
+        def _stop_engine():
+            try:
+                from func.toolbox.flux_painter.config import TBFluxPainterConfig
+                from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
+                get_managed_painter(TBFluxPainterConfig()).stop()
+            except Exception:
+                pass
+        threading.Thread(target=_stop_engine, daemon=True).start()
+        msgs.append('引擎正在后台停止（它自己的停下流程最长约 25 秒，不在界面上等）')
 
     # ---- 快路径：内存句柄 + pid 文件（都是 O(1)/毫秒级）----
     pids = []
@@ -571,21 +705,33 @@ def stop(key):
 
     # ---- 兜底：快路径什么都没拿到，才反查一次命令行（1~2s）----
     if not pids:
+        try:
+            if not _scan.get('busy') and time.time() - _scan.get('ts', 0) > 2:
+                _scan['pids'] = _scan_all_cmdlines()      # 同步扫一次，~40ms
+                _scan['ts'] = time.time()
+        except Exception:
+            pass
+        pids = [x for x in _scan_pids(key) if _pid_alive(x)]
+    if not pids and _psutil is None:
         pids = [x for x in _cmdline_pids(key) if _pid_alive(x)]
 
     for pid in pids:
-        ok, out = _taskkill(pid)
+        r = _fast_kill(pid)
+        if r is None:
+            ok, out = _taskkill(pid)
+        else:
+            ok, out = True, ''
         (killed if ok else failed).append(pid)
     if killed:
         msgs.append('已结束进程 ' + ','.join(str(x) for x in killed))
 
-    # 复查：只针对刚杀掉的 pid，用 tasklist 轮询（最多 1s），取代原来的 sleep(0.8)
-    deadline = time.time() + 1.0
+    # 复查：只针对刚杀掉的 pid，用 psutil 轮询（最多 0.25s）
+    deadline = time.time() + 0.25
     leftover = list(killed)
     while leftover and time.time() < deadline:
         leftover = [x for x in leftover if _pid_alive(x)]
         if leftover:
-            time.sleep(0.15)
+            time.sleep(0.05)
     if leftover:
         failed.extend(leftover)
     if failed:
@@ -594,7 +740,8 @@ def stop(key):
         msgs.append('没找到它的进程：可能本来就已停止，或不是从本界面启动的'
                     '（点 ⟳ 刷新可更新状态）')
 
-    _scan['ts'] = 0.0                    # 状态缓存立刻失效，下次刷新就是新状态
+    if key in _scan.get('pids', {}):
+        _scan['pids'][key] = []          # 刚杀过的服务直接置空，不必 9 个服务全量重扫
     return jsonify({
         'status': 'ok',
         'message': '；'.join(m for m in msgs if m),
@@ -606,6 +753,167 @@ def stop(key):
 # ============================================================================
 # 路由注册
 # ============================================================================
+# ============================================================================
+# 进度：画图 / 语音 —— 数据全部从真实日志解析
+#   绘画：logs/comfy_engine.log 的 tqdm 行（百分比/步进/已用/预计/速率）
+#         + 当日主日志的 [flux_painter] 阶段行（档位/提示词/已提交/异常）
+#   语音：当日主日志的「播放片段 N」、字幕 JSON（chatStatus + text）、打断行
+#   不连接原项目的任何 WebSocket，不修改原项目任何文件。
+# ============================================================================
+_TQDM = re.compile(
+    r'^\s*(?P<pct>\d{1,3})%\|[^|]*\|\s*(?P<cur>\d+)/(?P<tot>\d+)\s*\['
+    r'(?P<el>\d+:\d+(?::\d+)?)<(?P<eta>\?|\d+:\d+(?::\d+)?)\s*,\s*(?P<rate>[\d.?]+)(?P<unit>it/s|s/it)\]')
+_STAMP = re.compile(r'^(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})')
+_FLUX_STAGES = [
+    (re.compile(r'绘图引擎就绪'), ('引擎就绪', 'running')),
+    (re.compile(r'画质档位=(\S+?)[（(]'), ('准备画布', 'running')),
+    (re.compile(r'法典自检'), ('检索画作法典', 'running')),
+    (re.compile(r'提示词产出 title=(\S+?)\s'), ('提示词就绪', 'running')),
+    (re.compile(r'任务已提交 clip=(\S+)'), ('已提交给引擎', 'running')),
+    (re.compile(r'未解析到正向提示词'), ('提示词为空', 'error')),
+    (re.compile(r'本次绘画提前结束'), ('提前结束', 'error')),
+    (re.compile(r'图像已生成|出图完成|绘制完成'), ('出图完成', 'done')),
+]
+_TTS_SEG = re.compile(r'\[(?P<tid>[0-9a-fA-F-]{8,})\]\s*播放片段\s*(?P<n>\d+)')
+_TTS_SUB = re.compile(
+    r"'traceid':\s*'(?P<tid>[^']*)'\s*,\s*'chatStatus':\s*'(?P<st>[^']*)'"
+    r"(?:\s*,\s*'text':\s*'(?P<tx>.*?)'\s*\})?")
+_TTS_INT = re.compile(r'检测到用户开始说话')
+PROG_FRESH = 120
+REPEAT_MIN = 3
+
+
+def _tail_lines(path, nbytes, limit=800):
+    """读文件尾部若干行（已去 ANSI / 控制符 / 行内 \\r 原地刷新）"""
+    try:
+        if not path.is_file():
+            return [], 0.0
+        size = path.stat().st_size
+        with open(path, 'rb') as f:
+            f.seek(max(0, size - nbytes))
+            blob = f.read()
+    except Exception:
+        return [], 0.0
+    text = _decode(blob)
+    out = []
+    for ln in text.split('\n'):
+        ln = _ANSI.sub('', ln).rstrip('\r')
+        if '\r' in ln:
+            ln = ln.split('\r')[-1]
+        ln = _CTRL.sub('', ln).strip()
+        if ln:
+            out.append(ln)
+    return out[-limit:], path.stat().st_mtime
+
+
+def _epoch_of(ln):
+    m = _STAMP.match(ln)
+    if not m:
+        return 0.0
+    try:
+        return time.mktime(time.strptime(m.group(1).replace('T', ' '), '%Y-%m-%d %H:%M:%S'))
+    except Exception:
+        return 0.0
+
+
+def _hms(sec):
+    if sec is None:
+        return None
+    parts = [int(x) for x in str(sec).split(':')]
+    while len(parts) < 3:
+        parts.insert(0, 0)
+    return parts[0] * 3600 + parts[1] * 60 + parts[2]
+
+
+def _day_log():
+    return _base() / 'logs' / ('log_%s.txt' % date.today().strftime('%Y-%m-%d'))
+
+
+def read_progress():
+    """画图 / 语音的当前进度（全部来自日志，取不到就是 idle）"""
+    now = time.time()
+    lines, mtime = _tail_lines(_day_log(), 256 * 1024)
+    engine = SERVICES.get('painting', {}).get('log') or 'logs/comfy_engine.log'
+    eng_lines, eng_mtime = _tail_lines(_base() / engine, 128 * 1024)
+
+    paint = {'state': 'idle', 'age': None}
+    tq = None
+    for ln in reversed(eng_lines):
+        m = _TQDM.match(ln)
+        if m:
+            tq = m
+            break
+    stage, detail, s_state, s_age = '', '', '', None
+    for ln in reversed(lines):
+        if 'flux_painter' not in ln:
+            continue
+        for rx, (txt, st) in _FLUX_STAGES:
+            m = rx.search(ln)
+            if m:
+                stage, s_state = txt, st
+                detail = (m.group(1) or '').strip() if m.groups() else ''
+                ts = _epoch_of(ln)
+                s_age = int(now - ts) if ts else None
+                break
+        if stage:
+            break
+    if tq and (now - eng_mtime) <= PROG_FRESH:
+        pct = int(tq.group('pct'))
+        paint = {
+            'state': 'done' if pct >= 100 else 'running',
+            'percent': pct,
+            'step': '%s/%s' % (tq.group('cur'), tq.group('tot')),
+            'elapsed': _hms(tq.group('el')),
+            'eta': _hms(tq.group('eta')) if tq.group('eta').isdigit() or ':' in tq.group('eta') else None,
+            'rate': tq.group('rate') + tq.group('unit'),
+            'stage': stage or '引擎绘制中',
+            'detail': detail,
+            'age': int(now - eng_mtime),
+        }
+    elif s_state and s_age is not None and s_age <= PROG_FRESH:
+        paint = {'state': s_state, 'stage': stage, 'detail': detail, 'age': s_age,
+                 'percent': 100 if s_state == 'done' else None}
+    elif s_state == 'error' and s_age is not None and s_age <= 1800:
+        paint = {'state': 'error', 'stage': stage, 'detail': detail, 'age': s_age}
+
+    tts = {'state': 'idle', 'age': None, 'seg': 0, 'total': 0, 'text': ''}
+    seg = sub = intr = None
+    seg_n = 0
+    for ln in reversed(lines):
+        if sub is None:
+            m = _TTS_SUB.search(ln)
+            if m:
+                sub = (m.group('tid'), m.group('st'), (m.group('tx') or ''), _epoch_of(ln))
+                continue
+        if seg is None:
+            m = _TTS_SEG.search(ln)
+            if m:
+                seg = (m.group('tid'), int(m.group('n')), _epoch_of(ln))
+                continue
+        if intr is None and _TTS_INT.search(ln):
+            intr = _epoch_of(ln)
+            continue
+        if sub and seg and intr:
+            break
+    if seg is not None or sub is not None:
+        tid = (seg[0] if seg else (sub[0] if sub else ''))
+        seg_n = sum(1 for ln in lines if _TTS_SEG.search(ln) and _TTS_SEG.search(ln).group('tid') == tid)
+    cands = [x for x in (
+        ('intr', intr), ('sub', sub[3] if sub else None), ('seg', seg[2] if seg else None)) if x[1]]
+    if cands:
+        newest = max(cands, key=lambda x: x[1])
+        age = int(now - newest[1])
+        if newest[0] == 'intr' and age <= 600:
+            tts = {'state': 'interrupted', 'age': age, 'seg': seg[1] if seg else 0,
+                   'total': seg_n, 'text': sub[2] if sub else ''}
+        elif age <= 600 and sub and sub[1] == 'end':
+            tts = {'state': 'idle', 'age': age, 'seg': 0, 'total': 0, 'text': ''}
+        elif age <= 600:
+            tts = {'state': 'playing', 'age': age, 'seg': seg[1] if seg else 0,
+                   'total': seg_n, 'text': (sub[2] if sub else '')}
+    return {'paint': paint, 'tts': tts, 'ts': int(now)}
+
+
 def register(app, base_dir=None, gui_dir=None):
     global _BASE, _GUI
     if base_dir:
@@ -614,6 +922,7 @@ def register(app, base_dir=None, gui_dir=None):
         _GUI = Path(gui_dir).resolve()
     if _GUI is None:
         _GUI = Path(__file__).resolve().parent.parent      # gui/
+    _register_webdriver_api(app)
 
     # 统一日志目录（launcher 落盘 / 本模块读取都用它）
     launcher.set_base(_base())
@@ -650,7 +959,7 @@ def register(app, base_dir=None, gui_dir=None):
             _scan['ts'] = 0.0
             _ensure_scan(0)
         else:
-            _ensure_scan()
+            _ensure_scan(600)      # 平时 10 分钟才扫一次；点 ⟳ (deep=1) 立刻重扫
         items = []
         for key in ORDER:
             s = SERVICES[key]
@@ -697,11 +1006,18 @@ def register(app, base_dir=None, gui_dir=None):
             limit = min(5000, max(50, int(request.args.get('limit') or 1500)))
         except Exception:
             limit = 1500
-        lines, offset, size = read_tail(key, since, limit)
+        day = request.args.get('date') or None
+        lines, offset, size = read_tail(key, since, limit, day=day)
         run, pid, ports = _running(key)
         return jsonify({'status': 'ok', 'key': key, 'lines': lines,
                         'offset': offset, 'size': size,
                         'running': run, 'pid': pid, 'ports': ports})
+
+
+
+    @app.route('/api/logs/progress')
+    def _loghub_progress():
+        return jsonify(read_progress())
 
     @app.route('/api/logs/start', methods=['POST'])
     def _loghub_start():
@@ -730,3 +1046,43 @@ def register(app, base_dir=None, gui_dir=None):
 
     print('[loghub] /logs 已注册；接管启动端点: %s' % (', '.join(taken) or '无'))
     return {'taken': taken}
+
+def _register_webdriver_api(app):
+    """Selenium 驱动状态 / 一键下载（网页搜索真实浏览器抓取用）"""
+    try:
+        from func.database.search.spider.selenium_spider import CatLearnSeleniumSpider
+    except Exception as e:
+        print('[webdriver] 导入失败:', e)
+        return
+    from flask import jsonify
+
+    @app.route('/api/webdriver/status')
+    def _webdriver_status():
+        try:
+            sp = CatLearnSeleniumSpider()
+            ver = sp.edge_version()
+            p = sp.ensure_driver()
+            dv = sp._driver_version(p) if p else ''
+            return jsonify({'ok': bool(p), 'edge_version': ver, 'driver_version': dv,
+                            'driver_path': p or '',
+                            'match': bool(p) and bool(ver) and dv.split('.')[0] == ver.split('.')[0],
+                            'download_url': ('https://msedgedriver.microsoft.com/%s/edgedriver_win64.zip' % ver) if ver else '',
+                            'official_url': 'https://developer.microsoft.com/en-us/microsoft-edge/tools/webdriver/'})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': '%s: %s' % (type(e).__name__, str(e)[:120])})
+
+    @app.route('/api/webdriver/install', methods=['POST'])
+    def _webdriver_install():
+        try:
+            sp = CatLearnSeleniumSpider()
+            ver = sp.edge_version()
+            CatLearnSeleniumSpider._driver_path = ""
+            p = sp._download_driver(ver) if ver else ''
+            return jsonify({'ok': bool(p), 'driver_path': p or '',
+                            'driver_version': sp._driver_version(p) if p else '',
+                            'edge_version': ver})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': '%s: %s' % (type(e).__name__, str(e)[:120])})
+    print('[webdriver] 已注册 /api/webdriver/status 与 /api/webdriver/install')
+
+

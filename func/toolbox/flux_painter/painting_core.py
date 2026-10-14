@@ -403,7 +403,8 @@ class TBFluxPainterCore:
                     self._bcast(channel, {"type": "progress", "stage": "已入队", "percent": 0,
                                           "step": "", "elapsed": 0, "eta": last_eta or 0})
                 wok, images, wmsg = connector.watch(
-                    prompt_id, graph=graph, timeout=900, client_id=channel,
+                    prompt_id, graph=graph, timeout=int(getattr(self.config, "wait_timeout", 5400)),
+                    client_id=channel,
                     on_progress=((lambda ev: self._bcast(
                         channel, dict(ev, type="progress", eta=last_eta or 0)))
                         if progress_on else None))

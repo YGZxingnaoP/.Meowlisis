@@ -18,6 +18,7 @@
 
 import os
 import json
+import time
 import bisect
 import threading
 
@@ -36,10 +37,15 @@ class ShortMemory:
     # 插播类各自的尾部兜底上限（未列出的取主动回复插播配置 _active_mem_limit）
     ACTIVE_LIMITS = {"toolbox_excuse": 8}
 
+    SESSION_MARKER = "session_marker"
+
+    MARKER_KEEP = 5
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.path = os.path.join(".temp", "public_short_mem.json")
         self._lock = threading.Lock()
+        self._mark_session()
 
     def _read(self) -> list:
         """读取 json 全部记录（缺失或损坏时返回空列表）"""
@@ -62,6 +68,47 @@ class ShortMemory:
         except Exception:
             self.log.exception("写入短期记忆失败")
 
+    def _mark_session(self):
+        """启动时在短期记忆最下面插一条会话分割提示（及以上内容属于更早的对话）"""
+        with self._lock:
+            data = self._read()
+            if not data:
+                return
+            now = time.strftime("%Y-%m-%d %H:%M")
+            text = f"【会话分割】以上内容发生在 {now} 之前；此后的属于本次会话"
+            if data[-1].get("type") == self.SESSION_MARKER:
+                data[-1]["role"] = "system"
+                data[-1]["content"] = text
+                self._write(data)
+                return
+            data.append({
+                "role": "system",
+                "content": text,
+                "type": self.SESSION_MARKER,
+            })
+            self._write(self._cleanup_markers(data))
+
+    def _cleanup_markers(self, data: list) -> list:
+        """分割记录随其上内容连带清理：无内容支撑的丢弃、连续只留最后一条、最多保留 MARKER_KEEP 条"""
+        out = []
+        has_content = False
+        for m in data:
+            if m.get("type") == self.SESSION_MARKER:
+                if not has_content:
+                    continue
+                if out and out[-1].get("type") == self.SESSION_MARKER:
+                    out[-1] = m
+                    continue
+                out.append(m)
+            else:
+                has_content = True
+                out.append(m)
+        idx = [i for i, m in enumerate(out) if m.get("type") == self.SESSION_MARKER]
+        if len(idx) > self.MARKER_KEEP:
+            for i in reversed(idx[:-self.MARKER_KEEP]):
+                out.pop(i)
+        return out
+
     def save(self, message: dict, max_rounds: int, trim_mode: str = "rounds"):
         """保存一条短期记忆，并按该 type 的独立上限裁剪最旧内容。
 
@@ -73,6 +120,7 @@ class ShortMemory:
             data.append(message)
             data = self._trim_by_type(data, message.get("type"), max_rounds, trim_mode)
             data = self._trim_active_orphans(data)
+            data = self._cleanup_markers(data)
             self._write(data)
 
     def _trim_by_type(self, data: list, mem_type, max_rounds: int, trim_mode: str = "rounds") -> list:

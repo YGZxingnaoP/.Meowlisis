@@ -103,14 +103,14 @@ class TBNapCatCore:
         self.connection.stop()
 
     # ==================== 发送 API ====================
-    def send_private_text(self, user_id, text: str):
-        self.api_client.send_private_text(user_id, text)
+    def send_private_text(self, user_id, text: str, delay: float = 0.0):
+        self.api_client.send_private_text(user_id, text, delay)
 
     def send_private_image(self, user_id, file_path: str):
         self.api_client.send_private_image(user_id, file_path)
 
-    def send_group_text(self, group_id, text: str):
-        self.api_client.send_group_text(group_id, text)
+    def send_group_text(self, group_id, text: str, delay: float = 0.0):
+        self.api_client.send_group_text(group_id, text, delay)
 
     def send_group_at_text(self, group_id, at_qq, text: str):
         self.api_client.send_group_at_text(group_id, at_qq, text)

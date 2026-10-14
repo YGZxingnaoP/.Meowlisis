@@ -20,6 +20,7 @@ cwd/env 拼装、窗口标志），重复且细节不一致，日志落点也不
 import os
 import sys
 import subprocess
+from datetime import date
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -52,12 +53,12 @@ SERVICES = {
     },
     'sovits': {
         'name': 'SoVITS', 'endpoint': 'start_sovits',
-        'log': 'logs/svc_sovits.log', 'cmdline': ['.Sovits'], 'desc': 'GPT-SoVITS 语音合成',
+        'log': 'logs/svc_sovits_{date}.log', 'cmdline': ['.Sovits'], 'desc': 'GPT-SoVITS 语音合成',
         'launch': {'kind': 'sovits'},
     },
     'sensevoice': {
         'name': 'SenseVoice', 'endpoint': 'start_sensevoice',
-        'log': 'logs/svc_sensevoice.log', 'cmdline': ['.SenseVoice'], 'desc': '语音识别 + 声纹',
+        'log': 'logs/svc_sensevoice_{date}.log', 'cmdline': ['.SenseVoice'], 'desc': '语音识别 + 声纹',
         'launch': {'kind': 'bat_or_py',
                    'bat': '.vendor/.SenseVoice/start.bat',
                    'script': '.vendor/.SenseVoice/server/sensevoice_server.py',
@@ -65,29 +66,29 @@ SERVICES = {
     },
     'napcat': {
         'name': 'NapCat', 'endpoint': 'start_napcat',
-        'log': 'logs/svc_napcat.log', 'cmdline': ['NapCatWinBootMain'], 'desc': 'QQ 机器人',
+        'log': 'logs/svc_napcat_{date}.log', 'cmdline': ['NapCatWinBootMain'], 'desc': 'QQ 机器人',
         'launch': {'kind': 'bat', 'bat': '.vendor/.NapCat/NapCat.Shell/napcat.quick.bat',
                    'cwd': '.vendor/.NapCat/NapCat.Shell'},
     },
     'netease': {
         'name': '网易云搜歌', 'endpoint': 'start_netease',
-        'log': 'logs/svc_netease.log', 'cmdline': ['.NeteaseMusic'], 'desc': '网易云搜歌服务',
+        'log': 'logs/svc_netease_{date}.log', 'cmdline': ['.NeteaseMusic'], 'desc': '网易云搜歌服务',
         'launch': {'kind': 'python', 'script': '.vendor/.NeteaseMusic/server/server.py',
                    'cwd': '.vendor/.NeteaseMusic'},
     },
     'rvc': {
         'name': 'RVC 翻唱', 'endpoint': 'start_rvc',
-        'log': 'logs/svc_rvc.log', 'cmdline': ['.RVC'], 'desc': 'RVC 翻唱服务',
+        'log': 'logs/svc_rvc_{date}.log', 'cmdline': ['.RVC'], 'desc': 'RVC 翻唱服务',
         'launch': {'kind': 'python', 'script': '.vendor/.RVC/cover_server.py', 'cwd': '.vendor/.RVC'},
     },
     'desktopet': {
         'name': '桌宠', 'endpoint': 'start_desktopet',
-        'log': 'logs/svc_desktopet.log', 'cmdline': ['.desktopet'], 'desc': '桌宠',
+        'log': 'logs/svc_desktopet_{date}.log', 'cmdline': ['.desktopet'], 'desc': '桌宠',
         'launch': {'kind': 'bat', 'bat': '.vendor/.desktopet/start.bat', 'cwd': '.vendor/.desktopet'},
     },
     'phone': {
         'name': '手机接口', 'endpoint': 'start_phone',
-        'log': 'logs/svc_phone.log', 'cmdline': ['.cam'], 'desc': '手机端接口服务',
+        'log': 'logs/svc_phone_{date}.log', 'cmdline': ['.cam'], 'desc': '手机端接口服务',
         'launch': {'kind': 'python', 'script': '.vendor/.cam/serve.py', 'cwd': '.vendor/.cam'},
     },
 }
@@ -105,6 +106,13 @@ def python_exe(base: Path) -> str:
 
 
 def spawn(args, cwd=None, env=None, log_key=None):
+    """统一启动一个子进程，返回 Popen。
+
+    args    : 命令列表
+    cwd     : 工作目录
+    env     : 追加/覆盖的环境变量（与父进程环境合并）
+    log_key : 日志标识；给定则 stdout/stderr 追加写入 logs/svc_<log_key>_<日期>.log
+    """
     """统一启动一个子进程，返回 Popen。
 
     args    : 命令列表
@@ -130,7 +138,8 @@ def spawn(args, cwd=None, env=None, log_key=None):
         try:
             log_dir = _log_dir()          # 所有服务日志统一落在 <项目根>/logs/
             log_dir.mkdir(parents=True, exist_ok=True)
-            logf = open(log_dir / ("svc_%s.log" % log_key), "ab", buffering=0)
+            day = date.today().strftime("%Y-%m-%d")
+            logf = open(log_dir / ("svc_%s_%s.log" % (log_key, day)), "ab", buffering=0)
             kwargs["stdout"] = logf
             kwargs["stderr"] = subprocess.STDOUT
         except Exception:

@@ -70,7 +70,7 @@ class NapcatGroupLLMBridge:
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False) -> str:
+              nsfw: bool = False, quote: Optional[str] = None) -> str:
         """@ 触发/强制回复：流式生成，on_segment 回调短句发送到群
 
         nsfw=True 时切割减小（不按逗号切）。
@@ -79,7 +79,7 @@ class NapcatGroupLLMBridge:
         self.log.info(f"NapCat 群聊 → LLM: {group_name} {text[:30]}...")
         return TBNapCatGroupLLM().reply(
             username, group_id, group_name, text, short_memory, group_info_text, on_segment,
-            nsfw=nsfw
+            nsfw=nsfw, quote=quote
         )
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,

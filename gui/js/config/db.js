@@ -138,7 +138,8 @@ Object.assign(Config, {
         }
         h += `</div>`;
         h += `<button class="btn btn-secondary" id="addSourceSiteBtn">${this._t('添加站点')}</button>` +
-            `<div class="help-text">${this._t('策略：http=网页解析、api=JSON接口、direct=直连详情页。search_url 用 {q} 占位搜索关键词。')}</div>`;
+            `<div class="help-text">${this._t('策略：http=网页解析、api=JSON接口、direct=直连详情页、selenium=真实浏览器渲染（反爬站用）。search_url 用 {q} 占位搜索关键词。')}</div>`;
+        h += `<div class="form-group"><label>${this._t('Selenium 驱动（真实浏览器抓取用）')}</label><button type="button" class="btn" id="webdriverStatusBtn">${this._t('查看驱动状态')}</button><button type="button" class="btn" id="webdriverInstallBtn">${this._t('下载 / 更新驱动')}</button><div class="help-text" id="webdriverStatusText">${this._t('抓取被反爬拦截时会自动改用真实浏览器；驱动按 Edge 版本自动匹配下载。')}</div></div>`;
         return h;
     },
     sourceSiteRow(key, cfg) {
@@ -169,6 +170,8 @@ Object.assign(Config, {
                         <option value="http" ${strategy === 'http' ? 'selected' : ''}>http</option>
                         <option value="api" ${strategy === 'api' ? 'selected' : ''}>api</option>
                         <option value="direct" ${strategy === 'direct' ? 'selected' : ''}>direct</option>
+                        <option value="mediawiki" ${strategy === 'mediawiki' ? 'selected' : ''}>mediawiki（百科API）</option>
+                        <option value="selenium" ${strategy === 'selenium' ? 'selected' : ''}>selenium（真实浏览器）</option>
                     </select></div>
                 <div class="form-group"><label>${this._t('每站爬取条数')}</label>
                     <input type="number" data-source-field="count" value="${count}" min="1" max="50" step="1"></div>

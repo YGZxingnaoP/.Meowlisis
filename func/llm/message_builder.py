@@ -37,8 +37,8 @@ class MessageBuilder:
 
     @staticmethod
     def _now() -> str:
-        """返回当前小时分钟（如 14:23）"""
-        return datetime.datetime.now().strftime("%H:%M")
+        """返回当前日期时间（如 2026-10-14 14:23）"""
+        return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     def add_user_message(self, username: str, content: str):
         """记录一条用户消息到内存缓存（含说话人与时间），并尝试归档旧轮次"""
@@ -79,7 +79,7 @@ class MessageBuilder:
     @staticmethod
     def format_user_content(username: str, content: str) -> str:
         """把用户消息格式化为「时间+说话人+内容」的随机格式（与归档逻辑一致）"""
-        now = datetime.datetime.now().strftime("%H:%M")
+        now = MessageBuilder._now()
         name = str(username or "用户")
         text = str(content or "")
         fmt = random.choice(MessageBuilder.USER_FORMATS)

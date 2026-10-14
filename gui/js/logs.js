@@ -74,7 +74,8 @@
 
     function esc(s) {
         return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     function shortSrc(s) {
@@ -156,6 +157,7 @@
         var title = seen || rec.msg || rec.txt || '';
         var html = '<span class="lv">' + esc(lv) + '</span><div class="body">';
         html += '<div class="sum">' + esc(title);
+        if (rec.n > 1) html += '<i class="more" title="' + esc(_t('相同内容合并了多少行')) + '">×' + rec.n + '</i>';
         if (rec.more) html += '<i class="more" title="' + esc(_t('展开原文可看到其余堆栈行')) + '">+' + rec.more + '</i>';
         html += '</div>';
 
@@ -176,8 +178,8 @@
         var keep = elAuto.checked ? atBottom() : false;
         var frag = document.createDocumentFragment(), added = 0;
         records.forEach(function (rec) {
-            counts[bucketOf(rec.lv || '')]++;
             if (!lineOk(rec)) return;
+            counts[bucketOf(rec.lv || '')]++;
             frag.appendChild(lineNode(rec));
             added++;
         });
@@ -328,8 +330,8 @@
         });
     }
 
-    function select(key) {
-        if (key === cur) return;
+    function select(key, force) {
+        if (key === cur && !force) return;
         cur = key;
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
         elCurName.textContent = it ? _t(it.name) : key;
@@ -360,27 +362,61 @@
             if (s) { s.disabled = true; }
             if (t) { t.disabled = true; }
             var b = (what === 'start') ? s : t;
-            if (b) b.textContent = '…';
+            if (b) b.innerHTML = '<i class="lh-spin"></i>';
         } else {
-            if (s) { s.textContent = '▶'; s.disabled = row.dataset.running === '1'; }
-            if (t) { t.textContent = '■'; t.disabled = false; }
+            if (s) { s.innerHTML = '▶'; s.disabled = row.dataset.running === '1'; }
+            if (t) { t.innerHTML = '■'; t.disabled = false; }
         }
+    }
+
+    function busyBtn(btn, on) {
+        if (!btn) return;
+        if (!btn.dataset.label) btn.dataset.label = btn.innerHTML;
+        if (on) { btn.disabled = true; btn.innerHTML = '<i class="lh-spin"></i>'; }
+        else { btn.disabled = false; btn.innerHTML = btn.dataset.label; }
+    }
+
+    /** 停止后每 0.4 秒盯一次它的状态，真的没了就停转圈 */
+    function waitGone(key, btn, nm, tries) {
+        tries = tries || 0;
+        api('/api/logs/tail?svc=' + encodeURIComponent(key) + '&limit=1').then(function (j) {
+            if (!j.running) {
+                busyBtn(btn, false);
+                setRowBusy(key, false);
+                toast(nm + '：' + _t('已停止'));
+                return refreshList();
+            }
+            if (tries >= 30) {                 // 最多盯 12 秒
+                busyBtn(btn, false);
+                setRowBusy(key, false);
+                toast(nm + '：' + _t('已发出停止指令，进程还在释放资源'), false);
+                return refreshList();
+            }
+            setTimeout(function () { waitGone(key, btn, nm, tries + 1); }, 400);
+        }).catch(function () {
+            busyBtn(btn, false);
+            setRowBusy(key, false);
+        });
     }
 
     function act(what, key) {
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
         var nm = it ? _t(it.name) : key;
+        var tb = (key === cur) ? $(what === 'start' ? 'btnStart' : 'btnStop') : null;
         setRowBusy(key, true, what);
+        busyBtn(tb, true);
         api('/api/logs/' + what + '?svc=' + encodeURIComponent(key), { method: 'POST' })
             .then(function (j) {
                 var ok = !(j && j.status === 'error');
                 toast(nm + '：' + ((j && j.message) || _t('完成')), !ok);
+                if (!ok) { busyBtn(tb, false); setRowBusy(key, false); return refreshList(); }
+                if (what === 'stop') waitGone(key, tb, nm, 0);
+                else { busyBtn(tb, false); setRowBusy(key, false); return refreshList(); }
             })
             .catch(function (e) {
                 toast(nm + ' ' + _t(what === 'start' ? '启动' : '停止') + _t('失败: ') + e.message, true);
-            })
-            .then(function () {
-                return refreshList();      // 立即刷新状态，不再固定等 600ms
+                busyBtn(tb, false);
+                setRowBusy(key, false);
             });
     }
 
@@ -390,6 +426,7 @@
         elEmpty.textContent = _t('选择左侧服务查看日志');
         applyTabs();
 
+        if (elFilter) elFilter.setAttribute('autocomplete', 'off');
         elFilter.addEventListener('input', function () {
             clearTimeout(bind._t);
             bind._t = setTimeout(refilter, 400);
@@ -431,7 +468,7 @@
     // ---------------- 启动 ----------------
     bind();
     refreshList().then(function () {
-        select(cur = 'main');
+        select('main', true);
         rateTick = Date.now();
         tick();
         setInterval(function () { if (!document.hidden) refreshList(); }, LIST_MS);
