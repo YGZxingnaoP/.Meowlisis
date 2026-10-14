@@ -139,6 +139,10 @@ class TBNapCatConnection:
         elif post_type == "message" and data.get("message_type") == "group":
             if self.on_group_message:
                 threading.Thread(target=self.on_group_message, args=(data,), daemon=True).start()
+        elif post_type == "message_sent":
+            _cb = getattr(self, "on_message_sent", None)
+            if _cb:
+                threading.Thread(target=_cb, args=(data,), daemon=True).start()
         elif post_type == "notice":
             # 戳一戳等通知事件
             if data.get("sub_type") == "poke" and self.on_poke:

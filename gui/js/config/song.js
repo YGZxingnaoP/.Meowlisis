@@ -10,23 +10,23 @@ Object.assign(Config, {
             this._check('启用点歌翻唱', 'meowsinger.enabled', true) +
             this._llmTypeSelect('LLM 类型', 'meowsinger.llm_type', type);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="meowsinger_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="meowsinger_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="meowsinger_gemini">Gemini</button>
+            <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="meowsinger_ds">DeepSeek</button>
+            <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="meowsinger_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${type === 'gemini' ? ' active' : ''}" data-tab="meowsinger_gemini">Gemini</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="meowsinger_ds">` +
+        h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="meowsinger_ds">` +
             this._password('API Key', 'meowsinger.deepseek.api_key', '') +
             this._text('Base URL', 'meowsinger.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'meowsinger.deepseek.model', 'deepseek-chat') +
             this._num('max_tokens', 'meowsinger.deepseek.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="meowsinger_aliyun">` +
+        h += `<div class="tab-content${type === 'aliyun' ? ' active' : ''}" data-tab-content="meowsinger_aliyun">` +
             this._password('API Key', 'meowsinger.aliyun.api_key', '') +
             this._text('Base URL', 'meowsinger.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'meowsinger.aliyun.model', 'qwen-plus') +
             this._num('max_tokens', 'meowsinger.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="meowsinger_gemini">` +
+        h += `<div class="tab-content${type === 'gemini' ? ' active' : ''}" data-tab-content="meowsinger_gemini">` +
             this._password('API Key', 'meowsinger.gemini.api_key', '') +
             this._text('Base URL', 'meowsinger.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'meowsinger.gemini.model', 'gemini-3.6-flash') +

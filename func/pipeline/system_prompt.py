@@ -77,7 +77,6 @@ class SystemPromptBridge:
 
     def _apply_nsfw_settings(self, prompt: str) -> str:
         """破甲词触发时，应用 nsfw 全套覆盖：替换性格/爱好/最喜欢的东西，并移除价值观整段。
-
         所有 nsfw 内容均存在 armor-piercing-prompt.json 的对应字段，可前端配置；
         破甲词命中即进入 nsfw 模式：价值观整段不传，其余字段按需替换。
         """
@@ -188,7 +187,6 @@ class SystemPromptBridge:
 
     def get_tool_prompt(self, username=None, current_message: str = "") -> str:
         """工具箱决策/工具调用用提示词：前置词(行为约束) + 角色人设(角色卡+价值观) + 后置词(人设)
-
         - 不含用户记忆、日期、记忆摘要（这些是「对话上下文」，决策/工具场景不需要）；
         - 后置词不加「你现在在和{name}说话」（决策/工具场景没有固定对话对象）。
         """
@@ -205,7 +203,6 @@ class SystemPromptBridge:
     def get_system_prompt(self, username=None, current_message: str = "",
                           mark_first: bool = True) -> str:
         """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)
-
         mark_first=False 时日期块不占用「当天首次说话」祝福判定。
         """
         body = ""
@@ -237,7 +234,6 @@ class SystemPromptBridge:
     def get_danmaku_prompt(self, username=None, current_message: str = "",
                            multi_user: bool = False) -> str:
         """弹幕提示词：前置词(行为约束) + body + 弹幕后置词(回复弹幕)
-
         - 单用户：body 含用户档案/记忆，后置词「你在回复{username}的弹幕」；
         - 多用户：body 仅角色人设(角色卡+价值观，不带用户档案)，后置词「你收到了好多弹幕，挑选一些回复一下」。
         """
@@ -271,14 +267,25 @@ class SystemPromptBridge:
         front = self.get_napcat_front_prompt()
         if front:
             # QQ 指令与字数限制追加到行为约束（前置词）后
+            word_count, limit, punct_on, punct_max = 10, 15, True, 4
             try:
                 from func.toolbox.napcat.config import TBNapCatConfig
-                word_count = int(TBNapCatConfig().reply_word_count or 10)
+                _cfg = TBNapCatConfig()
+                word_count = int(_cfg.reply_word_count or 10)
+                _rej = _cfg.reject_conf("private")
+                _r = _rej.get("ratio")
+                limit = int(word_count * (float(_r) if _r is not None else 1.5))
+                punct_on = bool(_rej.get("punct_enabled", True))
+                punct_max = int(_rej.get("punct_max", 4) or 4)
             except Exception:
-                word_count = 10
+                pass
+            _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
+            _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
             front = (
-                f"{front}\n你在QQ里回复TA的消息，必须使用网络用语\n"
-                f"每次回复{word_count}个字左右，严格控制在{word_count + 10}字以内"
+                f"{front}\n你在QQ里回复TA的消息，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
+                f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
+                f"{_punct_line}\n"
+                f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收"
             )
         post = self.get_post_prompt()
         if post:
@@ -315,14 +322,25 @@ class SystemPromptBridge:
             body = self._builder.build(username, current_message, online=True)
         front = self.get_napcat_front_prompt()
         if front:
+            word_count, limit, punct_on, punct_max = 10, 15, True, 4
             try:
                 from func.toolbox.napcat.config import TBNapCatConfig
-                word_count = int(TBNapCatConfig().group_reply_word_count or 10)
+                _cfg = TBNapCatConfig()
+                word_count = int(_cfg.group_reply_word_count or 10)
+                _rej = _cfg.reject_conf("group")
+                _r = _rej.get("ratio")
+                limit = int(word_count * (float(_r) if _r is not None else 1.5))
+                punct_on = bool(_rej.get("punct_enabled", True))
+                punct_max = int(_rej.get("punct_max", 4) or 4)
             except Exception:
-                word_count = 10
+                pass
+            _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
+            _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
             front = (
-                f"{front}\n你在QQ群【{group_name}】里聊天，必须使用网络用语\n"
-                f"每次回复{word_count}个字左右，严格控制在{word_count + 10}字以内\n"
+                f"{front}\n你在QQ群【{group_name}】里聊天，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
+                f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
+                f"{_punct_line}\n"
+                f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收\n"
                 f"只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
             )
         post = self.get_post_prompt()
@@ -349,7 +367,6 @@ class SystemPromptBridge:
     def get_watching_prompt(self, username=None, current_message: str = "",
                             front_note: str = "") -> str:
         """watching（长期观察屏幕）提示词：前置词 + 游戏场景说明 + body(不含摘要) + 后置词(在看XX内容)
-
         - front_note：AI 决策填写的游戏场景说明（谁在玩什么、画面特征等），加在前置词之后；
         - body：角色卡 + 价值观 + 用户档案 + 日期（不含长期记忆摘要 abmem）；
         - 后置词末尾追加「你在看{username}的内容」。
@@ -381,7 +398,6 @@ class SystemPromptBridge:
     def get_active_prompt(self, cold_time, current_message: str = "",
                           topic_override: str = "") -> str:
         """主动回复提示词：前置词(行为约束) + body + 后置词(人设+空闲提示)
-
         topic_override：外部指定话题（如视频话题），透传给 body 的记忆摘要筛选。
         """
         body = ""
@@ -390,7 +406,8 @@ class SystemPromptBridge:
         front = self.get_active_front_prompt()
         post = self.get_post_prompt()
         if post:
-            post = f"{post}\n已经{cold_time}秒没人跟你说话了，你必须自己找话题说话"
+            post = (f"{post}\n已经{cold_time}秒没人跟你说话了（这只是背景，说明当下没人在说话，绝对禁止强调）。\n"
+                "现在说什么、用什么方式，都由你自己决定，你可以选择撒娇，说任何话。")
         self._psyche_start()
         psyche = self._psyche_block()
         parts = [p for p in (front, psyche, body, post) if p]

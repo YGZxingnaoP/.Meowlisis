@@ -151,20 +151,8 @@ const Config = {
             <div class="ref-fold-body">${body}</div>
         </details>`;
     },
-    _esc(s) {
-        return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-    },
-    _escAttr(s) {
-        return String(s == null ? '' : s)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
+    _esc(s) { return U.esc(s); },
+    _escAttr(s) { return U.escAttr(s); },
 
     // ============ 基本设置（根级 + app） ============,
     collectValues() {

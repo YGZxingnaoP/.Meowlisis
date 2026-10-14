@@ -167,12 +167,8 @@ const App = {
     },
 
     // ============ 主动回复子球：配置 ============,
-    _esc(s) {
-        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    },
-    _escAttr(s) {
-        return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    },
+    _esc(s) { return U.esc(s); },
+    _escAttr(s) { return U.escAttr(s); },
     onToolboxPlanetClick(id) {
         const pluginRef = this.pluginMap && this.pluginMap[id];
         if (pluginRef) {

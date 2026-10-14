@@ -252,10 +252,23 @@ class IdSignupBridge:
 
     def backlog_path_of(self, name):
         """取待办落盘路径：有编号进编号目录，没有照旧"""
-        uid = self.uid_of(name)
+        uid = self.uid_of(name) or self.uid_by_nickname(name)
         if uid:
             return self.backlog_path(uid)
         return self.legacy_backlog_path(name)
+
+    def uid_by_nickname(self, name):
+        """按昵称反查编号（配置界面传过来的是昵称，不是编号）"""
+        target = str(name or "").strip()
+        if not target:
+            return ""
+        try:
+            for user in self.list_users():
+                if str(user.get("nickname") or "").strip() == target:
+                    return str(user.get("id") or "")
+        except Exception:
+            self.log.exception("按昵称查编号失败")
+        return ""
 
     def read_json_file(self, path):
         """读一个 json 文件，读不到回空 dict"""

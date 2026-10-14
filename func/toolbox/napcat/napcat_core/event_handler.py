@@ -104,9 +104,40 @@ class TBNapCatEventHandler:
             if not parsed or not parsed.get("text"):
                 return
             self_id = event.get("self_id")
+            self._resolve_quote(parsed, "private", parsed.get("user_id"))
             self.buffer._buffer_message(parsed, self_id)
         except Exception:
             self.log.exception("处理私聊消息异常")
+
+    def _handle_message_sent(self, event: dict):
+        try:
+            self_id = str(event.get("self_id") or "")
+            user_id = str(event.get("user_id") or "")
+            if not self_id or self_id != user_id:
+                return
+            mid = event.get("message_id")
+            if mid is None:
+                return
+            from func.toolbox.napcat.message.get_message import TBGetMessage
+            from func.toolbox.napcat.message.quote_store import TBSelfSentStore
+            text = "".join(TBGetMessage._parse_segments(event.get("message")))
+            TBSelfSentStore().remember(mid, text)
+        except Exception:
+            self.log.exception("处理 message_sent 异常")
+
+    def _resolve_quote(self, parsed: dict, scope: str, key):
+        conf = self.config.quote_conf(scope) if hasattr(self.config, "quote_conf") else {}
+        if not bool(conf.get("enabled", True)):
+            return
+        mid = str(parsed.get("reply_to_id") or "").strip()
+        if not mid:
+            return
+        from func.toolbox.napcat.message.quote_store import TBSelfSentStore, TBQuoteStore
+        text = TBSelfSentStore().text_of(mid)
+        if not text:
+            return
+        TBQuoteStore().put(scope, key, text, parsed.get("text"))
+        parsed["reply_self"] = True
 
     # ==================== 戳一戳处理 ====================
     def _handle_poke(self, event: dict):
@@ -225,6 +256,7 @@ class TBNapCatEventHandler:
             parsed = self.get_group_message.parse(event)
             if not parsed:
                 return
+            self._resolve_quote(parsed, "group", parsed.get("group_id"))
             group_id = str(parsed.get("group_id", ""))
             group_name = self._resolve_group_name(group_id)
             parsed["group_name"] = group_name
@@ -246,9 +278,12 @@ class TBNapCatEventHandler:
             try:
                 from func.toolbox.napcat.identity.qq_cmd import TBNapcatIdentityCmd
                 sender = (event.get("sender") or {})
+                _at_like = bool(parsed.get("at_self"))
+                if not self._is_bot_user(parsed.get("user_id")):
+                    _at_like = bool(_at_like or parsed.get("mention_self") or parsed.get("reply_self"))
                 if TBNapcatIdentityCmd().handle_group(
                         str(parsed.get("user_id") or ""), group_id, str(parsed.get("text") or ""),
-                        str(sender.get("nickname", "")), bool(parsed.get("at_self"))):
+                        str(sender.get("nickname", "")), _at_like):
                     self.log.info("[NapCat] 群绑定指令命中，已消费")
                     return
             except Exception:

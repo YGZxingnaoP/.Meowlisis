@@ -17,7 +17,7 @@ class TBNapCatApiClient:
         self.conn = connection
 
     # ==================== 发送 API ====================
-    def send_private_text(self, user_id, text: str):
+    def send_private_text(self, user_id, text: str, delay: float = 0.0):
         """发送私聊文本（线程安全，异步发送并记录结果）"""
         if not text or not self.conn.enabled:
             return
@@ -28,7 +28,7 @@ class TBNapCatApiClient:
         self._submit_send("send_private_msg", {
             "user_id": int(user_id),
             "message": [{"type": "text", "data": {"text": text}}],
-        }, "文本")
+        }, "文本", delay)
 
     def send_private_image(self, user_id, file_path: str):
         """发送私聊图片（用于 gif 表情，线程安全）"""
@@ -43,7 +43,7 @@ class TBNapCatApiClient:
             "message": [{"type": "image", "data": {"file": self._to_file_uri(file_path)}}],
         }, "图片")
 
-    def send_group_text(self, group_id, text: str):
+    def send_group_text(self, group_id, text: str, delay: float = 0.0):
         """发送群聊文本（线程安全，异步发送）"""
         if not text or not self.conn.enabled:
             return
@@ -54,7 +54,7 @@ class TBNapCatApiClient:
         self._submit_send("send_group_msg", {
             "group_id": int(group_id),
             "message": [{"type": "text", "data": {"text": text}}],
-        }, "群文本")
+        }, "群文本", delay)
 
     def send_group_at_text(self, group_id, at_qq, text: str):
         """发送群聊 @ 某人文本（构造独立 at 段，线程安全）
@@ -129,18 +129,20 @@ class TBNapCatApiClient:
         }, "群语音")
 
     # ==================== 发送基础设施 ====================
-    def _submit_send(self, action: str, params: dict, label: str):
+    def _submit_send(self, action: str, params: dict, label: str, delay: float = 0.0):
         """提交发送协程到事件循环，异常与结果在协程内部记录（避免静默吞掉）"""
         try:
             asyncio.run_coroutine_threadsafe(
-                self._send_and_log(action, params, label), self.conn.loop
+                self._send_and_log(action, params, label, delay), self.conn.loop
             )
         except Exception:
             self.log.exception(f"提交发送{label}失败")
 
-    async def _send_and_log(self, action: str, params: dict, label: str):
+    async def _send_and_log(self, action: str, params: dict, label: str, delay: float = 0.0):
         """发送 OneBot action 并等待响应，记录成功/失败与 retcode"""
         try:
+            if delay and delay > 0:
+                await asyncio.sleep(min(float(delay), 10.0))
             echo = self.conn._next_echo()
             resp = await self.conn._call_action(echo, action, params)
         except Exception as e:

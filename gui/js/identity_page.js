@@ -8,6 +8,9 @@ const IdentityUI = {
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
             .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     },
+    cfg(path, def) {
+        return (window.Config && Config._val) ? Config._val(path, def) : def;
+    },
     html() {
         return '<div class="form-section"><h4>' + this.t('用户 ID') + '</h4></div>' +
             '<div class="help-text">' + this.t('输入编号（或昵称）查这个人，逐个平台看绑定情况') + '</div>' +
@@ -20,16 +23,12 @@ const IdentityUI = {
             '</div>' +
             '<div id="identityMsg" class="help-text"></div>' +
             '<div id="identityDetail"></div>' +
-            '<div class="char-card">' +
-            '<div class="char-card-title">' + this.t('合并用户') + '</div>' +
-            '<div class="help-text">' + this.t('填两个编号或昵称，先看方案再执行；好感度高的当底，一样就取 B站那份') + '</div>' +
-            '<div class="form-group"><label>' + this.t('编号或昵称（逗号分隔）') + '</label>' +
-            '<input type="text" id="identityMergeKeys" placeholder="000002, 000003"></div>' +
-            '<div class="speaker-actions">' +
-            '<button class="btn btn-secondary" onclick="IdentityUI.merge(false)">' + this.t('预览方案') + '</button>' +
-            '<button class="btn btn-primary" onclick="IdentityUI.merge(true)">' + this.t('执行合并') + '</button>' +
-            '</div>' +
-            '<pre id="identityMergePlan" class="help-text" style="white-space:pre-wrap;margin:0"></pre>' +
+            '<div class="form-section"><h4>' + this.t('绑定指令') + '</h4></div>' +
+            '<div class="form-group"><label>' + this.t('绑定前缀词') + '</label>' +
+            '<input type="text" data-path="identity.bind_prefix" value="' +
+            this.esc(this.cfg('identity.bind_prefix', 'Meowlisis账号绑定')) +
+            '" placeholder="Meowlisis账号绑定">' +
+            '<div class="help-text">' + this.t('用户发「前缀词 + 帮助」看用法；前缀词 + qq QQ号 或 前缀词 + bili uid/昵称 即完成绑定') + '</div>' +
             '</div>';
     },
     msg(text, bad) {
@@ -135,17 +134,6 @@ const IdentityUI = {
         const data = await this.post('/api/identity/unbind', { id: this.detail.id, platform: platform });
         this.msg(data.message || (data.status === 'ok' ? this.t('已解绑') : this.t('解绑失败')), data.status !== 'ok');
         this.query();
-    },
-    keys() {
-        return this.val('identityMergeKeys').split(/[,，\s]+/).filter(s => s);
-    },
-    async merge(apply) {
-        const keys = this.keys();
-        if (keys.length < 2) { this.msg(this.t('至少填两个编号或昵称'), true); return; }
-        const data = await this.post('/api/identity/merge', { keys: keys, apply: !!apply });
-        const plan = document.getElementById('identityMergePlan');
-        if (plan) plan.textContent = (data.plan || []).join('\n');
-        this.msg(data.message || (apply ? this.t('合并完成') : this.t('这是预览，确认后再点执行')), data.status !== 'ok');
     }
 };
 

@@ -868,17 +868,6 @@ def identity_lookup():
     return jsonify({'uid': uid, 'message': err})
 
 
-@app.route('/api/identity/merge', methods=['POST'])
-def identity_merge():
-    """合并用户：默认只给方案，带 apply 才真动手"""
-    data = request.get_json() or {}
-    keys = data.get('keys') or []
-    if not data.get('apply'):
-        return jsonify({'status': 'ok', 'plan': _identity_bridge().merge_plan(keys), 'message': ''})
-    ok, msg = _identity_bridge().merge_apply(keys, keep=str(data.get('keep') or ''), dry_run=False)
-    return jsonify({'status': 'ok' if ok else 'error', 'plan': [], 'message': msg})
-
-
 def _backlog_dir():
     return BASE_DIR / "character" / "backlog"
 

@@ -84,6 +84,15 @@ class TBGetGroupMessage:
         return result
 
     @staticmethod
+    def _parse_reply(segments) -> str:
+        for seg in segments or []:
+            if not isinstance(seg, dict):
+                continue
+            if seg.get("type") == "reply":
+                return str((seg.get("data") or {}).get("id", "") or "").strip()
+        return ""
+
+    @staticmethod
     def _markdown_mention_targets(segments) -> List[str]:
         """从 markdown 段提取 mention 的 at_tinyid（被 @ 的 QQ 号列表，去重保持顺序）"""
         result: List[str] = []
@@ -147,6 +156,7 @@ class TBGetGroupMessage:
             "segments": segments,
             "at_list": at_list,
             "at_self": at_self,
+            "reply_to_id": self._parse_reply(raw_message),
             "is_self": str(user_id) == str(self_id or ""),
             "mention_self": str(self_id or "") in self._markdown_mention_targets(raw_message),
             "raw_message": raw_message,

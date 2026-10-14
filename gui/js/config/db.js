@@ -11,16 +11,16 @@ Object.assign(Config, {
                 '搜索模块独立 LLM，temperature 默认 0.7') +
             this._llmTypeSelect('搜索 LLM 类型', 'database.search.llm_type', type);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="db_search_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="db_search_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="db_search_ds">DeepSeek</button>
+            <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="db_search_aliyun">${this._t('阿里云')}</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="db_search_ds">` +
+        h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="db_search_ds">` +
             this._password('API Key', 'database.search.deepseek.api_key', '') +
             this._text('Base URL', 'database.search.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'database.search.deepseek.model', 'deepseek-chat') +
             this._num('max_tokens', 'database.search.deepseek.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="db_search_aliyun">` +
+        h += `<div class="tab-content${type === 'aliyun' ? ' active' : ''}" data-tab-content="db_search_aliyun">` +
             this._password('API Key', 'database.search.aliyun.api_key', '') +
             this._text('Base URL', 'database.search.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'database.search.aliyun.model', 'qwen-plus') +
@@ -49,17 +49,17 @@ Object.assign(Config, {
             <div class="help-text">${this._t('选择文本向量化（embedding）平台，两个平台独立配置 API Key')}</div></div>`;
 
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="embed_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="embed_sf">${this._t('硅基流动')}</button>
+            <button class="modal-tab${provider === 'aliyun' ? ' active' : ''}" data-tab="embed_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${provider === 'siliconflow' ? ' active' : ''}" data-tab="embed_sf">${this._t('硅基流动')}</button>
         </div>`;
 
-        h += `<div class="tab-content active" data-tab-content="embed_aliyun">` +
+        h += `<div class="tab-content${provider === 'aliyun' ? ' active' : ''}" data-tab-content="embed_aliyun">` +
             this._password('API Key', 'database.store.embedding.aliyun.api_key', '') +
             this._text('Base URL', 'database.store.embedding.aliyun.base_url', 'https://dashscope.aliyuncs.com/api/v1') +
             this._text('模型', 'database.store.embedding.aliyun.model', 'qwen3.7-text-embedding') +
             `</div>`;
 
-        h += `<div class="tab-content" data-tab-content="embed_sf">` +
+        h += `<div class="tab-content${provider === 'siliconflow' ? ' active' : ''}" data-tab-content="embed_sf">` +
             this._password('API Key', 'database.store.embedding.siliconflow.api_key', '') +
             this._text('Base URL', 'database.store.embedding.siliconflow.base_url', 'https://api.siliconflow.cn/v1') +
             this._text('模型', 'database.store.embedding.siliconflow.model', 'BAAI/bge-m3') +

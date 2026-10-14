@@ -76,16 +76,17 @@ Object.assign(App, {
 
     // ============ VTS 参数查询 ============,
     bindTabs() {
-        const tabs = document.querySelectorAll('.modal-tab');
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                const target = tab.dataset.tab;
-                document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-                tab.classList.add('active');
-                const content = document.querySelector(`.tab-content[data-tab-content="${target}"]`);
-                if (content) content.classList.add('active');
-            });
+        if (App._tabsBound) return;
+        App._tabsBound = true;
+        document.addEventListener('click', (e) => {
+            const tab = e.target && e.target.closest ? e.target.closest('.modal-tab') : null;
+            if (!tab) return;
+            const target = tab.dataset.tab;
+            document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            tab.classList.add('active');
+            const content = document.querySelector(`.tab-content[data-tab-content="${target}"]`);
+            if (content) content.classList.add('active');
         });
     },
     bindSplitFlagEditor() {

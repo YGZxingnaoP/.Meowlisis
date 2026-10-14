@@ -33,7 +33,8 @@ class TBNapCatActive:
         - decide : 达到阈值，需 AI 决策是否插话（可能输出 pass）
         """
         group_id = str(parsed.get("group_id", ""))
-        at_self = bool(parsed.get("at_self"))
+        at_self = (bool(parsed.get("at_self")) or bool(parsed.get("mention_self"))
+                   or bool(parsed.get("reply_self")))
         is_self = bool(parsed.get("is_self"))
         username = parsed.get("username")
 

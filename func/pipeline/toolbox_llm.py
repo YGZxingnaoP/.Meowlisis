@@ -50,7 +50,7 @@ class NapcatLLMBridge:
 
     def send_to_llm(self, username: str, user_id: str, text: str, short_memory: List[dict],
                     on_segment: Optional[Callable[[str], None]] = None,
-                    nsfw: bool = False) -> str:
+                    nsfw: bool = False, quote: Optional[str] = None) -> str:
         """将 QQ 用户消息 + 短期记忆送入 napcat 独立 LLM 链路，返回完整回复。
 
         on_segment 回调用于流式短句回传（由 toolbox_core 提供，负责发送到 NapCat）。
@@ -58,7 +58,7 @@ class NapcatLLMBridge:
         """
         from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
         self.log.info(f"NapCat → LLM: {username} {text[:30]}...")
-        return TBNapCatLLM().reply(username, user_id, text, short_memory, on_segment, nsfw=nsfw)
+        return TBNapCatLLM().reply(username, user_id, text, short_memory, on_segment, nsfw=nsfw, quote=quote)
 
 
 class NapcatGroupLLMBridge:

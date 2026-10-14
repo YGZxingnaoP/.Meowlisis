@@ -92,19 +92,24 @@ body {
     justify-content: center;
     cursor: pointer;
     box-shadow: 0 8px 32px var(--shadow), 0 0 60px var(--shadow-deep);
-    transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-    z-index: 10;
+    /* ★ 不要 transition: all —— 它会把任何尺寸/transform 变化都做成动画。
+       只留不进尺寸的三样。反馈走光晕/亮度（见下面的 :hover / :active）。 */
+    transition: box-shadow 0.4s ease, filter 0.4s ease, opacity 0.4s ease;
+    /* ★ 球按【中心深度】定层级 = 55，卡按各自深度 5~105：
+       近半圈（z>55）盖住球，远半圈（z<55）被球盖住 —— 俯视圆盘的正确遮挡。
+       JS 在启动器展开时会把这里覆盖成 255（整层抬到启动卡那一带）。见 _applyCenterZ()。 */
+    z-index: 55;
     overflow: hidden;
     pointer-events: auto;
 }
 
+/* ★ 不再 scale：反馈改成光晕/亮度，杜绝任何"看起来半径变了"的观感 */
 .center-launcher:hover {
-    transform: translate(-50%, -50%) scale(1.1);
-    box-shadow: 0 12px 48px var(--shadow), 0 0 80px var(--shadow-deep);
+    box-shadow: 0 16px 56px var(--shadow), 0 0 110px var(--shadow-deep);
 }
 
 .center-launcher:active {
-    transform: translate(-50%, -50%) scale(0.95);
+    filter: brightness(0.96);
 }
 
 .center-launcher.active {

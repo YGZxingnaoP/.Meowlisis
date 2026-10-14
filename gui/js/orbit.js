@@ -13,160 +13,7 @@
  */
 const Orbit = {
     // ==================== 可调参数 ====================
-    CFG: {
-        // 卡尺寸写在 css/cards.css（122×168）
-        // 半径/景深全部按原版恢复：扁平比 2:1，近大远小 0.65~1.2
-        RX: 600, RY: 300,          // 外层轨道（横向 / 纵向），init 时按视口高度做安全修正
-        LRX: 400, LRY: 200,        // 启动卡自己的内侧椭圆轨道
-        TRX: 430, TRY: 215,        // 工具箱椭圆半径
-        LAUNCH_STAGGER: 45,        // 展开时每张启动卡的错峰延迟（ms）→ 一张张弹出去
-        FLIP_DELAY: 160,           // 翻牌到打开面板的间隔（ms）
-        SCALE_MIN: 0.65,           // 轨道最远处缩放（原版）
-        SCALE_SPAN: 0.55,          // 最近处比最远处大多少（原版 0.65~1.2）
-        FOCUS_SCALE: 1.62,         // 父卡摊开子卡时放大到的倍数
-        PARENT_DY: -52,            // 摊开时父卡上移多少（子卡 270 高，父卡不下移就顶不出空间）
-        KID_SPACING: 224,          // 子卡横向间距（子卡 198 宽、倾斜 7° 后包围盒 230）
-        KID_DY0: 232,              // 子卡基准下移距离（父卡底边在 -52+136=84，倾斜后子卡上沿 86）
-        KID_DY_SPAN: 18,           // 每远一档再多下移（小窗口也不至于切到最外面那张）
-        KID_ROT: 7,                // 子卡倾斜角（度）
-        KID_HALF: 155,             // 子卡 198×270 倾斜后包围盒半高（扇形自适应要用，见 _fanSpan）
-
-        // 工具箱面板是固定 1180×800 且 overflow:hidden，可用纵向空间比浏览器视口小得多，
-        // 所以子卡要小一号、扇形要更靠上，否则最外侧那几张会被面板切掉。
-        TOOL: {
-            FOCUS_SCALE: 1.45,
-            PARENT_DY: -60,
-            KID_SPACING: 190,      // 工具箱子卡 CSS 里缩到 150 宽，间距跟着收
-            KID_DY0: 177,
-            KID_DY_SPAN: 14,
-            KID_ROT: 6,
-            KID_HALF: 115          // 150×204 倾斜后包围盒半高
-        }
-    },
-
-    // ==================== 数据表 ====================
-    // self:true 标记"这张卡自己有父级面板"（sensevoice / active / tts / napcat / flux_painter）。
-    // 注意：点父卡的统一行为是"摊开 / 收起"，不从这里进面板。
-    // 其中 sensevoice、active 的父级面板和子卡面板内容完全一样（只是标题不同，已确认）；
-    // tts / napcat / flux_painter 是"总设置"合并表单，各部分在子卡里都有，
-    // 只是不能一次保存 —— 需要的话可以用这个标记给它们各生成一张"总设置"子卡。
-    launcherPlanets: [
-        { id: 'phone', label: '接口', card: 'launcher_phone', tooltip: '启动手机接口服务' },
-        { id: 'main', label: '主程序', card: 'launcher_main', tooltip: '启动主程序' },
-        { id: 'sovits', label: 'SoVITS', card: 'launcher_sovits', tooltip: '启动 SoVITS 服务' },
-        { id: 'sensevoice', label: 'SenseVoice', card: 'launcher_sensevoice', tooltip: '启动 SenseVoice 服务' },
-        { id: 'painting', label: '绘画', card: 'launcher_painting', tooltip: '启动内置 ComfyUI 绘画引擎' },
-        { id: 'napcat', label: 'NapCat', card: 'launcher_napcat', tooltip: 'NapCat 快速启动' },
-        { id: 'netease', label: '网易云', card: 'launcher_netease', tooltip: '启动网易云搜歌服务' },
-        { id: 'rvc', label: 'RVC', card: 'launcher_rvc', tooltip: '启动 RVC 翻唱服务' },
-        { id: 'desktopet', label: '桌宠', card: 'launcher_desktopet', tooltip: '启动桌宠' }
-    ],
-
-    outerPlanets: [
-        { id: 'basic', label: '基本', card: 'basic', tooltip: '基础与 app 设置' },
-        { id: 'character', label: '角色卡', card: 'character', tooltip: '角色卡配置' },
-        {
-            id: 'sensevoice', label: 'SenseVoice', card: 'sensevoice', tooltip: '语音识别配置', self: true,
-            kids: [
-                { id: 'sensevoice_config', label: '识别', card: 'sensevoice_config', tooltip: '语音识别配置' },
-                { id: 'sensevoice_mic', label: '闭麦', card: 'sensevoice_mic', tooltip: '闭麦（麦克风开关）' },
-                { id: 'sensevoice_audio', label: '音频', card: 'sensevoice_audio', tooltip: '音频采集设置' }
-            ]
-        },
-        {
-            id: 'llm', label: 'LLM', card: 'llm', tooltip: '大语言模型配置',
-            kids: [
-                { id: 'llm_model', label: '模型', card: 'llm_model', tooltip: 'LLM 模型设置' },
-                { id: 'llm_prompt', label: '提示词', card: 'llm_prompt', tooltip: 'LLM 提示词设置' },
-                { id: 'llm_algorithm', label: '算法', card: 'llm_algorithm', tooltip: 'LLM 算法设置' }
-            ]
-        },
-        {
-            id: 'active', label: '主动回复', card: 'active', tooltip: '角色主动回复配置', self: true,
-            kids: [
-                { id: 'active_config', label: '配置', card: 'active_config', tooltip: '主动回复配置' },
-                { id: 'active_browse', label: '浏览', card: 'active_browse', tooltip: 'B站内容浏览' }
-            ]
-        },
-        {
-            id: 'catbrain', label: 'CatBrain', card: 'catbrain', tooltip: '角色灵魂配置',
-            kids: [
-                { id: 'ltmem', label: '长期记忆', card: 'catbrain_ltmem', tooltip: '长期记忆配置' },
-                { id: 'abstract', label: '记忆摘要', card: 'catbrain_abstract', tooltip: '记忆摘要配置' },
-                { id: 'rulesbreak', label: '原则词', card: 'catbrain_rulesbreak', tooltip: '破甲原则词配置' },
-                { id: 'values', label: '价值观', card: 'catbrain_values', tooltip: '价值观配置' },
-                { id: 'usermem', label: '用户记忆', card: 'catbrain_usermem', tooltip: '用户记忆配置' }
-            ]
-        },
-        {
-            id: 'database', label: '数据库', card: 'database', tooltip: '数据库知识库配置',
-            kids: [
-                { id: 'db_search', label: '搜索', card: 'db_search', tooltip: '搜索学习配置' },
-                { id: 'db_store', label: '知识', card: 'db_store', tooltip: '存储及检索配置' },
-                { id: 'db_source', label: '来源', card: 'db_source', tooltip: '网页数据来源配置' },
-                { id: 'db_prefill', label: '预填', card: 'db_prefill', tooltip: '一键预填充知识库' }
-            ]
-        },
-        {
-            id: 'tts', label: 'TTS', card: 'tts', tooltip: '语音合成与 SoVITS 配置', self: true,
-            kids: [
-                { id: 'tts_model', label: '模型', card: 'tts_model', tooltip: '语音模型设置' },
-                { id: 'tts_params', label: '参数', card: 'tts_params', tooltip: '语音参数设置' },
-                { id: 'tts_config', label: '配置', card: 'tts_config', tooltip: '语音合成配置' },
-                { id: 'tts_pause', label: '间隔', card: 'tts_pause', tooltip: '合成间隔设置' }
-            ]
-        },
-        { id: 'subtitle', label: '字幕', card: 'subtitle', tooltip: '字幕模块配置' },
-        {
-            id: 'vts', label: 'VTS', card: 'vts', tooltip: 'VTuber / VTS 配置',
-            kids: [
-                { id: 'vts_config', label: '配置', card: 'vts_config', tooltip: 'VTS 配置' },
-                { id: 'vts_emotion', label: '表情', card: 'vts_emotion', tooltip: 'VTS 表情绑定' },
-                { id: 'desktopet', label: '桌宠', card: 'desktopet', tooltip: '桌宠配置' },
-                { id: 'vts_params', label: '参数', card: 'vts_params', tooltip: 'VTS 模型参数' }
-            ]
-        },
-        { id: 'toolbox', label: '工具箱', card: 'toolbox', tooltip: '工具箱（Minecraft 等工具）', overlay: true },
-        {
-            id: 'meowsinger', label: '歌曲', card: 'meowsinger', tooltip: '点歌翻唱与感想配置',
-            kids: [
-                { id: 'meowsinger_model', label: '模型', card: 'meowsinger_model', tooltip: '歌曲模型设置' },
-                { id: 'meowsinger_song', label: '歌曲', card: 'meowsinger_song', tooltip: '点歌设置' },
-                { id: 'meowsinger_cover', label: '翻唱', card: 'meowsinger_cover', tooltip: '翻唱设置' },
-                { id: 'meowsinger_sentiment', label: '感想', card: 'meowsinger_sentiment', tooltip: '感想设置' }
-            ]
-        },
-        { id: 'calendar', label: '待办', card: 'calendar', tooltip: '待办提醒' }
-    ],
-
-    toolboxPlanets: [
-        { id: 'minecraft', label: 'Minecraft', card: 'minecraft', tooltip: 'Minecraft 日志读取配置' },
-        { id: 'meowvision', label: '视觉', card: 'meowvision', tooltip: 'MeowVision 视觉模块配置' },
-        {
-            id: 'napcat', label: 'NapCat', card: 'napcat', tooltip: 'NapCat QQ 机器人配置', self: true,
-            kids: [
-                { id: 'napcat_private', label: '私聊回复', card: 'napcat_private', tooltip: '私聊回复配置' },
-                { id: 'napcat_group', label: '群聊回复', card: 'napcat_group', tooltip: '群聊回复与主动插话配置' },
-                { id: 'napcat_send', label: '主动发送', card: 'napcat_send', tooltip: '主动发送触发型工具配置' },
-                { id: 'napcat_account', label: '角色名', card: 'napcat_account', tooltip: '连接与角色名配置' }
-            ]
-        },
-        { id: 'weather', label: '天气', card: 'weather', tooltip: '天气查询配置' },
-        { id: 'news', label: '新闻', card: 'news', tooltip: '新闻查询配置' },
-        { id: 'danmaku', label: '弹幕', card: 'danmaku', tooltip: 'B站直播弹幕配置' },
-        { id: 'add_backlog', label: '提醒', card: 'add_backlog', tooltip: '新建待办触发工具配置' },
-        { id: 'meowsongs', label: '哼唱', card: 'meowsongs', tooltip: '即兴哼唱配置' },
-        { id: 'turtle_soup', label: '海龟汤', card: 'turtle_soup', tooltip: '海龟汤触发工具配置' },
-        {
-            id: 'flux_painter', label: '绘画', card: 'flux_painter', tooltip: 'Flux 绘画（内置 ComfyUI 文生图）配置', self: true,
-            kids: [
-                { id: 'flux_painter_service', label: '服务', card: 'flux_service', tooltip: '绘画引擎服务与运行环境' },
-                { id: 'flux_painter_model', label: '模型', card: 'flux_model', tooltip: '底模与提示词模型配置' },
-                { id: 'flux_painter_prompt', label: '提示词', card: 'flux_prompt', tooltip: '提示词固定件与画师配置' },
-                { id: 'flux_painter_workflow', label: '工作流', card: 'flux_workflow', tooltip: '采样与画质、Pro 流程配置' }
-            ]
-        }
-    ],
+    ...OrbitData,
 
     // ==================== 运行时状态 ====================
     rotation: 0,
@@ -177,29 +24,11 @@ const Orbit = {
     launchEls: [],
     _deck: {},
 
-    /**
-     * 半径以原版几何为准（扁平比 2:1），只在视口太矮时按比例收一点，
-     * 免得最上/最下的卡被视口裁掉。形状比例始终不变。
-     */
-    _fitRadius() {
-        const c = this.CFG;
-        const CARD_H = 168;                                   // 与 css/cards.css 的 .slot 高度一致
-        const half = (window.innerHeight || 900) / 2 - 10;
-        c.RY = Math.max(220, Math.min(300, Math.round(half - 0.5 * CARD_H)));
-        c.RX = c.RY * 2;                                      // 原版扁平比 2:1
-        c.LRY = Math.round(c.RY * 2 / 3);                     // 原版 400 / 200
-        c.LRX = c.LRY * 2;
-        return c;
-    },
-
-    /** 椭圆轨道环的视觉尺寸跟着半径走 */
-    _fitRing(ringEl, RX, RY, dw, dh) {
-        if (!ringEl) return;
-        const w = RX * 2 + dw, h = RY * 2 + dh;
-        ringEl.style.width = w + 'px';
-        ringEl.style.height = h + 'px';
-        ringEl.style.margin = (-h / 2) + 'px 0 0 ' + (-w / 2) + 'px';
-    },
+    // 旋转几何（半径常量 R + 压扁系数 FLAT）全部在 js/orbit/rotation.js：
+    //   _applyGeometry / _lockRadius / _orbitPoint / _depthScale / _placeAt
+    //   _place / _fitRing / _applyRingLines / _applyLaunch / _syncLauncher
+    // 本文件不再保留第二份实现，避免"两个半径"这种老坑。
+    // （_applyZoom 已删除：它按视口给容器写 scale，是"半径会缩放"的唯一来源。）
 
     /** 取某个 deck 用的扇形参数（'tool' 用更小一号的那套） */
     _kidCfg(name) {
@@ -214,8 +43,10 @@ const Orbit = {
 
     /**
      * 子卡扇形的"弧差"按可用纵向空间自适应。
-     * 子卡很大（198×270），最外侧那张因为倾斜，包围盒半高会涨到 ~155；
-     * 空间不够时就把弧压平，否则最外侧两张的底角会被切掉。
+     * 子卡很大（198×270），最外侧那张因为倾斜，包围盒半高会涨到 ~155。
+     *
+     * 父卡摊开后停在屏幕正中（PARENT_DY 再上移一点），子卡从它下面铺开，
+     * 所以约束的是"最外侧那张的下边缘不能跑出容器底部"。
      * 主界面按浏览器视口算，工具箱按面板的固定可见半高算。
      */
     _fanSpan(name) {
@@ -234,9 +65,20 @@ const Orbit = {
             return;
         }
 
-        this._fitRadius();
-        this._fitRing(document.querySelector('#orbitOuter .ring-outer'), this.CFG.RX, this.CFG.RY, 20, 10);
-        this._fitRing(document.querySelector('#toolboxOrbit .toolbox-ring'), this.CFG.TRX, this.CFG.TRY, 20, 10);
+        // 几何只在这里展开一次：R / FLAT 是常量，运行时不再重算（详见 orbit/rotation.js）
+        this._applyGeometry();
+        this._applyRingLines();  // 两条轨道环线的视觉尺寸
+        this._lockRadius();      // ★ 半径锁：任何写 transform 缩放轨道的路径当场被拆掉
+        this._applyCenterZ();    // 中心球的层级（和卡片按深度交错，见 rotation.js _depthZ）
+        // 窗口尺寸变化只影响"容器缩放"，半径与卡片尺寸不受影响
+        // resize 只重摆卡片，不再缩放容器（半径是常量）
+        window.addEventListener('resize', () => { this._syncRing(); });
+        // 兜底重摆：万一有没排查到的路径把卡片 transform 弄没了（表现为一堆卡堆在容器正中），
+        // 松手后立刻按 GEO 恢复。幂等，正常路径下写的是同一批坐标。
+        document.addEventListener('mouseup', () => setTimeout(() => this._syncRing(), 0));
+        window.__orbitDiag = () => this._diag();   // 控制台诊断入口：__orbitDiag()
+        window.__orbitRadiusAudit = () => this.radiusAudit();   // 半径审计：看谁在缩放
+        this._startRingWatchdog();   // 每 3 秒自检：卡片被任何路径弄丢位置就自动摆回来
 
         // ---------- 子卡容器 ----------
         const kidsBox = document.createElement('div');
@@ -246,13 +88,13 @@ const Orbit = {
         // ---------- 外层配置卡 ----------
         const outerEls = this.outerPlanets.map((p, i) => {
             const el = this._buildCard(p, this.outerPlanets.length, i, null, null, true);
-            this._place(el, el._ang, 0, this.CFG.RX, this.CFG.RY);
+            this._place(el, el._ang, 0, this.GEO.R, this.GEO.RY);
             el.addEventListener('click', (e) => this._onCardClick(e, 'outer', el, p));
             orbitOuter.appendChild(el);
             return el;
         });
         this.outerEls = outerEls;
-        this._initDeck('outer', kidsBox, outerEls, [this.CFG.RX, this.CFG.RY], () => this.rotation,
+        this._initDeck('outer', kidsBox, outerEls, [this.GEO.R, this.GEO.RY], () => this.rotation,
                        (node, src) => this._toPanel(node.id, src, window.App && App.onPlanetClick), system);
 
         // ---------- 启动卡 ----------
@@ -288,10 +130,11 @@ const Orbit = {
 
         this.bindDragRotation();
         this.initToolboxSub();
-        this._routeDeckClick(document.getElementById('orbitSystem'), 'outer');
         this._setAnim(true);   // 默认允许轨道旋转动画
         this._startFxLoop();   // 主界面卡片的呼吸 + 随机涟漪
+        this._startSnapLoop(); // 吸附：任何来源的转动停下后归位到最近的卡
 
+        console.log('[Orbit] GEO = ' + JSON.stringify(this.GEO));
         console.log('[Orbit] ' + this.outerPlanets.length + ' 外环卡 / ' +
                     this.launchEls.length + ' 启动卡 / ' + this.toolboxPlanets.length + ' 工具箱卡');
     },
@@ -432,55 +275,6 @@ const Orbit = {
         if (card) card.classList.remove('flipped');
     },
 
-    /** 椭圆轨道定位 + 景深缩放（uniform scale，不会把卡拉斜）+ 惯性倾角 */
-    _place(el, baseAngle, rotDeg, RX, RY, tiltDeg) {
-        const a = baseAngle + rotDeg * Math.PI / 180;
-        const depth = Math.cos(a);
-        const sc = this.CFG.SCALE_MIN + (depth + 1) / 2 * this.CFG.SCALE_SPAN;
-        let tf = 'translate3d(' + (RX * Math.sin(a)).toFixed(1) + 'px, ' +
-                 (RY * Math.cos(a)).toFixed(1) + 'px, 0) scale(' + sc.toFixed(3) + ')';
-        if (tiltDeg) tf += ' rotate(' + tiltDeg.toFixed(2) + 'deg)';
-        el.style.transform = tf;
-        el.style.zIndex = String(Math.round((depth + 1) * 50 + 5));
-        el.style.setProperty('--inv', (1 / sc).toFixed(3));
-    },
-
-    /** 启动卡：自己的一圈椭圆轨道（和外壳同款景深），展开时从主球中心弹出去 */
-    _applyLaunch(el, index, total, open) {
-        if (!open) {
-            el.style.transform = 'translate3d(0px, 0px, 0px) scale(0.15)';
-            el.style.opacity = '0';
-            el.style.pointerEvents = 'none';
-            // 收完直接从渲染树里摘掉：9 张看不见的卡没必要一直堆在球心，
-            // 也彻底排除"看不见却截获点击"的可能
-            clearTimeout(el._hideTimer);
-            el._hideTimer = setTimeout(() => {
-                if (!this.launcherOpen) el.style.display = 'none';
-            }, 560);
-            return;
-        }
-        clearTimeout(el._hideTimer);
-        const wasHidden = el.style.display === 'none';
-        el.style.display = '';
-        if (wasHidden) void el.offsetWidth;   // 先让"贴在球心"的起始态落地，过渡才会跑
-        const a = el._lang + this.launcherRotation * Math.PI / 180;
-        const depth = Math.cos(a);
-        const sc = this.CFG.SCALE_MIN + (depth + 1) / 2 * this.CFG.SCALE_SPAN;
-        el.style.transform = 'translate3d(' + (this.CFG.LRX * Math.sin(a)).toFixed(1) + 'px, ' +
-                             (this.CFG.LRY * Math.cos(a)).toFixed(1) + 'px, 0) scale(' + sc.toFixed(3) + ')';
-        el.style.zIndex = String(Math.round((depth + 1) * 50 + 5));
-        el.style.setProperty('--inv', (1 / sc).toFixed(3));
-        el.style.opacity = '1';
-        el.style.pointerEvents = 'auto';
-    },
-
-    /** 轨道转动时重排启动卡 */
-    _syncLauncher() {
-        if (!this.launcherOpen) return;
-        const total = this.launchEls.length;
-        this.launchEls.forEach((el, i) => this._applyLaunch(el, i, total, true));
-    },
-
     toggleLauncher() {
         this.launcherOpen = !this.launcherOpen;
         const open = this.launcherOpen;
@@ -492,15 +286,16 @@ const Orbit = {
             if (open) {
                 // 错峰飞出：一张一张从主球位置弹到轨道位，像发牌
                 el._launchTimer = setTimeout(() => {
-                    if (this.launcherOpen) this._applyLaunch(el, i, total, true);
+                    if (this.launcherOpen) this._applyLaunch(el, i, total, true, true);   // fly=true：这一次要回弹
                 }, i * this.CFG.LAUNCH_STAGGER);
             } else {
-                this._applyLaunch(el, i, total, false);
+                this._applyLaunch(el, i, total, false, true);                          // fly=true：收回也要回弹
                 this._unflip(el);
             }
         });
         const system = document.getElementById('orbitSystem');
         if (system) system.classList.toggle('launcher-open', open);
+        this._applyCenterZ();    // 启动器展开时中心球整层抬到启动卡那一带（255）
         // 启动轨道展开时把外环压暗：两圈椭圆在上下方向会挨得很近，压暗就不会糊在一起
         this._syncDim();
     },
@@ -524,295 +319,15 @@ const Orbit = {
         }
     },
 
-    // ==================== 子卡扇形摊开 ====================
-    _initDeck(name, boxEl, els, radius, rotGetter, openPanel, sysEl) {
-        this._deck[name] = {
-            box: boxEl, els: els, sysEl: sysEl || null, subs: [], parent: null, open: false,
-            radius: radius, rot: rotGetter, openPanel: openPanel,
-            timer: null, gcTimer: null,
-            restore: (el) => this._place(el, el._ang, rotGetter(), radius[0], radius[1])
-        };
-    },
 
-    /**
-     * 摊开状态下按"几何就近"仲裁点击（捕获阶段，先于子卡自己的 handler）。
-     *
-     * 为什么需要：子卡扇形很宽（5 张时最外侧在 ±448），而外环卡片的轨道位置
-     * 也在同一带（例如 catbrain 在 (450,199)、最外侧子卡在 (448,238)），必然重叠。
-     * 子卡层必须在 .orbit-outer 之上（后者是 1500×1500 的拖拽容器，压下去会把子卡全挡死），
-     * 于是"点父卡却弹出子卡面板"。
-     *
-     * 仲裁规则：比较点击点到「那张变暗父卡的中心」与「被打中的子卡中心」的距离，
-     * 谁近听谁的 —— 两张卡在各自中心附近都点得到，重叠区按直觉归属。
-     */
-    _routeDeckClick(system, name) {
-        system.addEventListener('click', (e) => {
-            const d = this._deck[name];
-            if (!d || !d.open) return;
-            const t = e.target;
-            if (!t || !t.closest) return;
-            const sub = t.closest('.sub');
-            const card = this._nearestSiblingCard(name, e.clientX, e.clientY);
 
-            if (sub) {
-                if (!card) return;                                  // 没压到别的父卡 → 子卡自己处理
-                const sr = sub.getBoundingClientRect();
-                const ds = Math.hypot(e.clientX - (sr.left + sr.width / 2),
-                                      e.clientY - (sr.top + sr.height / 2));
-                if (card.dist >= ds) return;                        // 子卡更近 → 子卡自己处理
-                e.stopPropagation();                                // 否则判成"点那张暗父卡"
-                this._onCardClick(e, name, card.el, card.el._node);
-                return;
-            }
-            // 点到的既不是子卡也不是卡片（点了空白）：
-            // 如果这个位置其实落在某张暗父卡身上，就切换焦点，而不是收起
-            if (t.closest('.slot') || !card) return;
-            e.stopPropagation();
-            this._onCardClick(e, name, card.el, card.el._node);
-        }, true);
-    },
 
-    /** 找离 (x,y) 最近、且包含该点的"非父卡"卡片（暗卡），没有则 null */
-    _nearestSiblingCard(name, x, y) {
-        const d = this._deck[name];
-        if (!d || !d.els) return null;
-        let best = null, bestD = Infinity;
-        d.els.forEach(el => {
-            if (el === d.parent) return;
-            const r = el.getBoundingClientRect();
-            if (r.width < 2 || r.height < 2) return;
-            if (x < r.left || x > r.right || y < r.top || y > r.bottom) return;
-            const dd = Math.hypot(x - (r.left + r.width / 2), y - (r.top + r.height / 2));
-            if (dd < bestD) { bestD = dd; best = el; }
-        });
-        return best ? { el: best, dist: bestD } : null;
-    },
 
-    /** 卡片点击总入口（父卡与子卡共用 deck.openPanel 分发） */
-    _onCardClick(e, name, el, node) {
-        e.stopPropagation();
-        if (this.suppressClick) return;
-        const d = this._deck[name];
-        if (!d) return;
 
-        // 再点已摊开的父卡：统一收起（和 llm 行为一致）。
-        // 以前对 self:true 的卡会打开它自己的父级面板，但"摊开后点头顶那张卡"
-        // 的直觉是"收起/关掉"，弹出设置面板很反直觉（sensevoice/active/tts/napcat/flux_painter 都中招）。
-        if (d.open && d.parent === el) {
-            this._collapse(name);
-            return;
-        }
-        if (d.open) this._collapse(name);
-        // 展开启动卡时点外环卡：先把启动卡收起来（外环卡此时是暗的，正常点不到，保险）
-        if (name === 'outer' && this.launcherOpen) this.toggleLauncher();
 
-        if (node.kids && node.kids.length) {
-            this._flipThen(el, () => this._spread(name, el, node));   // 先翻牌，翻完再摊开
-            return;
-        }
-        if (node.overlay) this._overlayCard = el;                     // 打开浮层的卡，关浮层时翻回
-        this._flipThen(el, () => d.openPanel(node, el));
-    },
 
-    _spread(name, parentEl, node) {
-        const d = this._deck[name];
-        if (!d) return;
-        this._collapse(name);
 
-        d.parent = parentEl;
-        d.open = true;
-        parentEl.classList.add('focus');
-        if (d.sysEl) d.sysEl.classList.add('focusing');   // 把轨道层提到主球之上（见 orbit.css）
-        const kc = this._kidCfg(name);
-        parentEl.style.zIndex = '900';
-        parentEl.style.transform = 'translate3d(0px, ' + kc.PARENT_DY + 'px, 0) scale(' +
-                                    kc.FOCUS_SCALE + ')';
-        parentEl.style.setProperty('--inv', (1 / kc.FOCUS_SCALE).toFixed(3));
-        this._syncDim();
 
-        const kids = node.kids;
-        const total = kids.length;
-        const mid = (total - 1) / 2;
-        d.box.innerHTML = '';
-        d.subs = kids.map((k, i) => {
-            const el = this._buildCard({ id: k.id, label: k.label, tooltip: k.tooltip }, total, i, k.card);
-            el.className = 'sub';
-            const off = i - mid;
-            el.dataset.dx = (off * kc.KID_SPACING).toFixed(1);
-            el.dataset.dy = (kc.KID_DY0 + Math.abs(off) * this._fanSpan(name)).toFixed(1);
-            el.dataset.rot = (off * kc.KID_ROT).toFixed(1);
-            el.style.transform = 'translate3d(0px, 0px, 0) scale(0.25)';
-            el.addEventListener('click', (ev) => {
-                ev.stopPropagation();
-                if (this.suppressClick) return;
-                this._flipThen(el, () => d.openPanel(k, el));   // 子卡同样翻牌后再开面板
-            });
-            d.box.appendChild(el);
-            return el;
-        });
-
-        // 先落回父卡中心，下一帧再摊开 → 视觉上是"从这张卡长出来的"
-        d.timer = setTimeout(() => {
-            if (!d.open) return;
-            d.box.classList.add('open');
-            d.subs.forEach(el => {
-                el.style.transform = 'translate3d(' + el.dataset.dx + 'px, ' + el.dataset.dy +
-                                      'px, 0) rotate(' + el.dataset.rot + 'deg) scale(1)';
-            });
-        }, 80);
-    },
-
-    _collapse(name) {
-        const d = this._deck[name];
-        if (!d || !d.open) return;
-        d.open = false;
-        clearTimeout(d.timer);
-        d.box.classList.remove('open');
-        if (d.sysEl) d.sysEl.classList.remove('focusing');
-
-        if (d.parent) {
-            d.parent.classList.remove('focus');
-            d.parent.style.removeProperty('--inv');
-            this._setAnim(true);
-            d.restore(d.parent);
-            // 父卡先滑回轨道位再翻回正面，两个动画不打架
-            const p = d.parent;
-            setTimeout(() => { if (!d.open) this._unflip(p); }, 280);
-        }
-        d.subs.forEach(el => {
-            this._unflip(el);
-            el.style.transform = 'translate3d(0px, 0px, 0) scale(0.25)';
-        });
-        this._syncDim();
-
-        const box = d.box;
-        clearTimeout(d.gcTimer);
-        d.gcTimer = setTimeout(() => { if (!d.open) box.innerHTML = ''; }, 700);
-
-        d.subs = [];
-        d.parent = null;
-    },
-
-    closeAll() {
-        this._cancelPending();   // 人已经点开了，别再补一个面板出来
-        Object.keys(this._deck).forEach(k => this._collapse(k));
-    },
-
-    /** 打开配置面板：把来源卡交给 Modal，让面板从卡片位置放大 */
-    _toPanel(id, srcEl, fn) {
-        if (typeof Modal !== 'undefined') Modal.source = srcEl || null;
-        if (typeof fn === 'function') fn.call(window.App, id, srcEl);
-    },
-
-    _setAnim(on) {
-        Object.keys(this._deck).forEach(k => {
-            (this._deck[k].els || []).forEach(el => el.classList.toggle('anim', !!on));
-        });
-    },
-
-    // ==================== 拖动 + 惯性 ====================
-    _bindDrag(container, deckName, getRot, setRot) {
-        if (!container) return;
-        let dragging = false;
-        let lastX = 0;
-        let velocity = 0;
-        let rafId = null;
-        let spin = 0;        // 当前角速度（度/帧），驱动卡片倾角
-        let tilt = 0;        // 当前倾角（度）
-        let tiltVel = 0;     // 倾角速度（弹簧用）
-        let tickId = null;   // 倾角弹簧的动画句柄
-        const TILT_GAIN = 0.55;
-        const TILT_MAX = 7;
-        const TILT_STIFF = 0.03;    // 弹簧刚度：越小摆动越慢
-        const TILT_DAMP = 0.94;     // 阻尼：越大摇晃越久，越小收敛越快
-
-        const place = () => {
-            // 启动轨道展开时，拖空白转的是启动轨道（外环此时是暗的，转了也看不见）
-            if (deckName === 'outer' && this.launcherOpen) { this._syncLauncher(); return; }
-            const d = this._deck[deckName];
-            if (!d) return;
-            const r0 = d.radius[0], r1 = d.radius[1];
-            d.els.forEach(el => this._place(el, el._ang, getRot(), r0, r1, tilt));
-        };
-
-        // 倾角走弹簧：目标 = 角速度，松手后带左右摇晃地回到 0
-        const tick = () => {
-            const target = Math.max(-TILT_MAX, Math.min(TILT_MAX, -spin * TILT_GAIN));
-            tiltVel = (tiltVel + (target - tilt) * TILT_STIFF) * TILT_DAMP;
-            tilt += tiltVel;
-            place();
-            const lively = dragging || rafId !== null || Math.abs(tilt) > 0.05 || Math.abs(tiltVel) > 0.05;
-            if (lively) { tickId = requestAnimationFrame(tick); return; }
-            tilt = 0;
-            tiltVel = 0;
-            place();
-            tickId = null;
-            this._setAnim(true);
-        };
-
-        const wake = () => {
-            if (tickId === null) {
-                this._setAnim(false);
-                tickId = requestAnimationFrame(tick);
-            }
-        };
-
-        const inertia = () => {
-            setRot(getRot() + velocity);
-            spin = velocity;
-            velocity *= 0.92;          // 惯性衰减
-            wake();
-            if (Math.abs(velocity) < 0.05) { rafId = null; spin = 0; return; }
-            rafId = requestAnimationFrame(inertia);
-        };
-
-        const onMove = (e) => {
-            if (!dragging) return;
-            const dx = e.clientX - lastX;
-            velocity = dx * 0.35;
-            spin = dx * 0.3;
-            lastX = e.clientX;
-            setRot(getRot() + dx * 0.3);
-            wake();
-            if (Math.abs(dx) > 5) this.suppressClick = true;
-        };
-
-        const onUp = () => {
-            dragging = false;
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            setTimeout(() => { this.suppressClick = false; }, 50);
-            if (rafId !== null) cancelAnimationFrame(rafId);
-            if (Math.abs(velocity) > 0.05) rafId = requestAnimationFrame(inertia);
-            else { rafId = null; spin = 0; }
-            wake();
-        };
-
-        container.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return;
-            if (this._deck[deckName] && this._deck[deckName].open) return;   // 摊开子卡时不转轨道
-            dragging = true;
-            lastX = e.clientX;
-            velocity = 0;
-            spin = 0;
-            if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-            this.suppressClick = false;
-            wake();
-            e.preventDefault();
-            document.addEventListener('mousemove', onMove);
-            document.addEventListener('mouseup', onUp);
-        });
-    },
-
-    bindDragRotation() {
-        // 绑在整个轨道容器上（而不是只绑 .orbit-outer）：
-        // 启动卡在 #launcherCluster 里、属于 .orbit-outer 的兄弟节点，
-        // 只绑 .orbit-outer 的话 mousedown 落在启动卡上不会触发，转不动。
-        // 启动轨道展开时转启动轨道，否则转外环配置轨道。
-        this._bindDrag(document.getElementById('orbitSystem'), 'outer',
-                       () => (this.launcherOpen ? this.launcherRotation : this.rotation),
-                       (v) => { if (this.launcherOpen) this.launcherRotation = v; else this.rotation = v; });
-    },
 
     initToolboxSub() {
         const orbit = document.getElementById('toolboxOrbit');
@@ -825,15 +340,13 @@ const Orbit = {
 
         const els = this.toolboxPlanets.map((p, i) => {
             const el = this._buildCard(p, this.toolboxPlanets.length, i);
-            this._place(el, el._ang, 0, this.CFG.TRX, this.CFG.TRY);
+            this._place(el, el._ang, 0, this.GEO.TR, this.GEO.TRY);
             el.addEventListener('click', (e) => this._onCardClick(e, 'tool', el, p));
             orbit.appendChild(el);
             return el;
         });
-        this._initDeck('tool', kidsBox, els, [this.CFG.TRX, this.CFG.TRY], () => this.toolboxRotation,
+        this._initDeck('tool', kidsBox, els, [this.GEO.TR, this.GEO.TRY], () => this.toolboxRotation,
                        (node, src) => this._toPanel(node.id, src, window.App && App.onToolboxPlanetClick), system);
-        this._routeDeckClick(system, 'tool');   // 工具箱同样按几何仲裁"点父卡还是点子卡"
-
         const center = document.getElementById('toolboxCenter');
         if (center) {
             center.addEventListener('mousedown', (e) => e.stopPropagation());

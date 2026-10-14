@@ -4,20 +4,8 @@
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
   "total_acquired": 11.6,
-  "balance": 2.2,
+  "balance": 2.0,
   "history": [
-    {
-      "ts": 1788702884,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
-    {
-      "ts": 1788703275,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
     {
       "ts": 1788703709,
       "type": "startup",
@@ -618,6 +606,18 @@
     },
     {
       "ts": 1791652838,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1791949836,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1791952255,
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"

@@ -35,8 +35,34 @@ Object.assign(Config, {
                 { value: 'medium', label: '中' },
                 { value: 'high', label: '高' }
             ], 'medium', 'DeepSeek/Aliyun 当前仅支持开/关，medium 及以上均开启思考') +
-            this._num('回复字数', 'napcat.reply_word_count', 10, 1, 100, 1,
-                '每次回复约该字数，严格上限 = 该值 + 10') +
+            this._num('回复字数', 'napcat.reply_word_count', 16, 1, 100, 1,
+                '每次回复约该字数，严格上限 = 该值 × 驳回字数系数') +
+            this._section('回复驳回（字数 + 标点联合判定）') +
+            this._num('驳回字数系数（× 回复字数）', 'napcat.reply_reject_ratio', 1.5, 1, 5, 0.1,
+                '回复字数 > 回复字数 × 该系数即驳回重写；默认 1.5') +
+            this._num('最多驳回次数', 'napcat.reply_reject_rounds', 3, 0, 10, 1,
+                '驳回后重新生成的最大次数，用完仍超限就直接发送') +
+            this._check('启用标点数量校验', 'napcat.reply_punct_check.enabled', true,
+                '开启后标点数量超限同样驳回重写') +
+            this._num('标点数量上限(个)', 'napcat.reply_punct_check.max_punct', 4, 0, 50, 1,
+                '逗号也算（逗号会被当分段点）；关掉上面的开关则该项不生效') +
+            this._section('引用消息（与 @ 同级）') +
+            this._check('启用引用消息', 'napcat.reply_quote.enabled', true,
+                '别人引用角色的消息时与 @ 一样立即回复，并把被引用的原文加入提示词') +
+            this._check('回复时引用回去', 'napcat.reply_quote.quote_back', false,
+                '回复时带上被引用消息（发送侧暂未接）') +
+            this._section('分段节奏（灵性）') +
+            this._check('启用分段节奏', 'napcat.reply_pace.enabled', true,
+                '短句之间按字数和标点插入打字延迟；≤2 字语气词立即发') +
+            this._num('每字延迟(毫秒)', 'napcat.reply_pace.ms_per_char', 55, 0, 500, 5,
+                '基础延迟 = 该段字数 × 该值') +
+            this._num('抖动比例(±)', 'napcat.reply_pace.jitter', 0.25, 0, 1, 0.05,
+                '每次延迟随机浮动比例，避免机械感') +
+            this._num('句末标点额外停顿(秒)', 'napcat.reply_pace.sentence_extra', 0.2, 0, 3, 0.05) +
+            this._num('单条总延时封顶(秒)', 'napcat.reply_pace.max_seconds', 2.5, 0, 30, 0.5,
+                '一次回复所有分段累计延时的上限，防止拖沓') +
+            this._num('首条起手停顿(秒)', 'napcat.reply_pace.first_delay', 0.35, 0, 5, 0.05,
+                '发出第一段之前的等待时间，避免秒回') +
             this._check('启用表情发送', 'napcat.emote_enabled', true) +
             this._num('表情触发概率(%)', 'napcat.emote_probability', 30, 0, 100, 1,
                 '最终概率 = 配置概率 + 用户好感度') +
@@ -45,8 +71,34 @@ Object.assign(Config, {
     napcat_group() {
         return this._section('NapCat 群聊回复') +
             this._check('启用群聊回复', 'napcat.group_reply_enabled', true) +
-            this._num('回复字数', 'napcat.group_reply_word_count', 10, 1, 100, 1,
-                '群聊每次回复约该字数，严格上限 = 该值 + 10（独立于私聊回复字数）') +
+            this._num('回复字数', 'napcat.group_reply_word_count', 12, 1, 100, 1,
+                '群聊每次回复约该字数，严格上限 = 该值 × 驳回字数系数（独立于私聊）') +
+            this._section('回复驳回（字数 + 标点联合判定）') +
+            this._num('驳回字数系数（× 回复字数）', 'napcat.group_reply_reject_ratio', 1.5, 1, 5, 0.1,
+                '回复字数 > 回复字数 × 该系数即驳回重写；默认 1.5') +
+            this._num('最多驳回次数', 'napcat.group_reply_reject_rounds', 3, 0, 10, 1,
+                '驳回后重新生成的最大次数，用完仍超限就直接发送') +
+            this._check('启用标点数量校验', 'napcat.group_reply_punct_check.enabled', true,
+                '开启后标点数量超限同样驳回重写') +
+            this._num('标点数量上限(个)', 'napcat.group_reply_punct_check.max_punct', 4, 0, 50, 1,
+                '逗号也算（逗号会被当分段点）；关掉上面的开关则该项不生效') +
+            this._section('引用消息（与 @ 同级）') +
+            this._check('启用引用消息', 'napcat.group_reply_quote.enabled', true,
+                '群里有人引用角色的消息时与 @ 一样立即回复，并把被引用的原文加入提示词') +
+            this._check('回复时引用回去', 'napcat.group_reply_quote.quote_back', false,
+                '回复时带上被引用消息（发送侧暂未接）') +
+            this._section('分段节奏（灵性）') +
+            this._check('启用分段节奏', 'napcat.group_reply_pace.enabled', true,
+                '短句之间按字数和标点插入打字延迟；≤2 字语气词立即发') +
+            this._num('每字延迟(毫秒)', 'napcat.group_reply_pace.ms_per_char', 55, 0, 500, 5,
+                '基础延迟 = 该段字数 × 该值') +
+            this._num('抖动比例(±)', 'napcat.group_reply_pace.jitter', 0.25, 0, 1, 0.05,
+                '每次延迟随机浮动比例，避免机械感') +
+            this._num('句末标点额外停顿(秒)', 'napcat.group_reply_pace.sentence_extra', 0.2, 0, 3, 0.05) +
+            this._num('单条总延时封顶(秒)', 'napcat.group_reply_pace.max_seconds', 2.5, 0, 30, 0.5,
+                '一次回复所有分段累计延时的上限，防止拖沓') +
+            this._num('首条起手停顿(秒)', 'napcat.group_reply_pace.first_delay', 0.35, 0, 5, 0.05,
+                '发出第一段之前的等待时间，避免秒回') +
             this._list('群聊名称黑名单（逗号分隔，空=不拦截）', 'napcat.group_blacklist', []) +
             this._num('群聊历史拉取条数', 'napcat.group_history_limit', 50, 1, 500, 1,
                 'get_group_record 向上获取的群聊历史条数（content 标注【用户名】:内容）') +
@@ -129,27 +181,33 @@ Object.assign(Config, {
     // ============ B站浏览配置（视觉模型 + 内容收集） ============,
     webBrowseConfig() {
         const visionType = this._val('llm_active.vision.llm_type', 'aliyun');
+        const dsOn = visionType === 'aliyun' ? ' active' : '';
+        const gmOn = visionType === 'gemini' ? ' active' : '';
         let h = this._section('B站浏览视觉模型 (llm_active.vision)') +
-            `<div class="form-group"><label>${this._t('视觉 LLM 类型')}</label>
-            <select data-path="llm_active.vision.llm_type">
-                <option value="aliyun" ${visionType === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
-                <option value="gemini" ${visionType === 'gemini' ? 'selected' : ''}>Gemini</option>
-            </select></div>` +
-            this._password('API Key', 'llm_active.vision.api_key', '',
-                '独立于 MeowVision，仅用于 B站视频截图的内容理解') +
-            this._text('Base URL', 'llm_active.vision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
-            this._text('模型', 'llm_active.vision.model', 'qwen3.7-flash') +
-            this._num('温度', 'llm_active.vision.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm_active.vision.max_tokens', 600, 1, 8192, 16,
-                '内容描述(≤300字) + 话题 + tags 的输出预算') +
-            this._num('Top P', 'llm_active.vision.top_p', 0.9, 0, 1, 0.05) +
-            this._section('Gemini 视觉') +
-            this._password('Gemini API Key', 'llm_active.vision.gemini.api_key', '') +
-            this._text('Gemini Base URL', 'llm_active.vision.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
-            this._text('Gemini 模型', 'llm_active.vision.gemini.model', 'gemini-3.6-flash') +
-            this._num('Gemini 温度', 'llm_active.vision.gemini.temperature', 0.7, 0, 2, 0.1) +
-            this._num('Gemini 最大输出 tokens', 'llm_active.vision.gemini.max_tokens', 600, 1, 8192, 16) +
-            this._num('Gemini Top P', 'llm_active.vision.gemini.top_p', 0.9, 0, 1, 0.05);
+            this._llmTypeSelect('视觉 LLM 类型', 'llm_active.vision.llm_type', visionType) +
+            `<div class="modal-tabs">
+                <button type="button" class="modal-tab${dsOn}" data-tab="vision_aliyun">${this._t('阿里云')}</button>
+                <button type="button" class="modal-tab${gmOn}" data-tab="vision_gemini">Gemini</button>
+            </div>` +
+            `<div class="tab-content${dsOn}" data-tab-content="vision_aliyun">` +
+                this._password('API Key', 'llm_active.vision.api_key', '',
+                    '独立于 MeowVision，仅用于 B站视频截图的内容理解') +
+                this._text('Base URL', 'llm_active.vision.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+                this._text('模型', 'llm_active.vision.model', 'qwen3.7-flash') +
+                this._num('温度', 'llm_active.vision.temperature', 0.7, 0, 2, 0.1) +
+                this._num('最大输出 tokens', 'llm_active.vision.max_tokens', 600, 1, 8192, 16,
+                    '内容描述(≤300字) + 话题 + tags 的输出预算') +
+                this._num('Top P', 'llm_active.vision.top_p', 0.9, 0, 1, 0.05) +
+            `</div>` +
+            `<div class="tab-content${gmOn}" data-tab-content="vision_gemini">` +
+                this._password('Gemini API Key', 'llm_active.vision.gemini.api_key', '') +
+                this._text('Gemini Base URL', 'llm_active.vision.gemini.base_url',
+                    'https://generativelanguage.googleapis.com/v1beta/openai/') +
+                this._text('Gemini 模型', 'llm_active.vision.gemini.model', 'gemini-3.6-flash') +
+                this._num('Gemini 温度', 'llm_active.vision.gemini.temperature', 0.7, 0, 2, 0.1) +
+                this._num('Gemini 最大输出 tokens', 'llm_active.vision.gemini.max_tokens', 600, 1, 8192, 16) +
+                this._num('Gemini Top P', 'llm_active.vision.gemini.top_p', 0.9, 0, 1, 0.05) +
+            `</div>`;
 
         h += this._section('B站内容收集 (llm_active.web_browse)') +
             this._check('启用 B站内容收集', 'llm_active.web_browse.enabled', true,
@@ -235,28 +293,29 @@ Object.assign(Config, {
     // ============ Toolbox 父级模型 ============,
     toolbox() {
         const type = this._val('toolbox.llm_type', 'deepseek');
+        const tbOn = (k) => type === k ? ' active' : '';
         let h = this._section('Toolbox 父级模型') +
             this._llmTypeSelect('父级 LLM 类型', 'toolbox.llm_type', type);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="toolbox_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="toolbox_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="toolbox_gemini">Gemini</button>
+            <button class="modal-tab${tbOn('deepseek')}" data-tab="toolbox_ds">DeepSeek</button>
+            <button class="modal-tab${tbOn('aliyun')}" data-tab="toolbox_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${tbOn('gemini')}" data-tab="toolbox_gemini">Gemini</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="toolbox_ds">` +
+        h += `<div class="tab-content${tbOn('deepseek')}" data-tab-content="toolbox_ds">` +
             this._password('API Key', 'toolbox.deepseek.api_key', '') +
             this._text('Base URL', 'toolbox.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'toolbox.deepseek.model', 'deepseek-chat') +
             this._num('温度', 'toolbox.deepseek.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'toolbox.deepseek.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="toolbox_aliyun">` +
+        h += `<div class="tab-content${tbOn('aliyun')}" data-tab-content="toolbox_aliyun">` +
             this._password('API Key', 'toolbox.aliyun.api_key', '') +
             this._text('Base URL', 'toolbox.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'toolbox.aliyun.model', 'qwen-plus') +
             this._num('温度', 'toolbox.aliyun.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'toolbox.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="toolbox_gemini">` +
+        h += `<div class="tab-content${tbOn('gemini')}" data-tab-content="toolbox_gemini">` +
             this._password('API Key', 'toolbox.gemini.api_key', '') +
             this._text('Base URL', 'toolbox.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'toolbox.gemini.model', 'gemini-3.6-flash') +

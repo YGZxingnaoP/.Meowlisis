@@ -96,15 +96,50 @@ class TBNapCatLLM:
             )
         return final
 
-    def _rewrite_if_too_long(self, messages: List[dict], final: str, word_count: int) -> str:
-        # 超长驳回重写：最多重写3次，仍超长直接发送不截断
-        limit = int(word_count or 10) + 10
-        for _ in range(3):
-            if len(final) <= limit:
+    PUNCT_CHARS = "，。？！；：、,.?!;:…～"
+
+    def _rewrite_if_too_long(self, messages: List[dict], final: str, word_count: int,
+                             channel: str = "private") -> str:
+        cfg = self.napcat_cfg
+        conf = cfg.reject_conf(channel) if hasattr(cfg, "reject_conf") else {}
+
+        def _f(v, d):
+            try:
+                return float(v) if v is not None else d
+            except (TypeError, ValueError):
+                return d
+
+        def _i(v, d):
+            try:
+                return int(v) if v is not None else d
+            except (TypeError, ValueError):
+                return d
+
+        ratio = _f(conf.get("ratio"), 1.5)
+        rounds = _i(conf.get("rounds"), 3)
+        punct_on = bool(conf.get("punct_enabled", True))
+        punct_max = _i(conf.get("punct_max"), 4)
+        limit = int(int(word_count or 10) * ratio)
+        if rounds <= 0:
+            return final
+        for _ in range(rounds):
+            punct_n = sum(1 for ch in final if ch in self.PUNCT_CHARS)
+            too_long = len(final) > limit
+            too_many = bool(punct_on) and punct_n > punct_max
+            if not (too_long or too_many):
                 break
+            reason = []
+            if too_long:
+                reason.append(f"超过 {limit} 字")
+            if too_many:
+                reason.append(f"标点超过 {punct_max} 个（逗号也算）")
             messages.append({
                 "role": "user",
-                "content": "你上次的回复超过字数上限，被驳回了。最高准则：回复字数严格控制小于10字，请重新回复，只输出回复内容本身。",
+                "content": (
+                    f"你上次的回复被驳回了（{'，'.join(reason)}）。"
+                    f"最高准则：字数不超过 {limit} 字，标点不超过 {punct_max} 个。"
+                    f"请重新回复，只输出回复内容本身。"
+                ),
             })
             final = self._generate(messages)
         return final
@@ -120,7 +155,7 @@ class TBNapCatLLM:
         if system_prompt:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages or [])
-        final = self._generate(full_messages)
+        final = self._clean_reply(self._generate(full_messages))
         for seg in self.split_segments(final):
             if on_segment and seg:
                 on_segment(seg)
@@ -128,7 +163,7 @@ class TBNapCatLLM:
 
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False) -> str:
+              nsfw: bool = False, quote: Optional[str] = None) -> str:
         """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
@@ -142,9 +177,16 @@ class TBNapCatLLM:
             for m in short_memory or []:
                 if m.get("role") in ("user", "assistant") and m.get("content"):
                     messages.append({"role": m["role"], "content": m["content"]})
-            messages.append({"role": "user", "content": text})
-            final = self._generate(messages)
-            final = self._rewrite_if_too_long(messages, final, int(self.napcat_cfg.reply_word_count or 10))
+            if quote:
+                messages.append({"role": "user", "content": (
+                    f"【TA引用了你的这句话】{quote}\n【TA接着说】{text}\n"
+                    f"TA 是在接着你上面那句话说的，直接回应，不要重复那句话。"
+                )})
+            else:
+                messages.append({"role": "user", "content": text})
+            final = self._clean_reply(self._generate(messages))
+            final = self._rewrite_if_too_long(messages, final,
+                                             self.napcat_cfg.word_count_for("private"), channel="private")
             for seg in self.split_segments(final):
                 if on_segment and seg:
                     on_segment(seg)
@@ -152,6 +194,24 @@ class TBNapCatLLM:
             return final
         finally:
             self._nsfw_split = False
+
+    EXTRA_PAIRS = (("[", "]"), ("［", "］"), ("《", "》"), ("{", "}"), ("｛", "｝"),
+                   ("〔", "〕"), ("〈", "〉"), ("〖", "〗"), ("＜", "＞"))
+
+    def _clean_reply(self, text: str) -> str:
+        s = str(text or "")
+        if not s:
+            return s
+        for left, right in self.EXTRA_PAIRS:
+            i = s.find(left)
+            while i >= 0:
+                j = s.find(right, i + 1)
+                s = (s[:i] + s[i + 1:]) if j < 0 else (s[:i] + s[j + 1:])
+                i = s.find(left)
+        self._reset_filter()
+        for ch in s:
+            self._feed(ch)
+        return str(self._filtered or "").strip()
 
     # ==================== 过滤与切分 ====================
     def _reset_filter(self):

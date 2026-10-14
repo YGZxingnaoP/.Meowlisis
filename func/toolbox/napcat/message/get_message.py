@@ -64,6 +64,15 @@ class TBGetMessage:
                     texts.append(t)
         return "\n".join(texts)
 
+    @staticmethod
+    def _parse_reply(segments) -> str:
+        for seg in segments or []:
+            if not isinstance(seg, dict):
+                continue
+            if seg.get("type") == "reply":
+                return str((seg.get("data") or {}).get("id", "") or "").strip()
+        return ""
+
     def parse(self, event: dict) -> Optional[dict]:
         """解析私聊消息事件，返回 {username, user_id, text, segments}"""
         if not isinstance(event, dict):
@@ -84,4 +93,5 @@ class TBGetMessage:
             "user_id": str(user_id),
             "text": text,
             "segments": contents,
+            "reply_to_id": self._parse_reply(message),
         }

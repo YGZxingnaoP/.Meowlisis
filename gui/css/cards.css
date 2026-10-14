@@ -24,9 +24,9 @@ img {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 122px;
-    height: 168px;
-    margin: -84px 0 0 -61px;
+    width: 136px;
+    height: 188px;
+    margin: -94px 0 0 -68px;
     perspective: 1050px;                /* 3D 透视：翻牌必须有 */
     cursor: pointer;
     pointer-events: auto;
@@ -34,14 +34,44 @@ img {
     transition: opacity 0.35s ease, filter 0.35s ease;
 }
 
-/* 启动卡：展开/收起要有回弹（不参与轨道景深，所以单独一条） */
+/* 启动卡：展开/收起要有回弹（不参与轨道景深，所以单独一条）
+   ★ 和配置卡 .slot 一样，【不能常挂 transform 过渡】：
+     启动轨同样是每帧写 transform 重排的（drag.js 的 place() → _syncLauncher、
+     吸附、看门狗、聚焦），常挂 0.5s 回弹 → 每帧的新目标都被回弹插值 →
+     肉眼就是"启动轨半径在变"。.rotating 那条兜底只在拖动当时有效，
+     吸附收尾摘掉 .rotating 之后 tilt tick 还在写，就漏了。
+     现在过渡只在 .launch-fly 期间生效：由 _applyLaunch(..., fly=true) 在
+     "展开飞出 / 收起缩回"那一次挂上，560ms 后摘掉。 */
 .slot-launch {
+    transition: opacity 0.35s ease;
+}
+
+.slot-launch.launch-fly {
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
 }
 
-/* 程序化旋转时才动画（拖动时由 JS 摘掉，避免跟手迟滞） */
+/* 转动中（JS 给容器挂 .rotating）：整条轨道是刚体，任何 transform 过渡都不生效。
+   少了这条，启动卡的 .slot-launch 回弹过渡会让每帧的目标都追不上 → 看着像半径在变。 */
+.rotating .slot,
+.rotating .slot-launch,
+.rotating .slot.anim,
+.rotating .sub {
+    transition: none !important;
+}
+
+/* 程序化旋转时才动画（拖动时由 JS 摘掉，避免跟手迟滞）
+   ★ 这里【不要】给 transform 挂过渡：
+     轨道是 JS 每帧写 transform 的（drag.js 的 tilt tick / snapToCard / 看门狗），
+     一旦 transform 上有过渡，每帧写的新值都会被过渡插值 —— 快速拖动时肉眼就是"半径在收缩"。
+     只留 opacity / filter，这两个不会被每帧写。 */
 .slot.anim {
-    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    transition: opacity 0.35s ease, filter 0.35s ease;
+}
+
+/* 摊开子卡时父卡"飞到屏幕正中"那一次位移：过渡只挂在这一张上（.focus 只给父卡），
+   和轨道每帧写 transform 完全不冲突。 */
+.slot.focus {
+    transition: transform 0.36s cubic-bezier(0.22, 0.9, 0.28, 1.06),
                 opacity 0.35s ease, filter 0.35s ease;
 }
 
@@ -273,7 +303,13 @@ img {
     opacity: 0;
     pointer-events: none;
     will-change: transform;
-    transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.35s ease;
+    /* ---------- 扇展过渡 ----------
+       之前是 0.5s 的大回弹（cubic-bezier .34,1.56,.64,1，过冲 1.56），收放都有点"炸"。
+       现在：0.36s、轻微过冲、位移/旋转/缩放一起走，透明度单独淡入。
+       错峰（一张张弹出来）由 JS 用 transition-delay 给，见 deck.js 的 _spread / CFG.SUB_STAGGER。
+       ⚠️ 别删下面 .rotating .sub 的 rigid-body 规则：拖动轨道时子卡不许有过渡。 */
+    transition: transform 0.36s cubic-bezier(0.22, 0.9, 0.28, 1.06),
+                opacity 0.26s ease;
 }
 
 .children.open .sub {

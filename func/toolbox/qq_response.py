@@ -103,10 +103,11 @@ class TBoxQQResponse:
         if not is_bot:
             self.napcat_ltmem.record_user(username, text)
         # 3. napcat 独立 LLM 回复（流式短句回传发送）
+        _pace = self._make_pacer("private")
         final_text = self.napcat_llm.send_to_llm(
             username, user_id, text, short_memory,
-            on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg),
-            nsfw=nsfw_triggered,
+            on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg, _pace(seg)),
+            nsfw=nsfw_triggered, quote=self._take_quote("private", user_id, text),
         )
         # 4. 记录 AI 回复短期记忆
         if final_text and self.napcat_config.short_mem_enabled and not is_bot:
@@ -124,6 +125,52 @@ class TBoxQQResponse:
         # 7. 后置情绪更新（异步，与主链路一致，更新最新情绪/性格）
         if final_text:
             Thread(target=self._update_emotion_async, args=(text, final_text), daemon=True).start()
+
+    def _make_pacer(self, channel: str = "private"):
+        cfg = self.napcat_config
+        conf = cfg.pace_conf(channel) if hasattr(cfg, "pace_conf") else {}
+        enabled = bool(conf.get("enabled", True))
+        ms = max(0, int(conf.get("ms_per_char", 55) or 0))
+        jitter = float(conf.get("jitter", 0.25) or 0)
+        extra = float(conf.get("sentence_extra", 0.2) or 0)
+        cap = float(conf.get("max_seconds", 2.5) or 0)
+        first = float(conf.get("first_delay", 0.35) or 0)
+        import random as _random
+        state = {"done": 0.0, "first": True}
+
+        def pace(seg: str) -> float:
+            if not enabled:
+                return 0.0
+            s = str(seg or "")
+            body = s.strip()
+            if state["first"] and first > 0:
+                want = first * (1 + _random.uniform(-0.2, 0.2))
+                state["first"] = False
+            elif len(body) <= 2:
+                want = 0.0
+            else:
+                want = len(s) * ms / 1000.0
+                if body.endswith(("。", "？", "！", ".", "?", "!")):
+                    want += extra
+                elif body.endswith(("，", ",", "、", "；", ";")):
+                    want += extra * 0.3
+                want *= (1 + _random.uniform(-jitter, jitter))
+            want = min(max(0.0, want), max(0.0, cap - state["done"]))
+            state["done"] += want
+            return state["done"]
+
+        return pace
+
+    def _take_quote(self, scope: str, key, current=None):
+        cfg = self.napcat_config
+        conf = cfg.quote_conf(scope) if hasattr(cfg, "quote_conf") else {}
+        if not bool(conf.get("enabled", True)):
+            return None
+        try:
+            from func.toolbox.napcat.message.quote_store import TBQuoteStore
+            return TBQuoteStore().take(scope, key, current)
+        except Exception:
+            return None
 
     # ==================== QQ 群聊回复链路 ====================
     def receive_group(self, parsed: dict):
@@ -149,6 +196,8 @@ class TBoxQQResponse:
 
         # 机器人消息（如幻梦）：仅参与当轮上下文，不写入任何记忆文件
         is_bot = self._is_bot(user_id)
+        if not is_bot and (bool(parsed.get("mention_self")) or bool(parsed.get("reply_self"))):
+            at_self = True
 
         # 观察：仅判定幻梦是否发过言 + 提取其指令名单（供 ask_group_bot 触发条件与指令提示）
         try:
@@ -405,10 +454,11 @@ class TBoxQQResponse:
         except Exception:
             self.log.exception("QQ 群聊破甲审查异常")
 
+        _pace = self._make_pacer("group")
         final = self.napcat_group_llm.reply(
             reply_username, gid, group_name, merged_text, short_memory, group_info_text,
-            on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg),
-            nsfw=nsfw_triggered,
+            on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
+            nsfw=nsfw_triggered, quote=self._take_quote("group", gid, merged_text),
         )
         if final and final.strip().lower() != "pass":
             parsed = {"group_id": gid, "group_name": group_name, "user_id": primary_uid,
@@ -433,9 +483,11 @@ class TBoxQQResponse:
         group_info_text = TBGroupInfo().build_prompt(group_name)
 
         if force:
+            _pace = self._make_pacer("group")
             final = self.napcat_group_llm.reply(
                 None, gid, group_name, merged_text, short_memory, group_info_text,
-                on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg),
+                on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
+                quote=self._take_quote("group", gid, merged_text),
             )
             active.record_reply(gid)
             if final and final.strip().lower() != "pass":

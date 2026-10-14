@@ -15,12 +15,12 @@ Object.assign(Config, {
             </select></div>`;
 
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="deepseek">DeepSeek</button>
-            <button class="modal-tab" data-tab="aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="gemini">Gemini</button>
+            <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="deepseek">DeepSeek</button>
+            <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${type === 'gemini' ? ' active' : ''}" data-tab="gemini">Gemini</button>
         </div>`;
 
-        h += `<div class="tab-content active" data-tab-content="deepseek">` +
+        h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="deepseek">` +
             this._password('API Key', 'llm.deepseek.api_key', '') +
             this._text('Base URL', 'llm.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'llm.deepseek.model', 'deepseek-chat') +
@@ -31,7 +31,7 @@ Object.assign(Config, {
             this._check('启用思考模式', 'llm.deepseek.enable_thinking', false) +
             `</div>`;
 
-        h += `<div class="tab-content" data-tab-content="aliyun">` +
+        h += `<div class="tab-content${type === 'aliyun' ? ' active' : ''}" data-tab-content="aliyun">` +
             this._password('API Key', 'llm.aliyun.api_key', '') +
             this._text('Base URL', 'llm.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'llm.aliyun.model', 'qwen-plus') +
@@ -42,7 +42,7 @@ Object.assign(Config, {
             this._check('启用思考模式', 'llm.aliyun.enable_thinking', false) +
             `</div>`;
 
-        h += `<div class="tab-content" data-tab-content="gemini">` +
+        h += `<div class="tab-content${type === 'gemini' ? ' active' : ''}" data-tab-content="gemini">` +
             this._password('API Key', 'llm.gemini.api_key', '') +
             this._text('Base URL', 'llm.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'llm.gemini.model', 'gemini-3.6-flash') +
@@ -175,6 +175,7 @@ Object.assign(Config, {
     // 记忆摘要,
     catbrain_abstract() {
         const ab = this._val('catbrain.abstract_mem.llm_type', 'deepseek');
+        const abOn = (k) => ab === k ? ' active' : '';
         let h = this._section('记忆摘要 (abstract_mem)');
         h += this._num('摘要触发条数', 'catbrain.abstract_mem.summary_rounds', 30, 1, 500, 1,
             '这里指单条消息数（user/assistant 各算一条），与短期记忆的"轮数"不同：短期记忆一轮 = 用户 + AI 两条') +
@@ -201,25 +202,25 @@ Object.assign(Config, {
         );
         h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="abstract_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="abstract_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="abstract_gemini">Gemini</button>
+            <button class="modal-tab${abOn('deepseek')}" data-tab="abstract_ds">DeepSeek</button>
+            <button class="modal-tab${abOn('aliyun')}" data-tab="abstract_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${abOn('gemini')}" data-tab="abstract_gemini">Gemini</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="abstract_ds">` +
+        h += `<div class="tab-content${abOn('deepseek')}" data-tab-content="abstract_ds">` +
             this._password('API Key', 'catbrain.abstract_mem.deepseek.api_key', '') +
             this._text('Base URL', 'catbrain.abstract_mem.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'catbrain.abstract_mem.deepseek.model', 'deepseek-chat') +
             this._num('温度', 'catbrain.abstract_mem.deepseek.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'catbrain.abstract_mem.deepseek.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="abstract_aliyun">` +
+        h += `<div class="tab-content${abOn('aliyun')}" data-tab-content="abstract_aliyun">` +
             this._password('API Key', 'catbrain.abstract_mem.aliyun.api_key', '') +
             this._text('Base URL', 'catbrain.abstract_mem.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.abstract_mem.aliyun.model', 'qwen-plus') +
             this._num('温度', 'catbrain.abstract_mem.aliyun.temperature', 0.7, 0, 2, 0.1) +
             this._num('max_tokens', 'catbrain.abstract_mem.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="abstract_gemini">` +
+        h += `<div class="tab-content${abOn('gemini')}" data-tab-content="abstract_gemini">` +
             this._password('API Key', 'catbrain.abstract_mem.gemini.api_key', '') +
             this._text('Base URL', 'catbrain.abstract_mem.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'catbrain.abstract_mem.gemini.model', 'gemini-3.6-flash') +
@@ -232,24 +233,25 @@ Object.assign(Config, {
     // 价值观,
     catbrain_values() {
         const cv = this._val('catbrain.cat_values.llm_type', 'deepseek');
+        const cvOn = (k) => cv === k ? ' active' : '';
         let h = this._section('价值观 (cat_values)');
         h += this._llmTypeSelect('价值观 LLM 类型', 'catbrain.cat_values.llm_type', cv);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="values_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="values_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="values_gemini">Gemini</button>
+            <button class="modal-tab${cvOn('deepseek')}" data-tab="values_ds">DeepSeek</button>
+            <button class="modal-tab${cvOn('aliyun')}" data-tab="values_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${cvOn('gemini')}" data-tab="values_gemini">Gemini</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="values_ds">` +
+        h += `<div class="tab-content${cvOn('deepseek')}" data-tab-content="values_ds">` +
             this._password('API Key', 'catbrain.cat_values.deepseek.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'catbrain.cat_values.deepseek.model', 'deepseek-chat') +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="values_aliyun">` +
+        h += `<div class="tab-content${cvOn('aliyun')}" data-tab-content="values_aliyun">` +
             this._password('API Key', 'catbrain.cat_values.aliyun.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.cat_values.aliyun.model', 'qwen-plus') +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="values_gemini">` +
+        h += `<div class="tab-content${cvOn('gemini')}" data-tab-content="values_gemini">` +
             this._password('API Key', 'catbrain.cat_values.gemini.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'catbrain.cat_values.gemini.model', 'gemini-3.6-flash') +
@@ -259,38 +261,44 @@ Object.assign(Config, {
             this._num('计时检查间隔(秒)', 'catbrain.cat_values.timer_check_seconds', 300, 1, 86400, 1) +
             this._num('更新触发间隔(小时)', 'catbrain.cat_values.update_interval_hours', 12, 1, 720, 1) +
             this._num('哲思触发冷却(分钟)', 'catbrain.cat_values.philosophy_cooldown_minutes', 30, 1, 1440, 1);
+        const sr = this._val('catbrain.cat_values.second_review.llm_type', 'aliyun');
         h += this._check('启用二次审查', 'catbrain.cat_values.second_review.enabled', false);
-        h += `<div class="form-group"><label>${this._t('二次审查 LLM 类型')}</label>
-            <select data-path="catbrain.cat_values.second_review.llm_type">
-                <option value="deepseek" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-                <option value="aliyun" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
-                <option value="gemini" ${this._val('catbrain.cat_values.second_review.llm_type','aliyun') === 'gemini' ? 'selected' : ''}>Gemini</option>
-            </select></div>`;
+        h += this._llmTypeSelect('二次审查 LLM 类型', 'catbrain.cat_values.second_review.llm_type', sr);
+        h += this._fold('二次审查 · DeepSeek',
+            this._text('Base URL', 'catbrain.cat_values.second_review.deepseek.base_url', 'https://api.deepseek.com/v1') +
+            this._text('模型', 'catbrain.cat_values.second_review.deepseek.model', 'deepseek-chat'));
+        h += this._fold('二次审查 · ' + this._t('阿里云'),
+            this._text('Base URL', 'catbrain.cat_values.second_review.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
+            this._text('模型', 'catbrain.cat_values.second_review.aliyun.model', 'qwen-plus'));
+        h += this._fold('二次审查 · Gemini',
+            this._text('Base URL', 'catbrain.cat_values.second_review.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'catbrain.cat_values.second_review.gemini.model', 'gemini-3.6-flash'));
         return h;
     },
 
     // 用户记忆,
     catbrain_usermem() {
         const um = this._val('catbrain.user_memory.llm_type', 'deepseek');
+        const umOn = (k) => um === k ? ' active' : '';
         let h = this._section('用户记忆 (user_memory)');
         h += this._num('用户信息更新轮数', 'catbrain.user_memory.update_rounds', 50, 1, 1000, 1);
         h += this._llmTypeSelect('用户记忆 LLM 类型', 'catbrain.user_memory.llm_type', um);
         h += `<div class="modal-tabs">
-            <button class="modal-tab active" data-tab="usermem_ds">DeepSeek</button>
-            <button class="modal-tab" data-tab="usermem_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab" data-tab="usermem_gemini">Gemini</button>
+            <button class="modal-tab${umOn('deepseek')}" data-tab="usermem_ds">DeepSeek</button>
+            <button class="modal-tab${umOn('aliyun')}" data-tab="usermem_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${umOn('gemini')}" data-tab="usermem_gemini">Gemini</button>
         </div>`;
-        h += `<div class="tab-content active" data-tab-content="usermem_ds">` +
+        h += `<div class="tab-content${umOn('deepseek')}" data-tab-content="usermem_ds">` +
             this._password('API Key', 'catbrain.user_memory.deepseek.api_key', '') +
             this._text('Base URL', 'catbrain.user_memory.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'catbrain.user_memory.deepseek.model', 'deepseek-chat') +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="usermem_aliyun">` +
+        h += `<div class="tab-content${umOn('aliyun')}" data-tab-content="usermem_aliyun">` +
             this._password('API Key', 'catbrain.user_memory.aliyun.api_key', '') +
             this._text('Base URL', 'catbrain.user_memory.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.user_memory.aliyun.model', 'qwen-plus') +
             `</div>`;
-        h += `<div class="tab-content" data-tab-content="usermem_gemini">` +
+        h += `<div class="tab-content${umOn('gemini')}" data-tab-content="usermem_gemini">` +
             this._password('API Key', 'catbrain.user_memory.gemini.api_key', '') +
             this._text('Base URL', 'catbrain.user_memory.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'catbrain.user_memory.gemini.model', 'gemini-3.6-flash') +

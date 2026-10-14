@@ -50,6 +50,21 @@ class TBNapCatConfig:
         self.thinking_level = cfg.get('thinking_level', 'medium')
         # 回复字数（默认10，严格上限 = 该值 + 10）
         self.reply_word_count = cfg.get('reply_word_count', 10)
+        self.reply_reject_ratio = float(cfg.get('reply_reject_ratio', 1.5))
+        self.reply_reject_rounds = int(cfg.get('reply_reject_rounds', 3))
+        _punct = cfg.get('reply_punct_check', {}) or {}
+        self.reply_punct_check_enabled = bool(_punct.get('enabled', True))
+        self.reply_punct_max = int(_punct.get('max_punct', 4))
+        _quote = cfg.get('reply_quote', {}) or {}
+        self.reply_quote_enabled = bool(_quote.get('enabled', True))
+        self.reply_quote_back = bool(_quote.get('quote_back', False))
+        _pace = cfg.get('reply_pace', {}) or {}
+        self.reply_pace_enabled = bool(_pace.get('enabled', True))
+        self.reply_pace_ms_per_char = int(_pace.get('ms_per_char', 55))
+        self.reply_pace_jitter = float(_pace.get('jitter', 0.25))
+        self.reply_pace_sentence_extra = float(_pace.get('sentence_extra', 0.2))
+        self.reply_pace_max = float(_pace.get('max_seconds', 2.5))
+        self.reply_pace_first = float(_pace.get('first_delay', 0.35))
 
         # ========== 图片模块（接收图片 / 动图抽帧） ==========
         # 单次上传最多处理的图片数（超限取最近 N 张），默认 5
@@ -71,7 +86,22 @@ class TBNapCatConfig:
 
         # ========== 群聊模块（接口型，自发进行） ==========
         # 群聊回复字数（独立于私聊 reply_word_count，默认10，严格上限 = 该值 + 10）
-        self.group_reply_word_count = cfg.get('group_reply_word_count', 10)
+        self.group_reply_word_count = cfg.get('group_reply_word_count', 12)
+        self.group_reply_reject_ratio = float(cfg.get('group_reply_reject_ratio', 1.5))
+        self.group_reply_reject_rounds = int(cfg.get('group_reply_reject_rounds', 3))
+        _gpunct = cfg.get('group_reply_punct_check', {}) or {}
+        self.group_reply_punct_check_enabled = bool(_gpunct.get('enabled', True))
+        self.group_reply_punct_max = int(_gpunct.get('max_punct', 4))
+        _gquote = cfg.get('group_reply_quote', {}) or {}
+        self.group_reply_quote_enabled = bool(_gquote.get('enabled', True))
+        self.group_reply_quote_back = bool(_gquote.get('quote_back', False))
+        _gpace = cfg.get('group_reply_pace', {}) or {}
+        self.group_reply_pace_enabled = bool(_gpace.get('enabled', True))
+        self.group_reply_pace_ms_per_char = int(_gpace.get('ms_per_char', 55))
+        self.group_reply_pace_jitter = float(_gpace.get('jitter', 0.25))
+        self.group_reply_pace_sentence_extra = float(_gpace.get('sentence_extra', 0.2))
+        self.group_reply_pace_max = float(_gpace.get('max_seconds', 2.5))
+        self.group_reply_pace_first = float(_gpace.get('first_delay', 0.35))
         # 群聊名称黑名单（命中则不接收该群消息，默认空）
         self.group_blacklist = cfg.get('group_blacklist', []) or []
         # 群聊历史拉取条数（get_group_record 向上获取，默认 50）
@@ -140,6 +170,44 @@ class TBNapCatConfig:
         self.poke_private_trigger = cfg.get('poke_private_trigger', 1)
         # 戳一戳计数冷却时间（秒），超过该时间未再被戳则计数归零
         self.poke_cooldown = cfg.get('poke_cooldown', 30)
+
+    def reject_conf(self, channel: str = "private") -> dict:
+        if str(channel) == "group":
+            return {"ratio": self.group_reply_reject_ratio,
+                    "rounds": self.group_reply_reject_rounds,
+                    "punct_enabled": self.group_reply_punct_check_enabled,
+                    "punct_max": self.group_reply_punct_max}
+        return {"ratio": self.reply_reject_ratio,
+                "rounds": self.reply_reject_rounds,
+                "punct_enabled": self.reply_punct_check_enabled,
+                "punct_max": self.reply_punct_max}
+
+    def quote_conf(self, channel: str = "private") -> dict:
+        if str(channel) == "group":
+            return {"enabled": self.group_reply_quote_enabled,
+                    "quote_back": self.group_reply_quote_back}
+        return {"enabled": self.reply_quote_enabled,
+                "quote_back": self.reply_quote_back}
+
+    def pace_conf(self, channel: str = "private") -> dict:
+        if str(channel) == "group":
+            return {"enabled": self.group_reply_pace_enabled,
+                    "ms_per_char": self.group_reply_pace_ms_per_char,
+                    "jitter": self.group_reply_pace_jitter,
+                    "sentence_extra": self.group_reply_pace_sentence_extra,
+                    "max_seconds": self.group_reply_pace_max,
+                    "first_delay": self.group_reply_pace_first}
+        return {"enabled": self.reply_pace_enabled,
+                "ms_per_char": self.reply_pace_ms_per_char,
+                "jitter": self.reply_pace_jitter,
+                "sentence_extra": self.reply_pace_sentence_extra,
+                "max_seconds": self.reply_pace_max,
+                "first_delay": self.reply_pace_first}
+
+    def word_count_for(self, channel: str = "private") -> int:
+        if str(channel) == "group":
+            return int(self.group_reply_word_count or 10)
+        return int(self.reply_word_count or 10)
 
     # ==================== 群聊逐群配置 ====================
     def group_config(self, group_id: str) -> dict:

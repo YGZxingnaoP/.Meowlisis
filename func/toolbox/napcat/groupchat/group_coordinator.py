@@ -137,7 +137,8 @@ class TBGroupReplyCoordinator:
         if text:
             p["texts"].append(text)
         p["kinds"].add(kind)
-        p["at_self"] = bool(p["at_self"] or item.get("at_self"))
+        p["at_self"] = bool(p["at_self"] or item.get("at_self")
+                            or item.get("mention_self") or item.get("reply_self"))
         p["has_real_text"] = bool(p["has_real_text"] or item.get("has_real_text"))
         p["force"] = bool(p["force"] or item.get("force"))
         # 群名/self_id 以最新为准

@@ -53,6 +53,7 @@ class TBNapCatCore:
         # 绑定事件回调与停止清理到连接层
         self.connection.on_private_message = self.event_handler._handle_private_message
         self.connection.on_group_message = self.event_handler._handle_group_message
+        self.connection.on_message_sent = self.event_handler._handle_message_sent
         self.connection.on_poke = self.event_handler._handle_poke
         self.connection.dump_event = self.event_handler._dump_event
         self.connection.on_stop_cleanup = self._stop_cleanup

@@ -71,7 +71,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             return ""
 
     def _messages(self, username, group_name, group_info_text, text, short_memory, decide,
-                  group_id: str = "", with_bot_tool: bool = False):
+                  group_id: str = "", with_bot_tool: bool = False, quote: Optional[str] = None):
         system_prompt = self._system_prompt(username, group_name, group_info_text, text,
                                            group_id, decide, with_bot_tool)
         messages = []
@@ -80,13 +80,19 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         for m in short_memory or []:
             if m.get("role") in ("user", "assistant") and m.get("content"):
                 messages.append({"role": m["role"], "content": m["content"]})
-        messages.append({"role": "user", "content": text})
+        if quote:
+            messages.append({"role": "user", "content": (
+                f"【TA引用了你的这句话】{quote}\n【TA接着说】{text}\n"
+                f"TA 是在接着你上面那句话说的，直接回应，不要重复那句话。"
+            )})
+        else:
+            messages.append({"role": "user", "content": text})
         return messages
 
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False) -> str:
+              nsfw: bool = False, quote: Optional[str] = None) -> str:
         """@ 触发或强制回复：流式生成并回传短句，返回完整回复
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
@@ -94,9 +100,10 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         self._nsfw_split = bool(nsfw)
         try:
             messages = self._messages(username, group_name, group_info_text, text, short_memory,
-                                      decide=False, group_id=group_id)
-            final = self._generate(messages)
-            final = self._rewrite_if_too_long(messages, final, int(self.napcat_cfg.group_reply_word_count or 10))
+                                      decide=False, group_id=group_id, quote=quote)
+            final = self._clean_reply(self._generate(messages))
+            final = self._rewrite_if_too_long(messages, final,
+                                             self.napcat_cfg.word_count_for("group"), channel="group")
             for seg in self.split_segments(final):
                 if on_segment and seg:
                     on_segment(seg)
@@ -159,7 +166,10 @@ class TBNapCatGroupLLM(TBNapCatLLM):
              decide: bool, on_segment, group_id: str = "") -> str:
         messages = self._messages(username, group_name, group_info_text, text, short_memory,
                                   decide, group_id=group_id)
-        final = self._generate(messages)
+        final = self._clean_reply(self._generate(messages))
+        if final and final.strip().lower() != "pass" and not final.startswith("ASK_BOT:"):
+            final = self._rewrite_if_too_long(messages, final,
+                                              self.napcat_cfg.word_count_for("group"), channel="group")
         for seg in self.split_segments(final):
             if on_segment and seg:
                 on_segment(seg)
