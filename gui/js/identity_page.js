@@ -96,10 +96,10 @@ const IdentityUI = {
         (d.platforms || []).forEach(p => {
             const key = this.esc(p.key);
             const account = this.esc(p.account);
-            rows += '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">' +
+            rows += '<div class="bind-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">' +
                 '<div style="flex:1;min-width:0;">' +
                 '<label style="display:block;margin-bottom:4px;">' + this.esc(p.label) + '</label>' +
-                '<input type="text" id="idacct_' + key + '" value="' + account + '" style="width:100%;" placeholder="' +
+                '<input type="text" id="idacct_' + key + '" value="' + account + '" placeholder="' +
                 this.t('填账号：QQ号 / B站uid / 声纹名') + '">' +
                 '</div>' +
                 '<button class="btn btn-primary" style="white-space:nowrap;" onclick="IdentityUI.bind(\'' + key + '\')">' +

@@ -106,6 +106,7 @@ class TBNewsCore:
             return "新闻数据已获取，但概括文案生成失败"
 
         self._speak(reply, source="toolbox_news")
+        self._save_memory(reply)
         return reply
 
     # ==================== QQ 场景入口（napcat 专用） ====================
@@ -312,6 +313,27 @@ class TBNewsCore:
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
         return re.sub(r"[ \t]+", " ", text).strip()
+
+    # ==================== 记忆 ====================
+    def _save_memory(self, reply: str):
+        """播报完成后写记忆：短期（type=toolbox_news）+ 长期/用户记忆（助手侧）"""
+        if not reply:
+            return
+        username = self._username or "主人"
+        try:
+            from func.pipeline.short_memory import ShortMemory
+            ShortMemory().save(
+                {"role": "assistant", "content": f"【新闻】{reply}", "type": "toolbox_news"},
+                50, trim_mode="items",
+            )
+        except Exception:
+            self.log.exception("[News] 短期记忆保存失败")
+        try:
+            from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+            from func.config.app_config import AppConfig
+            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, reply)
+        except Exception:
+            self.log.exception("[News] 长期记忆保存失败")
 
     # ==================== TTS ====================
     @staticmethod

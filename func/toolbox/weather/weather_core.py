@@ -60,6 +60,7 @@ class TBWeatherCore:
                     "- 询问新闻、热点、最近发生了什么（用 read_news）；\n"
                     "- 发消息、看屏幕、看图片等其它操作；\n"
                     "- 普通闲聊、讨论、询问观点。\n"
+                    "【红线】严禁编造天气数据：不许凭印象、记忆或想象说出某地今天/明天多少度、下不下雨；必须先调用本工具拿到真实结果再播报。\n"
                     "只有用户明确在问天气时才调用，模糊不清时宁可不要调用。\n"
                     "city 填城市名（如北京、长沙）；date_type 填 today(今天)/tomorrow(明天)/all(未来7天)，缺省 today。"
                 ),
@@ -114,6 +115,7 @@ class TBWeatherCore:
             return f"{city} 天气数据已获取，但播报文案生成失败"
 
         self._speak(reply, source="toolbox_weather")
+        self._save_memory(reply)
         return reply
 
     # ==================== QQ 场景入口（napcat 专用） ====================
@@ -338,6 +340,27 @@ class TBWeatherCore:
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
         return re.sub(r"[ \t]+", " ", text).strip()
+
+    # ==================== 记忆 ====================
+    def _save_memory(self, reply: str):
+        """播报完成后写记忆：短期（type=toolbox_weather）+ 长期/用户记忆（助手侧）"""
+        if not reply:
+            return
+        username = self._username or "主人"
+        try:
+            from func.pipeline.short_memory import ShortMemory
+            ShortMemory().save(
+                {"role": "assistant", "content": f"【天气】{reply}", "type": "toolbox_weather"},
+                50, trim_mode="items",
+            )
+        except Exception:
+            self.log.exception("[Weather] 短期记忆保存失败")
+        try:
+            from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+            from func.config.app_config import AppConfig
+            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, reply)
+        except Exception:
+            self.log.exception("[Weather] 长期记忆保存失败")
 
     # ==================== TTS ====================
     @staticmethod

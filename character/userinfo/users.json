@@ -1,6 +1,6 @@
 {
   "next": 5,
-  "temp_next": 9,
+  "temp_next": 10,
   "history": {
     "qq:1149942002": "000001"
   },
@@ -46,6 +46,15 @@
       "seen": 1791979540,
       "accounts": {
         "qq": "237916620"
+      }
+    },
+    "temp-000009": {
+      "id": "temp-000009",
+      "nickname": "主人",
+      "created": 1792056361,
+      "seen": 1792056361,
+      "accounts": {
+        "local": "主人"
       }
     }
   }

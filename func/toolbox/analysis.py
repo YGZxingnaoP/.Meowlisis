@@ -194,46 +194,43 @@ class TBoxAnalysis:
                 schemas.extend(tool.build_tools())
         return schemas
 
-    def decide(self, text: str, username: str):
-        """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。
-        """
+    def pre_route_plan(self, text: str, username: str):
         self.current_username = username
-
-        # ===== 插件会话拦截 + 关键词硬触发（语音与弹幕共用 decide 入口） =====
         try:
             from func.toolbox.plugins.manager import PluginManager
             pm = PluginManager()
             if pm.route_text(text, username):
                 self.log.info(f"插件会话拦截: {(text or '')[:30]}")
-                return
+                return ("", {})
             hit = pm.match_keyword(text)
             if hit:
-                name, arguments = hit
-                context = {"username": username, "text": text,
-                           "short_memory": self._load_short_memory(), "system_prompt": ""}
-                result = self.dispatch(name, arguments, username, context)
-                self.log.info(f"插件关键词触发 {name}: {(text or '')[:30]} -> {result}")
-                return
+                return hit
         except Exception:
             self.log.exception("插件会话/关键词处理失败")
-
-        # ===== 规则硬触发层（零 LLM）：看屏幕是确定性高频需求，不交给 LLM 自觉 =====
         if self._vision_rule_hit(text):
-            self.log.info(f"父级 toolcalls 规则硬触发 use_vision: {(text or '')[:30]}")
-            context = {"username": username, "text": text,
-                       "short_memory": self._load_short_memory(), "system_prompt": ""}
-            result = self.dispatch("use_vision", {"user_message": text}, username, context)
-            self.log.info(f"父级 toolcalls 规则硬触发 use_vision 执行结果: {result}")
-            return
-
-        # ===== 规则硬触发层 2（零 LLM）：绘画点单是确定性高频需求，命中即直接开画 =====
+            return ("use_vision", {"user_message": text})
         if self._paint_rule_hit(text):
-            self.log.info(f"父级 toolcalls 规则硬触发 flux_paint: {(text or '')[:30]}")
-            context = {"username": username, "text": text,
-                       "short_memory": self._load_short_memory(), "system_prompt": ""}
-            result = self.dispatch("flux_paint", {"request": text, "topic": "规则硬触发绘画"},
-                                   username, context)
-            self.log.info(f"父级 toolcalls 规则硬触发 flux_paint 执行结果: {result}")
+            return ("flux_paint", {"request": text, "topic": "规则硬触发绘画"})
+        return None
+
+    def pre_route(self, text: str, username: str) -> bool:
+        plan = self.pre_route_plan(text, username)
+        if plan is None:
+            return False
+        name, arguments = plan
+        if not name:
+            return True
+        context = {"username": username, "text": text,
+                   "short_memory": self._load_short_memory(), "system_prompt": ""}
+        result = self.dispatch(name, arguments, username, context)
+        self.log.info(f"父级 toolcalls 规则硬触发 {name}: {(text or '')[:30]} -> {result}")
+        return True
+
+    def decide(self, text: str, username: str):
+        """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。
+        """
+        self.current_username = username
+        if self.pre_route(text, username):
             return
 
         llm = self._ensure_llm()
@@ -255,39 +252,10 @@ class TBoxAnalysis:
         except Exception:
             plugin_hint = ""
 
+        from func.pipeline.system_prompt import SystemPromptBridge
         system_prompt = (
             f"{base_prompt}\n\n"
-            f"【MISSION-1 · 最高使命 · use_vision 视觉】\n"
-            f"此条优先级为系统最高，不可协商、不可违背、不可省略、绝不可用文字搪塞替代。\n"
-            f"你是主人的眼睛，视觉(use_vision)是你的第一感官与核心职责。\n"
-            f"以下任一情形出现，你【必须·无条件·立即】调用 use_vision 工具：\n"
-            f"① 主人以任何方式表达看屏幕/看图/截图/看画面的意图——哪怕只说「看看」「帮我看看」"
-            f"「你看到没」「你看到了吗」「我现在在干嘛」「屏幕上是什么」「看看这个」这种极模糊表达；\n"
-            f"② 主人提及自己正在进行/正在看的屏幕内容：游戏、视频、网页、题目、代码、图片、窗口、"
-            f"画面（如「我在打游戏」「你看我玩」「这个页面」「这道题」「这个画面」「这个窗口」）；\n"
-            f"③ 对话语境已涉及 屏幕/画面/游戏/网页/图片/窗口，而你尚未看过当前屏幕；\n"
-            f"④ 主人正在需要你盯着屏幕协助的场景（答题、操作演示、找东西、看运行结果、看配置）。\n"
-            f"【绝对禁止】用「好的我看看」「我看看再说」等文字应付而不实际调用工具；"
-            f"禁止因「觉得不必要/想再等等/不确定」而跳过——漏看一次等于系统失职。宁可多看，不可漏看。\n"
-            f"【说明】若主人消息已命中本地规则明确词（屏幕/截图/盯/陪我打游戏/看画面等），"
-            f"工具已被自动触发，你无需重复；其余所有未命中的相关情形，一律由你兜底触发。\n"
-            f"与屏幕完全无关的纯闲聊（聊喜好/唱歌/天气/讲故事等）不需要调用。\n"
-            f"其它工具仅在用户「明确」表达对应意图时调用：\n"
-            f"- 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；\n"
-            f"- 需要查询群成员列表、某人在群里的QQ号、或要@群里的某个人 → get_group_member_list；\n"
-            f"- 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。\n"
-            f"- 明确询问天气/气温/下雨 → query_weather；\n"
-            f"- 明确要看新闻/热点/头条 → read_news；\n"
-            f"- 用户想听歌/听你唱歌/有听歌需求/即兴哼唱/唱一小段 → 必须调用impromptu_sing；\n"
-            f"- 想在 B站直播间主动发弹幕/和观众互动 → danmaku_send；\n"
-            f"- 有让你提醒TA事情，需要新建/记录待办或提醒事项（如提醒我几点做什么）→ add_backlog。\n"
-            f"- 用户想玩海龟汤/情境猜谜/猜谜游戏 → turtle_soup。\n"
-            f"- 用户需要「画/画图/画画/画一幅/画个…/绘一幅/来张图/生成一张图/想要一张…的图」→ flux_paint\n"
-            f"{plugin_hint}\n"
-            f"【绝不调用工具】以下情况一律不调用任何工具，直接判定无需工具：\n"
-            f"- 用户说「搜索」「搜一下」「查一下」「了解」「搜搜」某个具体游戏/人物/作品/事件/概念（属于搜索/知识库，不属于本工具箱）；\n"
-            f"- 用户明确「点歌」「放歌」且指定了歌名/要完整唱（属于点歌工具，不属于本工具箱）；\n"
-            f"- 意图模糊、无法确定用户是否要执行操作（视觉使命条款①~④优先，不受此条限制）。\n"
+            f"{SystemPromptBridge().get_tool_hint_prompt(plugin_hint)}"
         )
         messages = [{"role": "system", "content": system_prompt}]
         messages.extend(history_messages)
@@ -306,14 +274,42 @@ class TBoxAnalysis:
 
         # 只取第一个工具，避免一次多工具并发冲突
         tc = tool_calls[0]
-        self.log.info(f"父级 toolcalls 命中工具 {tc.function.name}: {text[:20]}")
-        name = tc.function.name
-        try:
-            args = json.loads(tc.function.arguments or "{}")
-        except Exception:
-            self.log.exception(f"解析工具参数失败: {name}")
-            args = {}
-        result = self.dispatch(name, args, username, dispatch_context)
+        self.handle_tool_calls(
+            [{"name": tc.function.name, "arguments": tc.function.arguments}],
+            username, text, dispatch_context)
+
+    def handle_tool_calls(self, calls: List[Dict], username: str, text: str = "",
+                          context: Dict = None):
+        """接收 LLM 分析出的工具调用并执行对应模块（快速回复直接选择工具时由桥接调用）。
+
+        calls：归一化后的工具调用列表 [{"name": 工具名, "arguments": 参数(原始字符串或 dict)}]
+        context：可选的显式上下文，缺省时自行构建（短记忆 + 角色提示词）
+        """
+        if not calls:
+            return
+        self.current_username = username
+        name = str(calls[0].get("name") or "")
+        if not name:
+            return
+        arguments = calls[0].get("arguments")
+        if isinstance(arguments, str) or arguments is None:
+            try:
+                args = json.loads(arguments or "{}")
+            except Exception:
+                self.log.exception(f"解析工具参数失败: {name}")
+                args = {}
+        else:
+            args = arguments
+        if context is None:
+            context = {"username": username, "text": text,
+                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+            try:
+                from func.toolbox.get_prompt import TBoxGetPrompt
+                context["system_prompt"] = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+            except Exception:
+                pass
+        self.log.info(f"父级 toolcalls 命中工具 {name}: {(text or '')[:20]}")
+        result = self.dispatch(name, args, username, context)
         self.log.info(f"父级工具 {name} 执行结果: {result}")
 
     # ==================== 规则硬触发层 ====================

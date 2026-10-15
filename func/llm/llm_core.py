@@ -184,6 +184,30 @@ class LLmCore:
             # 非弹幕：原有逻辑不变
             self.ltmem.record_user_message(uid, prompt)
 
+        from func.pipeline.llm_toolbox import LLMToolboxBridge, ToolCallAccumulator
+        tb = LLMToolboxBridge()
+        merge_on = tb.merge_enabled()
+        tools = tb.get_schemas() if merge_on else []
+        if merge_on:
+            plan = tb.pre_route_plan(prompt, uid)
+            if plan is not None:
+                name, arguments = plan
+                self.log.info(f"[{traceid}] 本地规则硬触发命中 {name or '插件会话'}")
+                if name:
+                    Thread(target=self._dispatch_tool_calls,
+                           args=([{"name": name, "arguments": arguments}],
+                                 uid, prompt, traceid), daemon=True).start()
+                if is_danmaku:
+                    if not assistant_only:
+                        ShortMemory().save({"role": "user", "content": prompt, "type": short_type},
+                                           short_limit, trim_mode=short_mode)
+                else:
+                    self.message_builder.add_user_message(uid, prompt)
+                self.llmData.is_ai_ready = True
+                from func.pipeline.llm_timer import LLMTimerBridge
+                LLMTimerBridge().notify_ai_reply()
+                return
+
         # 获取系统提示词（弹幕来源走弹幕专用提示词，否则走主链路提示词）
         if is_danmaku:
             system_prompt = self.prompt_get.get_danmaku_prompt(display_name, prompt, multi_user)
@@ -195,6 +219,9 @@ class LLmCore:
             except Exception:
                 self.log.exception("主线程破甲审查异常")
             system_prompt = self.prompt_get.get_system_prompt(display_name, prompt)
+
+        if merge_on and tools:
+            system_prompt = tb.attach_tool_hint(system_prompt)
 
         # 构建完整消息：系统提示词 + 短期记忆（历史）+ 当前消息
         messages = self.message_builder.build_messages(uid, system_prompt, prompt)
@@ -217,17 +244,32 @@ class LLmCore:
         if preamble_text:
             output.send_preamble(preamble_text, traceid)
 
-        # 第一阶段：直接流式生成正文（不再前置强制工具调用，降低首字延迟）
-        stream = self.llm.chat_stream(messages)
+        acc = ToolCallAccumulator()
+        merged = bool(merge_on and tools)
+        if merged:
+            stream = self.llm.chat_stream(
+                messages, tools=tools, tool_choice="auto", enable_thinking=False,
+            )
+        else:
+            stream = self.llm.chat_stream(messages)
+        # 正文处理与非合并模式逐行一致：边流边送 TTS，不缓冲、不丢弃
         for chunk in stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
-            if delta.content:
-                output.process_chunk(delta.content, traceid)
+            content = getattr(delta, "content", None)
+            if content:
+                output.process_chunk(content, traceid)
+            if merged and getattr(delta, "tool_calls", None):
+                acc.add(delta.tool_calls)
 
-        # 结束流式，获取清理后的完整回复
+        # 结束流式，获取清理后的完整回复（与非合并模式完全一致）
         final_text = output.finalize(traceid)
+
+        # 合并模式独有：仅把 LLM 分析出的工具调用交给 analysis（独立线程，不阻塞）
+        if merged and acc.has_calls():
+            Thread(target=self._dispatch_tool_calls,
+                   args=(acc.payload(), uid, prompt, traceid), daemon=True).start()
 
         # 后置：异步调用工具更新情绪与性格（供下一轮 system prompt 使用，性格滞后一轮生效）
         if final_text:
@@ -289,3 +331,10 @@ class LLmCore:
                 emotion_controller.finalize()
         except Exception:
             self.log.exception("后置情绪更新异常")
+
+    def _dispatch_tool_calls(self, calls: list, uid: str, prompt: str, traceid: str):
+        try:
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            LLMToolboxBridge().handle_tool_calls(calls, uid, str(prompt or ""))
+        except Exception:
+            self.log.exception("工具分发异常")

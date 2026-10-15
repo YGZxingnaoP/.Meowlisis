@@ -15,6 +15,7 @@ class TBoxConfig:
 
         # 父级 toolcalls LLM 后端类型：deepseek / aliyun
         self.llm_type = cfg.get('llm_type', 'deepseek')
+        self.fast_reply_direct_tool = cfg.get('fast_reply_direct_tool', True)
 
         # DeepSeek 独立配置
         ds = cfg.get('deepseek', {})

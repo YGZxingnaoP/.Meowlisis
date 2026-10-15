@@ -326,6 +326,10 @@ Object.assign(Config, {
             this._check('启用 excuse 询问', 'toolbox.excuse_enabled', true,
                 'AI 有疑问时以角色口吻语音询问，并阻塞等待用户文本输入补充需求') +
             this._num('excuse 等待超时(秒)', 'toolbox.excuse_timeout', 60, 1, 600, 1);
+        h += this._section('快速回复工具选择') +
+            this._check('启用快速回复直接选择工具', 'toolbox.fast_reply_direct_tool', true,
+                '优势：消除割裂感。工具决策与主回复合并为同一次 LLM 调用，上下文统一，不再出现快速回复与工具箱两条链路各行其是。' +
+                '劣势：增加人机感。每次回复都携带全部工具定义与工具决策指令，模型更容易以助手口吻去调工具，聊天味道变淡。');
         return h;
     },
 

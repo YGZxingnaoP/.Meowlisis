@@ -128,6 +128,12 @@ class TBDanmakuReply:
         if not content:
             return
         try:
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            if LLMToolboxBridge().merge_enabled():
+                return
+        except Exception:
+            pass
+        try:
             from func.pipeline.msg_toolbox import MsgToolboxBridge
             MsgToolboxBridge().send_to_toolbox(content, d.get("uid", "") or d.get("username", "用户"))
         except Exception:
@@ -135,6 +141,12 @@ class TBDanmakuReply:
 
     def _send_multi_to_toolbox(self, picked):
         # 统一回复也走 toolbox 工具分析
+        try:
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            if LLMToolboxBridge().merge_enabled():
+                return
+        except Exception:
+            pass
         try:
             lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
             wrapped = "【弹幕】" + "；".join(lines)

@@ -303,8 +303,10 @@ def input_msg():
     llmCore.msg_deal(traceid, query, user_name, source=msg_source)
     if turtle_route != "pass":
         try:
-            from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(query, user_name)
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            if not LLMToolboxBridge().merge_enabled():
+                from func.pipeline.msg_toolbox import MsgToolboxBridge
+                MsgToolboxBridge().send_to_toolbox(query, user_name)
         except Exception:
             pass
         # 数据库关键词匹配
@@ -377,8 +379,10 @@ def chat():
     llmCore.msg_deal(traceid, text, username, source=msg_source)
     if turtle_route != "pass":
         try:
-            from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(text, username)
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            if not LLMToolboxBridge().merge_enabled():
+                from func.pipeline.msg_toolbox import MsgToolboxBridge
+                MsgToolboxBridge().send_to_toolbox(text, username)
         except Exception:
             pass
         # 数据库关键词匹配
@@ -445,8 +449,10 @@ def main():
             sensevoice_bridge.send_to_llm(text, username, source)
             if turtle_route != "pass":
                 try:
-                    from func.pipeline.msg_toolbox import MsgToolboxBridge
-                    MsgToolboxBridge().send_to_toolbox(text, username)
+                    from func.pipeline.llm_toolbox import LLMToolboxBridge
+                    if not LLMToolboxBridge().merge_enabled():
+                        from func.pipeline.msg_toolbox import MsgToolboxBridge
+                        MsgToolboxBridge().send_to_toolbox(text, username)
                 except Exception:
                     pass
                 # 数据库关键词匹配

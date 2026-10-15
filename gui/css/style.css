@@ -214,7 +214,8 @@ body {
     margin-bottom: 16px;
 }
 
-.form-group label {
+.form-group label,
+.bind-row label {
     display: block;
     margin-bottom: 6px;
     font-size: 13px;
@@ -225,6 +226,7 @@ body {
 .form-group input[type="text"],
 .form-group input[type="number"],
 .form-group input[type="password"],
+.bind-row input[type="text"],
 .form-group select,
 .form-group textarea {
     width: 100%;
@@ -239,6 +241,7 @@ body {
 }
 
 .form-group input:focus,
+.bind-row input:focus,
 .form-group select:focus,
 .form-group textarea:focus {
     outline: none;
