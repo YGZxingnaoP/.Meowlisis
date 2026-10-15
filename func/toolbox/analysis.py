@@ -18,7 +18,7 @@ class TBoxAnalysis:
         self.llm = None
         self._tools = {}
         # 当前用户名（decide 时注入，供模块使用）
-        self.current_username = ""
+        self.current_meowid = ""
         self._register_modules()
 
     def _register_modules(self):
@@ -194,12 +194,12 @@ class TBoxAnalysis:
                 schemas.extend(tool.build_tools())
         return schemas
 
-    def pre_route_plan(self, text: str, username: str):
-        self.current_username = username
+    def pre_route_plan(self, text: str, meowid: str):
+        self.current_meowid = meowid
         try:
             from func.toolbox.plugins.manager import PluginManager
             pm = PluginManager()
-            if pm.route_text(text, username):
+            if pm.route_text(text, meowid):
                 self.log.info(f"插件会话拦截: {(text or '')[:30]}")
                 return ("", {})
             hit = pm.match_keyword(text)
@@ -213,24 +213,24 @@ class TBoxAnalysis:
             return ("flux_paint", {"request": text, "topic": "规则硬触发绘画"})
         return None
 
-    def pre_route(self, text: str, username: str) -> bool:
-        plan = self.pre_route_plan(text, username)
+    def pre_route(self, text: str, meowid: str) -> bool:
+        plan = self.pre_route_plan(text, meowid)
         if plan is None:
             return False
         name, arguments = plan
         if not name:
             return True
-        context = {"username": username, "text": text,
+        context = {"meowid": meowid, "text": text,
                    "short_memory": self._load_short_memory(), "system_prompt": ""}
-        result = self.dispatch(name, arguments, username, context)
+        result = self.dispatch(name, arguments, meowid, context)
         self.log.info(f"父级 toolcalls 规则硬触发 {name}: {(text or '')[:30]} -> {result}")
         return True
 
-    def decide(self, text: str, username: str):
+    def decide(self, text: str, meowid: str):
         """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。
         """
-        self.current_username = username
-        if self.pre_route(text, username):
+        self.current_meowid = meowid
+        if self.pre_route(text, meowid):
             return
 
         llm = self._ensure_llm()
@@ -239,10 +239,10 @@ class TBoxAnalysis:
             return
 
         from func.toolbox.get_prompt import TBoxGetPrompt
-        base_prompt = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+        base_prompt = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""
         history_messages = self._load_short_memory()
-        # 显式上下文：短记忆 + 角色提示词，供 flux_painter 等工具通过 set_context 接收
-        dispatch_context = {"username": username, "text": text,
+        # 显式上下文：身份编号 + 短记忆 + 角色提示词，供 flux_painter 等工具通过 set_context 接收
+        dispatch_context = {"meowid": meowid, "text": text,
                             "short_memory": history_messages,
                             "system_prompt": base_prompt}
 
@@ -276,9 +276,9 @@ class TBoxAnalysis:
         tc = tool_calls[0]
         self.handle_tool_calls(
             [{"name": tc.function.name, "arguments": tc.function.arguments}],
-            username, text, dispatch_context)
+            meowid, text, dispatch_context)
 
-    def handle_tool_calls(self, calls: List[Dict], username: str, text: str = "",
+    def handle_tool_calls(self, calls: List[Dict], meowid: str, text: str = "",
                           context: Dict = None):
         """接收 LLM 分析出的工具调用并执行对应模块（快速回复直接选择工具时由桥接调用）。
 
@@ -287,7 +287,7 @@ class TBoxAnalysis:
         """
         if not calls:
             return
-        self.current_username = username
+        self.current_meowid = meowid
         name = str(calls[0].get("name") or "")
         if not name:
             return
@@ -301,15 +301,15 @@ class TBoxAnalysis:
         else:
             args = arguments
         if context is None:
-            context = {"username": username, "text": text,
+            context = {"meowid": meowid, "text": text,
                        "short_memory": self._load_short_memory(), "system_prompt": ""}
             try:
                 from func.toolbox.get_prompt import TBoxGetPrompt
-                context["system_prompt"] = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+                context["system_prompt"] = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""
             except Exception:
                 pass
         self.log.info(f"父级 toolcalls 命中工具 {name}: {(text or '')[:20]}")
-        result = self.dispatch(name, args, username, context)
+        result = self.dispatch(name, args, meowid, context)
         self.log.info(f"父级工具 {name} 执行结果: {result}")
 
     # ==================== 规则硬触发层 ====================
@@ -367,20 +367,21 @@ class TBoxAnalysis:
             self.log.exception("工具分析加载短期记忆失败")
             return []
 
-    def dispatch(self, tool_name: str, arguments: Dict, username: str = None,
+    def dispatch(self, tool_name: str, arguments: Dict, meowid: str = None,
                  context: Dict = None):
         """按模块入口名与参数执行对应模块。
 
-        context：显式上下文 {username, text, short_memory, system_prompt}，
+        context：显式上下文 {meowid, text, short_memory, system_prompt}，
+        meowid 是被调用者的**内部编号**（身份标准），昵称只用于展示；
         供需要「短记忆 + 角色提示词」的工具（如 flux_painter）通过 set_context 接收；
         未实现 set_context 的既有工具完全不受影响（向后兼容）。
         """
         tool = self._tools.get(tool_name)
         if not tool:
             return f"错误：未知模块入口 {tool_name}"
-        if username and hasattr(tool, "set_username"):
+        if meowid and hasattr(tool, "set_meowid"):
             try:
-                tool.set_username(username)
+                tool.set_meowid(meowid)
             except Exception:
                 pass
         if context and hasattr(tool, "set_context"):

@@ -34,7 +34,7 @@ class TBVisionCore:
         self.short_memory = ShortMemory()
         self.ltmem = MeowLLMLtMemBridge()
         # 当前用户（由 analysis.dispatch 注入）
-        self._username = ""
+        self._meowid = ""
         # image_handle 工具产生的待发送图片缓存
         self._images: List[str] = []
         # 回传 toolbox_core 的转发回调（由 toolbox_core 注入）
@@ -45,9 +45,9 @@ class TBVisionCore:
         """注入回传回调（由 toolbox_core 注入，视觉回复经 toolbox_core 转发 TTS）"""
         self._reply_callback = callback
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供记忆记录使用，由 analysis.dispatch 调用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     def add_image(self, path: str, replace: bool = False):
         """缓存一张图片（replace=True 时清空旧缓存，作为新的唯一待发送图片）"""
@@ -126,12 +126,16 @@ class TBVisionCore:
         arguments = arguments or {}
         image_paths = arguments.get("image_paths") or []
         user_message = arguments.get("user_message") or ""
-        username = self._username or "用户"
+        # 身份标准：必须已有内部编号；缺身份不看屏（禁止用「用户」等占位身份兜底）
+        meowid = str(self._meowid or "").strip()
+        if not meowid:
+            self.log.error("[MeowVision] 缺少身份编号，拒绝看屏")
+            return "错误：没有识别出身份编号"
 
         # 第1步：先看第一眼（watching 也先看一次再决定是否长期）
         # 传了外部图片路径 → 需要图片描述；用缓存（角色自己截图）→ 不需要描述
         need_description = bool(image_paths)
-        reply = self.run(image_paths, user_message, username, need_description)
+        reply = self.run(image_paths, user_message, meowid, need_description)
 
         # 第2步：盯屏场景 + 持续意图弱信号 + watching 开启 → 尝试升级长期观察
         if not image_paths and self._has_sustain_intent(user_message):
@@ -143,7 +147,7 @@ class TBVisionCore:
                     # 首帧前台窗口作为高置信候选（是否绑定由 watching 内部语义确认）
                     front = TBWindowList().get_foreground()
                     watching_config = TBWatchingStart().decide_and_start(
-                        username, user_message, front_window=front
+                        meowid, user_message, front_window=front
                     )
                     if watching_config:
                         title = watching_config.get("window_title", "")
@@ -155,7 +159,7 @@ class TBVisionCore:
         return reply
 
     # ==================== 核心流程 ====================
-    def run(self, image_paths: List[str], user_message: str, username: str,
+    def run(self, image_paths: List[str], user_message: str, meowid: str,
             need_description: bool = True) -> str:
         """主链路：看图 → 写记忆 → 回传 TTS（只用 reply）→ 清空缓存，返回角色回复
 
@@ -174,7 +178,7 @@ class TBVisionCore:
                 self.log.warning("MeowVision 自动截屏失败")
                 return "错误：没有可查看的图片"
 
-        result = self.process(images, user_message, username, need_description)
+        result = self.process(images, user_message, meowid, need_description)
         reply = (result.get("reply") or "").strip()
         if not reply:
             self.log.warning("MeowVision 视觉回复为空")
@@ -196,7 +200,7 @@ class TBVisionCore:
         self.log.info(f"[{traceid}][MeowVision视觉回复]{reply[:50]}...")
         return reply
 
-    def process(self, images: List[str], user_message: str, username: str,
+    def process(self, images: List[str], user_message: str, meowid: str,
                 need_description: bool = True, write_memory: bool = True,
                 history_messages: Optional[List[dict]] = None) -> Dict[str, str]:
         """看图 + 写记忆（短期/长期），返回 {description, reply}。
@@ -209,7 +213,7 @@ class TBVisionCore:
         - write_memory=False：只看图，不写任何记忆（如幻梦机器人发的图）。
         """
         result = self.get_response.analyze(
-            images, user_message, username, need_description, history_messages
+            images, user_message, meowid, need_description, history_messages
         )
         description = (result.get("description") or "").strip()
         reply = (result.get("reply") or "").strip()
@@ -238,7 +242,7 @@ class TBVisionCore:
                     self.log.exception("MeowVision 记录图片描述长期记忆失败")
             try:
                 from func.config.app_config import AppConfig
-                self.ltmem.record_ai_message(username, AppConfig().ai_name, reply)
+                self.ltmem.record_ai_message(meowid, AppConfig().ai_name, reply)
             except Exception:
                 self.log.exception("MeowVision 记录长期记忆失败")
 

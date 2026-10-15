@@ -3,7 +3,7 @@
 
 要点：
   · `trigger_tools()` 返回空、`prompt_hint()` 返回空串 → 对主链路 LLM **零负担**；
-  · 拦截能力就是插件自己的 `route_qq(text, qq_context, username)` 方法，
+  · 拦截能力就是插件自己的 `route_qq(text, qq_context, meowid)` 方法，
     plugin 模块的 `PluginManager.route_qq()` 只负责"把消息递过来"，不掺和任何判定；
   · 接不接、怎么判口令、怎么执行，全部在本方法内的本地逻辑里完成（零 LLM）。
 """
@@ -42,17 +42,18 @@ class Plugin(ToolboxPlugin):
         return ""
 
     # ---- 消息拦截：框架把 QQ 消息递过来，这里自己判定 ----
-    def route_qq(self, text, qq_context, username=""):
+    def route_qq(self, text, qq_context, nickname=""):
         """返回 True = 已接管（消息不再走主链路回复）。
 
         · 没有口令前缀「猪猪游戏」/「养猪游戏」→ 返回 False，完全不插手；
-        · 群聊能走到这里，本身就说明已经 @ 了机器人（@ / 关键词触发）。
+        · 群聊能走到这里，本身就说明已经 @ 了机器人（@ / 关键词触发）；
+        · 身份契约：`qq_context["meowid"]` 是唯一身份键；`nickname` 只做展示。
         """
         if self._app is None:
             return False
         qq_context = dict(qq_context or {})
-        if username:
-            qq_context.setdefault("username", username)
+        if nickname:
+            qq_context.setdefault("nickname", nickname)
         return bool(self._app.route(text, qq_context, at_self=True))
 
     def setup(self, ctx):

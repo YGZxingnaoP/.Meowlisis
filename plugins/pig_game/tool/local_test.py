@@ -128,7 +128,7 @@ class LocalApp(PigRunner):
     def say(self, text, name, qq, group=None, at_self=True):
         """模拟「某个玩家发了一条消息」"""
         ctx = {"message_type": "group" if group else "private",
-               "target_id": group or qq, "user_id": qq, "username": name}
+               "target_id": group or qq, "user_id": qq, "nickname": name}
         if group:
             ctx["group_id"] = group
             ctx["self_id"] = "12345"

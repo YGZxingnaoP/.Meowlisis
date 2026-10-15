@@ -68,7 +68,13 @@ def main():
 
     core = TBFluxPainterCore()
     core.config.quality_mode = "pro"        # 本脚本固定走 Pro 档
-    core.set_username("主人")
+    # 身份标准：必须显式给 meowid，禁止用「主人」这类昵称顶身份位
+    import sys as _sys
+    meowid = str(_sys.argv[1]).strip() if len(_sys.argv) > 1 else ""
+    if not meowid:
+        print("!! 用法: python scripts/paint.py <meowid>（例: python scripts/paint.py 000001）")
+        return 2
+    core.set_meowid(meowid)
 
     # ---- 工具注册情况：证明走的确实是"工具被调用"这条路，而不是绕过去直接织图 ----
     tool_name = getattr(core, "TOOL_NAME", "flux_paint")

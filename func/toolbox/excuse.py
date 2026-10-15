@@ -23,25 +23,25 @@ class TBExcuse:
     通过 route_text() 统一拦截，正在等待时消费该文本并返回 True。
 
     使用方式（供任何 toolbox 模块）：
-        reply = TBExcuse().ask("你要把这个文件发给谁？", username="主人")
+        reply = TBExcuse().ask("你要把这个文件发给谁？", meowid="主人")
         if reply: ...
     """
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBoxConfig()
-        # 按 username 隔离等待队列，避免多用户语音追问串线
+        # 按 meowid 隔离等待队列，避免多用户语音追问串线
         self._queues = {}
         self._lock = threading.Lock()
 
     # ==================== 主入口 ====================
-    def ask(self, question: str, username: str = "", timeout: float = None) -> Optional[str]:
+    def ask(self, question: str, meowid: str = "", timeout: float = None) -> Optional[str]:
         """以角色口吻语音询问用户，阻塞等待文本回复；返回用户确认文本（超时返回 None）"""
         if not question:
             return None
         timeout = timeout if timeout is not None else self.config.excuse_timeout
 
-        question_text = self._in_character(question, username)
+        question_text = self._in_character(question, meowid)
         # 记录 assistant 询问
         self._save_memory("assistant", question_text)
         # TTS 语音询问（toolbox_tts）
@@ -52,7 +52,7 @@ class TBExcuse:
             return None
 
         # 阻塞等待文本输入（sensevoice_llm 或 api 直接文本，经 route_text 送达）
-        key = username or "default"
+        key = meowid or "default"
         q = queue.Queue()
         with self._lock:
             self._queues[key] = q
@@ -70,13 +70,13 @@ class TBExcuse:
         return reply
 
     # ==================== 文本拦截入口 ====================
-    def route_text(self, text: str, username: str = "") -> bool:
+    def route_text(self, text: str, meowid: str = "") -> bool:
         """文本输入统一拦截：若该用户正在等待询问回复，则消费该文本并返回 True（已处理）。
         接入方式：
         - api.py 的 sensevoice 回调、/msg、/chat 端点先调用本方法；
         - 返回 True 则不再走后续 LLM 处理链。
         """
-        key = username or "default"
+        key = meowid or "default"
         with self._lock:
             q = self._queues.get(key)
         if q is None:
@@ -87,12 +87,12 @@ class TBExcuse:
         return False
 
     # 兼容旧命名（sensevoice 场景）
-    def route_sensevoice(self, text: str, username: str = "") -> bool:
-        return self.route_text(text, username)
+    def route_sensevoice(self, text: str, meowid: str = "") -> bool:
+        return self.route_text(text, meowid)
 
-    def is_waiting(self, username: str = "") -> bool:
+    def is_waiting(self, meowid: str = "") -> bool:
         """判断指定用户（缺省 default）是否正在等待询问回复"""
-        key = username or "default"
+        key = meowid or "default"
         with self._lock:
             return key in self._queues
 
@@ -122,7 +122,7 @@ class TBExcuse:
         except Exception:
             self.log.exception("[Excuse] TTS 合成失败")
 
-    def _in_character(self, question: str, username: str = "") -> str:
+    def _in_character(self, question: str, meowid: str = "") -> str:
         """以角色身份提问：用完整系统提示词，让角色以 AI 方式思考后自然发问。
         - 不是机械改写，而是让 LLM 在完整角色人设（前置词+角色卡+价值观+记忆）约束下，
           把「内部需要询问的信息」转化为角色自己会说的话。
@@ -130,7 +130,7 @@ class TBExcuse:
         """
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            system_prompt = TBoxGetPrompt().get_system_prompt(username, question) or ""
+            system_prompt = TBoxGetPrompt().get_system_prompt(meowid, question) or ""
             llm = self._llm()
             if llm and llm.client:
                 resp = llm.chat([

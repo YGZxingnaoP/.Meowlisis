@@ -80,7 +80,7 @@ class TriggerTool:
     required = []
     prompt_hint = ""
     trigger_words = ()
-    username = ""
+    meowid = ""
     context = {}
 
     def build_schema(self):
@@ -106,16 +106,26 @@ class TriggerTool:
         """QQ 链路执行，默认回退语音实现"""
         return self.handle(arguments, ctx)
 
-    def route_text(self, text, username=""):
-        """语音/弹幕会话拦截，返回 True 表示已接管（默认不接管）"""
+    def route_text(self, text, meowid=""):
+        """语音/弹幕会话拦截，返回 True 表示已接管（默认不接管）
+
+        身份契约：`meowid` 是**内部编号**（身份标准），昵称由 display_name() 渲染，不要当昵称用。
+        """
         return False
 
-    def set_username(self, username):
-        """注入当前用户名"""
-        self.username = username or ""
+    def set_meowid(self, meowid):
+        """框架注入当前说话人的**内部编号**（身份标准）。
+
+        插件做键 / 存储 / 查档只用它；要展示就 display_name(meowid)，别把别的值当身份。
+        """
+        self.meowid = meowid or ""
 
     def set_context(self, context):
-        """注入调用上下文"""
+        """注入调用上下文。
+
+        契约：{meowid: 内部编号, text, short_memory, system_prompt}；
+        身份只走 `meowid` 这一个键，禁用 nickname / 账号 / 显示名顶替身份。
+        """
         self.context = context or {}
 
 

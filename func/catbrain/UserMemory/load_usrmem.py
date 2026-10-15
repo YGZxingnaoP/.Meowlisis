@@ -13,7 +13,7 @@ class MeowLoadUserMemory:
 
     # 字段 → 中文标签映射
     FIELD_LABELS = {
-        "name": "用户名称",
+        "nickname": "用户名称",
         "gender": "用户性别",
         "character": "用户性格",
         "likes": "喜欢的东西",
@@ -57,17 +57,13 @@ class MeowLoadUserMemory:
         data = self.load(uid)
         if not data:
             return ""
-        name = ""
-        try:
-            from func.pipeline.id_signup import IdSignupBridge
-            name = IdSignupBridge().nickname_of(uid)
-        except Exception:
-            name = ""
-        name = name or str(data.get("name") or "").strip() or str(uid or "") or "默认"
+        # 展示名：唯一规则（display_name），禁止 name/uid/"默认" 多层兜底
+        from func.pipeline.id_signup import display_name
+        name = display_name(uid)
         lines = [f"# 现在和你说话的是{name}"]
         lines.append(f"- 用户名称：{name}")
         for key, label in self.FIELD_LABELS.items():
-            if key == "name":
+            if key == "nickname":
                 continue  # 用户名已在档案首行显示
             raw = data.get(key, "")
             # 好感度为数值，0 是有效值需保留

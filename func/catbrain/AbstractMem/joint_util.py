@@ -32,11 +32,11 @@ def uid_of(name):
 
 
 def resolve(value):
-    """把一条参与人整成 {"id": 编号, "nickname": 昵称}"""
+    """把一条参与人整成 {"meowid": 编号, "nickname": 昵称}"""
     if isinstance(value, dict):
-        uid = str(value.get("id") or "").strip()
+        uid = str(value.get("meowid") or "").strip()
         nickname = str(value.get("nickname") or "").strip()
-        return {"id": uid, "nickname": nickname or uid}
+        return {"meowid": uid, "nickname": nickname or uid}
     text = str(value or "").strip()
     uid = ""
     match = PAIR_RE.match(text)
@@ -45,22 +45,17 @@ def resolve(value):
         uid = match.group("uid")
     if not uid:
         uid = uid_of(text)
-    if uid and text:
-        bridge = _bridge()
-        if bridge:
-            try:
-                nickname = bridge.nickname_of(uid) or ""
-            except Exception:
-                nickname = ""
-            if nickname:
-                text = nickname
-    return {"id": uid, "nickname": text or uid}
+    if uid:
+        # 展示名唯一规则：有编号一律按编号取昵称，禁止用文本里猜到的名字兜底
+        from func.pipeline.id_signup import display_name
+        text = display_name(uid)
+    return {"meowid": uid, "nickname": text}
 
 
 def key_of(entry):
     """取一条参与人的去重键：有编号用编号，没有就用昵称"""
     if isinstance(entry, dict):
-        return str(entry.get("id") or "").strip() or str(entry.get("nickname") or "").strip()
+        return str(entry.get("meowid") or "").strip() or str(entry.get("nickname") or "").strip()
     return str(entry or "").strip()
 
 
@@ -72,9 +67,9 @@ def normalize(values):
     keys = set()
     for v in (values or []):
         entry = resolve(v)
-        if not (entry["id"] or entry["nickname"]):
+        if not (entry["meowid"] or entry["nickname"]):
             continue
-        key = entry["id"] or entry["nickname"]
+        key = entry["meowid"] or entry["nickname"]
         if key in keys:
             continue
         keys.add(key)
@@ -95,7 +90,7 @@ def match(item, uid="", nickname=""):
         return False
     for entry in ((item or {}).get("joint") or []):
         if isinstance(entry, dict):
-            eid = str(entry.get("id") or "").strip()
+            eid = str(entry.get("meowid") or "").strip()
             ename = str(entry.get("nickname") or "").strip()
         else:
             eid, ename = "", str(entry or "").strip()
@@ -114,7 +109,7 @@ def owner(item):
     if not joint:
         return ""
     entry = resolve(joint[0])
-    return entry["id"] or entry["nickname"]
+    return entry["meowid"] or entry["nickname"]
 
 
 def text(item):
@@ -122,8 +117,8 @@ def text(item):
     parts = []
     for entry in ((item or {}).get("joint") or []):
         one = resolve(entry)
-        if one["id"] and one["nickname"] and one["id"] != one["nickname"]:
+        if one["meowid"] and one["nickname"] and one["meowid"] != one["nickname"]:
             parts.append(f"{one['nickname']}({one['id']})")
         else:
-            parts.append(one["nickname"] or one["id"])
+            parts.append(one["nickname"] or one["meowid"])
     return "、".join(p for p in parts if p)

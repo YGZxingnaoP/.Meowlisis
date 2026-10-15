@@ -51,7 +51,7 @@ class TBNapcatAnalysis:
         return any(w in t for w in self.PAINT_RULE_WORDS)
 
     # ==================== 主入口 ====================
-    def decide_and_run(self, text: str, username: str, qq_context: Dict,
+    def decide_and_run(self, text: str, meowid: str, qq_context: Dict,
                        short_memory: Optional[List[dict]] = None) -> bool:
         """分析 QQ 消息，命中工具则执行并返回 True；否则返回 False"""
         if not text or not text.strip():
@@ -60,7 +60,7 @@ class TBNapcatAnalysis:
         # ===== 规则硬触发层（零 LLM）：绘画点单是确定性高频需求，命中即直接开画 =====
         if self._paint_rule_hit(text):
             self.log.info(f"[NapcatAnalysis] 规则硬触发 flux_paint: {(text or '')[:30]}")
-            self._run_flux_paint(text, username, qq_context, short_memory)
+            self._run_flux_paint(text, meowid, qq_context, short_memory)
             return True
 
         llm = self._llm()
@@ -68,7 +68,7 @@ class TBNapcatAnalysis:
             self.log.error("[NapcatAnalysis] LLM 不可用")
             return False
 
-        system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+        system = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""
 
         try:
             from func.toolbox.plugins.manager import PluginManager
@@ -129,45 +129,45 @@ class TBNapcatAnalysis:
         handled = False
         if name == "query_weather":
             from func.toolbox.weather.weather_core import TBWeatherCore
-            TBWeatherCore().set_username(username)
+            TBWeatherCore().set_meowid(meowid)
             result = TBWeatherCore().dispatch_qq(name, args, qq_context)
             if isinstance(result, tuple) and result and result[0] == "redeliver":
-                self._redeliver(result[1], username, qq_context, short_memory)
+                self._redeliver(result[1], meowid, qq_context, short_memory)
             handled = True
         elif name == "read_news":
             from func.toolbox.news.news_core import TBNewsCore
-            TBNewsCore().set_username(username)
+            TBNewsCore().set_meowid(meowid)
             result = TBNewsCore().dispatch_qq(name, args, qq_context)
             if isinstance(result, tuple) and result and result[0] == "redeliver":
-                self._redeliver(result[1], username, qq_context, short_memory)
+                self._redeliver(result[1], meowid, qq_context, short_memory)
             handled = True
         elif name == "add_backlog":
             from func.toolbox.add_backlog.add_tool import TBAddBacklogTool
-            TBAddBacklogTool().set_username(username)
+            TBAddBacklogTool().set_meowid(meowid)
             result = TBAddBacklogTool().dispatch_qq(name, args, qq_context)
             if isinstance(result, tuple) and result and result[0] == "redeliver":
-                self._redeliver(result[1], username, qq_context, short_memory)
+                self._redeliver(result[1], meowid, qq_context, short_memory)
             handled = True
         elif name == "impromptu_sing":
             from func.toolbox.meowsongs.meowsongs_core import TBMeowSongsCore
-            TBMeowSongsCore().set_username(username)
+            TBMeowSongsCore().set_meowid(meowid)
             TBMeowSongsCore().dispatch_qq(name, args, qq_context)
             handled = True
         elif name == "turtle_soup":
             from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-            TBTurtleSoupCore().set_username(username)
+            TBTurtleSoupCore().set_meowid(meowid)
             TBTurtleSoupCore().dispatch_qq(name, args, qq_context)
             handled = True
         elif name == "flux_paint":
-            self._run_flux_paint(str(args.get("request") or text), username,
+            self._run_flux_paint(str(args.get("request") or text), meowid,
                                  qq_context, short_memory)
             handled = True
         else:
             from func.toolbox.plugins.manager import PluginManager
             pm = PluginManager()
             if pm.has_trigger(name):
-                pm.set_username(username)
-                pm.set_context({"username": username, "text": text,
+                pm.set_meowid(meowid)
+                pm.set_context({"meowid": meowid, "text": text,
                                 "short_memory": short_memory or []})
                 pm.dispatch_qq(name, args, qq_context)
                 handled = True
@@ -175,19 +175,19 @@ class TBNapcatAnalysis:
                 self.log.warning(f"[NapcatAnalysis] 未知工具 {name}")
         return handled
 
-    def _run_flux_paint(self, request: str, username: str, qq_context: Dict,
+    def _run_flux_paint(self, request: str, meowid: str, qq_context: Dict,
                         short_memory: Optional[List[dict]]):
         """Flux 绘画：QQ 一次性触发开局（无会话接管，出图即结束）"""
         try:
             from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
             core = TBFluxPainterCore()
-            core.set_username(username)
+            core.set_meowid(meowid)
             core.set_context({
-                "username": username,
+                "meowid": meowid,
                 "text": str(request or "") if isinstance(request, str) else "",
                 "short_memory": short_memory,
                 # 与 toolbox 父级一致：注入角色系统提示词（供绘画 LLM 上下文）
-                "system_prompt": TBoxGetPrompt().get_tool_prompt(username, str(request or "")) or "",
+                "system_prompt": TBoxGetPrompt().get_tool_prompt(meowid, str(request or "")) or "",
             })
             result = core.dispatch_qq("flux_paint", {"request": request}, qq_context)
             self.log.info(f"[NapcatAnalysis] Flux 绘画 QQ 开局: {result}")
@@ -195,7 +195,7 @@ class TBNapcatAnalysis:
             self.log.exception("Flux 绘画 QQ 开局失败")
 
     # ==================== 重新投递（另起话题） ====================
-    def _redeliver(self, text: str, username: str, qq_context: Dict,
+    def _redeliver(self, text: str, meowid: str, qq_context: Dict,
                    short_memory: Optional[List[dict]]):
         """用户另起话题：把新消息重新投递回正常 QQ 回复流程（新线程，避免嵌套阻塞）
 
@@ -214,14 +214,14 @@ class TBNapcatAnalysis:
                         "group_id": str(qq_context.get("target_id", "")),
                         "group_name": str(qq_context.get("group_name", "") or ""),
                         "user_id": str(qq_context.get("user_id", "")),
-                        "username": username,
+                        "username": meowid,
                         "self_id": str(qq_context.get("self_id", "")),
                         "texts": [text.strip()],
                     }
                     TBoxCore().reply_group_at(buf, text.strip())
                 else:
                     user_id = str(qq_context.get("user_id", "") or qq_context.get("target_id", ""))
-                    TBoxCore().receive_qq(username, user_id, text.strip(), short_memory)
+                    TBoxCore().receive_qq(meowid, user_id, text.strip(), short_memory)
             except Exception:
                 self.log.exception("[NapcatAnalysis] 重新投递失败")
 

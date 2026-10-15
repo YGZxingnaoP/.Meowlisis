@@ -24,11 +24,11 @@ class TBGroupSend:
         self.log = DefaultLog().getLogger()
         self.sender = TBSender()
         self.get_grouplist = TBGetGroupList()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供 excuse 询问时使用，由 analysis.dispatch 调用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     def build_tools(self) -> List[Dict]:
         return [{
@@ -48,10 +48,10 @@ class TBGroupSend:
 
     def dispatch(self, name: str, arguments: Dict) -> str:
         if name == self.TOOL_NAME:
-            return self.execute(arguments.get("request", ""), self._username)
+            return self.execute(arguments.get("request", ""), self._meowid)
         return f"错误：未知工具 {name}"
 
-    def execute(self, request: str = "", username: str = "",
+    def execute(self, request: str = "", meowid: str = "",
                 content_type: str = "", text: str = "", url: str = "",
                 file_path: str = "", at_name: str = "") -> str:
         # 内容信息直传：text/url/file_path 由上层给定；request 仅作目标线索
@@ -67,7 +67,7 @@ class TBGroupSend:
         if not groups:
             return "未获取到群列表，无法发送"
 
-        plan = self._plan(request, groups, username, content_type=content_type,
+        plan = self._plan(request, groups, meowid, content_type=content_type,
                           text=text, url=url, file_path=file_path, at_name=at_name)
 
         # 不确定（信息不全面 / 未选定目标）→ 角色口吻询问补充需求后重试一次
@@ -75,9 +75,9 @@ class TBGroupSend:
             from func.toolbox.excuse import TBExcuse
             question = (plan or {}).get("clarify_question") or \
                 "我想帮你群发消息，但没太明白要发到哪个群、发什么内容，能再说清楚一点吗？"
-            clarify = TBExcuse().ask(question, username=username)
+            clarify = TBExcuse().ask(question, meowid=meowid)
             if clarify:
-                plan = self._plan(f"{request}；用户补充：{clarify}", groups, username,
+                plan = self._plan(f"{request}；用户补充：{clarify}", groups, meowid,
                                   content_type=content_type, text=text, url=url,
                                   file_path=file_path, at_name=at_name)
 
@@ -167,7 +167,7 @@ class TBGroupSend:
             return True
         return not plan.get("targets")
 
-    def _plan(self, request: str, groups: List[dict], username: str = "",
+    def _plan(self, request: str, groups: List[dict], meowid: str = "",
               content_type: str = "", text: str = "", url: str = "",
               file_path: str = "", at_name: str = "") -> Optional[dict]:
         llm = self._llm()
@@ -189,7 +189,7 @@ class TBGroupSend:
                 "你只需从群列表选定发送目标群。"
             )
         # 完整系统提示词（角色人设 + 价值观 + 记忆），保证决策受角色约束
-        system_prompt = self._system_prompt(username, request)
+        system_prompt = self._system_prompt(meowid, request)
         resp = llm.chat([
             {"role": "system", "content": (
                 f"{system_prompt}\n\n"
@@ -259,11 +259,11 @@ class TBGroupSend:
             },
         }]
 
-    def _system_prompt(self, username: str, current_message: str) -> str:
+    def _system_prompt(self, meowid: str, current_message: str) -> str:
         """获取决策用角色人设提示词（前置词+角色卡+价值观+后置词，无用户记忆、无「和谁说话」）"""
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            return TBoxGetPrompt().get_tool_prompt(username, current_message) or ""
+            return TBoxGetPrompt().get_tool_prompt(meowid, current_message) or ""
         except Exception:
             return ""
 

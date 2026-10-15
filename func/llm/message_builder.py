@@ -78,14 +78,13 @@ class MessageBuilder:
 
     @staticmethod
     def format_user_content(username: str, content: str) -> str:
-        """把用户消息格式化为「时间+说话人+内容」的随机格式（与归档逻辑一致）"""
+        """把用户消息格式化为「时间+说话人+内容」的随机格式（与归档逻辑一致）
+
+        `username` 必须是内部编号；显示名由 display_name() 这个唯一规则给出。
+        """
         now = MessageBuilder._now()
-        name = str(username or "用户")
-        try:
-            from func.pipeline.id_signup import IdSignupBridge
-            name = IdSignupBridge().nickname_of(name) or name
-        except Exception:
-            name = str(username or "用户")
+        from func.pipeline.id_signup import display_name
+        name = display_name(username)
         text = str(content or "")
         fmt = random.choice(MessageBuilder.USER_FORMATS)
         return fmt.format(time=now, name=name, content=text)

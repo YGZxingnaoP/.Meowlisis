@@ -154,13 +154,16 @@ class LLmCore:
         question_data = self.llmData.QuestionList.get()
         traceid = question_data["traceid"]
         prompt = question_data["prompt"]
-        uid = question_data.get("uid") or question_data.get("uid") or "unknown"
+        uid = str(question_data.get("uid") or "")
+        if not uid:
+            # 身份标准：内部编号必须由入口解析好。缺失属编程错误 → 明确失败，禁止用占位符兜底
+            self.log.error(f"[{traceid}] 消息缺少身份编号(uid)，丢弃不回复")
+            self.llmData.is_ai_ready = True
+            return
         source = question_data.get("source", "llm")
-        try:
-            from func.pipeline.id_signup import IdSignupBridge
-            display_name = IdSignupBridge().nickname_of(uid) or uid
-        except Exception:
-            display_name = uid
+        # 展示名：唯一规则（display_name），禁止在本处再写 nickname_of(x) or x
+        from func.pipeline.id_signup import display_name
+        display_name = display_name(uid)
         preamble_text = question_data.get("preamble_text", "") or ""
         multi_user = bool(question_data.get("multi_user", False))
 

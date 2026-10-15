@@ -17,7 +17,7 @@ from func.config.app_config import AppConfig
 
 
 
-from func.pipeline.id_signup import display_name as _disp
+from func.pipeline.id_signup import display_name
 class DateCalendarLLM:
     """待办提醒语音链路：构建提示词 → 流式 LLM → TTS → 写记忆"""
 
@@ -41,8 +41,8 @@ class DateCalendarLLM:
         base = SystemPromptBridge().get_system_prompt(uid, "", mark_first=False)
         prompt = (
             f"{base}\n\n"
-            f"【你此刻想到的事】现在是{time_str}，你想起了要提醒{_disp(uid)}：{content}\n"
-            f"这是你主动开口说话，第一句就是你要说给{_disp(uid)}听的话；不要复述提醒内容，"
+            f"【你此刻想到的事】现在是{time_str}，你想起了要提醒{display_name(uid)}：{content}\n"
+            f"这是你主动开口说话，第一句就是你要说给{display_name(uid)}听的话；不要复述提醒内容，"
             f"不要出现“好的”“收到”“我这就”这类回应指令的话。"
         )
         messages = [

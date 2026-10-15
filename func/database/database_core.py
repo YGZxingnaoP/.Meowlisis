@@ -46,7 +46,11 @@ class CatLearnCore:
         text = (text or "").strip()
         if not text:
             return
-        username = username or "匿名"
+        # 身份标准：只接受内部编号，缺身份直接丢弃（禁止用「匿名」等占位身份建档/入库）
+        username = str(username or "").strip()
+        if not username:
+            self.log.error("[database] 缺少身份编号，消息不入库")
+            return
 
         # 1. 记录用户消息（滚动时返回 True）
         try:

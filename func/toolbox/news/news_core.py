@@ -41,11 +41,11 @@ class TBNewsCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBNewsConfig()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供提示词使用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     def build_tools(self) -> List[Dict]:
         """父级暴露的新闻查询工具 schema"""
@@ -147,6 +147,7 @@ class TBNewsCore:
             return None
 
         self._send_qq_reply(qq_context, reply)
+        self._save_memory(reply)        # QQ 链路同样要写短期/长期记忆（与语音链路一致）
         return reply
 
     @staticmethod
@@ -260,7 +261,7 @@ class TBNewsCore:
 
     # ==================== LLM 概括 ====================
     def _build_reply(self, news_list: List[Dict]) -> str:
-        system = TBoxGetPrompt().get_system_prompt(self._username, "帮我看看今天有什么新闻")
+        system = TBoxGetPrompt().get_system_prompt(self._meowid, "帮我看看今天有什么新闻")
         lines = []
         for i, item in enumerate(news_list, 1):
             title = item.get("title", "")
@@ -319,7 +320,8 @@ class TBNewsCore:
         """播报完成后写记忆：短期（type=toolbox_news）+ 长期/用户记忆（助手侧）"""
         if not reply:
             return
-        username = self._username or "主人"
+        # 身份标准：必须已有内部编号；缺失则不写长期/用户记忆（禁止用「主人」兜底）
+        meowid = str(self._meowid or "").strip()
         try:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save(
@@ -331,7 +333,10 @@ class TBNewsCore:
         try:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
             from func.config.app_config import AppConfig
-            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, reply)
+            if not meowid:
+                self.log.error("[News] 无身份编号，跳过长期记忆写入")
+                return
+            MeowLLMLtMemBridge().record_ai_message(meowid, AppConfig().ai_name, reply)
         except Exception:
             self.log.exception("[News] 长期记忆保存失败")
 

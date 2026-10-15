@@ -16,14 +16,8 @@ class SenseVoiceSubtitle:
 
     def put(self, who: str, text: str):
         """写入一条用户识别字幕（纯显示，不创建任何身份）"""
-        name = str(who or "").strip()
-        if re.fullmatch(r"(\d{6}|temp-\d{6})", name):
-            try:
-                from func.pipeline.id_signup import IdSignupBridge
-                name = IdSignupBridge().nickname_of(name) or name
-            except Exception:
-                name = str(who or "")
-        item = {"role": "user", "username": name or "未知", "text": str(text or "")}
+        from func.pipeline.id_signup import display_name
+        item = {"role": "user", "nickname": display_name(who), "text": str(text or "")}
         with self._lock:
             self._items.append(item)
 

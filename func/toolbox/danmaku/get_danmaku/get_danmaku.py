@@ -39,9 +39,14 @@ class TBDanmakuReceiver:
         content = (content or "").strip()
         if not content:
             return
+        # 身份标准：没有昵称的弹幕无法识别身份（会被当成新观众建垃圾档）→ 直接丢弃
+        nickname = str(username or "").strip()
+        if not nickname:
+            self.log.error("[弹幕] 缺少发送者昵称，丢弃该条")
+            return
         with self._lock:
             self.danmaku_list.append({
-                "username": username or "用户",
+                "username": nickname,
                 "content": content,
                 "uid": str(uid or ""),
             })
@@ -68,7 +73,12 @@ class TBDanmakuReceiver:
         content = (content or "").strip()
         if not content:
             return
-        item = {"username": username or "用户", "content": content,
+        # 身份标准：没有昵称的 SC 无法识别身份 → 直接丢弃
+        nickname = str(username or "").strip()
+        if not nickname:
+            self.log.error("[SC] 缺少发送者昵称，丢弃该条")
+            return
+        item = {"username": nickname, "content": content,
                 "msg_id": str(msg_id or ""), "uid": str(uid or "")}
         with self._lock:
             self.sc_list.append(item)

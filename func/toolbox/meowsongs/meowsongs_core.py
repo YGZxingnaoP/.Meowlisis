@@ -18,10 +18,10 @@ class TBMeowSongsCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBMeowSongsConfig()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username):
-        self._username = username or ""
+    def set_meowid(self, meowid):
+        self._meowid = meowid or ""
 
     def build_tools(self) -> List[Dict]:
         return [{
@@ -50,14 +50,14 @@ class TBMeowSongsCore:
         if not self.config.enabled:
             return "即兴哼唱未启用"
         request = (arguments or {}).get("request", "") or ""
-        return TBImpromptuSing().run(request, self._username)
+        return TBImpromptuSing().run(request, self._meowid)
 
     def dispatch_qq(self, name, arguments, qq_context):
         """QQ 场景：本机播放 + 通过 NapCat 语音发送片段"""
         if name != self.TOOL_NAME or not self.config.enabled:
             return None
         request = (arguments or {}).get("request", "") or ""
-        result = TBImpromptuSing().run(request, self._username, with_lyric=False, play_local=False)
+        result = TBImpromptuSing().run(request, self._meowid, with_lyric=False, play_local=False)
         slice_path = TBImpromptuSing().last_slice_path
         if slice_path and qq_context:
             self._send_qq_voice(qq_context, slice_path, result)

@@ -11,6 +11,7 @@ from func.toolbox.flux_painter.config import TBFluxPainterConfig
 from func.toolbox.flux_painter.archive import TBPainterArchive
 from func.toolbox.flux_painter.prompt_producer import TBPromptProducer
 from func.toolbox.flux_painter.comfy_connector import create_connector, TBArtistPicker
+from func.pipeline.id_signup import display_name
 
 DEFAULT_NEGATIVE = ("lowres,bad anatomy,bad hands,error,missing fingers,extra digits,"
                     "worst quality,jpeg artifacts,watermark,signature,text")
@@ -54,9 +55,10 @@ class TBFluxPainterCore:
             pass
 
     # ==================== 上下文注入（兼容父级 dispatch） ====================
-    def set_username(self, username):
-        if username:
-            self._context["username"] = username or ""
+    def set_meowid(self, uid):
+        """框架注入当前说话人的内部编号（身份标准）。昵称只用于展示，不进这里。"""
+        if uid:
+            self._context["meowid"] = uid
 
     def set_context(self, context):
         if context:
@@ -114,8 +116,14 @@ class TBFluxPainterCore:
         with self._last_lock:
             self._last_paint.pop(str(channel), None)
 
-    def continue_paint(self, channel, edit_instruction, qq_context, username=None):
-        """以上一轮缓存提示词为底，执行改图（纯 txt2img 增量重绘）"""
+    def continue_paint(self, channel, edit_instruction, qq_context, uid=None):
+        """以上一轮缓存提示词为底，执行改图（纯 txt2img 增量重绘）
+
+        `uid` 必须是内部编号（身份标准），由调用方（改图判定）传入；
+        拿不到编号就不画，不用默认身份兜底。
+        """
+        if uid:
+            self._context["meowid"] = str(uid)
         item = self.get_last_paint(channel)
         if not item:
             return "没有可续画的上一张图"
@@ -186,7 +194,11 @@ class TBFluxPainterCore:
         request = str(arguments.get("request") or self._context.get("text") or "").strip()
         if not request:
             return "想让我画什么呀？说说看～"
-        username = str(arguments.get("username") or self._context.get("username") or "主人")
+        # 身份标准：内部编号只从框架上下文注入拿，**不接受 LLM 传参、不用任何默认身份兜底**
+        uid = str(self._context.get("meowid") or "")
+        if not uid:
+            self.log.error("[flux_painter] 缺少身份编号(meowid)，拒绝开画（禁止用默认身份兜底）")
+            return "身份没认出来，这次先不画了～"
         # 快照 persona/记忆到 session：避免多频道并发绘画时，后到的 set_context 覆盖先开的单例上下文
         try:
             persona = str(self._context.get("system_prompt") or "")
@@ -196,7 +208,7 @@ class TBFluxPainterCore:
                 memories = ShortMemory().load()[-10:]
         except Exception:
             persona, memories = "", []
-        session = {"channel": channel, "username": username, "request": request,
+        session = {"channel": channel, "meowid": uid, "request": request,
                    "topic": str(arguments.get("topic") or "").strip(),
                    "persona": persona, "memories": memories,
                    "qq_context": qq_context,
@@ -221,7 +233,7 @@ class TBFluxPainterCore:
     def _run(self, session):
         """一次完整绘画：提示词→出图→归档→审查→语音/展示→记忆"""
         channel = session["channel"]
-        username = session["username"]
+        uid = session["meowid"]
         request = session["request"]
         # 短期记忆 + 角色系统提示词（_open 已快照进 session，防并发串号）
         memories = session.get("memories") or []
@@ -233,7 +245,7 @@ class TBFluxPainterCore:
             def on_stream(text):
                 self._bcast(channel, {"type": "producing", "text": text})
 
-            elements = self.producer.run(request, username=username,
+            elements = self.producer.run(request, nickname=display_name(uid),
                                          persona=persona,
                                          memory=memories,
                                          on_stream=on_stream,
@@ -271,7 +283,7 @@ class TBFluxPainterCore:
                         role_text = resolver.card_text(card)
                         if role_text:
                             again = self.producer.run(
-                                request, username=username,
+                                request, nickname=display_name(uid),
                                 persona=persona,
                                 memory=memories,
                                 on_stream=on_stream, role_card=role_text,
@@ -499,7 +511,7 @@ class TBFluxPainterCore:
             #   私聊     → 不审查，直接发
             if session.get("qq_context"):
                 self._send_qq_image(session, saved)
-            self._save_memory(username, request, reply)
+            self._save_memory(uid, request, reply)
         except Exception:
             self.log.exception(f"[flux_painter] 绘画异常 key={channel}")
             self._say(channel, "画画的时候出了点问题，抱歉…")
@@ -677,8 +689,14 @@ class TBFluxPainterCore:
         except Exception:
             self.log.exception("[flux_painter] TTS 播报失败")
 
-    def _save_memory(self, username, user_text, reply):
-        """记录需求与回复至短期/长期/用户记忆（提示词不入记忆）"""
+    def _save_memory(self, uid, user_text, reply):
+        """记录需求与回复至短期/长期/用户记忆（提示词不入记忆）
+
+        身份标准：uid 必须是内部编号；拿不到就**不写记忆**（禁止用「主人」等默认身份兜底）。
+        """
+        if not uid:
+            self.log.error("[flux_painter] 无身份编号，跳过记忆写入")
+            return
         if not self.config.memory_enabled:
             return
         try:
@@ -695,9 +713,8 @@ class TBFluxPainterCore:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
             from func.config.app_config import AppConfig
             bridge = MeowLLMLtMemBridge()
-            name = username or "主人"
-            bridge.record_user_message(name, f"（让我画图）{user_text}")
-            bridge.record_ai_message(name, AppConfig().ai_name, f"（画了图）{reply}")
+            bridge.record_user_message(uid, f"（让我画图）{user_text}")
+            bridge.record_ai_message(uid, AppConfig().ai_name, f"（画了图）{reply}")
         except Exception:
             pass
 

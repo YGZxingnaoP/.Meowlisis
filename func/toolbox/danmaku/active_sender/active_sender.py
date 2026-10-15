@@ -28,11 +28,11 @@ class TBDanmakuActive:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBDanmakuConfig()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供提示词使用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     # ==================== 工具 schema ====================
     def build_tools(self) -> List[Dict]:
@@ -60,17 +60,17 @@ class TBDanmakuActive:
     def dispatch(self, name: str, arguments: Dict) -> str:
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
-        return self.execute((arguments or {}).get("request", ""), self._username)
+        return self.execute((arguments or {}).get("request", ""), self._meowid)
 
     # ==================== 执行 ====================
-    def execute(self, request: str, username: str = "") -> str:
+    def execute(self, request: str, meowid: str = "") -> str:
         if not request:
             return "发送失败：缺少弹幕需求描述"
         # 开关 + 冷却
         err = self.check_active_send()
         if err:
             return err
-        text = self._plan(request, username)
+        text = self._plan(request, meowid)
         if not text:
             return "AI 未能拟定弹幕内容"
 
@@ -103,12 +103,12 @@ class TBDanmakuActive:
         cls._last_active_send = time.time()
 
     # ==================== LLM 拟稿 ====================
-    def _plan(self, request: str, username: str = "") -> str:
+    def _plan(self, request: str, meowid: str = "") -> str:
         llm = self._llm()
         if llm is None or not llm.client:
             self.log.error("[DanmakuActive] toolbox LLM 不可用")
             return ""
-        system_prompt = self._system_prompt(username, request)
+        system_prompt = self._system_prompt(meowid, request)
         resp = llm.chat([
             {"role": "system", "content": (
                 f"{system_prompt}\n\n"
@@ -125,11 +125,11 @@ class TBDanmakuActive:
             self.log.exception("[DanmakuActive] 解析 LLM 回复失败")
         return content
 
-    def _system_prompt(self, username: str, current_message: str) -> str:
+    def _system_prompt(self, meowid: str, current_message: str) -> str:
         """获取角色人设提示词（前置词+角色卡+价值观+后置词，无用户记忆）"""
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            return TBoxGetPrompt().get_tool_prompt(username, current_message) or ""
+            return TBoxGetPrompt().get_tool_prompt(meowid, current_message) or ""
         except Exception:
             return ""
 

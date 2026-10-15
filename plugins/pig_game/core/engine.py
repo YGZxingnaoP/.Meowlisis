@@ -86,7 +86,7 @@ class Engine:
             if self.book.get(sid):
                 init[str(sid)] = int(cnt or 0)
         return {
-            "qq": str(qq), "nickname": str(nick or qq),
+            "qq": str(qq), "nickname": str(nick),
             "coins": int(cfg.coins_init), "stamina": int(cfg.stamina_max),
             "stamina_date": t, "affinity": int(cfg.affinity_init),
             "last_checkin_date": "", "checkin_blocked_date": "",
@@ -98,11 +98,22 @@ class Engine:
         }
 
     def ensure(self, scope, qq, nick=""):
+        """取/建玩家档案（存储键 = scope + QQ号，身份标准是 QQ号，昵称只是展示字段）。
+
+        昵称只接受「真昵称」：空值或纯数字（内部编号 / QQ号）一律拒收并记 ERROR，
+        绝不把编号/QQ号写进昵称位（否则私聊一句就把昵称刷成 000001）。
+        """
+        nick = str(nick or "").strip()
+        if nick and nick.isdigit():
+            self.ctx.log.error(f"[猪猪游戏] 拒绝把纯数字当昵称写入档案: qq={qq} nick={nick}")
+            nick = ""
         p = self.store.get_player(scope, qq)
         if p is None:
+            if not nick:
+                self.ctx.log.error(f"[猪猪游戏] 建档缺少昵称: qq={qq}")
             p = self.new_player(qq, nick)
             self.store.put_player(scope, qq, p)
-        if nick:
+        elif nick and p.get("nickname") != nick:
             p["nickname"] = nick
         self.tick(p)
         return p
@@ -193,7 +204,7 @@ class Engine:
         if not name:
             return None
         for q, pl in self.store.scope_players(scope).items():
-            if str(pl.get("nickname") or "") == name:
+            if str(pl["nickname"]) == name:
                 return str(q)
         gid = None
         if qq_context and str(qq_context.get("message_type")) == "group":
@@ -306,13 +317,17 @@ class Engine:
 
     # ==================== 入口 ====================
     def identity(self, qq_context):
+        """从上下文取身份：qq=QQ号（存储键），nick=昵称（仅展示），meowid=内部编号（标准）。
+
+        禁止兜底：QQ 号只认 user_id 一个来源；昵称只认 nickname。
+        """
         mt = str(qq_context.get("message_type") or "private")
         if mt == "group":
-            scope = str(qq_context.get("group_id") or qq_context.get("target_id") or "")
+            scope = str(qq_context.get("group_id") or "")
         else:
             scope = "private"
-        qq = str(qq_context.get("user_id") or qq_context.get("target_id") or "")
-        nick = str(qq_context.get("username") or "")
+        qq = str(qq_context.get("user_id") or "")
+        nick = str(qq_context.get("nickname") or "")
         return mt, scope, qq, nick
 
     def handle(self, tool, arguments, qq_context):
@@ -320,6 +335,8 @@ class Engine:
         mt, scope, qq, nick = self.identity(qq_context)
         if not qq:
             return self._res(rules.invalid("没能识别出你的身份（缺少 QQ 号）"))
+        if not nick:
+            return self._res(rules.invalid("没能识别出你的昵称（身份不完整）"))
         p = self.ensure(scope, qq, nick)
         name = str(tool or "")
         if name.startswith("pig_"):
@@ -447,7 +464,7 @@ class Engine:
 
         amax = max(1, int(self.cfg.affinity_max))
         discover = _clamp(float(tp.get("affinity") or 0) / amax * float(self.cfg.fake_discover_ratio), 0.0, 1.0)
-        name_t = str(tp.get("nickname") or name)
+        name_t = str(tp["nickname"])
         if random.random() < discover:
             comment = self.app.llm.comment("fake", "假扮失败，被拱出对方猪圈")
             return self._card({
@@ -466,7 +483,7 @@ class Engine:
         p["coins"] = int(p.get("coins") or 0) + stolen
         tp["checkin_blocked_date"] = t
         self.store.add_note(scope, tqq,
-                            "%s 假扮了你的猪圈，你今天无法打卡了！" % str(p.get("nickname") or qq))
+                            "%s 假扮了你的猪圈，你今天无法打卡了！" % str(p["nickname"]))
         comment = self.app.llm.comment("fake", "假扮成功，偷了对方当日产出")
         top = None
         for sp in self.book.all():
@@ -534,7 +551,7 @@ class Engine:
         prob = _clamp(float(sp.get("steal_rate") or 0)
                       * (1 - float(tp.get("affinity") or 0) / amax * float(cfg.steal_affinity_discount)),
                       float(cfg.steal_min_prob), 1.0)
-        name_t = str(tp.get("nickname") or name)
+        name_t = str(tp["nickname"])
         if random.random() >= prob:
             comment = self.app.llm.comment("steal", "偷猪失败，空手而归")
             return self._card({
@@ -550,7 +567,7 @@ class Engine:
         tp["pigs"][sid] = own - take
         p["pigs"][sid] = before + take
         self.store.add_note(scope, tqq,
-                            "%s 从你的猪圈偷走了 %d 只%s！" % (str(p.get("nickname") or qq), take, sp["name"]))
+                            "%s 从你的猪圈偷走了 %d 只%s！" % (str(p["nickname"]), take, sp["name"]))
         comment = self.app.llm.comment("steal", "偷猪成功，偷到 %d 只%s" % (take, sp["name"]))
         return self._card({
             "title": "🐷 偷猪 · 成功", "badge": "偷走 %d 只" % take,
@@ -620,11 +637,11 @@ class Engine:
         })
         self.store.add_note(scope, tqq,
                             "%s 带着 %s 来抢你的猪圈了！回复「接受抢猪」或「拒绝抢猪」"
-                            % (str(p.get("nickname") or qq), parse.squad_text(self.book, squad)))
+                            % (str(p["nickname"]), parse.squad_text(self.book, squad)))
         return self._card({
             "title": "⚔️ 抢猪 · 已发起", "badge": "待应战",
             "subtitle": "你带 %s 前往 %s 的地盘" % (parse.squad_text(self.book, squad),
-                                              str(tp.get("nickname") or name)),
+                                              str(tp["nickname"])),
             "stats": [{"k": "出征", "v": "%d 只" % sum(int(v or 0) for v in squad.values())},
                       {"k": "状态", "v": "等对方回应"}],
         }, image=self.app.pig_image("flying"))
@@ -653,7 +670,7 @@ class Engine:
         b["status"] = "rejected"
         self.store.add_note(scope, b["attacker"],
                             "%s 拒绝了你的抢猪，你可以「强制进攻 %s」（多花体力）"
-                            % (str(p.get("nickname") or qq), str(p.get("nickname") or qq)))
+                            % (str(p["nickname"]), str(p["nickname"])))
         return self._card({
             "title": "⚔️ 抢猪 · 已拒绝", "badge": "无损失",
             "subtitle": "你回绝了这次抢猪，对方仍可能强制进攻",
@@ -755,23 +772,23 @@ class Engine:
         got_text = "、".join("%s×%d" % (sp["name"], c) for sp, c in got) or "啥也没捞到"
         # 不向玩家暴露点数：只给说书人「双方编队 + 结果」，点数只用于内部结算
         facts = ("攻方 %s（%s）；守方 %s（%s）；胜者 %s；夺取 %s；双方鏖战一场，互有损伤"
-                 % (str(ap.get("nickname") or b["attacker"]), parse.squad_text(self.book, squad),
-                    str(dp.get("nickname") or b["defender"]), parse.squad_text(self.book, army),
-                    str(winner.get("nickname") or ""), got_text))
+                 % (str(ap["nickname"]), parse.squad_text(self.book, squad),
+                    str(dp["nickname"]), parse.squad_text(self.book, army),
+                    str(winner["nickname"]), got_text))
         report = self.app.llm.battle_report(facts)
 
         lines = []
 
         other = b["defender"] if str(winner.get("qq")) == str(b["attacker"]) else b["attacker"]
         self.store.add_note(scope, other,
-                            "猪猪大战结束：%s 获胜，夺得 %s" % (str(winner.get("nickname") or ""), got_text))
+                            "猪猪大战结束：%s 获胜，夺得 %s" % (str(winner["nickname"]), got_text))
         try:
             self.store.battles.remove(b)
         except Exception:
             pass
         img = self.app.pig_image(str(got[0][0]["id"])) if got else self.app.pig_image("flying")
         return self._card({
-            "title": "⚔️ 猪猪大战 · 战报", "badge": "%s 获胜" % str(winner.get("nickname") or ""),
+            "title": "⚔️ 猪猪大战 · 战报", "badge": "%s 获胜" % str(winner["nickname"]),
             "subtitle": "攻方 %s　vs　守方 %s" % (parse.squad_text(self.book, squad),
                                                 parse.squad_text(self.book, army)),
             "stats": [{"k": "夺得", "v": got_text},
@@ -1057,7 +1074,7 @@ class Engine:
         stats.append({"k": "军队", "v": army_text})
 
         return self._card({
-            "title": "🐷 %s 的猪圈" % str(p.get("nickname") or p.get("qq")),
+            "title": "🐷 %s 的猪圈" % str(p["nickname"]),
             "badge": day_text,
             "subtitle": ("已养 %d 种猪" % kinds) if total else "猪圈还空着，先去打卡攒猪吧",
             "stats": stats,
@@ -1129,10 +1146,10 @@ class Engine:
         })
         self.store.add_note(scope, tqq,
                             "%s 想出价 %d 金币/只 买你 %d 只%s（估价约 %.1f），回复「接受交易」或「拒绝交易」"
-                            % (str(p.get("nickname") or qq), price, cnt, sp["name"], est))
+                            % (str(p["nickname"]), price, cnt, sp["name"], est))
         return self._card({
             "title": "🐷 已询价", "badge": "%d 金币/只" % price,
-            "subtitle": "目标：%s 的 %d 只%s" % (str(seller.get("nickname") or name), cnt, sp["name"]),
+            "subtitle": "目标：%s 的 %d 只%s" % (str(seller["nickname"]), cnt, sp["name"]),
             "stats": [{"k": "单价", "v": "%d" % price},
                       {"k": "估价约", "v": "%.1f" % est},
                       {"k": "共", "v": "%d 金币" % (price * cnt)},
@@ -1163,11 +1180,11 @@ class Engine:
         self._drop_trade(t)
         self.store.add_note(scope, t["buyer"],
                             "%s 拒绝了你的交易（%d 只%s，单价 %d）"
-                            % (str(p.get("nickname") or qq), int(t["count"]),
+                            % (str(p["nickname"]), int(t["count"]),
                                self.book.name(t["species"]), int(t["price"])))
         return self._card({
             "title": "🐷 交易已拒绝", "badge": "无损失",
-            "subtitle": "%s 的询价被回绝了" % str(p.get("nickname") or qq),
+            "subtitle": "%s 的询价被回绝了" % str(p["nickname"]),
             "stats": [{"k": "花费", "v": "0"}],
         }, image=self.app.pig_image(str(t["species"])))
 
@@ -1196,8 +1213,8 @@ class Engine:
         buyer["pigs"][sid] = int(buyer["pigs"].get(sid, 0) or 0) + int(cnt)
         if trade:
             self._drop_trade(trade)
-        b_name = str(buyer.get("nickname") or buyer.get("qq"))
-        s_name = str(seller.get("nickname") or seller.get("qq"))
+        b_name = str(buyer["nickname"])
+        s_name = str(seller["nickname"])
         if skip:
             self.store.add_note(scope, seller["qq"],
                                 "%s 用超高价（单价 %d）直接买走了你 %d 只%s"
@@ -1235,7 +1252,7 @@ class Engine:
         if global_rank:
             for _sc, q, pl in self.store.all_players():
                 item = rows.setdefault(str(q), {"qq": str(q),
-                                                "name": str(pl.get("nickname") or q),
+                                                "name": str(pl["nickname"]),
                                                 "coins": 0, "count": 0})
                 item["coins"] += int(pl.get("coins") or 0)
                 item["count"] += parse.total_pigs(pl.get("pigs"))
@@ -1243,7 +1260,7 @@ class Engine:
                     item["name"] = str(pl["nickname"])
         else:
             for q, pl in self.store.scope_players(scope).items():
-                rows[str(q)] = {"qq": str(q), "name": str(pl.get("nickname") or q),
+                rows[str(q)] = {"qq": str(q), "name": str(pl["nickname"]),
                                 "coins": int(pl.get("coins") or 0),
                                 "count": parse.total_pigs(pl.get("pigs"))}
         key = "coins" if coin else "count"

@@ -1,9 +1,9 @@
 {
-  "id": "000004",
   "nickname": "邪恶一哥",
-  "accounts": {
+  "created": 1791971777,
+  "meowid": "000004",
+  "ext_accounts": {
     "qq": "497195239",
     "bili": "505709751"
-  },
-  "created": 1791971777
+  }
 }

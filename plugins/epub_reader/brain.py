@@ -25,10 +25,10 @@ class BookBrain:
         ], max_tokens=self.SUMMARY_MAX_TOKENS)
         return content
 
-    def comment(self, username, title, summary):
+    def comment(self, meowid, title, summary):
         """以角色身份做简短点评（带短期记忆 + 完整系统角色卡，≤100 字）"""
         try:
-            system = self.ctx.prompt().get_system_prompt(username or "", summary or "") or ""
+            system = self.ctx.prompt().get_system_prompt(meowid or "", summary or "") or ""
         except Exception:
             system = ""
         history = self._short_history()

@@ -29,8 +29,7 @@ class TBDanmakuReadAloud:
         self.mode = str(read_aloud_mode or "random").strip().lower()
 
     def render_normal(self, username: str, content: str) -> str:
-        """按配置模式生成普通弹幕朗读文本"""
-        username = username or "用户"
+        """按配置模式生成普通弹幕朗读文本（username 必须是 display_name(uid) 的结果）"""
         content = content or ""
         if self.mode in self.NORMAL_TEMPLATES:
             tmpl = self.NORMAL_TEMPLATES[self.mode]
@@ -41,8 +40,7 @@ class TBDanmakuReadAloud:
 
     @staticmethod
     def render_sc(username: str, content: str) -> str:
-        """生成 SC 朗读文本（每个都读，随机模板）"""
-        username = username or "用户"
+        """生成 SC 朗读文本（每个都读，随机模板；username 必须是 display_name(uid) 的结果）"""
         content = content or ""
         tmpl = random.choice(TBDanmakuReadAloud.SC_TEMPLATES)
         return tmpl.format(username=username, content=content)

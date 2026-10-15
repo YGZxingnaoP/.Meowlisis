@@ -82,11 +82,9 @@ class TBEmoteChoose:
     def choose(self, username: str, text: str, reply_text: str, chat_record: List[dict]) -> str:
         """深度思考选择表情，返回表情名（不含 .gif），失败返回空串"""
         emotes = self._list_emotes()
-        try:
-            from func.pipeline.id_signup import IdSignupBridge
-            username = IdSignupBridge().nickname_of(username) or username
-        except Exception:
-            pass
+        # 展示名：唯一规则（display_name），禁止本处再写 nickname_of(x) or x
+        from func.pipeline.id_signup import display_name
+        username = display_name(username)
         self.log.info(f"[表情] 可用表情数量: {len(emotes)}")
         if not emotes:
             self.log.warning("[表情] EmoteLab 下没有找到表情文件")

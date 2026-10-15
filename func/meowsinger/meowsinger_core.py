@@ -27,7 +27,11 @@ class MeowSingerCore:
         if not text or not text.strip():
             return False
         text = text.strip()
-        username = username or "主人"
+        # 身份标准：只接受内部编号，缺身份直接放行（禁止用「主人」等默认身份兜底）
+        username = str(username or "").strip()
+        if not username:
+            self.log.error("[meowsinger] 缺少身份编号，不接管本条")
+            return False
 
         # 唱歌中：停止词则掐断，否则进汇总池并拦截
         if self.state.is_singing():

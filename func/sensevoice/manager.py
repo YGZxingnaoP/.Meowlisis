@@ -134,10 +134,10 @@ class SenseVoiceManager:
 
     @staticmethod
     def speaker_allowed(spk_name, targets):
-        """白名单校验：声纹名和配置里写的一样就通过
+        """白名单校验：**先把两边都解析成内部编号，只比编号**（不做名字层面的来回兜底）。
 
-        声纹文件名用编号（000001），配置里一般写昵称（YGZ醒脑片），
-        两边随便写哪边都认——编号认昵称、昵称认编号都试一遍。
+        声纹名可能是编号也可能是昵称，配置里写编号或昵称都行 —— 但比较只发生在编号层，
+        昵称不参与身份判定（有昵称的只能是同一个人，但同一人可能有多个昵称，比昵称不安全）。
         """
         wanted = [str(t).strip() for t in (targets or []) if str(t).strip()]
         if not wanted:
@@ -150,15 +150,11 @@ class SenseVoiceManager:
         try:
             from func.pipeline.id_signup import IdSignupBridge
             bridge = IdSignupBridge()
-            mine = bridge.resolve_name(name) or name
+            meowid = bridge.resolve_name(name)          # 纯查，不建身份
+            if not meowid:
+                return False
             for target in wanted:
-                if target == name or target == mine:
-                    return True
-                if bridge.resolve_name(target) == mine:
-                    return True
-                if bridge.nickname_of(target) == name:
-                    return True
-                if bridge.nickname_of(target) and bridge.nickname_of(target) == bridge.nickname_of(mine):
+                if bridge.resolve_name(target) == meowid:
                     return True
         except Exception:
             pass
@@ -191,31 +187,31 @@ class SenseVoiceManager:
             raw = self.username
             self.log.info(f"✅ 跳过声纹验证，使用配置身份: {raw}")
 
-        uid = ""
+        meowid = ""
         try:
             from func.pipeline.id_signup import IdSignupBridge
-            uid = str(IdSignupBridge().resolve_name(raw) or "")
+            meowid = IdSignupBridge().meowid_of_msg(raw, "voice")
         except Exception:
             self.log.exception("解析说话人身份失败")
-        if not uid:
+        if not meowid:
             self.log.warning(f"说话人 '{raw}' 没有对应身份，已忽略本条（不兜底、不建临时身份）")
             return
 
         # ASR 字幕：识别内容推字幕服务器（桌面字幕顶部人名；保持原逻辑——声纹通过后显示）
         try:
             from func.pipeline.get_subtitle import GetSubtitleBridge
-            GetSubtitleBridge().send_asr(text, uid)
+            GetSubtitleBridge().send_asr(text, meowid)
         except Exception:
             pass
 
         # 记录最近一次说话人（供哼唱识别绑定用户名）
         try:
             from func.pipeline.toolbox_audio import ToolboxAudioBridge
-            ToolboxAudioBridge().set_last_speaker(uid)
+            ToolboxAudioBridge().set_last_speaker(meowid)
         except Exception:
             self.log.exception("写入最后声纹说话人失败")
 
-        key = uid
+        key = meowid
         # 只累积文本，不因 final 到达而重置计时
         if key in self.pending_texts:
             self.pending_texts[key] = self.pending_texts[key] + " " + text
@@ -261,20 +257,20 @@ class SenseVoiceManager:
                 self._merge_task = None
                 self._merge_key = None
 
-    async def _send_to_llm(self, text: str, uid: str):
+    async def _send_to_llm(self, text: str, meowid: str):
         """发送识别文本到 LLM"""
         if self.callback:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.callback, text, uid, self.llm_source)
+            await loop.run_in_executor(None, self.callback, text, meowid, self.llm_source)
             return
 
         url = f"{self.api_base}/msg"
-        payload = {"msg": text, "username": uid, "source": self.llm_source}
+        payload = {"msg": text, "meowid": meowid, "source": self.llm_source}
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as resp:
                     if resp.status == 200:
-                        self.log.info(f"已送入 AI 核心: {text[:30]}... (说话人: {uid})")
+                        self.log.info(f"已送入 AI 核心: {text[:30]}... (说话人: {meowid})")
                     else:
                         self.log.error(f"发送失败: {resp.status}")
         except Exception as e:

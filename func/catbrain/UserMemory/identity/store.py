@@ -7,30 +7,30 @@ import time
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 
-PLATFORM_QQ = "qq"
-PLATFORM_BILI = "bili"
-PLATFORM_VOICE = "voice"
-PLATFORM_LOCAL = "local"
+CHANNEL_QQ = "qq"
+CHANNEL_BILI = "bili"
+CHANNEL_VOICE = "voice"
+CHANNEL_LOCAL = "local"
 
-PLATFORM_ALIAS = {
-    "qq": PLATFORM_QQ,
-    "bili": PLATFORM_BILI,
-    "b站": PLATFORM_BILI,
-    "voice": PLATFORM_VOICE,
-    "声纹": PLATFORM_VOICE,
+CHANNEL_ALIAS = {
+    "qq": CHANNEL_QQ,
+    "bili": CHANNEL_BILI,
+    "b站": CHANNEL_BILI,
+    "voice": CHANNEL_VOICE,
+    "声纹": CHANNEL_VOICE,
 }
 
-PLATFORM_LABEL = {
-    PLATFORM_QQ: "QQ",
-    PLATFORM_BILI: "B站",
-    PLATFORM_VOICE: "声纹",
-    PLATFORM_LOCAL: "离线",
+CHANNEL_LABEL = {
+    CHANNEL_QQ: "QQ",
+    CHANNEL_BILI: "B站",
+    CHANNEL_VOICE: "声纹",
+    CHANNEL_LOCAL: "离线",
 }
 
-KNOWN_PLATFORMS = (PLATFORM_QQ, PLATFORM_BILI)
+KNOWN_CHANNELS = (CHANNEL_QQ, CHANNEL_BILI)
 
 TEMP_PREFIX = "temp-"
-TEMP_KEEP_DAYS = 30
+# 铁律一：临时身份（离线账号）= "说过一句话的人"的 id，永久保留，不做任何按时间清理
 
 
 @singleton
@@ -49,16 +49,16 @@ class IdentityStore:
         os.makedirs(self.dir, exist_ok=True)
 
     @staticmethod
-    def normalize_platform(value):
+    def normalize_channel(value):
         """把平台别名统一成 qq / bili / voice"""
         key = str(value or "").strip().lower()
-        return PLATFORM_ALIAS.get(key, key)
+        return CHANNEL_ALIAS.get(key, key)
 
     @staticmethod
-    def platform_label(platform):
+    def channel_label(channel):
         """取平台的中文名"""
-        platform = IdentityStore.normalize_platform(platform)
-        return PLATFORM_LABEL.get(platform, platform)
+        channel = IdentityStore.normalize_channel(channel)
+        return CHANNEL_LABEL.get(channel, channel)
 
     def _read_json(self, path, default):
         """读一个 json 文件，失败回默认值"""
@@ -136,20 +136,20 @@ class IdentityStore:
             "users": data["users"],
         })
         self._write_json(self.index_path, data["index"])
-        for uid, user in data["users"].items():
-            self._write_user_file(uid, user)
+        for meowid, user in data["users"].items():
+            self._write_user_file(meowid, user)
 
 
-    def _write_user_file(self, uid, user):
+    def _write_user_file(self, meowid, user):
         """把昵称与各平台账号写进用户自己的文件夹（临时身份不建文件夹）"""
-        if self.is_temp(uid):
+        if self.is_temp(meowid):
             return
-        folder = os.path.join(self.dir, str(uid))
+        folder = os.path.join(self.dir, str(meowid))
         os.makedirs(folder, exist_ok=True)
         self._write_json(os.path.join(folder, "identity.json"), {
-            "id": str(uid),
+            "meowid": str(meowid),
             "nickname": str(user.get("nickname") or ""),
-            "accounts": user.get("accounts") or {},
+            "ext_accounts": user.get("ext_accounts") or {},
             "created": user.get("created") or 0,
         })
 
@@ -158,107 +158,66 @@ class IdentityStore:
     def _rebuild_index(users):
         """按对应表重建反查表"""
         index = {}
-        for uid, user in (users or {}).items():
-            for platform, account in (user.get("accounts") or {}).items():
-                if account:
-                    index[f"{platform}:{account}"] = uid
+        for meowid, user in (users or {}).items():
+            for channel, ext_account in (user.get("ext_accounts") or {}).items():
+                if ext_account:
+                    index[f"{channel}:{ext_account}"] = meowid
         return index
 
     @staticmethod
-    def is_temp(uid):
+    def is_temp(meowid):
         """判断是不是临时身份（还没绑定过任何正式账号的人）"""
-        return str(uid or "").strip().startswith(TEMP_PREFIX)
+        return str(meowid or "").strip().startswith(TEMP_PREFIX)
 
     @staticmethod
     def _new_id(data):
         """顺序发下一个六位编号，不回收不复用"""
         no = int(data.get("next") or 1)
         while True:
-            uid = f"{no:06d}"
+            meowid = f"{no:06d}"
             no += 1
-            if uid not in data["users"]:
+            if meowid not in data["users"]:
                 break
         data["next"] = no
-        return uid
+        return meowid
 
     @staticmethod
     def _new_temp_id(data):
         """顺序发下一个临时身份 id"""
         no = int(data.get("temp_next") or 1)
         while True:
-            uid = f"{TEMP_PREFIX}{no:06d}"
+            meowid = f"{TEMP_PREFIX}{no:06d}"
             no += 1
-            if uid not in data["users"]:
+            if meowid not in data["users"]:
                 break
         data["temp_next"] = no
-        return uid
-
-    def _prune_temps(self, data):
-        """清掉太久没露面的临时身份，避免陌生人无限堆积"""
-        deadline = time.time() - TEMP_KEEP_DAYS * 86400
-        for uid, user in list((data.get("users") or {}).items()):
-            if not self.is_temp(uid):
-                continue
-            last = float((user or {}).get("seen") or (user or {}).get("created") or 0)
-            if last and last < deadline:
-                data["users"].pop(uid, None)
-                for key, value in list((data.get("index") or {}).items()):
-                    if str(value) == uid:
-                        data["index"].pop(key, None)
+        return meowid
 
     def _fill_nickname(self, data, user, nickname):
+        """首次建档时用外部显示名填一次昵称。
+
+        重名允许：昵称可以重复，区分人只看 meowid（反查遇到重名会拒绝并提示改用编号）。
+        """
         if not str((user or {}).get("nickname") or "").strip() and str(nickname or "").strip():
-            name = str(nickname).strip()
-            uid = str((user or {}).get("id") or "")
-            if self.nickname_owner(data, name, exclude_uid=uid):
-                name = f"{name}({uid})" if uid else name
-            user["nickname"] = name
+            user["nickname"] = str(nickname).strip()
 
     @staticmethod
-    def _clean_account(account):
+    def _clean_account(ext_account):
         """账号去掉首尾空白，非数字也能用（声纹名）"""
-        return str(account or "").strip()
+        return str(ext_account or "").strip()
 
-    @staticmethod
-    def normalize_nickname(nickname):
-        """昵称归一化：全角转半角、空白折叠、大小写不敏感（只用于查重，不改显示）"""
-        text = str(nickname or "").strip()
-        out = []
-        for ch in text:
-            code = ord(ch)
-            if code == 0x3000:
-                out.append(" ")
-            elif 0xFF01 <= code <= 0xFF5E:
-                out.append(chr(code - 0xFEE0))
-            else:
-                out.append(ch)
-        return re.sub(r"\s+", " ", "".join(out)).strip().casefold()
-
-    def nickname_owner(self, data, nickname, exclude_uid=""):
-        """昵称占用者编号；没人用返回空串（正式身份与临时身份一起查）"""
-        want = self.normalize_nickname(nickname)
-        if not want:
-            return ""
-        exclude = str(exclude_uid or "").strip()
-        for uid, user in (data.get("users") or {}).items():
-            if str(uid) == exclude:
-                continue
-            if self.normalize_nickname((user or {}).get("nickname")) == want:
-                return str(uid)
-        return ""
-
-    def resolve(self, platform, account):
+    def resolve(self, channel, ext_account):
         """平台加账号 → 编号，查不到回空串"""
-        platform = self.normalize_platform(platform)
-        account = self._clean_account(account)
-        if not platform or not account:
+        channel = self.normalize_channel(channel)
+        ext_account = self._clean_account(ext_account)
+        if not channel or not ext_account:
             return ""
         with self._lock:
             if not self._acquire():
                 return ""
             try:
                 data = self._load()
-                return str(data["index"].get(f"{platform}:{account}", "") or "")
+                return str(data["index"].get(f"{channel}:{ext_account}", "") or "")
             finally:
                 self._release()
 
@@ -282,212 +241,211 @@ class IdentityStore:
             finally:
                 self._release()
 
-    def display_name(self, platform, account, fallback=""):
-        """取展示名：身份表里的昵称优先，没有就回退原来的用户名"""
-        uid = self.resolve(platform, account)
-        if not uid:
-            return str(fallback or "")
-        user = self.get_user(uid)
-        return str(user.get("nickname") or "").strip() or str(fallback or "")
+    def display_name(self, channel, ext_account, fallback=""):
+        """取展示名：身份表里的昵称；查不到身份返回空串（**不回退传入名**）"""
+        meowid = self.resolve(channel, ext_account)
+        if not meowid:
+            return ""
+        user = self.get_user(meowid)
+        return str(user.get("nickname") or "").strip()
 
-    def ensure(self, platform, account, nickname=""):
+    def ensure(self, channel, ext_account, nickname=""):
         """拿编号，没有就自动开一个户"""
-        platform = self.normalize_platform(platform)
-        account = self._clean_account(account)
-        if not platform or not account:
+        channel = self.normalize_channel(channel)
+        ext_account = self._clean_account(ext_account)
+        if not channel or not ext_account:
             return ""
         with self._lock:
             if not self._acquire():
                 return ""
             try:
                 data = self._load()
-                key = f"{platform}:{account}"
-                uid = str(data["index"].get(key, "") or "")
-                if uid and uid in data["users"]:
-                    self._fill_nickname(data, data["users"][uid], nickname)
-                    return uid
-                uid = str((data.get("history") or {}).get(key, "") or "")
-                if not (uid and uid in data["users"]):
-                    uid = self._new_id(data)
-                user = data["users"].get(uid) or {
-                    "id": uid,
+                key = f"{channel}:{ext_account}"
+                meowid = str(data["index"].get(key, "") or "")
+                if meowid and meowid in data["users"]:
+                    self._fill_nickname(data, data["users"][meowid], nickname)
+                    return meowid
+                meowid = str((data.get("history") or {}).get(key, "") or "")
+                if not (meowid and meowid in data["users"]):
+                    meowid = self._new_id(data)
+                user = data["users"].get(meowid) or {
+                    "meowid": meowid,
                     "nickname": "",
                     "created": int(time.time()),
-                    "accounts": {},
+                    "ext_accounts": {},
                 }
-                user.setdefault("accounts", {})[platform] = account
+                user.setdefault("ext_accounts", {})[channel] = ext_account
                 self._fill_nickname(data, user, nickname)
-                data["users"][uid] = user
-                data["index"][key] = uid
+                data["users"][meowid] = user
+                data["index"][key] = meowid
                 self._save(data)
-                return uid
+                return meowid
             finally:
                 self._release()
 
-    def create_user(self, nickname="", uid=""):
+    def create_user(self, nickname="", meowid=""):
         """开一个新编号（只有档案、不挂任何账号），返回编号"""
         nickname = str(nickname or "").strip()
-        uid = str(uid or "").strip()
+        meowid = str(meowid or "").strip()
         with self._lock:
             if not self._acquire():
                 return ""
             try:
                 data = self._load()
-                if uid and uid in data["users"]:
-                    return uid
-                if not uid:
-                    uid = self._new_id(data)
-                data["users"][uid] = {
-                    "id": uid,
+                if meowid and meowid in data["users"]:
+                    return meowid
+                if not meowid:
+                    meowid = self._new_id(data)
+                data["users"][meowid] = {
+                    "meowid": meowid,
                     "nickname": "",
                     "created": int(time.time()),
-                    "accounts": {},
+                    "ext_accounts": {},
                 }
-                self._fill_nickname(data, data["users"][uid], nickname)
+                self._fill_nickname(data, data["users"][meowid], nickname)
                 self._save(data)
-                return uid
+                return meowid
             finally:
                 self._release()
 
-    def ensure_temp(self, platform, account, nickname=""):
+    def ensure_temp(self, channel, ext_account, nickname=""):
         """没绑定的人给一个临时身份（temp-00000x），已有正式编号就直接返回正式编号"""
-        platform = self.normalize_platform(platform)
-        account = self._clean_account(account)
-        if not platform or not account:
+        channel = self.normalize_channel(channel)
+        ext_account = self._clean_account(ext_account)
+        if not channel or not ext_account:
             return ""
         with self._lock:
             if not self._acquire():
                 return ""
             try:
                 data = self._load()
-                key = f"{platform}:{account}"
-                uid = str(data["index"].get(key, "") or "")
-                if uid and uid in data["users"]:
-                    user = data["users"][uid]
-                    if self.is_temp(uid):
+                key = f"{channel}:{ext_account}"
+                meowid = str(data["index"].get(key, "") or "")
+                if meowid and meowid in data["users"]:
+                    user = data["users"][meowid]
+                    if self.is_temp(meowid):
                         user["seen"] = int(time.time())
                         self._fill_nickname(data, user, nickname)
-                        data["users"][uid] = user
+                        data["users"][meowid] = user
                         self._save(data)
-                    return uid
-                self._prune_temps(data)
-                uid = self._new_temp_id(data)
-                self._prune_temps(data)
+                    return meowid
+                # 铁律一：说一句话就该有 meowid —— 没有昵称也照样建档，绝不拒绝（也不清理老 temp）
+                meowid = self._new_temp_id(data)
                 now = int(time.time())
-                data["users"][uid] = {
-                    "id": uid,
+                data["users"][meowid] = {
+                    "meowid": meowid,
                     "nickname": "",
                     "created": now,
                     "seen": now,
-                    "accounts": {platform: account},
+                    "ext_accounts": {channel: ext_account},
                 }
-                self._fill_nickname(data, data["users"][uid], nickname)
-                data["index"][key] = uid
+                self._fill_nickname(data, data["users"][meowid], nickname)
+                data["index"][key] = meowid
                 self._save(data)
-                return uid
+                return meowid
             finally:
                 self._release()
 
-    def promote(self, uid):
+    def promote(self, meowid):
         """临时身份转正：换成正式六位编号，账号与昵称都带过去"""
-        uid = str(uid or "").strip()
-        if not self.is_temp(uid):
-            return uid
+        meowid = str(meowid or "").strip()
+        if not self.is_temp(meowid):
+            return meowid
         with self._lock:
             if not self._acquire():
-                return uid
+                return meowid
             try:
                 data = self._load()
-                user = data["users"].get(uid)
+                user = data["users"].get(meowid)
                 if not user:
-                    return uid
+                    return meowid
                 new_uid = self._new_id(data)
-                user["id"] = new_uid
+                user["meowid"] = new_uid
                 user.pop("seen", None)
-                data["users"].pop(uid, None)
+                data["users"].pop(meowid, None)
                 data["users"][new_uid] = user
                 for key, value in list(data["index"].items()):
-                    if str(value) == uid:
+                    if str(value) == meowid:
                         data["index"][key] = new_uid
                 for key, value in list((data.get("history") or {}).items()):
-                    if str(value) == uid:
+                    if str(value) == meowid:
                         data["history"][key] = new_uid
-                self.log.info(f"[Identity] 临时身份 {uid} 已转正为 {new_uid}")
+                self.log.info(f"[Identity] 临时身份 {meowid} 已转正为 {new_uid}")
                 self._save(data)
                 return new_uid
             finally:
                 self._release()
 
 
-    def bind(self, uid, platform, account, nickname=""):
+    def bind(self, meowid, channel, ext_account, nickname=""):
         """把一个平台账号绑到编号上，返回 (成功, 提示, 该账号原属编号)"""
-        platform = self.normalize_platform(platform)
-        account = self._clean_account(account)
-        uid = str(uid or "").strip()
-        label = self.platform_label(platform)
-        if not platform or not account:
+        channel = self.normalize_channel(channel)
+        ext_account = self._clean_account(ext_account)
+        meowid = str(meowid or "").strip()
+        label = self.channel_label(channel)
+        if not channel or not ext_account:
             return False, "参数缺失：请提供要绑定的账号", ""
-        if not uid:
+        if not meowid:
             return False, "参数缺失：请先取得用户编号", ""
         with self._lock:
             if not self._acquire():
                 return False, "身份表正忙，请稍后再试", ""
             try:
                 data = self._load()
-                user = data["users"].get(uid)
+                user = data["users"].get(meowid)
                 if not user:
-                    return False, f"没找到编号 {uid}", ""
-                key = f"{platform}:{account}"
+                    return False, f"没找到编号 {meowid}", ""
+                key = f"{channel}:{ext_account}"
                 owner = str(data["index"].get(key, "") or "")
-                if owner and owner != uid:
+                if owner and owner != meowid:
                     other = data["users"].get(owner) or {}
                     other_name = str(other.get("nickname") or "").strip() or "未设昵称"
                     return False, f"这个{label}账号已经绑在 {owner}（{other_name}）名下，请先解绑或改用其它账号", owner
-                old = str((user.get("accounts") or {}).get(platform) or "")
-                if old and old != account:
-                    data["index"].pop(f"{platform}:{old}", None)
-                user.setdefault("accounts", {})[platform] = account
+                old = str((user.get("ext_accounts") or {}).get(channel) or "")
+                if old and old != ext_account:
+                    data["index"].pop(f"{channel}:{old}", None)
+                user.setdefault("ext_accounts", {})[channel] = ext_account
                 self._fill_nickname(data, user, nickname)
-                data["users"][uid] = user
-                data["index"][key] = uid
+                data["users"][meowid] = user
+                data["index"][key] = meowid
                 self._save(data)
-                return True, "", uid
+                return True, "", meowid
             finally:
                 self._release()
 
-    def unbind(self, uid, platform):
+    def unbind(self, meowid, channel):
         """解绑编号下的某个平台账号，返回 (成功, 提示)"""
-        platform = self.normalize_platform(platform)
-        uid = str(uid or "").strip()
-        label = self.platform_label(platform)
-        if not platform:
+        channel = self.normalize_channel(channel)
+        meowid = str(meowid or "").strip()
+        label = self.channel_label(channel)
+        if not channel:
             return False, "参数缺失：请提供要解绑的平台"
-        if not uid:
+        if not meowid:
             return False, "还没绑定过，没有可解绑的账号"
         with self._lock:
             if not self._acquire():
                 return False, "身份表正忙，请稍后再试"
             try:
                 data = self._load()
-                user = data["users"].get(uid)
+                user = data["users"].get(meowid)
                 if not user:
-                    return False, f"没找到编号 {uid}"
-                account = str((user.get("accounts") or {}).pop(platform, "") or "")
-                if not account:
+                    return False, f"没找到编号 {meowid}"
+                ext_account = str((user.get("ext_accounts") or {}).pop(channel, "") or "")
+                if not ext_account:
                     return False, f"你名下没有绑过{label}账号，无需解绑"
-                data["index"].pop(f"{platform}:{account}", None)
-                data.setdefault("history", {})[f"{platform}:{account}"] = uid
-                data["users"][uid] = user
+                data["index"].pop(f"{channel}:{ext_account}", None)
+                data.setdefault("history", {})[f"{channel}:{ext_account}"] = meowid
+                data["users"][meowid] = user
                 self._save(data)
                 return True, ""
             finally:
                 self._release()
 
-    def set_nickname(self, uid, nickname):
+    def set_nickname(self, meowid, nickname):
         """改昵称，返回 (成功, 提示)"""
-        uid = str(uid or "").strip()
+        meowid = str(meowid or "").strip()
         nickname = str(nickname or "").strip()
-        if not uid:
+        if not meowid:
             return False, "参数缺失：请先取得用户编号"
         if not nickname:
             return False, "参数缺失：请提供新昵称"
@@ -496,15 +454,12 @@ class IdentityStore:
                 return False, "身份表正忙，请稍后再试"
             try:
                 data = self._load()
-                user = data["users"].get(uid)
+                user = data["users"].get(meowid)
                 if not user:
-                    return False, f"没找到编号 {uid}"
-                owner = self.nickname_owner(data, nickname, exclude_uid=uid)
-                if owner:
-                    owner_name = str((data["users"].get(owner) or {}).get("nickname") or owner)
-                    return False, f"昵称「{nickname}」已被编号 {owner}（{owner_name}）占用，请换一个"
+                    return False, f"没找到编号 {meowid}"
+                # 重名允许：昵称可以重复，区分人只看 meowid
                 user["nickname"] = nickname
-                data["users"][uid] = user
+                data["users"][meowid] = user
                 self._save(data)
                 return True, ""
             finally:
@@ -519,7 +474,7 @@ class IdentityStore:
                 data = self._load()
                 users = [dict(data["users"][k]) for k in sorted(data["users"].keys())]
                 if not include_temp:
-                    users = [u for u in users if not self.is_temp(u.get("id"))]
+                    users = [u for u in users if not self.is_temp(u.get("meowid"))]
                 return users
             finally:
                 self._release()
@@ -539,42 +494,42 @@ class IdentityStore:
                 drop = data["users"].get(drop_uid)
                 if not keep or not drop:
                     return False, "没找到要合并的编号"
-                for platform, account in (drop.get("accounts") or {}).items():
-                    account = str(account or "").strip()
-                    if not account:
+                for channel, ext_account in (drop.get("ext_accounts") or {}).items():
+                    ext_account = str(ext_account or "").strip()
+                    if not ext_account:
                         continue
-                    key = f"{platform}:{account}"
-                    if str(keep.get("accounts", {}).get(platform) or ""):
+                    key = f"{channel}:{ext_account}"
+                    if str(keep.get("ext_accounts", {}).get(channel) or ""):
                         data["index"][key] = keep_uid
                         continue
-                    keep.setdefault("accounts", {})[platform] = account
+                    keep.setdefault("ext_accounts", {})[channel] = ext_account
                     data["index"][key] = keep_uid
-                drop["accounts"] = {}
+                drop["ext_accounts"] = {}
                 data["users"][drop_uid] = drop
                 data["users"][keep_uid] = keep
                 index = {}
-                for uid, user in data["users"].items():
-                    for platform, account in (user.get("accounts") or {}).items():
-                        if account:
-                            index[f"{platform}:{account}"] = uid
+                for meowid, user in data["users"].items():
+                    for channel, ext_account in (user.get("ext_accounts") or {}).items():
+                        if ext_account:
+                            index[f"{channel}:{ext_account}"] = meowid
                 data["index"] = index
                 self._save(data)
                 return True, ""
             finally:
                 self._release()
 
-    def summary_line(self, uid):
+    def summary_line(self, meowid):
         """把编号、昵称、已绑平台拼成一行，供回复用"""
-        user = self.get_user(uid)
+        user = self.get_user(meowid)
         if not user:
             return ""
         nickname = str(user.get("nickname") or "").strip() or "未设昵称"
-        if self.is_temp(uid):
-            return f"临时身份 {uid}，昵称 {nickname}，还没绑定平台（绑定后自动转正）"
-        accounts = user.get("accounts") or {}
+        if self.is_temp(meowid):
+            return f"临时身份 {meowid}，昵称 {nickname}，还没绑定平台（绑定后自动转正）"
+        accounts = user.get("ext_accounts") or {}
         parts = []
-        for platform in sorted(accounts.keys()):
-            if accounts.get(platform):
-                parts.append(f"{self.platform_label(platform)} {accounts.get(platform)}")
+        for channel in sorted(accounts.keys()):
+            if accounts.get(channel):
+                parts.append(f"{self.channel_label(channel)} {accounts.get(channel)}")
         bound = "、".join(parts) if parts else "无"
-        return f"编号 {uid}，昵称 {nickname}，已绑：{bound}"
+        return f"编号 {meowid}，昵称 {nickname}，已绑：{bound}"

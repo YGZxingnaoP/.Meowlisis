@@ -109,7 +109,11 @@ class CatLearnSearchUnderstand:
     def _append(self, username: str, summaries: list):
         with self._lock:
             data = self._read_result()
-            key = username or "匿名"
+            # 身份标准：只接受内部编号，缺身份不记录（禁止用「匿名」占位）
+            key = str(username or "").strip()
+            if not key:
+                self.log.error("[search] 缺少身份编号，摘要不记录")
+                return
             existing = data.get(key) or []
             if not isinstance(existing, list):
                 existing = []
@@ -122,7 +126,9 @@ class CatLearnSearchUnderstand:
         """读取该用户全部摘要并清除，返回 markdown 文本（无则空串）"""
         with self._lock:
             data = self._read_result()
-            key = username or "匿名"
+            key = str(username or "").strip()
+            if not key:
+                return ""
             items = data.pop(key, None)
             if items is not None:
                 self._write_result(data)

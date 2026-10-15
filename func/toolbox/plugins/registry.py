@@ -58,10 +58,10 @@ class PluginRegistry:
             return None
         return item[0].handle_qq(arguments or {}, qq_context, item[1])
 
-    def set_username(self, username):
+    def set_meowid(self, meowid):
         """向全部触发型工具注入用户名"""
         for tool, _ in self._triggers.values():
-            tool.set_username(username)
+            tool.set_meowid(meowid)
 
     def set_context(self, context):
         """向全部触发型工具注入上下文"""

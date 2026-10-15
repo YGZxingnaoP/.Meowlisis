@@ -13,30 +13,36 @@ def _signal(path):
             "请用你的角色口吻告诉用户已经做好了，不用展开文件内容。")
 
 
-def _complete_voice(ctx, username, path, short_memory):
+def _complete_voice(ctx, meowid, path, short_memory):
     """语音链路：完成信号交给主链路 LLM 生成回复"""
     from func.pipeline.toolbox_llm import ToolboxLLMBridge
-    ToolboxLLMBridge().send_to_llm(_signal(path), username or "用户", source="toolbox")
+    if not meowid:
+        ctx.log.error("[docwriter] 无身份编号，放弃完成播报")
+        return
+    ToolboxLLMBridge().send_to_llm(_signal(path), meowid, source="toolbox")
 
 
-def _complete_qq(ctx, qq_context, username, path, short_memory):
+def _complete_qq(ctx, qq_context, meowid, path, short_memory):
     """QQ 链路：完成信号交给 QQ LLM 生成回复，并发送文件"""
     core = ctx.napcat()
     target = str(qq_context.get("target_id") or qq_context.get("user_id") or "")
     if not target:
+        return
+    if not meowid:
+        ctx.log.error("[docwriter] 无身份编号，放弃完成播报")
         return
     signal = _signal(path)
     if str(qq_context.get("message_type", "")) == "group":
         from func.pipeline.toolbox_llm import NapcatGroupLLMBridge
         group_name = str(qq_context.get("group_name") or target)
         NapcatGroupLLMBridge().reply(
-            username or "用户", target, group_name, signal, short_memory or [], "",
+            meowid, target, group_name, signal, short_memory or [], "",
             on_segment=lambda seg: core.send_group_text(target, seg))
         core.send_group_file(target, path)
     else:
         from func.pipeline.toolbox_llm import NapcatLLMBridge
         NapcatLLMBridge().send_to_llm(
-            username or "用户", target, signal, short_memory or [],
+            meowid, target, signal, short_memory or [],
             on_segment=lambda seg: core.send_private_text(target, seg))
         core.call_action_sync("upload_private_file",
                               {"user_id": int(target), "file": path,
@@ -76,12 +82,12 @@ def _run_job(request, doc_type, fmt, ctx, channel, qq_context, user_ctx):
             ctx.log.error(f"文档助手任务失败：{reason}")
             _report_fail(ctx, channel, qq_context, f"文档助手没写成：{reason}")
             return
-        username = (user_ctx or {}).get("username")
+        meowid = (user_ctx or {}).get("meowid")
         short_memory = (user_ctx or {}).get("short_memory")
         if channel == "qq":
-            _complete_qq(ctx, qq_context, username, path, short_memory)
+            _complete_qq(ctx, qq_context, meowid, path, short_memory)
         else:
-            _complete_voice(ctx, username, path, short_memory)
+            _complete_voice(ctx, meowid, path, short_memory)
     except Exception:
         ctx.log.exception("文档助手任务失败")
 

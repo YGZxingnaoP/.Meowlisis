@@ -817,32 +817,32 @@ def identity_users():
     bridge = _identity_bridge()
     users = []
     for user in bridge.list_users():
-        uid = str(user.get('id') or '')
-        profile = bridge.profile_of(str(user.get('nickname') or ''))
+        meowid = str(user.get('meowid') or '')
+        profile = bridge.profile_of(meowid)
         users.append({
-            'id': uid,
+            'meowid': meowid,
             'nickname': str(user.get('nickname') or ''),
-            'accounts': user.get('accounts') or {},
+            'ext_accounts': user.get('ext_accounts') or {},
             'affinity': profile.get('affinity', 0),
             'birthday': str(profile.get('birthday') or ''),
-            'summary': bridge.summary(uid),
+            'summary': bridge.summary(meowid),
         })
     return jsonify(users)
 
 
 @app.route('/api/identity/user', methods=['GET'])
 def identity_user():
-    """查单个用户详情：支持 编号 / 昵称 / QQ号 / B站uid 四种输入"""
-    key = str(request.args.get('id', '') or '').strip()
+    """查单个用户详情：ref 支持 meowid / 昵称 / QQ号 / B站uid 四种写法"""
+    key = str(request.args.get('ref', '') or '').strip()
     bridge = _identity_bridge()
     if key and not bridge.find(key):
         # 编号、昵称都没命中，再按各平台账号找（QQ号 / B站uid / 声纹名）
         try:
-            from func.catbrain.UserMemory.identity.store import KNOWN_PLATFORMS
-            for platform in KNOWN_PLATFORMS:
-                uid = bridge.resolve(platform, key)
-                if uid and not bridge._store().is_temp(uid):
-                    key = uid
+            from func.catbrain.UserMemory.identity.store import KNOWN_CHANNELS
+            for channel in KNOWN_CHANNELS:
+                meowid = bridge.resolve(channel, key)
+                if meowid and not bridge._store().is_temp(meowid):
+                    key = meowid
                     break
         except Exception:
             pass
@@ -853,7 +853,7 @@ def identity_user():
 def identity_nickname():
     """改昵称"""
     data = request.get_json() or {}
-    ok, msg = _identity_bridge().set_nickname(str(data.get('id') or ''), str(data.get('nickname') or ''))
+    ok, msg = _identity_bridge().set_nickname(str(data.get('meowid') or ''), str(data.get('nickname') or ''))
     return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
 
 
@@ -862,7 +862,7 @@ def identity_bind():
     """绑定平台账号"""
     data = request.get_json() or {}
     ok, msg, _owner = _identity_bridge().bind(
-        str(data.get('id') or ''), str(data.get('platform') or ''), str(data.get('account') or ''))
+        str(data.get('meowid') or ''), str(data.get('channel') or ''), str(data.get('ext_account') or ''))
     return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
 
 
@@ -870,7 +870,7 @@ def identity_bind():
 def identity_unbind():
     """解绑平台账号"""
     data = request.get_json() or {}
-    ok, msg = _identity_bridge().unbind(str(data.get('id') or ''), str(data.get('platform') or ''))
+    ok, msg = _identity_bridge().unbind(str(data.get('meowid') or ''), str(data.get('channel') or ''))
     return jsonify({'status': 'ok' if ok else 'error', 'message': msg})
 
 

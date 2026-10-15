@@ -24,28 +24,28 @@ class TBNapCatVisionActive:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.vision = TBVisionCore()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供主动看图时使用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     # ==================== 看图入口 ====================
-    def process(self, images: List[str], user_message: str, username: str,
+    def process(self, images: List[str], user_message: str, meowid: str,
                 need_description: bool = True, write_memory: bool = True,
                 history_messages: Optional[List[dict]] = None) -> Dict[str, str]:
         """收到图片时看图：转交 meowvision，返回 {description, reply}（不发送、不清缓存）"""
         return self.vision.process(
-            images, user_message, username,
+            images, user_message, meowid,
             need_description=need_description, write_memory=write_memory,
             history_messages=history_messages,
         )
 
-    def run(self, image_paths: List[str], user_message: str, username: str = "",
+    def run(self, image_paths: List[str], user_message: str, meowid: str = "",
             need_description: bool = True) -> str:
         """主动看图：转交 meowvision，只取回复（不触发 TTS，napcat 自行决定发送方式）"""
         result = self.vision.process(
-            image_paths or [], user_message, username or self._username,
+            image_paths or [], user_message, meowid or self._meowid,
             need_description=need_description,
         )
         return (result.get("reply") or "").strip()
@@ -84,4 +84,4 @@ class TBNapCatVisionActive:
         image_paths = arguments.get("image_paths") or []
         user_message = arguments.get("user_message") or ""
         need_description = bool(image_paths)
-        return self.run(image_paths, user_message, self._username, need_description)
+        return self.run(image_paths, user_message, self._meowid, need_description)

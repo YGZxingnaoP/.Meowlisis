@@ -1,9 +1,9 @@
 {
-  "id": "000001",
   "nickname": "YGZ醒脑片",
-  "accounts": {
+  "created": 1791894821,
+  "meowid": "000001",
+  "ext_accounts": {
     "bili": "3546381505530135",
     "qq": "1149942002"
-  },
-  "created": 1791894821
+  }
 }

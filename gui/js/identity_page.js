@@ -68,14 +68,14 @@ const IdentityUI = {
         const key = this.val('identityQuery');
         if (!key) { this.msg(this.t('先填编号 / 昵称 / QQ号 / B站uid'), true); return; }
         try {
-            const res = await fetch('/api/identity/user?id=' + encodeURIComponent(key));
+            const res = await fetch('/api/identity/user?ref=' + encodeURIComponent(key));
             if (!res.ok) {
                 this.msg(this.t('接口没响应') + '（' + res.status + '）：' + this.t('请重启配置管理器后再试'), true);
                 return;
             }
             const data = await res.json();
             const detail = document.getElementById('identityDetail');
-            if (!data || !data.id) {
+            if (!data || !data.meowid) {
                 if (detail) detail.innerHTML = '';
                 this.detail = null;
                 this.msg(this.t('没找到') + '：' + key, true);
@@ -93,9 +93,9 @@ const IdentityUI = {
         const box = document.getElementById('identityDetail');
         if (!box) return;
         let rows = '';
-        (d.platforms || []).forEach(p => {
+        (d.channels || []).forEach(p => {
             const key = this.esc(p.key);
-            const account = this.esc(p.account);
+            const account = this.esc(p.ext_account);
             rows += '<div class="bind-row" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">' +
                 '<div style="flex:1;min-width:0;">' +
                 '<label style="display:block;margin-bottom:4px;">' + this.esc(p.label) + '</label>' +
@@ -103,7 +103,7 @@ const IdentityUI = {
                 this.t('填账号：QQ号 / B站uid / 声纹名') + '">' +
                 '</div>' +
                 '<button class="btn btn-primary" style="white-space:nowrap;" onclick="IdentityUI.bind(\'' + key + '\')">' +
-                (p.account ? this.t('更换') : this.t('绑定')) + '</button>' +
+                (p.ext_account ? this.t('更换') : this.t('绑定')) + '</button>' +
                 '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="IdentityUI.unbind(\'' + key + '\')">' +
                 this.t('解绑') + '</button>' +
                 '</div>';
@@ -113,7 +113,7 @@ const IdentityUI = {
             '<div style="margin-bottom:10px;">' +
             '<div style="font-size:18px;font-weight:600;line-height:1.3;">' +
             this.esc(d.nickname || this.t('未设昵称')) + '</div>' +
-            '<div class="uid-sub">' + this.esc(d.id) + '</div>' +
+            '<div class="uid-sub">' + this.esc(d.meowid) + '</div>' +
             '</div>' +
             '<div class="help-text" style="margin-bottom:12px;">' +
             this.t('好感度') + ' ' + this.esc(d.affinity) + ' &nbsp;&middot;&nbsp; ' +
@@ -126,28 +126,28 @@ const IdentityUI = {
             '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="IdentityUI.nickname()">' +
             this.t('改昵称') + '</button>' +
             '</div>' +
-            '<div class="help-text">' + this.t('昵称不允许与其他人重复') + '</div>' +
+            '<div class="help-text">' + this.t('昵称可以重复，区分人只看编号（meowid）') + '</div>' +
             '</div>' +
-            '<div class="form-section"><h4>' + this.t('平台绑定') + '</h4></div>' +
+            '<div class="form-section"><h4>' + this.t('通道绑定') + '</h4></div>' +
             rows +
             '</div>';
     },
     async nickname() {
         const nickname = this.val('identityNick');
         if (!nickname) { this.msg(this.t('先填新昵称'), true); return; }
-        const data = await this.post('/api/identity/nickname', { id: this.detail.id, nickname: nickname });
+        const data = await this.post('/api/identity/nickname', { meowid: this.detail.meowid, nickname: nickname });
         this.msg(data.message || (data.status === 'ok' ? this.t('昵称已更新') : this.t('改昵称失败')), data.status !== 'ok');
         this.query();
     },
     async bind(platform) {
         const account = this.val('idacct_' + platform);
         if (!account) { this.msg(this.t('先填要绑的账号'), true); return; }
-        const data = await this.post('/api/identity/bind', { id: this.detail.id, platform: platform, account: account });
+        const data = await this.post('/api/identity/bind', { meowid: this.detail.meowid, channel: platform, ext_account: account });
         this.msg(data.message || (data.status === 'ok' ? this.t('绑定成功') : this.t('绑定失败')), data.status !== 'ok');
         this.query();
     },
     async unbind(platform) {
-        const data = await this.post('/api/identity/unbind', { id: this.detail.id, platform: platform });
+        const data = await this.post('/api/identity/unbind', { meowid: this.detail.meowid, channel: platform });
         this.msg(data.message || (data.status === 'ok' ? this.t('已解绑') : this.t('解绑失败')), data.status !== 'ok');
         this.query();
     }

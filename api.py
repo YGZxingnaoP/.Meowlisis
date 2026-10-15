@@ -266,26 +266,26 @@ def start_napcat():
 def input_msg():
     data = request.json
     query = data["msg"]  # 获取弹幕内容
-    raw_name = str(data.get("username") or "").strip()
-    msg_source = data.get("source", "llm")
-    try:
-        from func.pipeline.id_signup import IdSignupBridge
-        ident = IdSignupBridge().resolve_identity(
-            msg_source, str(data.get("account") or data.get("user_id") or data.get("uid") or raw_name))
-        user_name = str(ident.get("uid") or "") or raw_name
-    except Exception:
-        user_name = raw_name
+    # msg 通道：入参就是 meowid（account 是历史字段名，值同样是 meowid）
+    meowid_in = str(data.get("meowid") or data.get("account") or "").strip()
+    msg_from = str(data.get("source") or "").strip().lower()
+    if msg_from not in ("voice", "api", "phone"):
+        msg_from = "api"
+    from func.pipeline.id_signup import IdSignupBridge
+    meowid = IdSignupBridge().meowid_of_msg(meowid_in, msg_from)
+    if not meowid:
+        return jsonify({"status": "错误", "message": "身份无法识别：msg 通道必须提供 meowid（000001 / temp-000012）"}), 400
     # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
     try:
         from func.toolbox.excuse import TBExcuse
-        if TBExcuse().route_text(query, user_name):
+        if TBExcuse().route_text(query, meowid):
             return jsonify({"status": "成功", "excuse": True})
     except Exception:
         pass
     # meowsinger 点歌/翻唱/唱歌中拦截
     try:
         from func.pipeline.msg_singer import MsgSingerBridge
-        if MsgSingerBridge().send_to_singer(query, user_name, "msg"):
+        if MsgSingerBridge().send_to_singer(query, meowid, "msg"):
             return jsonify({"status": "成功", "singer": True})
     except Exception:
         pass
@@ -293,26 +293,26 @@ def input_msg():
     turtle_route = None
     try:
         from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-        turtle_route = TBTurtleSoupCore().route_text(query, user_name)
+        turtle_route = TBTurtleSoupCore().route_text(query, meowid)
     except Exception:
         pass
     if turtle_route == "consumed":
         return jsonify({"status": "成功", "turtle_soup": True})
     traceid = str(uuid.uuid4())
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
-    llmCore.msg_deal(traceid, query, user_name, source=msg_source)
+    llmCore.msg_deal(traceid, query, meowid, source=msg_from)
     if turtle_route != "pass":
         try:
             from func.pipeline.llm_toolbox import LLMToolboxBridge
             if not LLMToolboxBridge().merge_enabled():
                 from func.pipeline.msg_toolbox import MsgToolboxBridge
-                MsgToolboxBridge().send_to_toolbox(query, user_name)
+                MsgToolboxBridge().send_to_toolbox(query, meowid)
         except Exception:
             pass
         # 数据库关键词匹配
         try:
             from func.pipeline.msg_database import MsgDatabaseBridge
-            MsgDatabaseBridge().send_to_database(query, user_name)
+            MsgDatabaseBridge().send_to_database(query, meowid)
         except Exception:
             pass
     return jsonify({"status": "成功"})
@@ -343,26 +343,31 @@ def phone_audio():
 @app.route("/chat", methods=["POST", "GET"])
 def chat():
     CallBackForTest = request.args.get("CallBack")
-    username = request.args.get("username")
+    meowid_in = request.args.get("username")     # 客户端字段名沿用 username，值就是 meowid
     text = request.args.get("text")
-    msg_source = request.args.get("source", "llm")  # 来源标记（手机传 phone）
+    msg_from = request.args.get("source", "api")  # msg 来源：手机传 phone / 语音传 voice / 接口传 api
     # =========处理消息开始========
     status = "成功"
     traceid = str(uuid.uuid4())
     if text is None:
         jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"值为空\",\"content\": \"" + text + "\"})"
         return jsonStr
+    # msg 通道：入参就是 meowid，凭据不对就明确失败
+    from func.pipeline.id_signup import IdSignupBridge
+    meowid = IdSignupBridge().meowid_of_msg(meowid_in, msg_from)
+    if not meowid:
+        return "({\"traceid\": \"" + traceid + "\",\"status\": \"身份无法识别（msg 通道必须提供 meowid）\",\"content\": \"" + str(text) + "\"})"
     # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
     try:
         from func.toolbox.excuse import TBExcuse
-        if TBExcuse().route_text(text, username):
+        if TBExcuse().route_text(text, meowid):
             return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     except Exception:
         pass
     # meowsinger 点歌/翻唱/唱歌中拦截
     try:
         from func.pipeline.msg_singer import MsgSingerBridge
-        if MsgSingerBridge().send_to_singer(text, username, "chat"):
+        if MsgSingerBridge().send_to_singer(text, meowid, "chat"):
             return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     except Exception:
         pass
@@ -370,25 +375,25 @@ def chat():
     turtle_route = None
     try:
         from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-        turtle_route = TBTurtleSoupCore().route_text(text, username)
+        turtle_route = TBTurtleSoupCore().route_text(text, meowid)
     except Exception:
         pass
     if turtle_route == "consumed":
         return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
-    llmCore.msg_deal(traceid, text, username, source=msg_source)
+    llmCore.msg_deal(traceid, text, meowid, source=msg_from)
     if turtle_route != "pass":
         try:
             from func.pipeline.llm_toolbox import LLMToolboxBridge
             if not LLMToolboxBridge().merge_enabled():
                 from func.pipeline.msg_toolbox import MsgToolboxBridge
-                MsgToolboxBridge().send_to_toolbox(text, username)
+                MsgToolboxBridge().send_to_toolbox(text, meowid)
         except Exception:
             pass
         # 数据库关键词匹配
         try:
             from func.pipeline.msg_database import MsgDatabaseBridge
-            MsgDatabaseBridge().send_to_database(text, username)
+            MsgDatabaseBridge().send_to_database(text, meowid)
         except Exception:
             pass
     jsonStr = "({\"traceid\": \"" + traceid + "\",\"status\": \"" + status + "\",\"content\": \"" + text + "\"})"
@@ -414,7 +419,15 @@ def main():
         from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
         sensevoice_bridge = SenseVoiceLLMBridge()
 
-        def sensevoice_callback(text, username, source="llm"):
+        def sensevoice_callback(text, meowid, source="voice"):
+            # msg 通道（voice）：入参就是 meowid；拿不到合法 meowid 就丢弃这条
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                meowid = IdSignupBridge().meowid_of_msg(meowid, "voice")
+            except Exception:
+                meowid = ""
+            if not meowid:
+                return
             # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
             try:
                 from func.pipeline.toolbox_audio import ToolboxAudioBridge
@@ -425,14 +438,14 @@ def main():
             # excuse 询问链路优先：正在等待用户补充需求时，拦截并阻塞 sensevoice_llm
             try:
                 from func.toolbox.excuse import TBExcuse
-                if TBExcuse().route_text(text, username):
+                if TBExcuse().route_text(text, meowid):
                     return
             except Exception:
                 pass
             # meowsinger 点歌/翻唱/唱歌中拦截
             try:
                 from func.pipeline.msg_singer import MsgSingerBridge
-                if MsgSingerBridge().send_to_singer(text, username, "sensevoice"):
+                if MsgSingerBridge().send_to_singer(text, meowid, "sensevoice"):
                     return
             except Exception:
                 pass
@@ -440,25 +453,25 @@ def main():
             turtle_route = None
             try:
                 from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-                turtle_route = TBTurtleSoupCore().route_text(text, username)
+                turtle_route = TBTurtleSoupCore().route_text(text, meowid)
             except Exception:
                 pass
             if turtle_route == "consumed":
                 return
             # 双通道：主 LLM 快速回复 + toolbox 工具分析
-            sensevoice_bridge.send_to_llm(text, username, source)
+            sensevoice_bridge.send_to_llm(text, meowid, source)
             if turtle_route != "pass":
                 try:
                     from func.pipeline.llm_toolbox import LLMToolboxBridge
                     if not LLMToolboxBridge().merge_enabled():
                         from func.pipeline.msg_toolbox import MsgToolboxBridge
-                        MsgToolboxBridge().send_to_toolbox(text, username)
+                        MsgToolboxBridge().send_to_toolbox(text, meowid)
                 except Exception:
                     pass
                 # 数据库关键词匹配
                 try:
                     from func.pipeline.msg_database import MsgDatabaseBridge
-                    MsgDatabaseBridge().send_to_database(text, username)
+                    MsgDatabaseBridge().send_to_database(text, meowid)
                 except Exception:
                     pass
 

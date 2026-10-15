@@ -161,6 +161,30 @@ class TBNapCatLLM:
                 on_segment(seg)
         return final
 
+    @staticmethod
+    def _drop_current_from_history(short_memory: List[dict], text: str) -> List[dict]:
+        """把历史末尾的"当前这条"去掉，避免同一句话出现两遍。
+
+        NapCat 的聊天记录里已经包含刚收到的这条消息（get_friend_msg_history），
+        而 reply() 还会把 text 当当前输入再 append 一次；不去掉模型就会回"你重复两遍"。
+        历史里连续同角色消息是被逗号合并的，所以末尾可能是 "...，当前这句"。
+        """
+        text = str(text or "").strip()
+        msgs = list(short_memory or [])
+        if not text or not msgs:
+            return msgs
+        last = msgs[-1] or {}
+        if str(last.get("role") or "") != "user":
+            return msgs
+        content = str(last.get("content") or "")
+        if content.strip() == text:
+            msgs.pop()
+        elif content.endswith("，" + text):
+            msgs[-1] = {"role": "user", "content": content[: -(len(text) + 1)]}
+        elif content.endswith(text):
+            msgs[-1] = {"role": "user", "content": content[: -len(text)]}
+        return msgs
+
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
               on_segment: Optional[Callable[[str], None]] = None,
               nsfw: bool = False, quote: Optional[str] = None) -> str:
@@ -174,7 +198,7 @@ class TBNapCatLLM:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
-            for m in short_memory or []:
+            for m in self._drop_current_from_history(short_memory, text):
                 if m.get("role") in ("user", "assistant") and m.get("content"):
                     messages.append({"role": m["role"], "content": m["content"]})
             if quote:

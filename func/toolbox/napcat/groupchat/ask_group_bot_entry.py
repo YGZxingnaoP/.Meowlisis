@@ -26,7 +26,7 @@ class TBAskGroupBotEntry:
         self.config = TBNapCatConfig()
         self.bot = TBAskGroupBot()
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """父级注入当前用户（本工具暂不需要，保持接口兼容）"""
         pass
 

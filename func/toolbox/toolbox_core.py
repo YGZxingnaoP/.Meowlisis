@@ -36,19 +36,22 @@ class TBoxCore:
         except Exception:
             self.log.exception("设置 MeowVision 回传回调失败")
 
-    def receive(self, text: str, username: str):
+    def receive(self, text: str, meowid: str):
         """接收输入内容（来自 pipeline），交给父级分析器决策工具"""
-        self.analysis.decide(text, username)
+        self.analysis.decide(text, meowid)
 
     def forward_vision_reply(self, text: str):
         """接收 MeowVision 视觉模块回传的回复，通过 pipeline 转发给 TTS 合成（分段流式）"""
         self.toolbox_tts.send_stream(text, source="toolbox")
 
     # ==================== QQ 回复转发（逻辑已迁移至 func/toolbox/qq_response.py） ====================
-    def receive_qq(self, username: str, user_id: str, text: str, short_memory: list):
-        """QQ 私聊回复入口：转发至 TBoxQQResponse"""
+    def receive_qq(self, ext_name: str, user_id: str, text: str, short_memory: list):
+        """QQ 私聊回复入口：转发至 TBoxQQResponse
+
+        参数契约：`nickname` 是 QQ 显示名（仅展示/首次登记），`user_id` 是 QQ 号（身份依据）。
+        """
         from func.toolbox.qq_response import TBoxQQResponse
-        return TBoxQQResponse().receive_qq(username, user_id, text, short_memory)
+        return TBoxQQResponse().receive_qq(ext_name, user_id, text, short_memory)
 
     def receive_group(self, parsed: dict):
         """QQ 群聊回复入口：转发至 TBoxQQResponse"""

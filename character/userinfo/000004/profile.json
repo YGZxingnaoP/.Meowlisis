@@ -1,5 +1,4 @@
 {
-  "name": "邪恶一哥",
   "gender": "unknown",
   "character": "unknown",
   "likes": "unknown",
@@ -11,5 +10,6 @@
   "favorite_foods": "unknown",
   "tags_preference": [],
   "affinity": 0,
-  "recent_events": "leisure"
+  "recent_events": "leisure",
+  "nickname": "邪恶一哥"
 }

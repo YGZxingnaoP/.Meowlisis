@@ -11,7 +11,7 @@ from func.catbrain.rules_break.config import TBRulesBreakConfig
 from func.catbrain.rules_break.port import TBRulesBreakPort
 
 
-from func.pipeline.id_signup import display_name as _disp
+from func.pipeline.id_signup import display_name
 @singleton
 class TBRulesBreak:
     """内容审查器：独立 DeepSeek port + tool_choice 强制判断，结果写对应桥接。
@@ -168,7 +168,7 @@ class TBRulesBreak:
         MsgRuleBreakBridge().set_explicit(explicit)
         if explicit:
             self.log.info(
-                f"[原则词触发] 主线程命中色情/露骨，用户={_disp(uid)}，内容={str(content)[:40]}"
+                f"[原则词触发] 主线程命中色情/露骨，用户={display_name(uid)}，内容={str(content)[:40]}"
             )
             self._force_love_emotion()
         return explicit
@@ -183,7 +183,7 @@ class TBRulesBreak:
         ToolboxRuleBreakBridge().set_explicit(session_key, explicit)
         if explicit:
             self.log.info(
-                f"[原则词触发] QQ命中色情/露骨，session={session_key}，用户={_disp(uid)}，内容={str(content)[:40]}"
+                f"[原则词触发] QQ命中色情/露骨，session={session_key}，用户={display_name(uid)}，内容={str(content)[:40]}"
             )
             self._force_love_emotion()
         return explicit

@@ -36,7 +36,7 @@ class BookSession:
         self._last_title = ""         # 本次/上次在读的书（用于只报卷号时消歧）
         self._stop = threading.Event()
         self._window = None
-        self._username = ""
+        self._meowid = ""
         self._lock = threading.Lock()
         self._overrides = {}
 
@@ -55,7 +55,7 @@ class BookSession:
         return EpubConfig(self.ctx.config if self.ctx else {})
 
     # ==================== 启动 ====================
-    def start(self, request, book_query, mode, username):
+    def start(self, request, book_query, mode, meowid):
         """开始或续读（后台线程）
 
         重量级动作（LLM 探测、书名匹配、TTS 播报）全部放在锁外，
@@ -86,7 +86,7 @@ class BookSession:
             if path:
                 self.log.info(f"续读意图命中上次的书：{title}")
         if not path:
-            self._ask_book(cfg, username)
+            self._ask_book(cfg, meowid)
             return "待选书"
 
         with self._lock:
@@ -94,9 +94,9 @@ class BookSession:
                 return self._tip_busy()
             self._clear_window()
             self._active = True              # 先占位，避免并发双开
-            self._username = str(username or "")
+            self._meowid = str(meowid or "")
             self._last_title = title         # 记下在读的书，供"接着读第二本"消歧
-            threading.Thread(target=self._run, args=(cfg, path, title, username),
+            threading.Thread(target=self._run, args=(cfg, path, title, meowid),
                              daemon=True).start()
         return "已开始"
 
@@ -111,7 +111,7 @@ class BookSession:
         return f"不可用：{err}"
 
     # ==================== 会话拦截 ====================
-    def route_text(self, text, username=""):
+    def route_text(self, text, meowid=""):
         """会话拦截：朗读中打断 / 窗口内续读
 
         原则：除「明确的停/继续指令」外，绝不吞掉用户输入。
@@ -124,7 +124,7 @@ class BookSession:
 
         # ---- 朗读中 ----
         if self._active:
-            return self._route_active(text, username)
+            return self._route_active(text, meowid)
 
         # ---- 续读窗口内 ----
         cfg = self.config()
@@ -149,18 +149,18 @@ class BookSession:
                 self.log.warning("续读判定不可用（LLM 未配置），按不继续处理")
                 go = False
         if go:
-            self.start(text, win["book"], "resume", username)
+            self.start(text, win["book"], "resume", meowid)
             return True
         self._clear_window()
         return False
 
-    def _route_active(self, text, username):
+    def _route_active(self, text, meowid):
         """朗读中的输入：停止词接管；纯继续词忽略；其它一律放行（先打断避免混音）"""
-        # 说话人未知时（框架没注入 username），把首个输入者认定为朗读者，
+        # 说话人未知时（框架没注入 meowid），把首个输入者认定为朗读者，
         # 否则会把所有人的话都当成「本人」，一有声音就打断朗读。
-        if not self._username and username:
-            self._username = str(username)
-        same_user = (not self._username) or (str(username or "") == self._username)
+        if not self._meowid and meowid:
+            self._meowid = str(meowid)
+        same_user = (not self._meowid) or (str(meowid or "") == self._meowid)
 
         if any(w in text for w in STOP_WORDS):
             self._interrupt()
@@ -195,7 +195,7 @@ class BookSession:
                 or any(w in text for w in CONTINUE_WORDS))
 
     # ==================== 朗读主流程 ====================
-    def _run(self, cfg, path, title, username):
+    def _run(self, cfg, path, title, meowid):
         """朗读主流程"""
         self._active = True
         self._stop.clear()
@@ -249,7 +249,7 @@ class BookSession:
                 finished = True
             save_state(cfg.state_dir, title, chapter_idx, section_idx, finished)
             # 被打断时也要把「已读完的部分」写进记忆：只写记忆，不概括出声、不点评
-            self._finish(cfg, title, username, "\n".join(read_buf), finished,
+            self._finish(cfg, title, meowid, "\n".join(read_buf), finished,
                          interrupted=self._stop.is_set())
         except Exception:
             self.log.exception("读书流程异常")
@@ -306,7 +306,7 @@ class BookSession:
             self.log.exception("打断朗读失败")
 
     # ==================== 概括 / 记忆 / 点评 ====================
-    def _finish(self, cfg, title, username, read_text, finished, interrupted=False):
+    def _finish(self, cfg, title, meowid, read_text, finished, interrupted=False):
         """概括 → 写记忆 →（未被打断时）点评
 
         被打断时：仍然概括已读内容并写短期/长期记忆，但不出声、不点评，
@@ -319,17 +319,17 @@ class BookSession:
         brain = BookBrain(EpubLLM(cfg), self.ctx)
         summary = brain.summarize(title, read_text)
         if summary:
-            self._save_memory(cfg, username, title, summary)
+            self._save_memory(cfg, meowid, title, summary)
         if interrupted:
             self.log.info("朗读被打断：已把读过的内容概括写入记忆，跳过出声点评")
             return
         if finished:
             self._speak(f"《{title}》到这里就读完啦～")
-        comment = brain.comment(username, title, summary)
+        comment = brain.comment(meowid, title, summary)
         if comment:
             self._speak(comment)
 
-    def _save_memory(self, cfg, username, title, summary):
+    def _save_memory(self, cfg, meowid, title, summary):
         """把概括写入短期/长期/用户记忆"""
         content = f"【读书】《{title}》{summary}"
         try:
@@ -339,7 +339,10 @@ class BookSession:
         except Exception:
             self.log.exception("读书短期记忆写入失败")
         try:
-            self.ctx.ltmem().record_ai_message(username or "用户", self.ctx.ai_name(), content)
+            if not meowid:
+                self.log.error("[epub_reader] 无身份编号，跳过长期记忆写入")
+                return
+            self.ctx.ltmem().record_ai_message(meowid, self.ctx.ai_name(), content)
         except Exception:
             self.log.exception("读书长期记忆写入失败")
 
@@ -353,7 +356,7 @@ class BookSession:
         except Exception:
             self.log.exception("读书播报失败")
 
-    def _ask_book(self, cfg, username):
+    def _ask_book(self, cfg, meowid):
         """excuse 询问读哪一本（短等待；回复支持书名或口语序号）
 
         防重入：excuse 内部按用户名为 key 保存等待队列，若并发第二次询问会把
@@ -371,7 +374,7 @@ class BookSession:
                 tip += "我这儿有：" + "、".join(
                     f"{s['name']}（{s['count']}卷）" for s in series[:6])
             try:
-                reply = self.ctx.excuse().ask(tip, username, timeout=self.ASK_TIMEOUT)
+                reply = self.ctx.excuse().ask(tip, meowid, timeout=self.ASK_TIMEOUT)
             except Exception:
                 self.log.exception("读书询问失败")
                 return
@@ -379,7 +382,7 @@ class BookSession:
                 return
             path, title = self._pick_book(cfg, reply, books, prefer=self._last_title)
             if path:
-                self.start(reply, title, "read", username)
+                self.start(reply, title, "read", meowid)
             else:
                 self._speak("没找到这本书呢，说书名里的几个字、或者第几卷就行")
         finally:

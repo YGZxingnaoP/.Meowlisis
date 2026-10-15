@@ -19,7 +19,11 @@ class SingerLLMBridge:
         """把内部信息（如"不会唱这首歌"）生成角色口吻回复，播报并记录记忆"""
         if not internal_text or not internal_text.strip():
             return ""
-        uid = uid or "主人"
+        # 身份标准：必须已有内部编号，缺身份不生成（禁止用「主人」兜底）
+        uid = str(uid or "").strip()
+        if not uid:
+            self.log.error("[SingerLLM] 缺少身份编号，跳过本条回复")
+            return ""
         try:
             from func.meowsinger.port import get_singer_llm
             llm = get_singer_llm()

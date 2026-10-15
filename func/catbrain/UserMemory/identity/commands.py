@@ -43,7 +43,7 @@ class IdentityCommands:
 
     def help_text(self, platform=""):
         """拼帮助文案，按平台去掉用不上的那条"""
-        platform = self.store.normalize_platform(platform)
+        platform = self.store.normalize_channel(platform)
         lines = []
         for line in self.HELP_LINES:
             if platform == "qq" and line.startswith("· qq "):
@@ -58,7 +58,7 @@ class IdentityCommands:
         rest = self.match(text)
         if rest is None:
             return False, ""
-        platform = self.store.normalize_platform(platform)
+        platform = self.store.normalize_channel(platform)
         account = str(account or "").strip()
         args = [a for a in rest.replace("　", " ").split(" ") if a.strip()]
         if not args:
@@ -81,11 +81,11 @@ class IdentityCommands:
 
     def _bind(self, platform, account, name, key, args):
         """处理 qq / bili 两种绑定：绑定即转正，并把发指令这一侧的账号一起挂上"""
-        target = self.store.normalize_platform(key)
-        label = self.store.platform_label(target)
+        target = self.store.normalize_channel(key)
+        label = self.store.channel_label(target)
         if target == platform:
             other = "bili" if platform == "qq" else "qq"
-            return f"你已经在{label}这边了，要绑{label}请到{self.store.platform_label(other)}那边发这条指令"
+            return f"你已经在{label}这边了，要绑{label}请到{self.store.channel_label(other)}那边发这条指令"
         if not account:
             return "拿不到你的账号标识，暂时没法绑定，请换个入口再试"
         if len(args) < 2 or not args[1].strip():
@@ -122,10 +122,10 @@ class IdentityCommands:
         """处理解绑"""
         if len(args) < 2 or not args[1].strip():
             return f"参数缺失：请写成「{self.prefix()} 解绑 <qq|bili>」"
-        target = self.store.normalize_platform(args[1].strip())
+        target = self.store.normalize_channel(args[1].strip())
         if target not in ("qq", "bili"):
             return "平台不对：只能填 qq 或 bili"
-        label = self.store.platform_label(target)
+        label = self.store.channel_label(target)
         uid = self.store.resolve(platform, account)
         if not uid:
             return "还没绑定过，没有可解绑的账号"

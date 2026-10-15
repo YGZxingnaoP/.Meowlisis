@@ -40,11 +40,11 @@ class TBWeatherCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBWeatherConfig()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供 excuse 追问 / 提示词使用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     def build_tools(self) -> List[Dict]:
         """父级暴露的天气查询工具 schema"""
@@ -137,7 +137,7 @@ class TBWeatherCore:
         # 城市缺失 → QQ excuse 追问（绑定用户）
         if not city:
             from func.toolbox.weather.napcat_plugin import TBWeatherNapcatPlugin
-            city = TBWeatherNapcatPlugin().ask_city(qq_context, self._username)
+            city = TBWeatherNapcatPlugin().ask_city(qq_context, self._meowid)
             # 用户另起话题 → 透传重新投递标记给上层
             if isinstance(city, tuple) and city and city[0] == "redeliver":
                 return city
@@ -161,6 +161,7 @@ class TBWeatherCore:
             return None
 
         self._send_qq_reply(qq_context, reply)
+        self._save_memory(reply)        # QQ 链路同样要写短期/长期记忆（与语音链路一致）
         return reply
 
     @staticmethod
@@ -296,7 +297,7 @@ class TBWeatherCore:
 
     # ==================== LLM 拟播报 ====================
     def _build_reply(self, city: str, label: str, days: List[Dict]) -> str:
-        system = TBoxGetPrompt().get_system_prompt(self._username, f"帮我播报{city}{label}天气")
+        system = TBoxGetPrompt().get_system_prompt(self._meowid, f"帮我播报{city}{label}天气")
         data_text = "\n".join(self._format_day(d) for d in days)
         user = (
             f"以下是来自中国天气网的【{city} {label}】天气数据：\n\n{data_text}\n\n"
@@ -346,7 +347,10 @@ class TBWeatherCore:
         """播报完成后写记忆：短期（type=toolbox_weather）+ 长期/用户记忆（助手侧）"""
         if not reply:
             return
-        username = self._username or "主人"
+        # 身份标准：必须已有内部编号；缺失则不写长期/用户记忆（禁止用「主人」兜底）
+        meowid = str(self._meowid or "").strip()
+        if not meowid:
+            self.log.error("[Weather] 无身份编号，跳过长期/用户记忆写入")
         try:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save(
@@ -358,7 +362,10 @@ class TBWeatherCore:
         try:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
             from func.config.app_config import AppConfig
-            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, reply)
+            if not meowid:
+                self.log.error("[Weather] 无身份编号，跳过长期记忆写入")
+                return
+            MeowLLMLtMemBridge().record_ai_message(meowid, AppConfig().ai_name, reply)
         except Exception:
             self.log.exception("[Weather] 长期记忆保存失败")
 
@@ -371,7 +378,7 @@ class TBWeatherCore:
     def _ask_city(self) -> str:
         try:
             from func.toolbox.excuse import TBExcuse
-            reply = TBExcuse().ask("你想查询哪个城市的天气？", username=self._username)
+            reply = TBExcuse().ask("你想查询哪个城市的天气？", meowid=self._meowid)
         except Exception:
             self.log.exception("[Weather] excuse 追问城市失败")
             return ""

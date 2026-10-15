@@ -28,11 +28,11 @@ class TBAddBacklogTool:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBAddBacklogConfig()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供 excuse 追问 / 提示词使用）"""
-        self._username = username or ""
+        self._meowid = meowid or ""
 
     # ==================== 工具 schema ====================
     def build_tools(self) -> List[Dict]:
@@ -70,7 +70,7 @@ class TBAddBacklogTool:
         request = (arguments.get("request") or "").strip()
         if not request:
             return "待办需求为空"
-        return self._run(request, self._username, qq_context=None)
+        return self._run(request, self._meowid, qq_context=None)
 
     # ==================== QQ 通道入口 ====================
     def dispatch_qq(self, name: str, arguments: Dict, qq_context: Dict):
@@ -90,24 +90,24 @@ class TBAddBacklogTool:
         request = (arguments.get("request") or "").strip()
         if not request:
             return None
-        return self._run(request, self._username, qq_context=qq_context)
+        return self._run(request, self._meowid, qq_context=qq_context)
 
     # ==================== 核心决策 ====================
-    def _run(self, text: str, username: str, qq_context: Optional[Dict] = None):
+    def _run(self, text: str, meowid: str, qq_context: Optional[Dict] = None):
         """二次深度思考 → 字段齐全落盘；缺 time/content 追问一轮后合并再提取（只一轮）"""
-        decision = self._deep_think(text, username)
+        decision = self._deep_think(text, meowid)
         if not decision.get("is_backlog"):
             return None
 
         content = (decision.get("content") or "").strip()
         time_str = self._norm_time(decision.get("time"))
         if content and time_str:
-            return self._add(username, self._build_item(decision, content, time_str, qq_context is not None))
+            return self._add(meowid, self._build_item(decision, content, time_str, qq_context is not None))
 
         # 缺 time/content → 追问一轮
         question = (decision.get("question") or "").strip() or "你想让我在什么时间提醒你做什么事呢？"
         if qq_context is not None:
-            reply = self._ask_qq(question, qq_context, username)
+            reply = self._ask_qq(question, qq_context, meowid)
             if isinstance(reply, tuple):
                 if reply[0] == "redeliver":
                     return reply
@@ -116,22 +116,22 @@ class TBAddBacklogTool:
             if not reply:
                 return None
         else:
-            reply = self._ask_voice(question, username)
+            reply = self._ask_voice(question, meowid)
             if not reply:
                 return None
         merged = f"{text}；用户补充：{reply}"
 
-        decision2 = self._deep_think(merged, username)
+        decision2 = self._deep_think(merged, meowid)
         if not decision2.get("is_backlog"):
             return None
         content2 = (decision2.get("content") or "").strip()
         time2 = self._norm_time(decision2.get("time"))
         if content2 and time2:
-            return self._add(username, self._build_item(decision2, content2, time2, qq_context is not None))
+            return self._add(meowid, self._build_item(decision2, content2, time2, qq_context is not None))
         return None
 
-    def _add(self, username: str, item: dict) -> bool:
-        return TBAddBacklog().add_todo(username, item)
+    def _add(self, meowid: str, item: dict) -> bool:
+        return TBAddBacklog().add_todo(meowid, item)
 
     def _build_item(self, decision: Dict, content: str, time_str: str, force_qq: bool) -> dict:
         day = self._norm_day(decision.get("day"))
@@ -150,14 +150,14 @@ class TBAddBacklogTool:
         return item
 
     # ==================== 二次深度思考 ====================
-    def _deep_think(self, text: str, username: str) -> Dict:
+    def _deep_think(self, text: str, meowid: str) -> Dict:
         """toolcalls 结构化判断：是否待办 + 提取字段 + 是否需追问"""
         llm = self._llm()
         if not llm or not llm.client:
             self.log.error("[AddBacklog] toolbox LLM 不可用")
             return {"is_backlog": False}
 
-        system = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+        system = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""
         system = (
             f"{system}\n\n"
             f"【新建待办】请判断用户是否在新建/记录一条待办提醒，并提取结构化字段。\n"
@@ -210,15 +210,15 @@ class TBAddBacklogTool:
         return {"is_backlog": False}
 
     # ==================== excuse 追问 ====================
-    def _ask_voice(self, question: str, username: str):
+    def _ask_voice(self, question: str, meowid: str):
         try:
             from func.toolbox.excuse import TBExcuse
-            return TBExcuse().ask(question, username=username)
+            return TBExcuse().ask(question, meowid=meowid)
         except Exception:
             self.log.exception("[AddBacklog] 语音 excuse 追问失败")
             return None
 
-    def _ask_qq(self, question: str, qq_context: Dict, username: str):
+    def _ask_qq(self, question: str, qq_context: Dict, meowid: str):
         """QQ 场景追问：发 QQ 询问 → 绑定用户等待 → 判断是否回答。
 
         返回：
@@ -228,7 +228,7 @@ class TBAddBacklogTool:
         """
         if not question or not qq_context:
             return None
-        question_text = self._in_character(question, username)
+        question_text = self._in_character(question, meowid)
         self._send_qq(qq_context, question_text)
 
         from func.toolbox.napcat.excuse_router import TBNapcatExcuseRouter
@@ -242,15 +242,15 @@ class TBAddBacklogTool:
 
         if not reply:
             return None
-        return self._parse_reply(reply, question, username)
+        return self._parse_reply(reply, question, meowid)
 
-    def _parse_reply(self, reply: str, question: str, username: str):
+    def _parse_reply(self, reply: str, question: str, meowid: str):
         """判断 QQ 回复是否在回答追问（另起话题返回 redeliver）"""
         try:
             llm = self._llm()
             if not llm or not llm.client:
                 return ("answer", reply.strip())
-            system = TBoxGetPrompt().get_tool_prompt(username, reply) or ""
+            system = TBoxGetPrompt().get_tool_prompt(meowid, reply) or ""
             tools = [{
                 "type": "function",
                 "function": {
@@ -297,10 +297,10 @@ class TBAddBacklogTool:
             self.log.exception("[AddBacklog] 判断 QQ 回复失败")
         return ("answer", reply.strip())
 
-    def _in_character(self, question: str, username: str) -> str:
+    def _in_character(self, question: str, meowid: str) -> str:
         """以角色身份生成 QQ 询问"""
         try:
-            system = TBoxGetPrompt().get_system_prompt(username, question) or ""
+            system = TBoxGetPrompt().get_system_prompt(meowid, question) or ""
             llm = self._llm()
             if llm and llm.client:
                 resp = llm.chat([

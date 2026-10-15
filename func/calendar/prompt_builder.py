@@ -40,7 +40,7 @@ class DatePromptBuilder:
         lines = list(self.holiday.get_lines())
         is_birthday = bool(uid) and uid in self.birthday.get_today_names()
         if is_birthday:
-            lines.append(f"{_disp(uid)}的生日")
+            lines.append(f"{display_name(uid)}的生日")
 
         # 第一次说话判断 + 记录（原子操作，uid 为空不判定）
         is_first = False

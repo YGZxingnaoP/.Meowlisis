@@ -185,7 +185,11 @@ class TBImpromptuSing:
         )
         if not lyrics:
             return
-        username = username or "用户"
+        # 身份标准：必须已有内部编号，缺身份不写记忆（禁止用「用户」兜底）
+        username = str(username or "").strip()
+        if not username:
+            self.log.error("[ImpromptuSing] 无身份编号，跳过记忆写入")
+            return
         try:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save(

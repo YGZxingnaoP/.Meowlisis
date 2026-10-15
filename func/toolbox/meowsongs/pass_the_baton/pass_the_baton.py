@@ -27,14 +27,14 @@ class TBPassTheBaton:
         self.config = TBMeowSongsConfig()
         self.match = TBHumMatch()
         self.next_line = TBNextLine()
-        self._username = ""
+        self._meowid = ""
         self._last_slice_path = ""
         # 7 秒定歌锁定的结果（段结束接唱时使用）
         self._locked_title = None
         self._locked_offset = 0.0
 
-    def set_username(self, username):
-        self._username = username or ""
+    def set_meowid(self, meowid):
+        self._meowid = meowid or ""
 
     def build_tools(self) -> List[Dict]:
         return [{
@@ -70,7 +70,11 @@ class TBPassTheBaton:
         """入口：按事件类型分发（lock=7秒定歌，sing=段结束接唱）"""
         from func.pipeline.toolbox_audio import ToolboxAudioBridge
         bridge = ToolboxAudioBridge()
-        username = bridge.get_last_speaker() or self._username or "用户"
+        # 身份标准：必须已有内部编号；缺身份不接唱（禁止用「用户」占位兜底）
+        meowid = str(bridge.get_last_speaker() or self._meowid or "").strip()
+        if not meowid:
+            self.log.error("[PassTheBaton] 无身份编号，放弃本次接唱")
+            return ""
 
         # 事件类型/路径优先用触发时绑定的值；无参数调用（LLM 工具）则回退读共享值
         if event_type is None:
@@ -79,10 +83,10 @@ class TBPassTheBaton:
             hum_path = bridge.consume_hum_audio()
 
         if event_type == "lock":
-            return self._run_lock(hum_path, username)
-        return self._run_sing(bridge, hum_path, username)
+            return self._run_lock(hum_path, meowid)
+        return self._run_sing(bridge, hum_path, meowid)
 
-    def _run_lock(self, hum_path, username):
+    def _run_lock(self, hum_path, meowid):
         """7 秒定歌：匹配 + 锁定，不接唱"""
         if not hum_path or not os.path.exists(hum_path):
             # 拿不到音频也要清锁定，避免残留到下一次
@@ -109,7 +113,7 @@ class TBPassTheBaton:
         self._locked_offset = offset
         return f"识别到《{title}》，等你唱完"
 
-    def _run_sing(self, bridge, hum_path, username):
+    def _run_sing(self, bridge, hum_path, meowid):
         """段结束接唱：用锁定结果 + 完整时长定位接唱；未锁定则兜底匹配"""
         hum_duration = bridge.get_hum_duration()
         if hum_duration <= 0:
@@ -136,12 +140,12 @@ class TBPassTheBaton:
                 pass
 
         if not title:
-            self._ask_hum(username)
+            self._ask_hum(meowid)
             return "没有识别出这首歌"
 
         user_lyric, start_sec, end_sec, next_lines = self.next_line.locate(title, offset, hum_duration)
         if start_sec is None:
-            self._ask_hum(username)
+            self._ask_hum(meowid)
             return f"识别到《{title}》，但没有可接的歌词"
 
         # 匹配成功 → 进入唱歌状态（唱歌状态只覆盖接唱，感想播报不拦截用户语音）
@@ -150,7 +154,7 @@ class TBPassTheBaton:
         try:
             # 记忆：用户哼唱歌词
             if user_lyric:
-                self._record_hum_song(username, "user", user_lyric)
+                self._record_hum_song(meowid, "user", user_lyric)
 
             # 接唱
             self._play_from(title, start_sec, end_sec)
@@ -158,7 +162,7 @@ class TBPassTheBaton:
             # 记忆：AI 接唱歌词
             ai_lyric = " ".join(next_lines) if next_lines else ""
             if ai_lyric:
-                self._record_hum_song(username, "assistant", ai_lyric)
+                self._record_hum_song(meowid, "assistant", ai_lyric)
 
             # 等待接唱播完
             self._wait_tts_idle()
@@ -166,7 +170,7 @@ class TBPassTheBaton:
             SingingStateBridge().end_singing()
 
         # 感想播报（唱歌状态外，接唱结束后用户说话可正常发 LLM）
-        self._send_feeling(title, next_lines, username)
+        self._send_feeling(title, next_lines, meowid)
         self._wait_tts_idle()
         return f"识别到《{title}》，接着唱"
 
@@ -193,7 +197,7 @@ class TBPassTheBaton:
         except Exception:
             self.log.exception("[PassTheBaton] 接唱播放异常")
 
-    def _ask_hum(self, username):
+    def _ask_hum(self, meowid):
         """匹配失败：LLM 以角色身份询问用户是否在唱歌"""
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
@@ -202,7 +206,7 @@ class TBPassTheBaton:
             llm = self._llm()
             if not llm or not llm.client:
                 return
-            system_prompt = TBoxGetPrompt().get_system_prompt(username, "") or ""
+            system_prompt = TBoxGetPrompt().get_system_prompt(meowid, "") or ""
             guide = self.config.ask_prompt
             if not guide:
                 return
@@ -215,11 +219,11 @@ class TBPassTheBaton:
                 content = (resp.choices[0].message.content or "").strip()
             if content:
                 ToolboxTtsBridge().send_stream(content, source="meowsongs")
-                self._record_llm_reply(username, content)
+                self._record_llm_reply(meowid, content)
         except Exception:
             self.log.exception("[PassTheBaton] 匹配失败询问异常")
 
-    def _send_feeling(self, title, lines, username):
+    def _send_feeling(self, title, lines, meowid):
         """通过 toolbox LLM 生成感想并播报（LLM 回复单独保存）"""
         lyric = " ".join(lines) if lines else ""
         try:
@@ -228,7 +232,7 @@ class TBPassTheBaton:
             llm = self._llm()
             if not llm or not llm.client:
                 return
-            system_prompt = TBoxGetPrompt().get_system_prompt(username, "") or ""
+            system_prompt = TBoxGetPrompt().get_system_prompt(meowid, "") or ""
             template = self.config.feeling_prompt
             if not template:
                 return
@@ -242,7 +246,7 @@ class TBPassTheBaton:
                 content = (resp.choices[0].message.content or "").strip()
             if content:
                 ToolboxTtsBridge().send_stream(content, source="meowsongs")
-                self._record_llm_reply(username, content)
+                self._record_llm_reply(meowid, content)
         except Exception:
             self.log.exception("[PassTheBaton] 感想生成异常")
 
@@ -258,7 +262,7 @@ class TBPassTheBaton:
         from func.toolbox.port.deepseek import TBoxDeepSeekLLM
         return TBoxDeepSeekLLM(cfg)
 
-    def _record_hum_song(self, username, role, content):
+    def _record_hum_song(self, meowid, role, content):
         """保存哼唱歌词到短期/长期/用户记忆（type=hum_song，插播挂靠）"""
         try:
             from func.pipeline.short_memory import ShortMemory
@@ -269,13 +273,13 @@ class TBPassTheBaton:
         try:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
             if role == "user":
-                MeowLLMLtMemBridge().record_user_message(username, content)
+                MeowLLMLtMemBridge().record_user_message(meowid, content)
             else:
-                MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, content)
+                MeowLLMLtMemBridge().record_ai_message(meowid, AppConfig().ai_name, content)
         except Exception:
             self.log.exception("[PassTheBaton] 长期/用户记忆保存异常")
 
-    def _record_llm_reply(self, username, content):
+    def _record_llm_reply(self, meowid, content):
         """LLM 回复单独保存到短期/长期/用户记忆（type=llm_fast_response）"""
         try:
             from func.pipeline.short_memory import ShortMemory
@@ -285,7 +289,7 @@ class TBPassTheBaton:
             self.log.exception("[PassTheBaton] 短期记忆保存异常")
         try:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
-            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, content)
+            MeowLLMLtMemBridge().record_ai_message(meowid, AppConfig().ai_name, content)
         except Exception:
             self.log.exception("[PassTheBaton] 长期/用户记忆保存异常")
 

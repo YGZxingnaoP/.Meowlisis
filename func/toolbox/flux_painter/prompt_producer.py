@@ -308,7 +308,7 @@ class TBPromptProducer:
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             asked += 1
 
-    def run(self, user_text, username="主人", persona="", on_stream=None,
+    def run(self, user_text, nickname="", persona="", on_stream=None,
             role_card=None, memory=None, base_elements=None, base_request=""):
         """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段
         persona: 角色系统提示词（上层注入的角色人设，置 system 最前）
@@ -379,7 +379,7 @@ class TBPromptProducer:
             )
             messages.append({"role": "user", "content": user_content})
         else:
-            messages.append({"role": "user", "content": f"（{username}）：{user_text}"})
+            messages.append({"role": "user", "content": f"（{nickname}）：{user_text}"})
         for attempt in (1, 2):
             try:
                 message = self._tool_loop(port, messages, on_stream=on_stream)

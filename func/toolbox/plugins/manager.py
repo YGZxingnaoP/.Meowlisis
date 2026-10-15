@@ -24,9 +24,9 @@ class _TriggerAdapter:
         """按工具名执行 QQ 链路"""
         return self.manager.dispatch_qq(name, arguments, qq_context)
 
-    def set_username(self, username):
+    def set_meowid(self, meowid):
         """注入当前用户名"""
-        self.manager.set_username(username)
+        self.manager.set_meowid(meowid)
 
     def set_context(self, context):
         """注入调用上下文"""
@@ -125,10 +125,10 @@ class PluginManager:
         self._ensure()
         return self.registry.dispatch_qq(name, arguments, qq_context)
 
-    def set_username(self, username):
+    def set_meowid(self, meowid):
         """注入当前用户名"""
         self._ensure()
-        self.registry.set_username(username)
+        self.registry.set_meowid(meowid)
 
     def set_context(self, context):
         """注入调用上下文"""
@@ -178,7 +178,7 @@ class PluginManager:
                     return getattr(tool, "name", ""), {"request": text}
         return None
 
-    def route_text(self, text, username=""):
+    def route_text(self, text, meowid=""):
         """会话拦截：交给声明了 route_text 的触发型工具，命中返回 True"""
         self._ensure()
         for tool in self.registry.triggers():
@@ -186,14 +186,19 @@ class PluginManager:
             if not callable(handler):
                 continue
             try:
-                if handler(text, username):
+                if handler(text, meowid):
                     return True
             except Exception:
                 self.log.exception("插件会话拦截失败")
         return False
 
-    def route_qq(self, channel, text, qq_context=None, username=""):
-        """QQ 消息拦截：把消息递给插件"""
+    def route_qq(self, channel, text, qq_context=None, nickname=""):
+        """QQ 消息拦截：把消息递给插件。
+
+        身份契约（标准，插件必须遵守）：
+        - `qq_context["meowid"]`：**内部编号，唯一身份标准**，插件做键/存储/查档只用它；
+        - `qq_context["nickname"]` 与第 4 参 `nickname`：昵称（= 项目昵称），**只允许用于展示**；
+        """
         self._ensure()
         text = str(text or "")
         if not text.strip():
@@ -203,7 +208,7 @@ class PluginManager:
             if not callable(handler):
                 continue
             try:
-                if handler(text, dict(qq_context or {}), str(username or "")):
+                if handler(text, dict(qq_context or {}), str(nickname or "")):
                     self.log.info(f"[插件] {getattr(plugin, 'id', '')} 接管 {channel}: {text[:30]}")
                     return True
             except Exception:

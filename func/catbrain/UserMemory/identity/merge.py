@@ -28,9 +28,9 @@ class UserMerge:
             text = text.replace(ch, "_")
         return text.strip()
 
-    def user_dir(self, uid):
+    def user_dir(self, meowid):
         """取编号对应的档案目录"""
-        return os.path.join("character", "userinfo", str(uid))
+        return os.path.join("character", "userinfo", str(meowid))
 
     def profile_path(self, key):
         """取档案路径：编号走新目录，名字走老目录"""
@@ -82,10 +82,10 @@ class UserMerge:
             return False
         if len(key) == 6 and key.isdigit():
             user = self.store.get_user(key)
-            return bool((user.get("accounts") or {}).get("bili"))
+            return bool((user.get("ext_accounts") or {}).get("bili"))
         for user in self.store.list_users():
             if str(user.get("nickname") or "").strip() == key:
-                return bool((user.get("accounts") or {}).get("bili"))
+                return bool((user.get("ext_accounts") or {}).get("bili"))
         return False
 
     def profile_files(self, key):
@@ -137,17 +137,17 @@ class UserMerge:
         lines = [f"当底：{base}（好感度 {self.affinity(base)}，B站账号 {'有' if self.bili_bound(base) else '无'}）"]
         for key in keys:
             profile = self.read_profile(key)
-            uid = ""
+            meowid = ""
             if len(key) == 6 and key.isdigit():
-                uid = key
+                meowid = key
             else:
                 for user in self.store.list_users():
                     if str(user.get("nickname") or "").strip() == key:
-                        uid = str(user.get("id") or "")
+                        meowid = str(user.get("meowid") or "")
                         break
-            accounts = self.store.get_user(uid).get("accounts") if uid else {}
+            accounts = self.store.get_user(meowid).get("ext_accounts") if meowid else {}
             lines.append(
-                f"· {key}：编号 {uid or '未绑定'}，昵称 {profile.get('name') or key}，"
+                f"· {key}：编号 {meowid or '未绑定'}，昵称 {profile.get('name') or key}，"
                 f"好感度 {self.affinity(key)}，账号 {accounts or '无'}，"
                 f"档案 {len(self.profile_files(key))} 个"
             )
@@ -160,10 +160,10 @@ class UserMerge:
                 lines.append(f"冲突：{field} 当底={old} / {key}={new}（不自动覆盖）")
         return lines
 
-    def backup(self, uid, paths):
+    def backup(self, meowid, paths):
         """把要动的文件先复制一份到编号目录下的 _backup"""
         stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        target = os.path.join(self.user_dir(uid), "_backup", stamp)
+        target = os.path.join(self.user_dir(meowid), "_backup", stamp)
         os.makedirs(target, exist_ok=True)
         for path in paths:
             if not path or not os.path.exists(path):
@@ -174,9 +174,9 @@ class UserMerge:
                 self.log.exception(f"备份失败: {path}")
         return target
 
-    def move_profile(self, key, uid):
+    def move_profile(self, key, meowid):
         """把档案与历史备份搬进编号目录"""
-        target_dir = self.user_dir(uid)
+        target_dir = self.user_dir(meowid)
         os.makedirs(target_dir, exist_ok=True)
         moved = []
         latest = self.profile_path(key)
@@ -190,23 +190,23 @@ class UserMerge:
             moved.append(dest)
         return moved
 
-    def move_backlog(self, key, uid):
+    def move_backlog(self, key, meowid):
         """把待办搬进编号目录"""
         src = self.backlog_path(key)
         if not os.path.exists(src):
             return []
-        target_dir = self.user_dir(uid)
+        target_dir = self.user_dir(meowid)
         os.makedirs(target_dir, exist_ok=True)
         dest = os.path.join(target_dir, "backlog.json")
         shutil.move(src, dest)
         return [dest]
 
-    def move_record(self, key, uid):
+    def move_record(self, key, meowid):
         """把短期记录改成按编号命名，已有就追加"""
         src = self.record_path(key)
         if not os.path.exists(src):
             return []
-        dest = self.record_path(uid)
+        dest = self.record_path(meowid)
         with open(src, "r", encoding="utf-8", errors="ignore") as f:
             text = f.read()
         with open(dest, "a", encoding="utf-8") as f:
@@ -238,11 +238,11 @@ class UserMerge:
         if not key:
             return False, "参数缺失：请给用户名"
         from func.pipeline.id_signup import IdSignupBridge
-        uid = IdSignupBridge().new_user(key)
-        if not uid:
+        meowid = IdSignupBridge().new_user(key)
+        if not meowid:
             return False, "开编号失败，身份表正忙"
         name = self.safe_name(key)
-        target_dir = self.user_dir(uid)
+        target_dir = self.user_dir(meowid)
         os.makedirs(target_dir, exist_ok=True)
         sources = []
         latest = os.path.join(PROFILE_DIR, f"{name}_latest.json")
@@ -259,14 +259,14 @@ class UserMerge:
             sources.append(backlog)
         if not sources:
             return False, f"{key} 没有可搬的文件"
-        backup_dir = self.backup(uid, sources)
+        backup_dir = self.backup(meowid, sources)
         moved = []
         for path in sources:
             base = os.path.basename(path)
             if base == f"{name}_latest.json":
                 dest = os.path.join(target_dir, "profile.json")
             elif base.endswith("_record.txt"):
-                dest = self.record_path(uid)
+                dest = self.record_path(meowid)
                 self._append_text(path, dest)
                 os.remove(path)
                 moved.append(dest)
@@ -277,7 +277,7 @@ class UserMerge:
                 dest = os.path.join(target_dir, base.replace(name, "profile", 1))
             shutil.move(path, dest)
             moved.append(dest)
-        return True, f"{key} 已搬到编号 {uid}，共 {len(moved)} 个文件，备份在 {backup_dir}"
+        return True, f"{key} 已搬到编号 {meowid}，共 {len(moved)} 个文件，备份在 {backup_dir}"
 
     @staticmethod
     def _append_text(src, dest):
@@ -293,13 +293,13 @@ class UserMerge:
         if len(keys) < 2:
             return False, "至少给两个用户名或编号"
         base = str(keep).strip() or self.pick_base(keys)
-        uid = base if (len(base) == 6 and base.isdigit()) else ""
-        if not uid:
+        meowid = base if (len(base) == 6 and base.isdigit()) else ""
+        if not meowid:
             from func.pipeline.id_signup import IdSignupBridge
-            uid = IdSignupBridge().new_user(base)
-        if not uid:
+            meowid = IdSignupBridge().new_user(base)
+        if not meowid:
             return False, "拿不到编号，请先在身份表里绑定"
-        user = self.store.get_user(uid)
+        user = self.store.get_user(meowid)
         new_name = str(user.get("nickname") or "").strip() or base
         touched = []
         for key in keys:
@@ -308,20 +308,20 @@ class UserMerge:
             touched.append(self.record_path(key))
         if dry_run:
             lines = self.plan(keys)
-            lines.append(f"执行后：编号 {uid}，昵称 {new_name}")
+            lines.append(f"执行后：编号 {meowid}，昵称 {new_name}")
             lines.append("要动的文件：" + "、".join([p for p in touched if os.path.exists(p)]))
             return True, "\n".join(lines)
-        backup_dir = self.backup(uid, [p for p in touched if os.path.exists(p)])
+        backup_dir = self.backup(meowid, [p for p in touched if os.path.exists(p)])
         merged = {}
         for key in keys:
             merged = self.merge_fields(merged, self.read_profile(key)) if key != base else self.merge_fields(self.read_profile(key), merged)
         for key in keys:
-            self.move_profile(key, uid)
-            self.move_backlog(key, uid)
-            self.move_record(key, uid)
+            self.move_profile(key, meowid)
+            self.move_backlog(key, meowid)
+            self.move_record(key, meowid)
             if key != base:
                 self.rewrite_memory_tags(key, new_name)
-        target = os.path.join(self.user_dir(uid), "profile.json")
+        target = os.path.join(self.user_dir(meowid), "profile.json")
         os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "w", encoding="utf-8") as f:
             json.dump(merged, f, ensure_ascii=False, indent=2)
@@ -332,8 +332,8 @@ class UserMerge:
             if not (len(key) == 6 and key.isdigit()):
                 for item in self.store.list_users():
                     if str(item.get("nickname") or "").strip() == key:
-                        other = str(item.get("id") or "")
+                        other = str(item.get("meowid") or "")
                         break
-            if other and other != uid:
-                self.store.merge_users(uid, other)
-        return True, f"已合并到编号 {uid}（昵称 {new_name}），备份在 {backup_dir}"
+            if other and other != meowid:
+                self.store.merge_users(meowid, other)
+        return True, f"已合并到编号 {meowid}（昵称 {new_name}），备份在 {backup_dir}"

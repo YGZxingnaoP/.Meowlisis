@@ -20,7 +20,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 
 
-from func.pipeline.id_signup import display_name as _disp
+from func.pipeline.id_signup import display_name
 @singleton
 class SystemPromptBridge:
     """系统提示词桥接：注册 catbrain 构建器，按需获取提示词（单例）"""
@@ -28,7 +28,7 @@ class SystemPromptBridge:
     # 字段缺失时的默认值（前置词 = 行为约束；后置词 = 人设）
     DEFAULT_PROMPT = (
         "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见；"
-        "唱歌，做题，发消息这种仅靠说话完成不了的问题，让{_disp(uid)}稍等"
+        "唱歌，做题，发消息这种仅靠说话完成不了的问题，让{display_name(uid)}稍等"
     )
     DEFAULT_PROMPT_ACTIVE = "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见；"
     DEFAULT_PROMPT_NAPCAT = "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见"
@@ -230,7 +230,7 @@ class SystemPromptBridge:
             body = self._builder.build_persona()
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
+            front = front.replace("{display_name(uid)}", display_name(uid))
         post = self.get_post_prompt()
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
@@ -245,17 +245,10 @@ class SystemPromptBridge:
             body = self._builder.build(uid, current_message, mark_first=mark_first)
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
+            front = front.replace("{display_name(uid)}", display_name(uid))
         post = self.get_post_prompt()
         if post:
-            name = uid or "用户"
-            _display = name
-            try:
-                from func.pipeline.id_signup import IdSignupBridge
-                _display = IdSignupBridge().nickname_of(name) or name
-            except Exception:
-                _display = name
-            post = f"{post}\n你现在在和{_display}说话"
+            post = f"{post}\n你现在在和{display_name(uid)}说话"
         self._psyche_start()
         psyche = self._psyche_block()
         parts = [p for p in (front, psyche, body, post) if p]
@@ -275,7 +268,7 @@ class SystemPromptBridge:
     def get_danmaku_prompt(self, uid=None, current_message: str = "",
                            multi_user: bool = False) -> str:
         """弹幕提示词：前置词(行为约束) + body + 弹幕后置词(回复弹幕)
-        - 单用户：body 含用户档案/记忆，后置词「你在回复{_disp(uid)}的弹幕」；
+        - 单用户：body 含用户档案/记忆，后置词「你在回复{display_name(uid)}的弹幕」；
         - 多用户：body 仅角色人设(角色卡+价值观，不带用户档案)，后置词「你收到了好多弹幕，挑选一些回复一下」。
         """
         body = ""
@@ -286,13 +279,12 @@ class SystemPromptBridge:
                 body = self._builder.build(uid, current_message)
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
+            front = front.replace("{display_name(uid)}", display_name(uid))
         post = self.get_post_prompt()
         if multi_user:
             post = f"{post}\n你收到了好多弹幕，挑选一些回复一下"
         else:
-            name = uid or "用户"
-            post = f"{post}\n你在回复{_disp(name)}的弹幕"
+            post = f"{post}\n你在回复{display_name(uid)}的弹幕"
         self._psyche_start()
         psyche = self._psyche_block()
         parts = [p for p in (front, psyche, body, post) if p]
@@ -330,13 +322,7 @@ class SystemPromptBridge:
             )
         post = self.get_post_prompt()
         if post:
-            name = uid or "用户"
-            _display = name
-            try:
-                from func.pipeline.id_signup import IdSignupBridge
-                _display = IdSignupBridge().nickname_of(name) or name
-            except Exception:
-                _display = name
+            post = f"{post}\n你现在在和{display_name(uid)}说话"
         self._psyche_start("qq")
         psyche = self._psyche_block("qq")
         parts = [p for p in (front, psyche, body, post) if p]
@@ -415,7 +401,7 @@ class SystemPromptBridge:
         """watching（长期观察屏幕）提示词：前置词 + 游戏场景说明 + body(不含摘要) + 后置词(在看XX内容)
         - front_note：AI 决策填写的游戏场景说明（谁在玩什么、画面特征等），加在前置词之后；
         - body：角色卡 + 价值观 + 用户档案 + 日期（不含长期记忆摘要 abmem）；
-        - 后置词末尾追加「你在看{_disp(uid)}的内容」。
+        - 后置词末尾追加「你在看{display_name(uid)}的内容」。
         """
         body = ""
         if self._builder and hasattr(self._builder, "build_watching"):
@@ -425,16 +411,15 @@ class SystemPromptBridge:
 
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
+            front = front.replace("{display_name(uid)}", display_name(uid))
         if front_note and front_note.strip():
             front = f"{front}\n{front_note.strip()}"
 
         post = self.get_post_prompt()
-        name = uid or "用户"
         if post:
-            post = f"{post}\n你现在在看{_disp(name)}的屏幕内容，正在陪{_disp(name)}"
+            post = f"{post}\n你现在在看{display_name(uid)}的屏幕内容，正在陪{display_name(uid)}"
         else:
-            post = f"你现在在看{_disp(name)}的屏幕内容，正在陪{_disp(name)}"
+            post = f"你现在在看{display_name(uid)}的屏幕内容，正在陪{display_name(uid)}"
 
         self._psyche_start()
         psyche = self._psyche_block()

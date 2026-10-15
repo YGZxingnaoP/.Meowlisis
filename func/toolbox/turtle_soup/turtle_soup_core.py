@@ -37,11 +37,11 @@ class TBTurtleSoupCore:
         self._cleanup_cache()
 
     # ==================== 工具注册 ====================
-    def set_username(self, username):
-        self._local.username = username or ""
+    def set_meowid(self, meowid):
+        self._local.meowid = meowid or ""
 
     @property
-    def _username(self):
+    def _meowid(self):
         """当前线程注入的用户名（thread-local，多线程互不干扰）"""
         return getattr(self._local, "username", "")
 
@@ -75,7 +75,7 @@ class TBTurtleSoupCore:
             self._speak("已经有一局海龟汤在进行中啦，先结束这局再开新的吧")
             return "已有进行中的海龟汤"
         difficulty = (arguments or {}).get("difficulty", "") or ""
-        return self._start_game(self.state.live_key(), self._username, difficulty, qq_context=None)
+        return self._start_game(self.state.live_key(), self._meowid, difficulty, qq_context=None)
 
     def dispatch_qq(self, name, arguments, qq_context):
         if name != self.TOOL_NAME or not self.config.enabled or not self.config.qq_enabled:
@@ -85,11 +85,11 @@ class TBTurtleSoupCore:
             self._send_qq(qq_context, "已经有一局海龟汤在进行中啦，先结束这局再开新的吧")
             return True
         difficulty = (arguments or {}).get("difficulty", "") or ""
-        self._start_game(key, self._username, difficulty, qq_context=qq_context)
+        self._start_game(key, self._meowid, difficulty, qq_context=qq_context)
         return True
 
     # ==================== 拦截入口 ====================
-    def route_text(self, text, username="", channel="live"):
+    def route_text(self, text, meowid="", channel="live"):
         """语音/msg/sensevoice/弹幕拦截：consumed=已处理，pass=放行主LLM，None=无游戏"""
         if not self.config.enabled:
             return None
@@ -98,7 +98,7 @@ class TBTurtleSoupCore:
         key = self.state.live_key()
         if not self.state.is_active(key):
             return None
-        return self._route(key, username or "", text.strip(), qq_context=None)
+        return self._route(key, meowid or "", text.strip(), qq_context=None)
 
     def route_qq_private(self, user_id, text):
         """QQ 私聊拦截：游戏激活时全权处理（零 TTS/音频），返回 True 表示已消费"""
@@ -132,41 +132,41 @@ class TBTurtleSoupCore:
         return True
 
     # ==================== 核心路由 ====================
-    def _route(self, key, username, text, qq_context):
+    def _route(self, key, meowid, text, qq_context):
         """判定 + 分支。voice 返回 consumed/pass；qq 内部已处理"""
         # 关键词兜底（强退出/强重报）
         if self._is_giveup_kw(text):
-            self._end_game(key, username, text, mode="give_up", qq_context=qq_context)
+            self._end_game(key, meowid, text, mode="give_up", qq_context=qq_context)
             return ROUTE_CONSUMED
         if self._is_repeat_kw(text):
-            self._announce_surface(key, username, qq_context)
+            self._announce_surface(key, meowid, qq_context)
             return ROUTE_CONSUMED
 
         puzzle = self.state.get_puzzle(key)
         history = self.state.get_history(key)
-        result = judge(puzzle, username, text, history)
+        result = judge(puzzle, meowid, text, history)
 
         if result.get("repeat"):
-            self._announce_surface(key, username, qq_context)
+            self._announce_surface(key, meowid, qq_context)
             return ROUTE_CONSUMED
         if result.get("give_up"):
-            self._end_game(key, username, text, mode="give_up", qq_context=qq_context)
+            self._end_game(key, meowid, text, mode="give_up", qq_context=qq_context)
             return ROUTE_CONSUMED
         if result.get("solved"):
-            self._end_game(key, username, text, mode="solved", qq_context=qq_context)
+            self._end_game(key, meowid, text, mode="solved", qq_context=qq_context)
             return ROUTE_CONSUMED
 
         # 普通猜测
         if qq_context is not None:
-            self._host_reply_qq(key, username, text, qq_context)
+            self._host_reply_qq(key, meowid, text, qq_context)
             return ROUTE_CONSUMED
         self.state.record_turn(key, "user", text)
         return ROUTE_PASS
 
     # ==================== 开始游戏 ====================
-    def _start_game(self, key, username, difficulty, qq_context):
+    def _start_game(self, key, meowid, difficulty, qq_context):
         text = f"用户想玩海龟汤，难度：{difficulty or '由你决定'}"
-        puzzle = generate(username, text, difficulty)
+        puzzle = generate(meowid, text, difficulty)
         if not puzzle:
             if qq_context is not None:
                 self._send_qq(qq_context, "没想出来，再来一次吧")
@@ -185,12 +185,12 @@ class TBTurtleSoupCore:
             self._send_qq(qq_context, opening)
         else:
             self._speak(opening)
-        self._save_memory("assistant", opening, username)
-        self._save_ltmem("assistant", opening, username)
+        self._save_memory("assistant", opening, meowid)
+        self._save_ltmem("assistant", opening, meowid)
         return "已开始"
 
     # ==================== 重报汤面 ====================
-    def _announce_surface(self, key, username, qq_context):
+    def _announce_surface(self, key, meowid, qq_context):
         puzzle = self.state.get_puzzle(key)
         if not puzzle:
             return
@@ -201,24 +201,24 @@ class TBTurtleSoupCore:
             self._send_qq(qq_context, text)
         else:
             self._speak(text)
-        self._save_memory("assistant", text, username)
-        self._save_ltmem("assistant", text, username)
+        self._save_memory("assistant", text, meowid)
+        self._save_ltmem("assistant", text, meowid)
 
     # ==================== 结束游戏 ====================
-    def _end_game(self, key, username, text, mode, qq_context):
+    def _end_game(self, key, meowid, text, mode, qq_context):
         puzzle = self.state.get_puzzle(key)
-        reply = self._build_end_text(puzzle, username, mode)
+        reply = self._build_end_text(puzzle, meowid, mode)
         if qq_context is not None:
             self._send_qq(qq_context, reply)
         else:
             self._speak(reply)
-        self._save_memory("assistant", reply, username)
-        self._save_ltmem("assistant", reply, username)
+        self._save_memory("assistant", reply, meowid)
+        self._save_ltmem("assistant", reply, meowid)
         self._archive(key)
         self._remove_cache(key)
         self.state.end(key)
 
-    def _build_end_text(self, puzzle, username, mode):
+    def _build_end_text(self, puzzle, meowid, mode):
         if not puzzle:
             return "游戏结束啦"
         title = (puzzle.get("title") or "").strip()
@@ -226,7 +226,7 @@ class TBTurtleSoupCore:
         answer = (puzzle.get("answer") or "").strip()
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            system = TBoxGetPrompt().get_system_prompt(username, "") or ""
+            system = TBoxGetPrompt().get_system_prompt(meowid, "") or ""
             if mode == "solved":
                 instruction = (
                     f"用户刚刚猜中了海龟汤汤底！题目「{title}」，汤面「{surface}」，汤底「{answer}」。"
@@ -252,7 +252,7 @@ class TBTurtleSoupCore:
         return f"题目「{title}」的汤底是：{answer}"
 
     # ==================== QQ 主持回答 ====================
-    def _host_reply_qq(self, key, username, text, qq_context):
+    def _host_reply_qq(self, key, meowid, text, qq_context):
         """QQ 普通猜测：napcat LLM 主持 + 发 QQ 文本（零 TTS/音频）"""
         try:
             history = self.state.get_history(key)  # 不含当前消息（当前由 reply 内部追加）
@@ -266,24 +266,24 @@ class TBTurtleSoupCore:
                 gid = str(qq_context.get("group_id", "") or qq_context.get("target_id", ""))
                 gname = str(qq_context.get("group_name", "") or gid)
                 reply = TBNapCatGroupLLM().reply(
-                    username or "用户", gid, gname, text, history, "", on_segment,
+                    meowid, gid, gname, text, history, "", on_segment,
                 )
             else:
                 from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
                 reply = TBNapCatLLM().reply(
-                    username or "用户",
+                    meowid,
                     str(qq_context.get("user_id", "")),
                     text,
                     history,
                     on_segment,
                 )
             self.state.record_turn(key, "user", text)
-            self._save_memory("user", text, username)
-            self._save_ltmem("user", text, username)
+            self._save_memory("user", text, meowid)
+            self._save_ltmem("user", text, meowid)
             if reply:
                 self.state.record_turn(key, "assistant", reply)
-                self._save_memory("assistant", reply, username)
-                self._save_ltmem("assistant", reply, username)
+                self._save_memory("assistant", reply, meowid)
+                self._save_ltmem("assistant", reply, meowid)
         except Exception:
             self.log.exception("[TurtleSoup] QQ 主持回答失败")
 
@@ -364,7 +364,7 @@ class TBTurtleSoupCore:
             self.log.exception("[TurtleSoup] QQ 发送失败")
 
     # ==================== 记忆 ====================
-    def _save_memory(self, role, content, username=""):
+    def _save_memory(self, role, content, meowid=""):
         """写短期记忆（type=turtle_soup，独立裁剪）"""
         if not content:
             return
@@ -378,15 +378,18 @@ class TBTurtleSoupCore:
         except Exception:
             self.log.exception("[TurtleSoup] 短期记忆保存失败")
 
-    def _save_ltmem(self, role, content, username=""):
-        """写长期记忆/用户记忆（AI 输出记 ai_name，用户猜测记 username）"""
+    def _save_ltmem(self, role, content, meowid=""):
+        """写长期记忆/用户记忆（AI 输出记 ai_name，用户猜测记 meowid）"""
         if not content:
             return
         try:
             from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
             from func.config.app_config import AppConfig
             bridge = MeowLLMLtMemBridge()
-            name = username or "用户"
+            if not meowid:
+                self.log.error("[TurtleSoup] 无身份编号，跳过记忆写入")
+                return
+            name = meowid
             if role == "user":
                 bridge.record_user_message(name, content)
             else:

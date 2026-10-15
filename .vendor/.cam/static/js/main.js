@@ -8,7 +8,16 @@ import { Say } from './say.js';
 import { Mode } from './mode.js';
 
 const NAME_KEY = 'phone_username';
-let username = localStorage.getItem(NAME_KEY) || '手机用户';
+// 手机端身份 = 用户编号（000001 / temp-000001），昵称由主项目解析后回填显示
+const PHONE_UID_RE = /^(\d{6}|temp-\d{6})$/;
+const PHONE_DEFAULT_NAME = '手机用户';
+let username = (() => {
+  try {
+    const saved = String(localStorage.getItem(NAME_KEY) || '').trim();
+    if (PHONE_UID_RE.test(saved)) return saved;
+  } catch (e) {}
+  return PHONE_DEFAULT_NAME;
+})();
 
 const el = (id) => document.getElementById(id);
 const camVideo = el('cam');
@@ -65,7 +74,6 @@ function paintVol(force) {
   if (volRange && (force || !volDrag)) volRange.value = String(Math.round(volLevel * 100));
   if (volBtn) {
     const silent = volMuted || volLevel <= 0.001;
-    volBtn.textContent = silent ? '🔇' : (volLevel < 0.5 ? '🔉' : '🔊');
     volBtn.title = silent ? '语音已静音（点击恢复）' : '点击静音';
     volBtn.classList.toggle('off', silent);
   }
@@ -193,14 +201,15 @@ function renderName() {
 }
 
 function setUsername(name) {
-  const clean = String(name || '').trim().replace(/\s+/g, ' ').slice(0, 20);
-  if (!clean) return false;
+  const clean = String(name || '').trim();
+  if (!PHONE_UID_RE.test(clean)) return false;
   username = clean;
   try {
     localStorage.setItem(NAME_KEY, username);
   } catch (e) {}
   renderName();
   syncUser();
+  refreshNick();
   return true;
 }
 
@@ -208,8 +217,9 @@ let lastExitTs = 0;
 
 function enterEdit() {
   nameTag.classList.add('editing');
+  nameTag.classList.remove('err');
   nameInput.value = '';
-  nameInput.placeholder = '输入昵称（当前：' + username + '）';
+  nameInput.placeholder = '输入编号，如 000001';
   nameInput.focus();
 }
 
@@ -217,7 +227,34 @@ function exitEdit(save) {
   if (!nameTag.classList.contains('editing')) return;
   nameTag.classList.remove('editing');
   lastExitTs = Date.now();
-  if (save) setUsername(nameInput.value);
+  if (save && !setUsername(nameInput.value)) flashNameError();
+}
+
+function flashNameError() {
+  nameTag.classList.add('err');
+  setTimeout(() => nameTag.classList.remove('err'), 1200);
+}
+
+async function refreshNick() {
+  const nickEl = el('nickValue');
+  if (!nickEl) return;
+  const unset = !username || username === PHONE_DEFAULT_NAME;
+  if (unset) {
+    nameValue.textContent = '未设置';
+    nickEl.textContent = '';
+    return;
+  }
+  nameValue.textContent = username;
+  nickEl.textContent = '';
+  try {
+    const r = await fetch('/api/who?uid=' + encodeURIComponent(username), { cache: 'no-store' });
+    const d = await r.json();
+    const nick = String((d && d.nickname) || '').trim();
+    if (nick) {
+      nameValue.textContent = nick;              // 第一行：昵称
+      nickEl.textContent = '编号 ' + username;    // 第二行：编号
+    }
+  } catch (e) {}
 }
 
 function initNameUi() {
@@ -236,6 +273,7 @@ function initNameUi() {
   nameInput.addEventListener('blur', () => exitEdit(true));
   nameInput.addEventListener('click', (e) => e.stopPropagation());
   renderName();
+  refreshNick();
 }
 
 function initPlayer() {

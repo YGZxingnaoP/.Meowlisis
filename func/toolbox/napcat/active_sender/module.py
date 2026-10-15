@@ -23,13 +23,13 @@ class TBNapcatActiveModule:
         self.log = DefaultLog().getLogger()
         self.single = TBSingleSend()
         self.group = TBGroupSend()
-        self._username = ""
+        self._meowid = ""
 
-    def set_username(self, username: str):
+    def set_meowid(self, meowid: str):
         """注入当前用户（供 excuse 询问时使用）"""
-        self._username = username or ""
-        self.single.set_username(self._username)
-        self.group.set_username(self._username)
+        self._meowid = meowid or ""
+        self.single.set_meowid(self._meowid)
+        self.group.set_meowid(self._meowid)
 
     def build_tools(self) -> List[Dict]:
         """父级唯一的 NapCat 模块入口 schema（内容信息直传）"""
@@ -101,11 +101,11 @@ class TBNapcatActiveModule:
             from func.toolbox.excuse import TBExcuse
             question = str(arguments.get("clarify_question") or
                            "你想把这条消息发给谁？发什么内容呢？")
-            clarify = TBExcuse().ask(question, username=self._username)
+            clarify = TBExcuse().ask(question, meowid=self._meowid)
             if clarify:
                 request = f"{request}；用户补充：{clarify}".strip("；")
         if target_type == "group":
-            return self.group.execute(request, self._username, content_type=content_type,
+            return self.group.execute(request, self._meowid, content_type=content_type,
                                       text=text, url=url, file_path=file_path, at_name=at_name)
-        return self.single.execute(request, self._username, content_type=content_type,
+        return self.single.execute(request, self._meowid, content_type=content_type,
                                    text=text, url=url, file_path=file_path)

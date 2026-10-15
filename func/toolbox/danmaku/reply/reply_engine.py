@@ -14,7 +14,7 @@ from func.pipeline.toolbox_llm import ToolboxLLMBridge
 from func.pipeline.toolbox_tts import ToolboxTtsBridge
 
 
-from func.pipeline.id_signup import display_name as _disp
+from func.pipeline.id_signup import display_name
 @singleton
 class TBDanmakuReply:
     """弹幕回复引擎：按 SC 优先、普通弹幕算法选取，回复后清空对应队列。
@@ -60,10 +60,11 @@ class TBDanmakuReply:
                 self.receiver.clear_danmaku()
                 return
 
-            # 2.5 统一身份：逐条登记发送者并换成统一昵称（没绑定原样）
-            from func.pipeline.id_signup import IdSignupBridge
-            for d in picked:
-                d["username"] = IdSignupBridge().nickname_of(str(d.get("uid", "") or "")) or str(d.get("username", "用户"))
+            # 2.5 身份归一：uid 位统一成内部编号，username 位统一成昵称（此后下游只认 uid）
+            picked = self._normalize_identity(picked)
+            if not picked:
+                self.receiver.clear_danmaku()
+                return
 
             # 3. 海龟汤游玩阶段：单条走判定，统一回复走主 LLM
             if self._is_turtle_soup_active():
@@ -103,7 +104,7 @@ class TBDanmakuReply:
             content = (d.get("content") or "").strip()
             if not content:
                 return
-            r = TBTurtleSoupCore().route_text(content, d.get("uid", "") or d.get("username", "用户"), channel="live")
+            r = TBTurtleSoupCore().route_text(content, str(d.get("uid") or ""), channel="live")
             if r == "pass":
                 self._reply_single(d)
         except Exception:
@@ -117,7 +118,7 @@ class TBDanmakuReply:
             return False
         try:
             from func.pipeline.toolbox_singer import ToolboxSingerBridge
-            return ToolboxSingerBridge().send_to_singer(content, d.get("uid", "") or d.get("username", "用户"), "danmaku")
+            return ToolboxSingerBridge().send_to_singer(content, str(d.get("uid") or ""), "danmaku")
         except Exception:
             self.log.exception("[DanmakuReply] 弹幕→meowsinger 处理异常")
             return False
@@ -135,7 +136,7 @@ class TBDanmakuReply:
             pass
         try:
             from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(content, d.get("uid", "") or d.get("username", "用户"))
+            MsgToolboxBridge().send_to_toolbox(content, str(d.get("uid") or ""))
         except Exception:
             self.log.exception("[DanmakuReply] 弹幕→toolbox 分析异常")
 
@@ -148,12 +149,41 @@ class TBDanmakuReply:
         except Exception:
             pass
         try:
-            lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
+            lines = [f"{d.get('username', '')}: {d.get('content', '')}" for d in picked]
             wrapped = "【弹幕】" + "；".join(lines)
             from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(wrapped, (picked[0].get("uid", "") or picked[0].get("username", "用户")) if picked else "")
+            MsgToolboxBridge().send_to_toolbox(wrapped, str((picked[0] if picked else {}).get("uid") or ""))
         except Exception:
             self.log.exception("[DanmakuReply] 统一回复→toolbox 分析异常")
+
+    # ==================== 身份解析（弹幕专用） ====================
+    def _identity_of(self, d: dict) -> str:
+        """弹幕条目 → 内部编号（**唯一身份标准**）。
+
+        解析策略固定在 id_signup.meowid_of_account('bili') 一处（bili 通道：外部账号=B站uid → 反查 meowid），
+        本方法不做任何兜底：拿不到编号就返回空串，调用方必须走明确的失败分支，
+        绝不允许用 QQ 号 / open_id / 昵称顶替身份键。
+        """
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().meowid_of_account("bili", str(d.get("uid") or ""),
+                                        str(d.get("username") or ""))
+
+    def _normalize_identity(self, picked: list) -> list:
+        """把每条弹幕归一化：`uid` = 内部编号、`username` = 显示昵称。
+
+        归一化之后，下游所有逻辑只允许读 `d["uid"]`（身份标准）与 `d["username"]`（展示）。
+        身份无法识别的条目直接丢弃，不带着空身份往下走。
+        """
+        kept = []
+        for d in picked:
+            uid = self._identity_of(d)
+            if not uid:
+                self.log.error(f"[DanmakuReply] 弹幕身份无法识别，丢弃: {(d.get('content') or '')[:20]}")
+                continue
+            d["uid"] = uid
+            d["username"] = display_name(uid)
+            kept.append(d)
+        return kept
 
     # ==================== 选取算法 ====================
     def _pick(self, danmaku_list: list) -> list:
@@ -182,25 +212,27 @@ class TBDanmakuReply:
             return
 
         # 多条（all 策略）：统一回复，不朗读，只记 assistant（不记用户记忆）
-        usernames = [d.get("username", "用户") for d in picked]
-        multi_user = len(set(usernames)) > 1
-        lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
+        uids = [str(d.get("uid") or "") for d in picked]
+        multi_user = len(set(uids)) > 1
+        lines = [f"{d.get('username', '')}: {d.get('content', '')}" for d in picked]
         wrapped = "【弹幕】" + "；".join(lines)
         traceid = str(uuid.uuid4())
         self.toolbox_llm.send_to_llm(
-            wrapped, usernames[0], source="danmaku",
+            wrapped, uids[0], source="danmaku",
             preamble_text="", traceid=traceid, multi_user=multi_user,
             memory_config=self._memory_config(assistant_only=True),
         )
 
     def _reply_single(self, d: dict):
-        from func.pipeline.id_signup import IdSignupBridge
-        uid = IdSignupBridge().resolve_identity("bili", str(d.get("uid", "")))["uid"] or str(d.get("username", "用户"))
+        uid = str(d.get("uid") or "")
+        if not uid:
+            self.log.error("[DanmakuReply] 弹幕缺少内部编号，放弃回复")
+            return
         content = d.get("content", "")
-        wrapped = f"【弹幕】{_disp(uid)}: {content}"
+        wrapped = f"【弹幕】{display_name(uid)}: {content}"
         read_text = ""
         if self.config.read_aloud_enabled:
-            read_text = self.read_aloud.render_normal(uid, content)
+            read_text = self.read_aloud.render_normal(display_name(uid), content)
         traceid = str(uuid.uuid4())
         self.toolbox_llm.send_to_llm(
             wrapped, uid, source="danmaku",
@@ -210,14 +242,16 @@ class TBDanmakuReply:
 
     # ==================== SC 回复 ====================
     def _reply_sc(self, sc: dict):
-        from func.pipeline.id_signup import IdSignupBridge
-        uid = IdSignupBridge().resolve_identity("bili", str(sc.get("uid", "")))["uid"] or str(sc.get("username", "用户"))
+        uid = self._identity_of(sc)
+        if not uid:
+            self.log.error("[DanmakuReply] SC 身份无法识别，放弃回复")
+            return
         content = sc.get("content", "")
-        read_text = self.read_aloud.render_sc(uid, content)
+        read_text = self.read_aloud.render_sc(display_name(uid), content)
 
         if self.config.sc_llm_reply_enabled:
             # 朗读 SC + LLM 回复（连续任务）
-            wrapped = f"【弹幕】{_disp(uid)}: {content}"
+            wrapped = f"【弹幕】{display_name(uid)}: {content}"
             traceid = str(uuid.uuid4())
             self.toolbox_llm.send_to_llm(
                 wrapped, uid, source="danmaku",

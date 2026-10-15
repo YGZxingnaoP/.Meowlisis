@@ -11,7 +11,7 @@ class MeowUserInfoTool:
     """用户信息工具：约束 LLM 输出固定结构的用户信息（tags_preference 仅从已有 tags 中选择）"""
 
     TOOL_NAME = "save_user_info"
-    FIELDS = ["name", "gender", "character", "likes", "preference", "relation", "birthday",
+    FIELDS = ["nickname", "gender", "character", "likes", "preference", "relation", "birthday",
               "favorite_songs", "favorite_shows", "favorite_foods", "tags_preference", "affinity"]
 
     def __init__(self):

@@ -68,7 +68,7 @@ class DemoHelloTool(TriggerTool):
         return text
 
     # ---------- 会话拦截（语音/弹幕输入进 LLM 之前先过这里） ----------
-    def route_text(self, text, username=""):
+    def route_text(self, text, meowid=""):
         """返回 True = 本工具已接管该输入，不再走后续 LLM 分析/回复链路。
 
         适合做「播报中打断」「窗口内续读」这类有状态的会话。
@@ -77,12 +77,15 @@ class DemoHelloTool(TriggerTool):
         return False
 
     # ---------- 框架会自动注入的上下文（也可自己用） ----------
-    def set_username(self, username):
-        """框架在每次调用前注入当前说话人（默认实现已存到 self.username）"""
-        super().set_username(username)
+    def set_meowid(self, meowid):
+        """框架在每次调用前注入当前说话人的**内部编号**（身份标准，存到 self.meowid）"""
+        super().set_meowid(meowid)
 
     def set_context(self, context):
-        """框架注入显式上下文 {username, text, short_memory, system_prompt}"""
+        """框架注入显式上下文 {meowid, text, short_memory, system_prompt}
+
+        meowid = 内部编号（身份键）；昵称请用 display_name(meowid) 渲染，别塞进身份位。
+        """
         super().set_context(context)
 
 
@@ -155,21 +158,21 @@ class DemoEchoTool(InterfaceTool):
 #   ctx.tts().is_busy() / .interrupt()                                # 是否在播 / 打断
 #   ctx.llm()                    toolbox LLM 端口：.chat(messages, tools=None) / .chat_stream(...)
 #                                （可用性判断：getattr(ctx.llm(), "client", None)）
-#   ctx.prompt().get_system_prompt(username, current_message)         # 完整角色提示词
-#   ctx.prompt().get_tool_prompt(username, current_message)           # 工具分析用提示词
+#   ctx.prompt().get_system_prompt(meowid, current_message)         # 完整角色提示词
+#   ctx.prompt().get_tool_prompt(meowid, current_message)           # 工具分析用提示词
 #   ctx.napcat().send_private_text(user_id, text) / .send_group_text(group_id, text)
 #   ctx.napcat().send_group_file(group_id, path) / .call_action_sync(action, params)
 #   ctx.short_memory().save({"role","content","type"}, max_rounds, trim_mode="rounds"|"items")
 #   ctx.short_memory().load()                                         # [{"role","content"}]
-#   ctx.ltmem().record_ai_message(username, ai_name, content)         # 长期/用户记忆
-#   ctx.excuse().ask("问什么", username, timeout=25)                   # 阻塞追问，返回文本或 None
-#   ctx.toolbox()                 toolbox 总入口：.receive(text, username) 可把文本送回分析链路
+#   ctx.ltmem().record_ai_message(meowid, ai_name, content)         # 长期/用户记忆
+#   ctx.excuse().ask("问什么", meowid, timeout=25)                   # 阻塞追问，返回文本或 None
+#   ctx.toolbox()                 toolbox 总入口：.receive(text, meowid) 可把文本送回分析链路
 #   ctx.ai_name()                 AI 名字
 #   ctx.state()                   插件状态句柄：enter() / update(**caps) / exit() / is_active()
 #
 #   异步任务模式（docwriter 的做法）：
 #       handle() 里开 threading.Thread(daemon=True) 后台跑，
-#       完成后用 ToolboxLLMBridge().send_to_llm(信号, username, source="toolbox")
+#       完成后用 ToolboxLLMBridge().send_to_llm(信号, meowid, source="toolbox")
 #       把「完成信号」交回主链路 LLM 出话。
 
 

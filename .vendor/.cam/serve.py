@@ -339,6 +339,27 @@ def lan_ip():
             return '127.0.0.1'
 
 
+@app.route('/api/who')
+def api_who():
+    """手机页用：编号 → 昵称。转配置 GUI(1801) 的身份接口，查不到就返回空昵称"""
+    from flask import jsonify
+    uid = (request.args.get('uid') or '').strip()
+    if not uid:
+        return jsonify({'uid': '', 'nickname': ''})
+    nick = ''
+    try:
+        # /api/identity/user 的查询参数是 ref（支持 meowid / 昵称 / QQ号 / B站uid 四种写法）
+        r = requests.get(phone_config.GUI_API_BASE + '/api/identity/user',
+                         params={'ref': uid}, timeout=2.5)
+        if r.ok:
+            d = r.json()
+            if isinstance(d, dict):
+                nick = str(d.get('nickname') or '').strip()
+    except Exception:
+        nick = ''
+    return jsonify({'uid': uid, 'nickname': nick})
+
+
 if __name__ == '__main__':
     print('=' * 58)
     print('  喵呜手机界面服务 (.cam)')

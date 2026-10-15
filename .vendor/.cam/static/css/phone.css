@@ -228,8 +228,9 @@ body.typing .volrange {
   top: calc(8px + env(safe-area-inset-top));
   left: 10px;
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   max-width: calc(100% - 90px);
   padding: 6px 11px;
   border-radius: 16px;
@@ -243,6 +244,13 @@ body.typing .volrange {
   user-select: none;
   -webkit-user-select: none;
   overflow: hidden;
+}
+
+.chip-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
 }
 
 .chip-label {
@@ -383,3 +391,101 @@ body.typing .volrange {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* ---------- 图标（替代 emoji）：统一描边与尺寸 ---------- */
+.flip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.flip svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.ball svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+  opacity: 0.94;
+}
+
+.vol svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* 静音图标：默认藏起来，静音时和喇叭互换 */
+.vol .i-mute {
+  display: none;
+}
+
+.vol.off .i-sound {
+  display: none;
+}
+
+.vol.off .i-mute {
+  display: block;
+}
+
+.ball.on svg {
+  opacity: 1;
+}
+
+.ball {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+/* ---------- 编号条：编号 + 昵称（昵称由主项目解析后回填） ---------- */
+.chip {
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.chip-value {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 第二行：编号 */
+.chip-nick {
+  max-width: 100%;
+  color: #9a9ab2;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip-nick:empty {
+  display: none;
+}
+
+.chip.editing .chip-nick {
+  display: none;
+}
+
+.chip.editing {
+  max-width: calc(100% - 20px);
+  background: rgba(18, 18, 30, 0.72);
+  border-color: rgba(72, 210, 140, 0.75);
+}
+
+.chip-input {
+  background: rgba(14, 14, 24, 0.96);
+  border-color: rgba(72, 210, 140, 0.55);
+}
+
+.chip-input:focus {
+  border-color: rgba(72, 210, 140, 0.9);
+  box-shadow: 0 0 0 3px rgba(72, 210, 140, 0.15);
+}
+
+.chip.err {
+  border-color: rgba(255, 120, 120, 0.85);
+}
+

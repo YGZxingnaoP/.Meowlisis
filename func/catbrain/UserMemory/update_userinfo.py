@@ -19,11 +19,9 @@ from func.catbrain.UserMemory.get_userrecord import MeowGetUserRecord
 from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
 
 def _disp_name(uid) -> str:
-    try:
-        from func.pipeline.id_signup import IdSignupBridge
-        return IdSignupBridge().nickname_of(uid) or str(uid or "")
-    except Exception:
-        return str(uid or "")
+    """展示名：唯一规则（id_signup.display_name）"""
+    from func.pipeline.id_signup import display_name
+    return display_name(uid)
 
 
 
@@ -113,7 +111,7 @@ class MeowUpdateUserInfo:
         if not info_result:
             self.log.error(f"新用户猜测建档失败: {uid}")
             return
-        info_result["name"] = _disp_name(uid)
+        info_result["nickname"] = _disp_name(uid)
         info_result["changed"] = True
         if self._check_format(info_result):
             self._save(uid, info_result, event_result)
@@ -148,7 +146,7 @@ class MeowUpdateUserInfo:
         if not info_result:
             self.log.info(f"用户信息未更新（未调用工具或调用失败）: {uid}")
             return
-        info_result["name"] = _disp_name(uid)
+        info_result["nickname"] = _disp_name(uid)
         # AI 决策不改动时跳过写入
         if info_result.get("changed") is False:
             self.log.info(f"用户信息无变化，跳过更新: {uid}")
@@ -228,7 +226,7 @@ class MeowUpdateUserInfo:
         if not isinstance(data, dict):
             return False
         for field in self.tool.FIELDS:
-            if field in ("name", "affinity"):
+            if field in ("nickname", "affinity"):
                 continue
             if field == "tags_preference":
                 if data.get(field):
@@ -263,13 +261,9 @@ class MeowUpdateUserInfo:
         latest_path = self._latest_path(uid)
         os.makedirs(os.path.dirname(latest_path), exist_ok=True)
         data = {field: "unknown" for field in self.tool.FIELDS}
-        name = ""
-        try:
-            from func.pipeline.id_signup import IdSignupBridge
-            name = IdSignupBridge().nickname_of(uid)
-        except Exception:
-            name = ""
-        data["name"] = name or uid
+        # 展示名：唯一规则（display_name），禁止 name/uid 互相兜底
+        from func.pipeline.id_signup import display_name
+        data["nickname"] = display_name(uid)
         data["affinity"] = 0
         data["tags_preference"] = []
         data["recent_events"] = "leisure"

@@ -10,6 +10,8 @@ KEY_PEM = os.path.join(CERT_DIR, 'key.pem')
 CONFIG_YML = os.path.join(PROJECT_DIR, 'config.yml')
 
 API_BASE = 'http://127.0.0.1:1800'
+# 配置 GUI（config_gui.py，端口 1801）里才有 /api/identity/* 身份接口
+GUI_API_BASE = 'http://127.0.0.1:1801'
 HOST = '0.0.0.0'
 HTTPS_PORT = 8443
 PET_HTTP_PORT = 8445

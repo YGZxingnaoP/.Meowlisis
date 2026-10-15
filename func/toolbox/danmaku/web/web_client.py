@@ -222,11 +222,13 @@ class TBDanmakuWeb:
 
         @staticmethod
         def _uid_of(message):
-            """取消息里的 uid，开放平台没有 uid 就退回 open_id"""
-            uid = getattr(message, "uid", "")
-            if uid in (None, ""):
-                uid = getattr(message, "open_id", "")
-            return str(uid or "")
+            """取消息里的真实 uid；开放平台拿不到真实 uid 就返回空串。
+
+            注意：open_id 是「用户×应用」加密标识，不是 B 站 uid，不能当身份用
+            （否则每个观众都会被建成无昵称的临时身份）→ 一律舍弃，
+            身份改由弹幕昵称（uname）反查。
+            """
+            return str(getattr(message, "uid", "") or "")
 
         def _on_open_live_danmaku(self, client, message: open_models.DanmakuMessage):
             self.web._handle_danmaku(message.uname, message.msg, self._uid_of(message))

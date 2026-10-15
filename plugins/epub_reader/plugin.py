@@ -24,15 +24,15 @@ class ReadBookTool(TriggerTool):
         """语音/弹幕触发：开始或续读"""
         SESSION.set_ctx(ctx)
         args = arguments or {}
-        username = str((self.context or {}).get("username") or "")
+        meowid = str((self.context or {}).get("meowid") or "")
         request = str(args.get("request") or "")
         book = str(args.get("book") or "")
         mode = str(args.get("mode") or "read")
-        return SESSION.start(request, book, mode, username)
+        return SESSION.start(request, book, mode, meowid)
 
-    def route_text(self, text, username=""):
+    def route_text(self, text, meowid=""):
         """会话拦截：朗读中打断 / 窗口内续读"""
-        return SESSION.route_text(text, username)
+        return SESSION.route_text(text, meowid)
 
 
 class Plugin(ToolboxPlugin):
