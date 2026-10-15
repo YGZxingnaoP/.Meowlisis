@@ -1,141 +1,402 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>语音识别字幕（ASR）</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
-        body {
-            margin: 0; min-height: 100vh; background: transparent;
-            display: flex; justify-content: center; align-items: center;
-            font-family: 'Segoe UI', 'Quicksand', 'Poppins', 'Microsoft YaHei', 'PingFang SC', sans-serif;
-            position: relative; overflow: hidden;
-        }
-        .subtitle-box {
-            position: relative; background: #ffffff; border-radius: 60px;
-            padding: 10px 48px; border: 2px solid #A6C8FF;
-            box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08), 0 4px 12px rgba(100, 150, 255, 0.18);
-            transition: all 0.2s ease; max-width: 92vw; min-width: 360px;
-            width: fit-content; text-align: center;
-        }
-        .asr-tag {
-            position: absolute; top: -10px; left: 26px; background: #4A90E2;
-            color: #fff; font-size: 12px; font-weight: 700; padding: 1px 12px;
-            border-radius: 999px; letter-spacing: 1px; z-index: 9;
-        }
-        .butterfly-deco {
-            position: absolute; left: -56px; top: -56px; width: 128px; height: 128px;
-            object-fit: contain; pointer-events: none; z-index: 10;
-            filter: drop-shadow(0 6px 12px rgba(120, 170, 255, 0.35));
-            transition: transform 0.25s ease;
-        }
-        .subtitle-box:hover .butterfly-deco { transform: rotate(5deg) scale(1.03); }
-        .subtitle-text {
-            font-size: 44px; font-weight: 700;
-            background: linear-gradient(135deg, #4A90E2, #7FB2FF, #9FC9FF);
-            background-clip: text; -webkit-background-clip: text; color: transparent;
-            text-shadow: 2px 2px 12px rgba(120, 170, 255, 0.25);
-            letter-spacing: 1px; word-break: break-word; line-height: 1.2;
-            animation: bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1);
-        }
-        .subtitle-text.single-line { white-space: nowrap; overflow: hidden; word-break: normal; }
-        @keyframes bounceGlow {
-            0% { opacity: 0; transform: translateY(18px) scale(0.96); }
-            60% { opacity: 0.9; transform: translateY(-3px) scale(1.01); }
-            100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        @media (max-width: 768px) {
-            .subtitle-text { font-size: 32px; }
-            .subtitle-box { padding: 8px 32px; min-width: 280px; max-width: 90vw; }
-            .butterfly-deco { width: 60px; height: 60px; left: -26px; top: -26px; }
-        }
-        @media (max-width: 480px) {
-            .subtitle-text { font-size: 26px; }
-            .subtitle-box { padding: 6px 24px; min-width: 240px; }
-            .butterfly-deco { width: 52px; height: 52px; left: -22px; top: -22px; }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0d1020">
+<title>语音字幕</title>
+<style>
+:root {
+    --bg-1: #0d1020;
+    --bg-2: #161a33;
+    --ink: #eef2ff;
+    --ink-dim: #9aa3c7;
+    --ink-soft: #6f7899;
+    --line: rgba(255, 255, 255, 0.09);
+    --glass: rgba(255, 255, 255, 0.045);
+    --glass-2: rgba(255, 255, 255, 0.07);
+    --accent: #7c9cff;
+    --accent-2: #b18cff;
+    --ok: #4fd1a5;
+    --warn: #ffb26b;
+    --err: #ff7b8a;
+    --r-lg: 24px;
+    --r-md: 16px;
+    --r-sm: 12px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+    background:
+        radial-gradient(1200px 600px at 15% -10%, rgba(124, 156, 255, 0.22), transparent 60%),
+        radial-gradient(1000px 500px at 100% 0%, rgba(177, 140, 255, 0.18), transparent 55%),
+        linear-gradient(170deg, var(--bg-1), var(--bg-2) 60%, #0b0e1c);
+    color: var(--ink);
+    font-family: 'PingFang SC', 'HarmonyOS Sans SC', 'Microsoft YaHei', system-ui, -apple-system, sans-serif;
+    min-height: 100%;
+    padding: max(14px, env(safe-area-inset-top)) 14px max(18px, env(safe-area-inset-bottom));
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    overflow-x: hidden;
+}
+.card {
+    background: var(--glass);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+.bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px;
+}
+.bar-title { font-size: 15px; font-weight: 600; letter-spacing: 0.04em; }
+.bar-title span { color: var(--ink-soft); font-weight: 400; margin-left: 8px; font-size: 12px; }
+.dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--ink-soft);
+    margin-right: 8px; display: inline-block; vertical-align: middle;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+.dot.on { background: var(--ok); box-shadow: 0 0 0 4px rgba(79, 209, 165, 0.16); }
+.dot.off { background: var(--err); box-shadow: 0 0 0 4px rgba(255, 123, 138, 0.14); }
+
+.stage {
+    flex: 1 1 auto;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px;
+    padding: 22px 16px;
+    border-radius: 28px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015));
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    min-height: 34vh;
+    position: relative;
+    overflow: hidden;
+}
+.stage::after {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(600px 200px at 50% 120%, rgba(124, 156, 255, 0.16), transparent 70%);
+    pointer-events: none;
+}
+.who {
+    font-size: 13px; letter-spacing: 0.14em; color: var(--ink-dim);
+    padding: 4px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--glass-2);
+}
+.said {
+    font-size: clamp(24px, 8.4vw, 44px);
+    font-weight: 700; line-height: 1.28; text-align: center;
+    word-break: break-word;
+    background: linear-gradient(120deg, #ffffff, #cfd9ff 40%, #b9c6ff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 6px 18px rgba(124, 156, 255, 0.22));
+}
+.said.idle { color: var(--ink-soft); background: none; -webkit-text-fill-color: var(--ink-soft); font-weight: 500; font-size: 16px; }
+.said.fit { white-space: nowrap; }
+.tip { font-size: 12px; color: var(--ink-soft); letter-spacing: 0.06em; }
+
+.grid { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.row { display: flex; gap: 8px; }
+.seg {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+    background: rgba(0, 0, 0, 0.22); padding: 6px; border-radius: var(--r-md);
+    border: 1px solid var(--line);
+}
+.seg button {
+    border: 0; background: transparent; color: var(--ink-dim);
+    font-size: 13px; font-weight: 600; padding: 10px 4px; border-radius: 11px;
+    transition: background 0.18s, color 0.18s;
+}
+.seg button.on { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #10132a; }
+input[type=text] {
+    flex: 1; min-width: 0;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
+    font-size: 16px;
+    color: var(--ink);
+    outline: none;
+}
+input[type=text]::placeholder { color: var(--ink-soft); }
+input[type=text]:focus { border-color: rgba(124, 156, 255, 0.55); box-shadow: 0 0 0 4px rgba(124, 156, 255, 0.12); }
+.btn {
+    border: 0; border-radius: var(--r-md); padding: 14px 18px;
+    font-size: 15px; font-weight: 650; letter-spacing: 0.02em;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #10132a;
+    transition: transform 0.12s, opacity 0.2s;
+    white-space: nowrap;
+}
+.btn:active { transform: scale(0.975); }
+.btn.ghost {
+    background: var(--glass-2); color: var(--ink);
+    border: 1px solid var(--line); font-weight: 600;
+}
+.btn[disabled] { opacity: 0.45; }
+.result {
+    display: none;
+    border-radius: var(--r-md);
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.2);
+    padding: 14px 16px;
+    gap: 4px; flex-direction: column;
+}
+.result.show { display: flex; }
+.result .nickname { font-size: 18px; font-weight: 700; line-height: 1.3; }
+.result .uid { font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); font-family: Consolas, Menlo, monospace; }
+.result .meta { font-size: 12px; color: var(--ink-dim); margin-top: 6px; }
+.pill {
+    display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--glass-2); color: var(--ink-dim); margin: 2px 4px 0 0;
+}
+.status { min-height: 18px; font-size: 12px; color: var(--ink-soft); letter-spacing: 0.02em; }
+.status.ok { color: var(--ok); }
+.status.err { color: var(--err); }
+.foot { text-align: center; font-size: 11px; color: var(--ink-soft); letter-spacing: 0.08em; padding-bottom: 4px; }
+.hide { display: none; }
+</style>
 </head>
 <body>
-    <div class="subtitle-box">
-        <span class="asr-tag" id="tagName">你说</span>
-        <img src="bluebutterfly.png" alt="蓝蝶" class="butterfly-deco"
-             onerror="this.onerror=null; this.style.opacity='0.7';">
-        <div class="subtitle-text" id="asrText">🎤 语音识别待机中 🎤</div>
+
+<div class="card bar">
+    <div class="bar-title">语音字幕<span id="hostLabel">连接中</span></div>
+    <div><span class="dot" id="dot"></span><span class="tip" id="stateText">初始化</span></div>
+</div>
+
+<div class="stage">
+    <div class="who" id="who">说话人</div>
+    <div class="said idle" id="said">语音识别待机中</div>
+    <div class="tip" id="hint">对着手机说话，识别结果会实时出现在这里</div>
+</div>
+
+<div class="card grid">
+    <div class="seg" id="seg">
+        <button data-kind="qq" class="on">QQ号</button>
+        <button data-kind="uid">编号</button>
+        <button data-kind="nickname">昵称</button>
+        <button data-kind="bili">B站UID</button>
     </div>
-    <script>
-        const el = document.getElementById('asrText');
-        const tagEl = document.getElementById('tagName');
-        const IDLE = '🎤 语音识别待机中 🎤';
-        const BASE = 44, MIN = 20;
-        let ws = null, retry = 0;
-        const MAX_RETRY = 5;
+    <div class="row">
+        <input type="text" id="keyInput" placeholder="输入 QQ 号 / 编号 / 昵称 / B站 UID" autocomplete="off">
+        <button class="btn" id="queryBtn">查询</button>
+    </div>
+    <div class="result" id="result">
+        <div class="nickname" id="rNick">未设昵称</div>
+        <div class="uid" id="rUid"></div>
+        <div class="meta" id="rMeta"></div>
+        <div class="row" id="bindRow" style="margin-top:10px;">
+            <button class="btn ghost" id="bindQq">绑定 QQ</button>
+            <button class="btn ghost" id="bindBili">绑定 B站</button>
+        </div>
+    </div>
+    <div class="status" id="status"></div>
+</div>
 
-        function idle() {
-            el.classList.remove('single-line'); el.style.fontSize = '';
-            el.textContent = IDLE;
+<div class="card grid">
+    <div class="row">
+        <input type="text" id="serverInput" placeholder="识别服务地址，例如 192.168.1.8:8765" autocomplete="off">
+        <button class="btn ghost" id="serverBtn">连接</button>
+    </div>
+    <div class="status" id="serverMsg">服务地址保存在本机，下次打开自动使用</div>
+</div>
+
+<div class="foot">MEOWLISIS VOICE</div>
+
+<script>
+(function () {
+    var $ = function (id) { return document.getElementById(id); };
+    var said = $('said'), who = $('who'), hint = $('hint'), dot = $('dot'), stateText = $('stateText');
+    var IDLE = '语音识别待机中';
+    var BASE = 44, MIN = 18;
+    var ws = null, retry = 0, maxRetry = 8, kind = 'qq', current = null;
+
+    function setState(on, text) {
+        dot.className = 'dot ' + (on ? 'on' : 'off');
+        stateText.textContent = text;
+    }
+    function idle() {
+        said.classList.add('idle');
+        said.classList.remove('fit');
+        said.style.fontSize = '';
+        said.textContent = IDLE;
+        who.textContent = '说话人';
+    }
+    function fit() {
+        said.classList.add('fit');
+        var s = BASE;
+        said.style.fontSize = s + 'px';
+        while (s > MIN && said.scrollWidth > said.clientWidth) { s -= 1; said.style.fontSize = s + 'px'; }
+        if (said.scrollWidth > said.clientWidth) { said.classList.remove('fit'); said.style.fontSize = MIN + 'px'; }
+    }
+    function show(text) {
+        said.classList.remove('idle');
+        said.style.fontSize = '';
+        said.textContent = text;
+        fit();
+    }
+
+    function serverAddr() {
+        var v = ($('serverInput').value || '').trim();
+        if (!v) v = localStorage.getItem('meow_ws') || '';
+        if (!v) v = location.hostname ? (location.hostname + ':8765') : '127.0.0.1:8765';
+        return v;
+    }
+    function connect() {
+        var addr = serverAddr();
+        localStorage.setItem('meow_ws', addr);
+        $('serverInput').value = addr;
+        $('hostLabel').textContent = addr;
+        try { if (ws) { ws.onclose = null; ws.close(); } } catch (e) {}
+        setState(false, '连接中');
+        try {
+            ws = new WebSocket('ws://' + addr + '/?role=asr');
+        } catch (e) {
+            setState(false, '地址无效');
+            return;
         }
-        function fit() {
-            el.classList.add('single-line');
-            el.style.fontSize = BASE + 'px';
-            let s = BASE;
-            while (s > MIN && el.scrollWidth > el.clientWidth) { s -= 1; el.style.fontSize = s + 'px'; }
-            if (el.scrollWidth > el.clientWidth) {
-                el.classList.remove('single-line');
-                el.style.fontSize = MIN + 'px';
+        ws.onopen = function () { retry = 0; setState(true, '已连接'); $('serverMsg').textContent = '已连接 ' + addr; };
+        ws.onmessage = function (ev) {
+            if (!ev.data || typeof ev.data !== 'string') return;
+            var msg = null;
+            try { msg = JSON.parse(ev.data); } catch (e) { msg = null; }
+            if (msg && typeof msg === 'object' && ('r' in msg || 't' in msg)) {
+                if (msg.r === 'clear') { idle(); return; }
+                if (msg.n) who.textContent = String(msg.n);
+                var t = String(msg.t || '').replace(/\n+/g, ' ').trim();
+                if (t === '') idle(); else show(t);
+                return;
             }
-        }
-        function show(t) {
-            el.style.fontSize = '';
-            el.textContent = t;
-            fit();
-            anim();
-        }
-        function anim() { el.style.animation = 'none'; void el.offsetHeight;
-            el.style.animation = 'bounceGlow 0.35s cubic-bezier(0.2, 0.9, 0.4, 1.1)'; }
+            var raw = String(ev.data).trim();
+            if (raw === '' || raw === '__CLEAR__') idle(); else show(raw.replace(/\n+/g, ' '));
+        };
+        ws.onerror = function () { setState(false, '连接异常'); };
+        ws.onclose = function () {
+            setState(false, '已断开');
+            if (retry < maxRetry) {
+                retry++;
+                setTimeout(connect, Math.min(1200 * retry, 8000));
+            } else {
+                $('serverMsg').textContent = '多次重连失败，检查服务是否启动、地址是否正确';
+            }
+        };
+    }
 
-        function connect() {
-            try { if (ws) ws.close(); } catch (e) {}
-            try {
-                ws = new WebSocket('ws://localhost:8765/?role=asr');
-                ws.onopen = function () { retry = 0; };
-                ws.onmessage = function (ev) {
-                    if (!ev.data || typeof ev.data !== 'string') return;
-                    let msg = null;
-                    try { msg = JSON.parse(ev.data); } catch (e) { msg = null; }
-                    if (msg && msg.r) {
-                        if (msg.r === 'clear') { idle(); anim(); return; }
-                        if (msg.n && tagEl) { tagEl.textContent = msg.n; }   // 标签=说话用户名
-                        const t = String(msg.t || '').trim();
-                        if (t === '') idle(); else show(t.replace(/\n+/g, ' '));
-                    } else {
-                        const raw = String(ev.data).trim();
-                        if (raw === '' || raw === '__CLEAR__') idle();
-                        else show(raw.replace(/\n+/g, ' '));
-                    }
-                };
-                ws.onerror = function () {
-                    setTimeout(function () {
-                        if (ws && ws.readyState !== WebSocket.OPEN && !el.innerText.includes('断开')) {
-                            show('💔 字幕连接断开 重试中 💔');
+    function apiBase() {
+        var addr = ($('serverInput').value || localStorage.getItem('meow_api') || '');
+        if (!addr) addr = localStorage.getItem('meow_ws') || '';
+        var host = addr ? addr.split(':')[0] : (location.hostname || '127.0.0.1');
+        return 'http://' + host + ':8080';
+    }
+    function status(msg, cls) {
+        var el = $('status');
+        el.textContent = msg || '';
+        el.className = 'status' + (cls ? ' ' + cls : '');
+    }
+    function render(u) {
+        current = u || null;
+        var box = $('result');
+        if (!u) { box.classList.remove('show'); return; }
+        box.classList.add('show');
+        $('rNick').textContent = u.nickname || '未设昵称';
+        $('rUid').textContent = u.id || u.uid || '';
+        var meta = $('rMeta');
+        meta.innerHTML = '';
+        var acc = u.accounts || u.platforms || {};
+        var keys = Object.keys(acc);
+        if (!keys.length) {
+            meta.appendChild(document.createTextNode('还没有绑定平台账号'));
+        } else {
+            keys.forEach(function (k) {
+                var span = document.createElement('span');
+                span.className = 'pill';
+                span.textContent = k + ' ' + acc[k];
+                meta.appendChild(span);
+            });
+        }
+    }
+    function pickUser(d) {
+        if (!d) return null;
+        if (d.user && d.user.id) return d.user;
+        if (d.detail && d.detail.id) return d.detail;
+        if (d.id) return d;
+        if (Array.isArray(d)) return d.length === 1 ? d[0] : null;
+        if (d.users && d.users.length === 1) return d.users[0];
+        return null;
+    }
+    function doQuery() {
+        var q = ($('keyInput').value || '').trim();
+        if (!q) { status('先填内容再查询', 'err'); return; }
+        status('查询中');
+        fetch(apiBase() + '/api/identity/user?id=' + encodeURIComponent(q))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                var u = pickUser(d);
+                if (u) { render(u); status('已找到', 'ok'); return; }
+                return fetch(apiBase() + '/api/identity/users')
+                    .then(function (r) { return r.json(); })
+                    .then(function (list) {
+                        var hit = [];
+                        if (Array.isArray(list)) {
+                            hit = list.filter(function (x) {
+                                if (String(x.id) === q || String(x.nickname) === q) return true;
+                                var acc = x.accounts || {};
+                                return Object.keys(acc).some(function (k) { return String(acc[k]) === q; });
+                            });
                         }
-                    }, 500);
-                };
-                ws.onclose = function () {
-                    show('🦋 字幕连接断开 · 正在重连 🦋');
-                    if (retry < MAX_RETRY) {
-                        retry++;
-                        setTimeout(connect, Math.min(2000 * retry, 10000));
-                    } else { show('💧 无法连接服务端 请检查程序 💧'); }
-                };
-            } catch (err) {
-                show('⚠️ 初始化连接失败 ⚠️'); retry++;
-                if (retry < MAX_RETRY) setTimeout(connect, 2000);
-            }
-        }
-        connect();
-        window.addEventListener('beforeunload', function () { if (ws) ws.close(); });
-    </script>
+                        if (hit.length === 1) { render(hit[0]); status('已找到', 'ok'); }
+                        else { render(null); status('没有唯一匹配，换个写法或先在电脑上建号', 'err'); }
+                    });
+            })
+            .catch(function () { status('查询失败，检查端口 ' + apiBase(), 'err'); });
+    }
+    function doBind(platform) {
+        if (!current) { status('先查询到用户再绑定', 'err'); return; }
+        var v = ($('keyInput').value || '').trim();
+        var account = v;
+        if (kind === 'uid' && current.id) account = v;
+        status('绑定中');
+        fetch(apiBase() + '/api/identity/bind', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: current.id || current.uid, platform: platform, account: account })
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d && (d.status === 'error' || d.ok === false)) {
+                    status(d.message || d.msg || '绑定失败', 'err');
+                    return;
+                }
+                status('已绑定 ' + platform + ' ' + account, 'ok');
+                doQuery();
+            })
+            .catch(function () { status('绑定请求失败', 'err'); });
+    }
+
+    $('seg').addEventListener('click', function (e) {
+        var b = e.target.closest('button');
+        if (!b) return;
+        kind = b.getAttribute('data-kind');
+        Array.prototype.forEach.call(this.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+        b.classList.add('on');
+        $('keyInput').placeholder = kind === 'qq' ? '输入 QQ 号' :
+            kind === 'uid' ? '输入 6 位编号，例如 000001' :
+            kind === 'nickname' ? '输入昵称' : '输入 B站 UID';
+    });
+    $('queryBtn').addEventListener('click', doQuery);
+    $('keyInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') doQuery(); });
+    $('bindQq').addEventListener('click', function () { doBind('qq'); });
+    $('bindBili').addEventListener('click', function () { doBind('bili'); });
+    $('serverBtn').addEventListener('click', connect);
+    $('serverInput').addEventListener('keydown', function (e) { if (e.key === 'Enter') connect(); });
+
+    idle();
+    connect();
+    window.addEventListener('beforeunload', function () { if (ws) { ws.onclose = null; ws.close(); } });
+})();
+</script>
 </body>
 </html>

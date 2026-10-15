@@ -17,6 +17,34 @@ from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 class SenseVoiceCore:
     """SenseVoice 客户端核心：为每个启用的音频源创建独立识别会话"""
 
+    def _run_async_loop(self):
+        """运行异步事件循环"""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        try:
+            self.loop.run_until_complete(self._main())
+        except Exception as e:
+            self.log.error(f"SenseVoice 主协程异常: {e}")
+        finally:
+            # 取消并等待残留任务，避免 Event loop is closed / Task destroyed
+            try:
+                pending = asyncio.all_tasks(self.loop)
+                for t in pending:
+                    t.cancel()
+                if pending:
+                    self.loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+            except Exception:
+                pass
+            self.loop.close()
+
+    async def _main(self):
+        """主循环：按源开关动态创建/停止识别会话"""
+        while self.running:
+            self._sync_sessions()
+            await asyncio.sleep(1)
+
     def __init__(self, callback: Optional[Callable[[str, str], None]] = None):
         self.log = DefaultLog().getLogger()
         self.config = SenseVoiceConfig()
@@ -71,33 +99,6 @@ class SenseVoiceCore:
             self.thread.join(timeout=8)
         self.log.info("SenseVoice 识别线程已停止")
 
-    def _run_async_loop(self):
-        """运行异步事件循环"""
-        self.loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self.loop)
-        try:
-            self.loop.run_until_complete(self._main())
-        except Exception as e:
-            self.log.error(f"SenseVoice 主协程异常: {e}")
-        finally:
-            # 取消并等待残留任务，避免 Event loop is closed / Task destroyed
-            try:
-                pending = asyncio.all_tasks(self.loop)
-                for t in pending:
-                    t.cancel()
-                if pending:
-                    self.loop.run_until_complete(
-                        asyncio.gather(*pending, return_exceptions=True)
-                    )
-            except Exception:
-                pass
-            self.loop.close()
-
-    async def _main(self):
-        """主循环：按源开关动态创建/停止识别会话"""
-        while self.running:
-            self._sync_sessions()
-            await asyncio.sleep(1)
 
     def _sync_sessions(self):
         """同步会话：启用的源创建会话任务，停用的源取消任务"""

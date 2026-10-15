@@ -15,12 +15,12 @@ class MsgSingerBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_to_singer(self, text, username="", source="msg"):
+    def send_to_singer(self, text, uid="", source="msg"):
         if not text or not text.strip():
             return False
         try:
             from func.meowsinger.meowsinger_core import MeowSingerCore
-            return MeowSingerCore().receive(text.strip(), username, source)
+            return MeowSingerCore().receive(text.strip(), uid, source)
         except Exception:
             self.log.exception("msg → meowsinger 处理异常")
             return False

@@ -22,26 +22,19 @@ class MeowGetUserRecord:
         self.temp_dir = ".temp"
         self._lock = threading.Lock()
 
-    @staticmethod
-    def _safe_name(username: str) -> str:
-        """清洗用户名为安全文件名（去除路径分隔等非法字符，空值回退为“空格”）"""
-        if not username:
-            return "空格"
-        name = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(username))
-        return name.strip() or "空格"
 
-    def _path(self, username: str) -> str:
+    def _path(self, uid: str) -> str:
         """记录文件路径：绑定了编号就按编号命名，没绑定照旧按名字命名"""
         try:
             from func.pipeline.id_signup import IdSignupBridge
-            return IdSignupBridge().record_path_of(username)
+            return IdSignupBridge().record_path_of(uid)
         except Exception:
-            return os.path.join(self.temp_dir, f"{self._safe_name(username)}_record.txt")
+            return os.path.join(self.temp_dir, "unknown_record.txt")
 
-    def record_message(self, username: str, line: str, is_user: bool):
+    def record_message(self, uid: str, line: str, is_user: bool):
         """记录一条消息：用户消息计数+1，达到配置轮数返回 True（触发更新）"""
         os.makedirs(self.temp_dir, exist_ok=True)
-        path = self._path(username)
+        path = self._path(uid)
         with self._lock:
             lines = self._read_lines(path)
             count, body_start = self._parse_count(lines)
@@ -57,10 +50,10 @@ class MeowGetUserRecord:
                 return False
             return is_user and count >= self.config.user_update_rounds
 
-    def init_record(self, username: str, line: str):
+    def init_record(self, uid: str, line: str):
         """新用户首条消息初始化记录（计数为1，供猜测建档后延续计数）"""
         os.makedirs(self.temp_dir, exist_ok=True)
-        path = self._path(username)
+        path = self._path(uid)
         with self._lock:
             try:
                 with open(path, "w", encoding="utf-8") as f:
@@ -69,9 +62,9 @@ class MeowGetUserRecord:
             except Exception:
                 self.log.exception(f"用户记录初始化失败: {path}")
 
-    def take_content(self, username: str):
+    def take_content(self, uid: str):
         """取出记录正文与计数并清空（返回(正文, 计数)，无内容时返回空）"""
-        path = self._path(username)
+        path = self._path(uid)
         with self._lock:
             lines = self._read_lines(path)
             count, body_start = self._parse_count(lines)
@@ -85,9 +78,9 @@ class MeowGetUserRecord:
                     return "", 0
             return content, count
 
-    def restore_content(self, username: str, content: str, count: int):
+    def restore_content(self, uid: str, content: str, count: int):
         """更新失败时把正文写回记录，避免丢数据"""
-        path = self._path(username)
+        path = self._path(uid)
         with self._lock:
             try:
                 with open(path, "w", encoding="utf-8") as f:

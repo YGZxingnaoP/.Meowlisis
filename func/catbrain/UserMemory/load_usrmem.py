@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # func/catbrain/UserMemory/load_usrmem.py
-# 用户记忆加载：读取 character/info/users_info/用户名_latest.json 并转 markdown
 
 import os
 import re
@@ -30,36 +29,41 @@ class MeowLoadUserMemory:
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
-        self.dir = os.path.join("character", "info", "users_info")
 
     @staticmethod
-    def _safe_name(username: str) -> str:
+    def _safe_name(uid: str) -> str:
         """清洗用户名为安全文件名（去除路径分隔等非法字符，空值回退为“空格”）"""
-        if not username:
+        if not uid:
             return "空格"
-        name = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(username)).strip()
+        name = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(uid)).strip()
         return name or "空格"
 
-    def _user_path(self, username: str) -> str:
+    def _user_path(self, uid: str) -> str:
         """返回指定用户的档案路径（有编号走 character/userinfo/{编号}/profile.json，未绑定照旧）"""
         from func.pipeline.id_signup import IdSignupBridge
-        return IdSignupBridge().profile_path_of(username)
+        return IdSignupBridge().profile_path_of(uid)
 
-    def exists(self, username: str) -> bool:
+    def exists(self, uid: str) -> bool:
         """判断指定用户是否已有信息档案（新老位置都算）"""
-        return bool(username) and bool(self.load(username))
+        return bool(uid) and bool(self.load(uid))
 
-    def load(self, username: str) -> dict:
+    def load(self, uid: str) -> dict:
         """按用户名读取信息档案：先读编号目录，读不到再回老目录（缺失或损坏时返回空 dict）"""
         from func.pipeline.id_signup import IdSignupBridge
-        return IdSignupBridge().profile_of(username)
+        return IdSignupBridge().profile_of(uid)
 
-    def build(self, username: str) -> str:
+    def build(self, uid: str) -> str:
         """按用户名构建用户记忆 markdown（标题说明当前说话人，首行显示用户名，跳过 unknown，好感度 0 保留）"""
-        data = self.load(username)
+        data = self.load(uid)
         if not data:
             return ""
-        name = username or str(data.get("name") or "").strip() or "默认"
+        name = ""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            name = IdSignupBridge().nickname_of(uid)
+        except Exception:
+            name = ""
+        name = name or str(data.get("name") or "").strip() or str(uid or "") or "默认"
         lines = [f"# 现在和你说话的是{name}"]
         lines.append(f"- 用户名称：{name}")
         for key, label in self.FIELD_LABELS.items():

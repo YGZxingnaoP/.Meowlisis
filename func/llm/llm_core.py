@@ -55,7 +55,7 @@ class LLmCore:
                 self.log.warning(f"未知 LLM 类型 {self.config.local_llm_type}，默认使用 deepseek")
             return DeepSeekLLM(self.config)
 
-    def msg_deal(self, traceid: str, text: str, username: str, source: str = "llm",
+    def msg_deal(self, traceid: str, text: str, uid: str, source: str = "llm",
                  preamble_text: str = "", multi_user: bool = False,
                  memory_config: dict = None):
         """外部消息入口：正则清洗后放入问题队列
@@ -71,12 +71,12 @@ class LLmCore:
         # 静默状态：只记用户消息，不生成回复
         from func.pipeline.silence_state import SilenceState
         if SilenceState().muted:
-            self._record_silent(cleaned, username, source, memory_config)
+            self._record_silent(cleaned, uid, source, memory_config)
             return
         llm_json = {
             "traceid": traceid,
             "prompt": cleaned,
-            "username": username,
+            "uid": uid,
             "source": source,
             "preamble_text": preamble_text,
             "multi_user": multi_user,
@@ -88,7 +88,7 @@ class LLmCore:
         LLMTimerBridge().notify_user_message()
         self.log.info(f"[{traceid}] 消息入队: {cleaned}")
 
-    def _record_silent(self, text: str, username: str, source: str = "llm",
+    def _record_silent(self, text: str, uid: str, source: str = "llm",
                        memory_config: dict = None):
         """静默期间：仅记录用户消息（短期+长期+用户档案），不生成回复、不更新情绪。
 
@@ -100,9 +100,9 @@ class LLmCore:
             if is_danmaku:
                 # 弹幕：长期记忆开关控制是否写长期+摘要+用户档案
                 if mc.get("record_ltmem", True):
-                    self.ltmem.record_user_message(username, text)
+                    self.ltmem.record_user_message(uid, text)
                 else:
-                    self.ltmem.record_user_profile(username, text)
+                    self.ltmem.record_user_profile(uid, text)
                 # 弹幕短期记忆（独立 type，按条裁剪）
                 short_type = mc.get("short_type", "danmaku_response")
                 short_mode = mc.get("short_mode", "items")
@@ -114,9 +114,9 @@ class LLmCore:
                 )
             else:
                 # 非弹幕：长期记忆/摘要/用户档案 + 短期记忆（other_talks 直写 JSON）
-                self.ltmem.record_user_message(username, text)
+                self.ltmem.record_user_message(uid, text)
                 from func.pipeline.short_memory import ShortMemory
-                formatted = self.message_builder.format_user_content(username, text)
+                formatted = self.message_builder.format_user_content(uid, text)
                 ShortMemory().save(
                     {"role": "user", "content": formatted, "type": "other_talks"},
                     50, trim_mode="items",
@@ -125,10 +125,10 @@ class LLmCore:
         except Exception:
             self.log.exception("静默记录用户消息异常")
 
-    def add_system_message(self, text: str, username: str = "主人"):
+    def add_system_message(self, text: str, uid: str = "主人"):
         """系统主动消息入口：直接放入问题队列"""
         traceid = str(uuid.uuid4())
-        llm_json = {"traceid": traceid, "prompt": text, "username": username}
+        llm_json = {"traceid": traceid, "prompt": text, "uid": uid}
         self.llmData.QuestionList.put(llm_json)
         # 通知主动回复模块：llm 收到用户消息
         from func.pipeline.llm_timer import LLMTimerBridge
@@ -154,8 +154,13 @@ class LLmCore:
         question_data = self.llmData.QuestionList.get()
         traceid = question_data["traceid"]
         prompt = question_data["prompt"]
-        username = question_data.get("username") or "用户"
+        uid = question_data.get("uid") or question_data.get("uid") or "unknown"
         source = question_data.get("source", "llm")
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            display_name = IdSignupBridge().nickname_of(uid) or uid
+        except Exception:
+            display_name = uid
         preamble_text = question_data.get("preamble_text", "") or ""
         multi_user = bool(question_data.get("multi_user", False))
 
@@ -172,27 +177,27 @@ class LLmCore:
         if is_danmaku:
             if not assistant_only:
                 if record_ltmem:
-                    self.ltmem.record_user_message(username, prompt)   # 长期+摘要+用户记忆
+                    self.ltmem.record_user_message(uid, prompt)   # 长期+摘要+用户记忆
                 else:
-                    self.ltmem.record_user_profile(username, prompt)   # 仅用户记忆
+                    self.ltmem.record_user_profile(uid, prompt)   # 仅用户记忆
         else:
             # 非弹幕：原有逻辑不变
-            self.ltmem.record_user_message(username, prompt)
+            self.ltmem.record_user_message(uid, prompt)
 
         # 获取系统提示词（弹幕来源走弹幕专用提示词，否则走主链路提示词）
         if is_danmaku:
-            system_prompt = self.prompt_get.get_danmaku_prompt(username, prompt, multi_user)
+            system_prompt = self.prompt_get.get_danmaku_prompt(display_name, prompt, multi_user)
         else:
             # 主线程破甲审查：命中色情则写 msg_rulebreak 桥接，构建提示词时注入原则词
             try:
                 from func.catbrain.rules_break.rules_break import TBRulesBreak
-                TBRulesBreak().check_and_store_msg(username, prompt, ShortMemory().load())
+                TBRulesBreak().check_and_store_msg(uid, prompt, ShortMemory().load())
             except Exception:
                 self.log.exception("主线程破甲审查异常")
-            system_prompt = self.prompt_get.get_system_prompt(username, prompt)
+            system_prompt = self.prompt_get.get_system_prompt(display_name, prompt)
 
         # 构建完整消息：系统提示词 + 短期记忆（历史）+ 当前消息
-        messages = self.message_builder.build_messages(username, system_prompt, prompt)
+        messages = self.message_builder.build_messages(uid, system_prompt, prompt)
 
         # ===== 用户侧短期记忆 =====
         if is_danmaku:
@@ -203,7 +208,7 @@ class LLmCore:
                     short_limit, trim_mode=short_mode,
                 )
         else:
-            self.message_builder.add_user_message(username, prompt)
+            self.message_builder.add_user_message(uid, prompt)
 
         # 每次对话新建带流式状态的处理器（source 透传到 TTS：phone 语音不本地播放）
         output = Output(self.config, self.llmData, source=source)
@@ -241,16 +246,16 @@ class LLmCore:
                         # 多弹幕统一回复：只记长期+摘要，不记用户记忆
                         self.ltmem.record_ltmem_only(AppConfig().ai_name, final_text)
                     else:
-                        self.ltmem.record_ai_message(username, AppConfig().ai_name, final_text)
+                        self.ltmem.record_ai_message(uid, AppConfig().ai_name, final_text)
                 else:
                     if not assistant_only:
                         # 长期记忆关闭，但用户记忆仍记录 assistant
-                        self.ltmem.record_ai_profile(username, AppConfig().ai_name, final_text)
+                        self.ltmem.record_ai_profile(uid, AppConfig().ai_name, final_text)
         else:
             if final_text:
-                self.message_builder.add_assistant_message(username, final_text, AppConfig().ai_name)
+                self.message_builder.add_assistant_message(uid, final_text, AppConfig().ai_name)
             if final_text:
-                self.ltmem.record_ai_message(username, AppConfig().ai_name, final_text)
+                self.ltmem.record_ai_message(uid, AppConfig().ai_name, final_text)
 
         self.log.info(f"[{traceid}][AI回复]{final_text}")
         self.llmData.is_ai_ready = True

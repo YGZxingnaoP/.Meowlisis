@@ -15,18 +15,18 @@ class SingerLLMBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_reply(self, internal_text, username=""):
+    def send_reply(self, internal_text, uid=""):
         """把内部信息（如"不会唱这首歌"）生成角色口吻回复，播报并记录记忆"""
         if not internal_text or not internal_text.strip():
             return ""
-        username = username or "主人"
+        uid = uid or "主人"
         try:
             from func.meowsinger.port import get_singer_llm
             llm = get_singer_llm()
             if llm is None or not llm.client:
                 self.log.error("[SingerLLM] meowsinger LLM 不可用")
                 return ""
-            system_prompt = SystemPromptBridge().get_system_prompt(username, internal_text)
+            system_prompt = SystemPromptBridge().get_system_prompt(uid, internal_text)
             from func.meowsinger.config import MeowSingerConfig
             template = MeowSingerConfig().prompt_reply
             if not template:
@@ -54,7 +54,7 @@ class SingerLLMBridge:
                     seg, traceid=traceid, seg_index=i,
                     chat_status=chat_status, source="meowsinger",
                 )
-            self._record_memory(username, cleaned_content)
+            self._record_memory(uid, cleaned_content)
             return content
         except Exception:
             self.log.exception("[SingerLLM] 回复合成异常")
@@ -105,14 +105,14 @@ class SingerLLMBridge:
             return ""
 
     @staticmethod
-    def _record_memory(username, content):
+    def _record_memory(uid, content):
         try:
             ShortMemory().save({"role": "assistant", "content": content, "type": "llm_fast_response"},
                                40, trim_mode="rounds")
         except Exception:
             pass
         try:
-            MeowLLMLtMemBridge().record_ai_message(username, AppConfig().ai_name, content)
+            MeowLLMLtMemBridge().record_ai_message(uid, AppConfig().ai_name, content)
         except Exception:
             pass
 

@@ -81,6 +81,11 @@ class MessageBuilder:
         """把用户消息格式化为「时间+说话人+内容」的随机格式（与归档逻辑一致）"""
         now = MessageBuilder._now()
         name = str(username or "用户")
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            name = IdSignupBridge().nickname_of(name) or name
+        except Exception:
+            name = str(username or "用户")
         text = str(content or "")
         fmt = random.choice(MessageBuilder.USER_FORMATS)
         return fmt.format(time=now, name=name, content=text)

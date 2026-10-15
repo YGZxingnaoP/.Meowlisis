@@ -36,7 +36,7 @@ class TBoxQQResponse:
         self.short_memory = ShortMemory()
 
     # ==================== QQ 私聊回复链路 ====================
-    def receive_qq(self, username: str, user_id: str, text: str, short_memory: list):
+    def receive_qq(self, uid: str, user_id: str, text: str, short_memory: list):
         """接收 QQ 私聊消息：记录记忆 → napcat 独立 LLM 回复 → 回发 QQ
 
         回复短句由本方法提供回调发送到 NapCat，napcat/llm 不直接操作发送，
@@ -47,14 +47,14 @@ class TBoxQQResponse:
             return
         # 0.2 统一身份：登记当前说话人，并换成身份表里的统一昵称（没绑定原样）
         from func.pipeline.id_signup import IdSignupBridge
-        username = IdSignupBridge().begin("qq", user_id, username)
+        uid = str(IdSignupBridge().resolve_identity("qq", str(user_id or ""))["uid"] or "") or str(uid or "")
         # 机器人消息（如幻梦）：仅参与当轮上下文，不写入任何记忆文件
         is_bot = self._is_bot(user_id)
         # 0.5 数据库关键词匹配（仅私聊，机器人消息不进入）
         if not is_bot:
             try:
                 from func.pipeline.msg_database import MsgDatabaseBridge
-                MsgDatabaseBridge().send_to_database(text, username)
+                MsgDatabaseBridge().send_to_database(text, uid)
             except Exception:
                 self.log.exception("QQ 私聊 → database 处理异常")
         # 0.7 改图判定（画完 window 秒内的下一条消息：判断是否在上一张图上改）
@@ -62,7 +62,7 @@ class TBoxQQResponse:
             try:
                 from func.toolbox.flux_painter.edit_router import TBFluxEditRouter
                 qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
-                if TBFluxEditRouter().try_handle(f"qq_private_{user_id}", "directed", text, qq_context, username):
+                if TBFluxEditRouter().try_handle(f"qq_private_{user_id}", "directed", text, qq_context, uid):
                     return
             except Exception:
                 self.log.exception("QQ 私聊改图判定异常")
@@ -71,7 +71,7 @@ class TBoxQQResponse:
             try:
                 from func.toolbox.plugins.manager import PluginManager
                 qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
-                if PluginManager().route_qq(f"qq_private_{user_id}", text, qq_context, username):
+                if PluginManager().route_qq(f"qq_private_{user_id}", text, qq_context, uid):
                     return
             except Exception:
                 self.log.exception("QQ 私聊插件拦截异常")
@@ -80,7 +80,7 @@ class TBoxQQResponse:
             try:
                 from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
                 qq_context = {"message_type": "private", "target_id": str(user_id), "user_id": str(user_id)}
-                if TBNapcatAnalysis().decide_and_run(text, username, qq_context, short_memory):
+                if TBNapcatAnalysis().decide_and_run(text, uid, qq_context, short_memory):
                     return
             except Exception:
                 self.log.exception("QQ 私聊意图分析异常")
@@ -89,7 +89,7 @@ class TBoxQQResponse:
         if not is_bot:
             try:
                 from func.catbrain.rules_break.rules_break import TBRulesBreak
-                nsfw_triggered = TBRulesBreak().check_and_store_qq(f"qq_private:{user_id}", username, text, short_memory)
+                nsfw_triggered = TBRulesBreak().check_and_store_qq(f"qq_private:{user_id}", uid, text, short_memory)
             except Exception:
                 self.log.exception("QQ 私聊破甲审查异常")
         # 1. 记录用户消息短期记忆（qq_response，加前缀）
@@ -101,11 +101,11 @@ class TBoxQQResponse:
             }, self.napcat_config.short_mem_rounds)
         # 2. 记录用户消息长期记忆（默认关闭）
         if not is_bot:
-            self.napcat_ltmem.record_user(username, text)
+            self.napcat_ltmem.record_user(uid, text)
         # 3. napcat 独立 LLM 回复（流式短句回传发送）
         _pace = self._make_pacer("private")
         final_text = self.napcat_llm.send_to_llm(
-            username, user_id, text, short_memory,
+            uid, user_id, text, short_memory,
             on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("private", user_id, text),
         )
@@ -118,10 +118,10 @@ class TBoxQQResponse:
             }, self.napcat_config.short_mem_rounds)
         # 5. 记录 AI 回复长期记忆（默认关闭）
         if final_text and not is_bot:
-            self.napcat_ltmem.record_ai(username, final_text)
+            self.napcat_ltmem.record_ai(uid, final_text)
         # 6. 表情触发（概率 = 配置概率 + 好感度）
         if final_text:
-            self._maybe_send_emote(username, user_id, text, final_text, short_memory)
+            self._maybe_send_emote(uid, user_id, text, final_text, short_memory)
         # 7. 后置情绪更新（异步，与主链路一致，更新最新情绪/性格）
         if final_text:
             Thread(target=self._update_emotion_async, args=(text, final_text), daemon=True).start()
@@ -406,10 +406,8 @@ class TBoxQQResponse:
         short_memory = TBGetGroupRecord().fetch(gid, self_id)
         group_info_text = TBGroupInfo().build_prompt(group_name)
 
-        # 稳定档案昵称（有绑定就走身份表的统一昵称）
         from func.pipeline.id_signup import IdSignupBridge
-        reply_username = IdSignupBridge().begin(
-            "qq", primary_uid, self._resolve_username(primary_uid) or primary_name)
+        reply_uid = IdSignupBridge().resolve_identity("qq", primary_uid)["uid"] or primary_name
 
         # 记录各参与者用户档案 + 短期记忆（仅真实文本，机器人跳过）
         for p in participants:
@@ -419,8 +417,7 @@ class TBoxQQResponse:
             ptext = str(p.get("text", "") or "")
             if not ptext.strip() or self._is_bot(uid):
                 continue
-            # 按 QQ 号认人：绑定过就用统一昵称，没绑定原样用 QQ 昵称
-            rn = IdSignupBridge().begin("qq", uid, self._resolve_username(uid) or str(p.get("username", "") or ""))
+            rn = IdSignupBridge().resolve_identity("qq", uid)["uid"] or str(p.get("username", "") or "")
             try:
                 self.napcat_ltmem.record_user(rn, ptext)
             except Exception:
@@ -433,14 +430,14 @@ class TBoxQQResponse:
                 }, self.napcat_config.short_mem_rounds)
 
         # 参与者记完，把当前说话人恢复成主发言人
-        IdSignupBridge().begin("qq", primary_uid, self._resolve_username(primary_uid) or primary_name)
+        IdSignupBridge().set_current("qq", str(primary_uid or ""))
 
         # 意图分析（工具：天气/新闻/待办/唱歌/海龟汤/画图等）
         try:
             from func.toolbox.napcat.analysis.analysis_core import TBNapcatAnalysis
             qq_context = {"message_type": "group", "target_id": gid, "user_id": primary_uid,
                           "group_name": group_name, "self_id": self_id}
-            if TBNapcatAnalysis().decide_and_run(merged_text, reply_username, qq_context, short_memory):
+            if TBNapcatAnalysis().decide_and_run(merged_text, reply_uid, qq_context, short_memory):
                 return
         except Exception:
             self.log.exception("群聊意图分析异常")
@@ -450,13 +447,13 @@ class TBoxQQResponse:
         try:
             from func.catbrain.rules_break.rules_break import TBRulesBreak
             nsfw_triggered = TBRulesBreak().check_and_store_qq(
-                f"qq_group:{gid}", reply_username, merged_text, short_memory)
+                f"qq_group:{gid}", reply_uid, merged_text, short_memory)
         except Exception:
             self.log.exception("QQ 群聊破甲审查异常")
 
         _pace = self._make_pacer("group")
         final = self.napcat_group_llm.reply(
-            reply_username, gid, group_name, merged_text, short_memory, group_info_text,
+            reply_uid, gid, group_name, merged_text, short_memory, group_info_text,
             on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("group", gid, merged_text),
         )

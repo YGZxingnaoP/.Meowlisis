@@ -18,6 +18,14 @@ from func.catbrain.UserMemory.userevent_tool import MeowUserEventTool
 from func.catbrain.UserMemory.get_userrecord import MeowGetUserRecord
 from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
 
+def _disp_name(uid) -> str:
+    try:
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().nickname_of(uid) or str(uid or "")
+    except Exception:
+        return str(uid or "")
+
+
 
 class MeowUpdateUserInfo:
     """用户信息更新类：新用户首条消息猜测建档，已有用户按轮数分析更新"""
@@ -30,7 +38,6 @@ class MeowUpdateUserInfo:
         self.userrecord = MeowGetUserRecord()
         self.loader = MeowLoadUserMemory()
         self.llm = None
-        self.info_dir = os.path.join("character", "info", "users_info")
         # 建档写锁：保证“判断不存在→建占位档”原子，防止并发重复建档
         self._lock = Lock()
 
@@ -64,25 +71,25 @@ class MeowUpdateUserInfo:
             self.log.exception(f"读取提示词失败: {filename}")
             return fallback
 
-    def record(self, username: str, line: str, is_user: bool):
+    def record(self, uid: str, line: str, is_user: bool):
         """记录一条消息：新用户先建占位档并猜测，已有用户按轮数触发更新"""
-        if not username:
+        if not uid:
             return
         # 加锁保证“判断不存在→建占位档”原子，防止后台建档期间的重复建档
         with self._lock:
-            is_new = is_user and not self.loader.exists(username)
+            is_new = is_user and not self.loader.exists(uid)
             if is_new:
-                self._save_placeholder(username)
-                self.userrecord.init_record(username, line)
+                self._save_placeholder(uid)
+                self.userrecord.init_record(uid, line)
         if is_new:
             # 占位档已落地，后台猜测失败也不会导致后续重复建档
-            Thread(target=self._guess_new_user, args=(username, line), daemon=True).start()
+            Thread(target=self._guess_new_user, args=(uid, line), daemon=True).start()
             return
         # 已有用户：缓存消息，达到轮数触发分析更新
-        if self.userrecord.record_message(username, line, is_user):
-            Thread(target=self._analyze_update, args=(username,), daemon=True).start()
+        if self.userrecord.record_message(uid, line, is_user):
+            Thread(target=self._analyze_update, args=(uid,), daemon=True).start()
 
-    def _guess_new_user(self, username: str, line: str):
+    def _guess_new_user(self, uid: str, line: str):
         """新用户猜测建档：以角色视角根据首条消息猜测信息并写入档案"""
         instruction = self._load_prompt(
             "guess_prompt.txt",
@@ -104,16 +111,16 @@ class MeowUpdateUserInfo:
         ]
         info_result, event_result = self._run_tool_loop(messages)
         if not info_result:
-            self.log.error(f"新用户猜测建档失败: {username}")
+            self.log.error(f"新用户猜测建档失败: {uid}")
             return
-        info_result["name"] = username
+        info_result["name"] = _disp_name(uid)
         info_result["changed"] = True
         if self._check_format(info_result):
-            self._save(username, info_result, event_result)
+            self._save(uid, info_result, event_result)
 
-    def _analyze_update(self, username: str):
+    def _analyze_update(self, uid: str):
         """已有用户分析更新：以角色视角分析缓存对话并更新档案（AI 可决策不改动）"""
-        content, count = self.userrecord.take_content(username)
+        content, count = self.userrecord.take_content(uid)
         if not content.strip():
             return
         instruction = self._load_prompt(
@@ -129,7 +136,7 @@ class MeowUpdateUserInfo:
                 f"【你的角色设定与价值观】\n{persona}\n\n"
                 f"【任务指令】\n{instruction}"
             )
-        existing = self.loader.load(username)
+        existing = self.loader.load(uid)
         existing_text = json.dumps(existing, ensure_ascii=False) if existing else "（暂无档案）"
         messages = [
             {"role": "system", "content": system_text},
@@ -139,15 +146,15 @@ class MeowUpdateUserInfo:
         ]
         info_result, event_result = self._run_tool_loop(messages)
         if not info_result:
-            self.log.info(f"用户信息未更新（未调用工具或调用失败）: {username}")
+            self.log.info(f"用户信息未更新（未调用工具或调用失败）: {uid}")
             return
-        info_result["name"] = username
+        info_result["name"] = _disp_name(uid)
         # AI 决策不改动时跳过写入
         if info_result.get("changed") is False:
-            self.log.info(f"用户信息无变化，跳过更新: {username}")
+            self.log.info(f"用户信息无变化，跳过更新: {uid}")
             return
         if self._check_format(info_result):
-            self._save(username, info_result, event_result)
+            self._save(uid, info_result, event_result)
 
     def _run_tool_loop(self, messages):
         """多工具循环调用：确保 save_user_info 与 save_user_event 都被调用到（最多若干轮）"""
@@ -243,25 +250,26 @@ class MeowUpdateUserInfo:
                 result.append(t)
         return result
 
-    def _latest_path(self, username: str) -> str:
-        """定档案落地路径：本人已绑定才进编号目录，否则照旧（写侧严格，防同名污染）"""
+    def _latest_path(self, uid: str) -> str:
         from func.pipeline.id_signup import IdSignupBridge
-        bridge = IdSignupBridge()
-        uid = bridge.ensure_for(username)
-        if uid:
-            return bridge.profile_path(uid)
-        return bridge.legacy_profile_path(username)
+        return IdSignupBridge().profile_path_of(uid)
 
-    def _save_placeholder(self, username: str):
+    def _save_placeholder(self, uid: str):
         """同步创建 unknown 占位档案（name 为用户名，其余字段 unknown）"""
-        safe = self.loader._safe_name(username)
+        safe = self.loader._safe_name(uid)
         if not safe:
             self.log.error("用户名清洗后为空，无法创建占位档案")
             return
-        latest_path = self._latest_path(username)
+        latest_path = self._latest_path(uid)
         os.makedirs(os.path.dirname(latest_path), exist_ok=True)
         data = {field: "unknown" for field in self.tool.FIELDS}
-        data["name"] = username
+        name = ""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            name = IdSignupBridge().nickname_of(uid)
+        except Exception:
+            name = ""
+        data["name"] = name or uid
         data["affinity"] = 0
         data["tags_preference"] = []
         data["recent_events"] = "leisure"
@@ -272,18 +280,17 @@ class MeowUpdateUserInfo:
         except Exception:
             self.log.exception(f"创建占位档案失败: {latest_path}")
 
-    def _save(self, username: str, result: Dict, event_result: Optional[Dict] = None):
+    def _save(self, uid: str, result: Dict, event_result: Optional[Dict] = None):
         """保存用户档案：旧文件重命名为 用户名-修改日期.json 保留，再写 latest（含近期事件）"""
-        safe = self.loader._safe_name(username)
-        latest_path = self._latest_path(username)
+        safe = self.loader._safe_name(uid)
+        latest_path = self._latest_path(uid)
         os.makedirs(os.path.dirname(latest_path), exist_ok=True)
         # 读取旧档案（备份与近期事件兜底复用）
-        old = self.loader.load(username) if os.path.exists(latest_path) else {}
+        old = self.loader.load(uid) if os.path.exists(latest_path) else {}
         # 旧文件保留为 用户名-修改日期.json（占位档直接覆盖，避免垃圾备份）
         if old and not self._is_placeholder(old):
             date_str = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            stem = "profile" if os.path.basename(latest_path) == "profile.json" else safe
-            backup_path = os.path.join(os.path.dirname(latest_path), f"{stem}-{date_str}.json")
+            backup_path = os.path.join(os.path.dirname(latest_path), f"profile-{date_str}.json")
             try:
                 os.replace(latest_path, backup_path)
             except Exception:

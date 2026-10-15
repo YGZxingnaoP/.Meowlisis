@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import threading
 import time
@@ -82,6 +83,7 @@ class IdentityStore:
         deadline = time.time() + timeout
         while True:
             try:
+                os.makedirs(os.path.dirname(self.lock_path) or ".", exist_ok=True)
                 fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
                 os.write(fd, str(os.getpid()).encode("utf-8"))
                 os.close(fd)
@@ -137,14 +139,6 @@ class IdentityStore:
         for uid, user in data["users"].items():
             self._write_user_file(uid, user)
 
-    def set_root(self, user_root, record_root=".temp"):
-        """整块切根目录：目录、表、档案、记录全跟着走（测试只能碰沙箱）"""
-        self.dir = user_root
-        self.users_path = os.path.join(user_root, "users.json")
-        self.index_path = os.path.join(user_root, "index.json")
-        self.lock_path = os.path.join(user_root, ".lock")
-        self.record_root = record_root
-        self._ensure_dir()
 
     def _write_user_file(self, uid, user):
         """把昵称与各平台账号写进用户自己的文件夹（临时身份不建文件夹）"""
@@ -159,18 +153,6 @@ class IdentityStore:
             "created": user.get("created") or 0,
         })
 
-    def sync_folders(self):
-        """按对应表重建每个人的文件夹文件，返回同步人数"""
-        with self._lock:
-            if not self._acquire():
-                return 0
-            try:
-                data = self._load()
-                for uid, user in data["users"].items():
-                    self._write_user_file(uid, user)
-                return len(data["users"])
-            finally:
-                self._release()
 
     @staticmethod
     def _rebuild_index(users):
@@ -224,11 +206,13 @@ class IdentityStore:
                     if str(value) == uid:
                         data["index"].pop(key, None)
 
-    @staticmethod
-    def _fill_nickname(user, nickname):
-        """只在用户还没昵称时用当前平台名字兜底，已有昵称不动"""
+    def _fill_nickname(self, data, user, nickname):
         if not str((user or {}).get("nickname") or "").strip() and str(nickname or "").strip():
-            user["nickname"] = str(nickname).strip()
+            name = str(nickname).strip()
+            uid = str((user or {}).get("id") or "")
+            if self.nickname_owner(data, name, exclude_uid=uid):
+                name = f"{name}({uid})" if uid else name
+            user["nickname"] = name
 
     @staticmethod
     def _clean_account(account):
@@ -236,17 +220,30 @@ class IdentityStore:
         return str(account or "").strip()
 
     @staticmethod
-    def _uid_by_nickname(data, nickname):
-        """按昵称找「还没有任何平台账号」的空号（迁移出来的裸档案号），避免重复开号"""
-        name = str(nickname or "").strip()
-        if not name:
+    def normalize_nickname(nickname):
+        """昵称归一化：全角转半角、空白折叠、大小写不敏感（只用于查重，不改显示）"""
+        text = str(nickname or "").strip()
+        out = []
+        for ch in text:
+            code = ord(ch)
+            if code == 0x3000:
+                out.append(" ")
+            elif 0xFF01 <= code <= 0xFF5E:
+                out.append(chr(code - 0xFEE0))
+            else:
+                out.append(ch)
+        return re.sub(r"\s+", " ", "".join(out)).strip().casefold()
+
+    def nickname_owner(self, data, nickname, exclude_uid=""):
+        """昵称占用者编号；没人用返回空串（正式身份与临时身份一起查）"""
+        want = self.normalize_nickname(nickname)
+        if not want:
             return ""
+        exclude = str(exclude_uid or "").strip()
         for uid, user in (data.get("users") or {}).items():
-            if IdentityStore.is_temp(uid):
+            if str(uid) == exclude:
                 continue
-            if str((user or {}).get("nickname") or "").strip() != name:
-                continue
-            if not [p for p in ((user or {}).get("accounts") or {}) if p]:
+            if self.normalize_nickname((user or {}).get("nickname")) == want:
                 return str(uid)
         return ""
 
@@ -278,9 +275,9 @@ class IdentityStore:
                 users = data["users"]
                 if key in users:
                     return dict(users[key])
-                for user in users.values():
-                    if str(user.get("nickname") or "").strip() == key:
-                        return dict(user)
+                hits = [u for u in users.values() if str(u.get("nickname") or "").strip() == key]
+                if len(hits) == 1:
+                    return dict(hits[0])
                 return {}
             finally:
                 self._release()
@@ -307,11 +304,11 @@ class IdentityStore:
                 key = f"{platform}:{account}"
                 uid = str(data["index"].get(key, "") or "")
                 if uid and uid in data["users"]:
-                    self._fill_nickname(data["users"][uid], nickname)
+                    self._fill_nickname(data, data["users"][uid], nickname)
                     return uid
                 uid = str((data.get("history") or {}).get(key, "") or "")
                 if not (uid and uid in data["users"]):
-                    uid = self._uid_by_nickname(data, nickname) or self._new_id(data)
+                    uid = self._new_id(data)
                 user = data["users"].get(uid) or {
                     "id": uid,
                     "nickname": "",
@@ -319,7 +316,7 @@ class IdentityStore:
                     "accounts": {},
                 }
                 user.setdefault("accounts", {})[platform] = account
-                self._fill_nickname(user, nickname)
+                self._fill_nickname(data, user, nickname)
                 data["users"][uid] = user
                 data["index"][key] = uid
                 self._save(data)
@@ -342,10 +339,11 @@ class IdentityStore:
                     uid = self._new_id(data)
                 data["users"][uid] = {
                     "id": uid,
-                    "nickname": nickname,
+                    "nickname": "",
                     "created": int(time.time()),
                     "accounts": {},
                 }
+                self._fill_nickname(data, data["users"][uid], nickname)
                 self._save(data)
                 return uid
             finally:
@@ -368,7 +366,7 @@ class IdentityStore:
                     user = data["users"][uid]
                     if self.is_temp(uid):
                         user["seen"] = int(time.time())
-                        self._fill_nickname(user, nickname)
+                        self._fill_nickname(data, user, nickname)
                         data["users"][uid] = user
                         self._save(data)
                     return uid
@@ -378,11 +376,12 @@ class IdentityStore:
                 now = int(time.time())
                 data["users"][uid] = {
                     "id": uid,
-                    "nickname": str(nickname or "").strip(),
+                    "nickname": "",
                     "created": now,
                     "seen": now,
                     "accounts": {platform: account},
                 }
+                self._fill_nickname(data, data["users"][uid], nickname)
                 data["index"][key] = uid
                 self._save(data)
                 return uid
@@ -419,29 +418,6 @@ class IdentityStore:
             finally:
                 self._release()
 
-    def remove_platform(self, platform):
-        """把该平台的账号从所有编号上摘掉（清理历史遗留），返回处理条数"""
-        platform = self.normalize_platform(platform)
-        if not platform:
-            return 0
-        with self._lock:
-            if not self._acquire():
-                return 0
-            try:
-                data = self._load()
-                count = 0
-                for uid, user in data["users"].items():
-                    accounts = user.get("accounts") or {}
-                    if platform not in accounts:
-                        continue
-                    account = str(accounts.pop(platform, "") or "")
-                    if account:
-                        data["index"].pop(f"{platform}:{account}", None)
-                    count += 1
-                self._save(data)
-                return count
-            finally:
-                self._release()
 
     def bind(self, uid, platform, account, nickname=""):
         """把一个平台账号绑到编号上，返回 (成功, 提示, 该账号原属编号)"""
@@ -471,7 +447,7 @@ class IdentityStore:
                 if old and old != account:
                     data["index"].pop(f"{platform}:{old}", None)
                 user.setdefault("accounts", {})[platform] = account
-                self._fill_nickname(user, nickname)
+                self._fill_nickname(data, user, nickname)
                 data["users"][uid] = user
                 data["index"][key] = uid
                 self._save(data)
@@ -523,6 +499,10 @@ class IdentityStore:
                 user = data["users"].get(uid)
                 if not user:
                     return False, f"没找到编号 {uid}"
+                owner = self.nickname_owner(data, nickname, exclude_uid=uid)
+                if owner:
+                    owner_name = str((data["users"].get(owner) or {}).get("nickname") or owner)
+                    return False, f"昵称「{nickname}」已被编号 {owner}（{owner_name}）占用，请换一个"
                 user["nickname"] = nickname
                 data["users"][uid] = user
                 self._save(data)

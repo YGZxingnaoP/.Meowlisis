@@ -364,6 +364,14 @@ body.modal-open .bg-stars {
     background: rgba(255, 255, 255, 0.5);
 }
 
+.uid-sub {
+    font-size: 11px;
+    line-height: 1.35;
+    opacity: 0.55;
+    font-family: Consolas, Menlo, monospace;
+    letter-spacing: 0.02em;
+}
+
 .speaker-actions {
     display: flex;
     gap: 8px;

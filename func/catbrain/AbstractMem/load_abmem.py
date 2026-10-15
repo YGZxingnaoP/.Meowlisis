@@ -203,7 +203,7 @@ class MeowLoadAbstractMemory:
                     return topic
         return ""
 
-    def decide_recall(self, message: str = "", username: str = "") -> Dict:
+    def decide_recall(self, message: str = "", uid: str = "") -> Dict:
         """判定消息是否需要加强回忆及对应时间窗口"""
         empty = {"need_recall": False, "months": [], "label": ""}
         if not self.config.abmem_recall_enabled:
@@ -268,11 +268,11 @@ class MeowLoadAbstractMemory:
                 best = score
         return best
 
-    def _joint_similarity(self, item: Dict, username: str) -> float:
+    def _joint_similarity(self, item: Dict, uid: str) -> float:
         """计算 joint 相似度（编号或昵称命中都算）"""
-        if not username:
+        if not uid:
             return 0.0
-        return 1.0 if joint_util.match(item, joint_util.uid_of(username), username) else 0.0
+        return 1.0 if joint_util.match(item, joint_util.uid_of(uid), uid) else 0.0
 
     @staticmethod
     def _format_time(item: Dict) -> str:
@@ -329,16 +329,16 @@ class MeowLoadAbstractMemory:
         hits = sum(1 for w in words if w in event)
         return min(1.0, hits / self.OVERLAP_SATURATION)
 
-    def _relevance(self, item: Dict, current_topic: str, msg_words: set, username: str) -> float:
+    def _relevance(self, item: Dict, current_topic: str, msg_words: set, uid: str) -> float:
         """计算条目与当前对话的相关性（内容/标签/话题/参与加权）"""
         topics = item.get("topics") or []
         w = self.REL_WEIGHTS
         return (w["text"] * self._text_similarity(item, msg_words)
                 + w["tags"] * self._tags_similarity(item, msg_words)
                 + w["topic"] * (1.0 if (current_topic and current_topic in topics) else 0.0)
-                + w["joint"] * self._joint_similarity(item, username))
+                + w["joint"] * self._joint_similarity(item, uid))
 
-    def _score(self, item: Dict, current_topic: str, msg_words: set, username: str, now):
+    def _score(self, item: Dict, current_topic: str, msg_words: set, uid: str, now):
         """计算单条摘要的(综合分, 相关性分)，证据分为负时返回 None"""
         evidence = item.get("evidence")
         if not isinstance(evidence, dict):
@@ -352,7 +352,7 @@ class MeowLoadAbstractMemory:
             accuracy = float(item.get("accuracy", 0) or 0) / 5.0
         except (TypeError, ValueError):
             accuracy = 0.0
-        relevance = self._relevance(item, current_topic, msg_words, username)
+        relevance = self._relevance(item, current_topic, msg_words, uid)
         half_life = float(self.config.rank_recency_half_life_days or 14) or 14.0
         age = self._age_days(item, now)
         recency = 0.5 ** (age / half_life) if age > 0 else 1.0
@@ -366,7 +366,7 @@ class MeowLoadAbstractMemory:
                  + w["importance"] * importance)
         return total, relevance
 
-    def _rank(self, data: List[Dict], current_message: str, username: str,
+    def _rank(self, data: List[Dict], current_message: str, uid: str,
               topic_override: str = "") -> List:
         """按综合分（相关性/新近度/证据/准确度/重要度）排序，返回 [(总分, 相关性, 条目)]"""
         current_topic = topic_override or self._current_topic(data)
@@ -376,7 +376,7 @@ class MeowLoadAbstractMemory:
         for item in data:
             if not isinstance(item, dict):
                 continue
-            result = self._score(item, current_topic, msg_words, username, now)
+            result = self._score(item, current_topic, msg_words, uid, now)
             if result is None:
                 continue
             scored.append((result[0], result[1], item))
@@ -403,7 +403,7 @@ class MeowLoadAbstractMemory:
             selected.append(item)
         return selected[:limit]
 
-    def build_prompt(self, current_message: str = "", username: str = "", limit: int = None,
+    def build_prompt(self, current_message: str = "", uid: str = "", limit: int = None,
                      topic_override: str = "", need_recall: bool = False, time_hint=None) -> str:
         """构建记忆摘要 markdown 提示词（相关性保底 + 文本去重 + 可优先时间窗口）"""
         data = self.load()
@@ -411,7 +411,7 @@ class MeowLoadAbstractMemory:
             return ""
         limit = limit if limit is not None else self.config.summary_top_limit
         limit = max(int(limit or 0), int(self.config.summary_relevance_guarantee or 0))
-        ranked = self._rank(data, current_message, username, topic_override)
+        ranked = self._rank(data, current_message, uid, topic_override)
         if need_recall and isinstance(time_hint, dict):
             ranked = self._prioritize_months(ranked, time_hint.get("months"))
         lines = [f"# {AppConfig().ai_name}的记忆"]

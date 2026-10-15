@@ -134,8 +134,7 @@ class MinecraftLogReader:
             return
         self.last_sent_msg = msg
 
-        # 根据配置决定 username（使用玩家名或固定用户名）
-        username = player_name if self.use_player_name else self.username_fixed
+        uid = player_name if self.use_player_name else self.username_fixed
 
         # 构造 prompt
         if self.include_player_name_in_prompt:
@@ -147,7 +146,7 @@ class MinecraftLogReader:
         llm_json = {
             "traceid": traceid,
             "prompt": full_msg,
-            "username": username
+            "uid": uid
         }
         self.llm_data.QuestionList.put(llm_json)
         self.log.info(f"[{traceid}] Minecraft 事件: {full_msg}")

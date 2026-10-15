@@ -266,8 +266,15 @@ def start_napcat():
 def input_msg():
     data = request.json
     query = data["msg"]  # 获取弹幕内容
-    user_name = data["username"]  # 获取用户昵称
-    msg_source = data.get("source", "llm")  # 来源标记（手机语音传 phone）
+    raw_name = str(data.get("username") or "").strip()
+    msg_source = data.get("source", "llm")
+    try:
+        from func.pipeline.id_signup import IdSignupBridge
+        ident = IdSignupBridge().resolve_identity(
+            msg_source, str(data.get("account") or data.get("user_id") or data.get("uid") or raw_name))
+        user_name = str(ident.get("uid") or "") or raw_name
+    except Exception:
+        user_name = raw_name
     # excuse 询问链路优先：正在等待用户补充需求时，拦截文本输入
     try:
         from func.toolbox.excuse import TBExcuse

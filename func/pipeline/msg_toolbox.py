@@ -16,7 +16,7 @@ class MsgToolboxBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_to_toolbox(self, text: str, username: str = ""):
+    def send_to_toolbox(self, text: str, uid: str = ""):
         """异步把文本送入 toolbox 工具分析链（analysis.decide）"""
         if not text or not text.strip():
             return
@@ -24,7 +24,7 @@ class MsgToolboxBridge:
         def _run():
             try:
                 from func.toolbox.toolbox_core import TBoxCore
-                TBoxCore().receive(text.strip(), username)
+                TBoxCore().receive(text.strip(), uid)
             except Exception:
                 self.log.exception("msg → toolbox 工具分析异常")
         Thread(target=_run, daemon=True).start()

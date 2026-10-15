@@ -20,6 +20,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 
 
+from func.pipeline.id_signup import display_name as _disp
 @singleton
 class SystemPromptBridge:
     """系统提示词桥接：注册 catbrain 构建器，按需获取提示词（单例）"""
@@ -27,7 +28,7 @@ class SystemPromptBridge:
     # 字段缺失时的默认值（前置词 = 行为约束；后置词 = 人设）
     DEFAULT_PROMPT = (
         "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见；"
-        "唱歌，做题，发消息这种仅靠说话完成不了的问题，让{username}稍等"
+        "唱歌，做题，发消息这种仅靠说话完成不了的问题，让{_disp(uid)}稍等"
     )
     DEFAULT_PROMPT_ACTIVE = "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见；"
     DEFAULT_PROMPT_NAPCAT = "一次回复不要一次性解决复杂问题，可以留到之后回答；回复要有主见"
@@ -185,7 +186,7 @@ class SystemPromptBridge:
         parts = [p for p in (front, psyche, now_block, post) if p]
         return "\n\n".join(parts)
 
-    def get_tool_prompt(self, username=None, current_message: str = "") -> str:
+    def get_tool_prompt(self, uid=None, current_message: str = "") -> str:
         """工具箱决策/工具调用用提示词：前置词(行为约束) + 角色人设(角色卡+价值观) + 后置词(人设)
         - 不含用户记忆、日期、记忆摘要（这些是「对话上下文」，决策/工具场景不需要）；
         - 后置词不加「你现在在和{name}说话」（决策/工具场景没有固定对话对象）。
@@ -195,26 +196,32 @@ class SystemPromptBridge:
             body = self._builder.build_persona()
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{username}", username or "主人")
+            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
         post = self.get_post_prompt()
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
-    def get_system_prompt(self, username=None, current_message: str = "",
+    def get_system_prompt(self, uid=None, current_message: str = "",
                           mark_first: bool = True) -> str:
         """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)
         mark_first=False 时日期块不占用「当天首次说话」祝福判定。
         """
         body = ""
         if self._builder:
-            body = self._builder.build(username, current_message, mark_first=mark_first)
+            body = self._builder.build(uid, current_message, mark_first=mark_first)
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{username}", username or "主人")
+            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
         post = self.get_post_prompt()
         if post:
-            name = username or "用户"
-            post = f"{post}\n你现在在和{name}说话"
+            name = uid or "用户"
+            _display = name
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                _display = IdSignupBridge().nickname_of(name) or name
+            except Exception:
+                _display = name
+            post = f"{post}\n你现在在和{_display}说话"
         self._psyche_start()
         psyche = self._psyche_block()
         parts = [p for p in (front, psyche, body, post) if p]
@@ -231,10 +238,10 @@ class SystemPromptBridge:
             pass
         return self._append_turtle_soup(prompt, "live")
 
-    def get_danmaku_prompt(self, username=None, current_message: str = "",
+    def get_danmaku_prompt(self, uid=None, current_message: str = "",
                            multi_user: bool = False) -> str:
         """弹幕提示词：前置词(行为约束) + body + 弹幕后置词(回复弹幕)
-        - 单用户：body 含用户档案/记忆，后置词「你在回复{username}的弹幕」；
+        - 单用户：body 含用户档案/记忆，后置词「你在回复{_disp(uid)}的弹幕」；
         - 多用户：body 仅角色人设(角色卡+价值观，不带用户档案)，后置词「你收到了好多弹幕，挑选一些回复一下」。
         """
         body = ""
@@ -242,28 +249,28 @@ class SystemPromptBridge:
             if multi_user and hasattr(self._builder, "build_persona"):
                 body = self._builder.build_persona()
             else:
-                body = self._builder.build(username, current_message)
+                body = self._builder.build(uid, current_message)
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{username}", username or "主人")
+            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
         post = self.get_post_prompt()
         if multi_user:
             post = f"{post}\n你收到了好多弹幕，挑选一些回复一下"
         else:
-            name = username or "用户"
-            post = f"{post}\n你在回复{name}的弹幕"
+            name = uid or "用户"
+            post = f"{post}\n你在回复{_disp(name)}的弹幕"
         self._psyche_start()
         psyche = self._psyche_block()
         parts = [p for p in (front, psyche, body, post) if p]
         prompt = "\n\n".join(parts)
         return self._append_turtle_soup(prompt, "live")
 
-    def get_napcat_prompt(self, username=None, current_message: str = "",
+    def get_napcat_prompt(self, uid=None, current_message: str = "",
                           user_id: str = "") -> str:
         """NapCat 提示词：前置词(行为约束+QQ指令) + body + 后置词(人设+说话人)"""
         body = ""
         if self._builder:
-            body = self._builder.build(username, current_message, online=True)
+            body = self._builder.build(uid, current_message, online=True)
         front = self.get_napcat_front_prompt()
         if front:
             # QQ 指令与字数限制追加到行为约束（前置词）后
@@ -289,8 +296,13 @@ class SystemPromptBridge:
             )
         post = self.get_post_prompt()
         if post:
-            name = username or "用户"
-            post = f"{post}\n你现在在和{name}说话"
+            name = uid or "用户"
+            _display = name
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                _display = IdSignupBridge().nickname_of(name) or name
+            except Exception:
+                _display = name
         self._psyche_start("qq")
         psyche = self._psyche_block("qq")
         parts = [p for p in (front, psyche, body, post) if p]
@@ -309,17 +321,17 @@ class SystemPromptBridge:
             pass
         return self._append_turtle_soup(prompt, session_key)
 
-    def get_napcat_group_prompt(self, username=None, group_name: str = "",
+    def get_napcat_group_prompt(self, uid=None, group_name: str = "",
                                 group_info_text: str = "", current_message: str = "",
                                 group_id: str = "") -> str:
         """NapCat 群聊提示词：前置词(行为约束+QQ群聊指令) + body(用户档案或群聊档案) + 后置词(在群内聊天)"""
         body = ""
         if self._builder and hasattr(self._builder, "build_group"):
             body = self._builder.build_group(
-                username, group_name, group_info_text, current_message, online=True
+                uid, group_name, group_info_text, current_message, online=True
             )
         elif self._builder:
-            body = self._builder.build(username, current_message, online=True)
+            body = self._builder.build(uid, current_message, online=True)
         front = self.get_napcat_front_prompt()
         if front:
             word_count, limit, punct_on, punct_max = 10, 15, True, 4
@@ -364,31 +376,31 @@ class SystemPromptBridge:
             pass
         return self._append_turtle_soup(prompt, session_key)
 
-    def get_watching_prompt(self, username=None, current_message: str = "",
+    def get_watching_prompt(self, uid=None, current_message: str = "",
                             front_note: str = "") -> str:
         """watching（长期观察屏幕）提示词：前置词 + 游戏场景说明 + body(不含摘要) + 后置词(在看XX内容)
         - front_note：AI 决策填写的游戏场景说明（谁在玩什么、画面特征等），加在前置词之后；
         - body：角色卡 + 价值观 + 用户档案 + 日期（不含长期记忆摘要 abmem）；
-        - 后置词末尾追加「你在看{username}的内容」。
+        - 后置词末尾追加「你在看{_disp(uid)}的内容」。
         """
         body = ""
         if self._builder and hasattr(self._builder, "build_watching"):
-            body = self._builder.build_watching(username, current_message)
+            body = self._builder.build_watching(uid, current_message)
         elif self._builder:
-            body = self._builder.build(username, current_message)
+            body = self._builder.build(uid, current_message)
 
         front = self.get_front_prompt()
         if front:
-            front = front.replace("{username}", username or "主人")
+            front = front.replace("{_disp(uid)}", _disp(uid) or "主人")
         if front_note and front_note.strip():
             front = f"{front}\n{front_note.strip()}"
 
         post = self.get_post_prompt()
-        name = username or "用户"
+        name = uid or "用户"
         if post:
-            post = f"{post}\n你现在在看{name}的屏幕内容，正在陪{name}"
+            post = f"{post}\n你现在在看{_disp(name)}的屏幕内容，正在陪{_disp(name)}"
         else:
-            post = f"你现在在看{name}的屏幕内容，正在陪{name}"
+            post = f"你现在在看{_disp(name)}的屏幕内容，正在陪{_disp(name)}"
 
         self._psyche_start()
         psyche = self._psyche_block()

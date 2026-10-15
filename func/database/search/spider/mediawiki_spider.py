@@ -6,7 +6,6 @@ import urllib.parse
 
 from func.log.default_log import DefaultLog
 
-# 已验证可用的 MediaWiki 站点（api 端点 → 说明）
 WIKIS = {
     "moegirl": ("https://mzh.moegirl.org.cn/api.php", "萌娘百科（须给准确条目名，搜索接口对匿名用户关闭）"),
 }

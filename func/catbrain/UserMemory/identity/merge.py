@@ -118,16 +118,6 @@ class UserMerge:
                 conflicts.append((field, old, value))
         return conflicts
 
-    def filled_fields(self, base, other):
-        """列出从另一份补进来的字段"""
-        filled = []
-        for field, value in (other or {}).items():
-            if field == "name":
-                continue
-            old = (base or {}).get(field)
-            if old in (None, "", "unknown") and value not in (None, "", "unknown", []):
-                filled.append(field)
-        return filled
 
     def merge_fields(self, base, other):
         """当底字段保留，另一份只补空缺"""

@@ -50,6 +50,7 @@ Object.assign(App, {
             return `<div class="char-card" data-backlog-user="${this._escAttr(u)}">
                 <div class="char-card-title backlog-user-toggle" style="cursor:pointer;">
                     <span class="backlog-toggle-arrow">▾</span> ${this._esc(u)}
+                    ${((this.calendarData[u] || {}).uid) ? '<div class="uid-sub">' + this._esc(this.calendarData[u].uid) + '</div>' : ''}
                 </div>
                 <div class="backlog-user-body">
                     <div class="backlog-todo-list">${todoHtml || '<div class="help-text">暂无待办</div>'}</div>

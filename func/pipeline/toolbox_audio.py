@@ -29,11 +29,11 @@ class ToolboxAudioBridge:
         self._discard_next_asr = False
         self._last_hum_seq = 0
 
-    def set_last_speaker(self, username):
+    def set_last_speaker(self, uid):
         """写入最近一次通过声纹验证的说话人（供哼唱记忆绑定用户）"""
-        if username:
+        if uid:
             with self._lock:
-                self._last_speaker = username
+                self._last_speaker = uid
 
     def get_last_speaker(self):
         """读取最近一次通过声纹验证的说话人"""

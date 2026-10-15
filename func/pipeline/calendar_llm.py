@@ -16,6 +16,8 @@ from func.pipeline.system_prompt import SystemPromptBridge
 from func.config.app_config import AppConfig
 
 
+
+from func.pipeline.id_signup import display_name as _disp
 class DateCalendarLLM:
     """待办提醒语音链路：构建提示词 → 流式 LLM → TTS → 写记忆"""
 
@@ -35,12 +37,12 @@ class DateCalendarLLM:
             return AliyunLLM(self.config)
         return DeepSeekLLM(self.config)
 
-    def remind(self, username, time_str, content):
-        base = SystemPromptBridge().get_system_prompt(username, "", mark_first=False)
+    def remind(self, uid, time_str, content):
+        base = SystemPromptBridge().get_system_prompt(uid, "", mark_first=False)
         prompt = (
             f"{base}\n\n"
-            f"【你此刻想到的事】现在是{time_str}，你想起了要提醒{username}：{content}\n"
-            f"这是你主动开口说话，第一句就是你要说给{username}听的话；不要复述提醒内容，"
+            f"【你此刻想到的事】现在是{time_str}，你想起了要提醒{_disp(uid)}：{content}\n"
+            f"这是你主动开口说话，第一句就是你要说给{_disp(uid)}听的话；不要复述提醒内容，"
             f"不要出现“好的”“收到”“我这就”这类回应指令的话。"
         )
         messages = [
@@ -62,6 +64,6 @@ class DateCalendarLLM:
                 {"role": "assistant", "content": final_text, "type": "llm_active_response"},
                 self.config.short_term_rounds,
             )
-            self.ltmem.record_ai_message(username, AppConfig().ai_name, final_text)
-        self.log.info(f"[{traceid}][待办提醒]{username}: {final_text}")
+            self.ltmem.record_ai_message(uid, AppConfig().ai_name, final_text)
+        self.log.info(f"[{traceid}][待办提醒]{uid}: {final_text}")
         return final_text

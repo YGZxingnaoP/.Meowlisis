@@ -832,8 +832,21 @@ def identity_users():
 
 @app.route('/api/identity/user', methods=['GET'])
 def identity_user():
-    """查单个用户详情：编号、昵称、好感度、逐个平台的账号"""
-    return jsonify(_identity_bridge().user_detail(request.args.get('id', '')))
+    """查单个用户详情：支持 编号 / 昵称 / QQ号 / B站uid 四种输入"""
+    key = str(request.args.get('id', '') or '').strip()
+    bridge = _identity_bridge()
+    if key and not bridge.find(key):
+        # 编号、昵称都没命中，再按各平台账号找（QQ号 / B站uid / 声纹名）
+        try:
+            from func.catbrain.UserMemory.identity.store import KNOWN_PLATFORMS
+            for platform in KNOWN_PLATFORMS:
+                uid = bridge.resolve(platform, key)
+                if uid and not bridge._store().is_temp(uid):
+                    key = uid
+                    break
+        except Exception:
+            pass
+    return jsonify(bridge.user_detail(key))
 
 
 @app.route('/api/identity/nickname', methods=['POST'])

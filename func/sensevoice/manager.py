@@ -10,6 +10,7 @@ import aiohttp
 from func.sensevoice.optimizer import SenseVoiceTextOptimizer
 
 
+
 class SenseVoiceManager:
     """收服务端结果 + 声纹过滤 + 断句合并；发送 audio/ctrl 为非阻塞提交"""
 
@@ -149,13 +150,16 @@ class SenseVoiceManager:
         try:
             from func.pipeline.id_signup import IdSignupBridge
             bridge = IdSignupBridge()
-            if len(name) == 6 and name.isdigit():
-                nickname = bridge.nickname_of(name)
-                if nickname and nickname in wanted:
+            mine = bridge.resolve_name(name) or name
+            for target in wanted:
+                if target == name or target == mine:
                     return True
-            uid = bridge.id_by_name(name)
-            if uid and uid in wanted:
-                return True
+                if bridge.resolve_name(target) == mine:
+                    return True
+                if bridge.nickname_of(target) == name:
+                    return True
+                if bridge.nickname_of(target) and bridge.nickname_of(target) == bridge.nickname_of(mine):
+                    return True
         except Exception:
             pass
         return False
@@ -170,7 +174,7 @@ class SenseVoiceManager:
         # 不依赖声纹验证——只要识别到非空内容手机就显示（方案2A）
         if self.subtitle is not None and self.subtitle_publish:
             try:
-                self.subtitle.put(self.username or '手机用户', text)
+                self.subtitle.put(self.username or spk_name or '', text)
             except Exception:
                 self.log.exception("写入用户字幕失败")
 
@@ -181,34 +185,37 @@ class SenseVoiceManager:
             if spk_score < self.config.speaker_threshold:
                 self.log.warning(f"⚠️ 说话人 '{spk_name}' 置信度 {spk_score:.3f} < 阈值 {self.config.speaker_threshold}，忽略")
                 return
-            username = spk_name
+            raw = spk_name
             self.log.info(f"✅ 通过说话人验证: {spk_name} (score={spk_score:.3f})")
         else:
-            username = self.username or '手机用户'
-            self.log.info(f"✅ 跳过声纹验证，用户名: {username}")
+            raw = self.username
+            self.log.info(f"✅ 跳过声纹验证，使用配置身份: {raw}")
 
-        # 声纹登记为当前说话人：声纹名写编号就用编号，否则查声纹绑定，再退回原名
+        uid = ""
         try:
             from func.pipeline.id_signup import IdSignupBridge
-            username = IdSignupBridge().voice_begin(username)
+            uid = str(IdSignupBridge().resolve_name(raw) or "")
         except Exception:
-            self.log.exception("登记声纹说话人失败")
+            self.log.exception("解析说话人身份失败")
+        if not uid:
+            self.log.warning(f"说话人 '{raw}' 没有对应身份，已忽略本条（不兜底、不建临时身份）")
+            return
 
         # ASR 字幕：识别内容推字幕服务器（桌面字幕顶部人名；保持原逻辑——声纹通过后显示）
         try:
             from func.pipeline.get_subtitle import GetSubtitleBridge
-            GetSubtitleBridge().send_asr(text, username)
+            GetSubtitleBridge().send_asr(text, uid)
         except Exception:
             pass
 
         # 记录最近一次说话人（供哼唱识别绑定用户名）
         try:
             from func.pipeline.toolbox_audio import ToolboxAudioBridge
-            ToolboxAudioBridge().set_last_speaker(username)
+            ToolboxAudioBridge().set_last_speaker(uid)
         except Exception:
             self.log.exception("写入最后声纹说话人失败")
 
-        key = username
+        key = uid
         # 只累积文本，不因 final 到达而重置计时
         if key in self.pending_texts:
             self.pending_texts[key] = self.pending_texts[key] + " " + text
@@ -254,20 +261,20 @@ class SenseVoiceManager:
                 self._merge_task = None
                 self._merge_key = None
 
-    async def _send_to_llm(self, text: str, username: str):
+    async def _send_to_llm(self, text: str, uid: str):
         """发送识别文本到 LLM"""
         if self.callback:
             loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, self.callback, text, username, self.llm_source)
+            await loop.run_in_executor(None, self.callback, text, uid, self.llm_source)
             return
 
         url = f"{self.api_base}/msg"
-        payload = {"msg": text, "username": username, "source": self.llm_source}
+        payload = {"msg": text, "username": uid, "source": self.llm_source}
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(url, json=payload) as resp:
                     if resp.status == 200:
-                        self.log.info(f"已送入 AI 核心: {text[:30]}... (说话人: {username})")
+                        self.log.info(f"已送入 AI 核心: {text[:30]}... (说话人: {uid})")
                     else:
                         self.log.error(f"发送失败: {resp.status}")
         except Exception as e:

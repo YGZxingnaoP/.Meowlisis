@@ -145,7 +145,7 @@ Object.assign(App, {
                 <input type="checkbox" id="spk_${s.name}" ${s.enabled ? 'checked' : ''} data-speaker-name="${s.name}">
                 <div class="speaker-name-block">
                     <label for="spk_${s.name}">${s.nickname || this._t('未设昵称')}</label>
-                    <div class="help-text">${this._t('编号')} ${s.id || this._t('未填')}</div>
+                    <div class="uid-sub">${this._t('编号')} ${s.id || this._t('未填')}</div>
                 </div>
             </div>
         `).join('');

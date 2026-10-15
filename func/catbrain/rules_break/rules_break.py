@@ -11,6 +11,7 @@ from func.catbrain.rules_break.config import TBRulesBreakConfig
 from func.catbrain.rules_break.port import TBRulesBreakPort
 
 
+from func.pipeline.id_signup import display_name as _disp
 @singleton
 class TBRulesBreak:
     """内容审查器：独立 DeepSeek port + tool_choice 强制判断，结果写对应桥接。
@@ -99,11 +100,11 @@ class TBRulesBreak:
         return False
 
     # ==================== 好感度门槛 ====================
-    def _affinity(self, username: str) -> int:
+    def _affinity(self, uid: str) -> int:
         """读取用户档案好感度（走统一入口：绑定过编号就读编号目录）"""
         try:
             from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
-            data = MeowLoadUserMemory().load(username)
+            data = MeowLoadUserMemory().load(uid)
             affinity = data.get("affinity", 0)
             if isinstance(affinity, (int, float)):
                 return int(affinity)
@@ -111,9 +112,9 @@ class TBRulesBreak:
             pass
         return 0
 
-    def _allow(self, username: str) -> bool:
+    def _allow(self, uid: str) -> bool:
         """好感度门槛：仅好感度 > affinity_min 才允许触发原则词注入"""
-        return self._affinity(username) > self.config.affinity_min
+        return self._affinity(uid) > self.config.affinity_min
 
     # ==================== 情绪覆盖（破甲词触发） ====================
     @staticmethod
@@ -157,32 +158,32 @@ class TBRulesBreak:
         self._write_emotion_file(".temp/latest_emotion.json", "love")
 
     # ==================== 入口：审查 + 写桥接 ====================
-    def check_and_store_msg(self, username: str, content: str, short_memory: List[dict] = None) -> bool:
+    def check_and_store_msg(self, uid: str, content: str, short_memory: List[dict] = None) -> bool:
         """主线程审查：写 MsgRuleBreakBridge（开关关闭或好感度不足时显式清零，避免残留）"""
         from func.pipeline.msg_rulebreak import MsgRuleBreakBridge
-        if not self.config.enabled_msg or not self._allow(username):
+        if not self.config.enabled_msg or not self._allow(uid):
             MsgRuleBreakBridge().set_explicit(False)
             return False
         explicit = self.check(content, short_memory)
         MsgRuleBreakBridge().set_explicit(explicit)
         if explicit:
             self.log.info(
-                f"[原则词触发] 主线程命中色情/露骨，用户={username}，内容={str(content)[:40]}"
+                f"[原则词触发] 主线程命中色情/露骨，用户={_disp(uid)}，内容={str(content)[:40]}"
             )
             self._force_love_emotion()
         return explicit
 
-    def check_and_store_qq(self, session_key: str, username: str, content: str, short_memory: List[dict] = None) -> bool:
+    def check_and_store_qq(self, session_key: str, uid: str, content: str, short_memory: List[dict] = None) -> bool:
         """QQ 审查：写 ToolboxRuleBreakBridge（按 session_key 隔离）"""
         from func.pipeline.toolbox_rulebreak import ToolboxRuleBreakBridge
-        if not self.config.enabled_qq or not self._allow(username):
+        if not self.config.enabled_qq or not self._allow(uid):
             ToolboxRuleBreakBridge().set_explicit(session_key, False)
             return False
         explicit = self.check(content, short_memory)
         ToolboxRuleBreakBridge().set_explicit(session_key, explicit)
         if explicit:
             self.log.info(
-                f"[原则词触发] QQ命中色情/露骨，session={session_key}，用户={username}，内容={str(content)[:40]}"
+                f"[原则词触发] QQ命中色情/露骨，session={session_key}，用户={_disp(uid)}，内容={str(content)[:40]}"
             )
             self._force_love_emotion()
         return explicit

@@ -19,13 +19,13 @@ class ToolboxLLMBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_to_llm(self, text: str, username: str, source: str = "toolbox",
+    def send_to_llm(self, text: str, uid: str, source: str = "toolbox",
                     preamble_text: str = "", traceid: str = "",
                     multi_user: bool = False, memory_config: dict = None):
         """将 toolbox 工具输出内容送入 LLM 快速回复链。
 
         :param text: 要送入 LLM 的文本（弹幕为「【弹幕】用户名: 内容」包装）
-        :param username: 用户名（供长期记忆/用户档案归档）
+        :param uid: 用户名（供长期记忆/用户档案归档）
         :param source: 来源标记（toolbox / danmaku），danmaku 会走弹幕提示词
         :param preamble_text: 朗读前置段（弹幕朗读），由主链路 Output 先送 TTS 再回复
         :param traceid: 复用外部 traceid（弹幕朗读与回复共享同一任务，保证连续）
@@ -36,7 +36,7 @@ class ToolboxLLMBridge:
         traceid = traceid or str(uuid.uuid4())
         self.log.info(f"[{traceid}] Toolbox → LLM: {text[:50]}...")
         LLmCore().msg_deal(
-            traceid, text, username,
+            traceid, text, uid,
             source=source, preamble_text=preamble_text, multi_user=multi_user,
             memory_config=memory_config,
         )
@@ -48,7 +48,7 @@ class NapcatLLMBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_to_llm(self, username: str, user_id: str, text: str, short_memory: List[dict],
+    def send_to_llm(self, uid: str, user_id: str, text: str, short_memory: List[dict],
                     on_segment: Optional[Callable[[str], None]] = None,
                     nsfw: bool = False, quote: Optional[str] = None) -> str:
         """将 QQ 用户消息 + 短期记忆送入 napcat 独立 LLM 链路，返回完整回复。
@@ -57,8 +57,8 @@ class NapcatLLMBridge:
         nsfw=True 时切割减小（不按逗号切）。
         """
         from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
-        self.log.info(f"NapCat → LLM: {username} {text[:30]}...")
-        return TBNapCatLLM().reply(username, user_id, text, short_memory, on_segment, nsfw=nsfw, quote=quote)
+        self.log.info(f"NapCat → LLM: {uid} {text[:30]}...")
+        return TBNapCatLLM().reply(uid, user_id, text, short_memory, on_segment, nsfw=nsfw, quote=quote)
 
 
 class NapcatGroupLLMBridge:
@@ -67,7 +67,7 @@ class NapcatGroupLLMBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
+    def reply(self, uid: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
               nsfw: bool = False, quote: Optional[str] = None) -> str:
@@ -78,15 +78,15 @@ class NapcatGroupLLMBridge:
         from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
         self.log.info(f"NapCat 群聊 → LLM: {group_name} {text[:30]}...")
         return TBNapCatGroupLLM().reply(
-            username, group_id, group_name, text, short_memory, group_info_text, on_segment,
+            uid, group_id, group_name, text, short_memory, group_info_text, on_segment,
             nsfw=nsfw, quote=quote
         )
 
-    def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,
+    def decide(self, uid: Optional[str], group_id: str, group_name: str, text: str,
                short_memory: List[dict], group_info_text: str = "",
                ask_bot_tools: Optional[List[dict]] = None) -> str:
         """阈值触发：决策是否插话 / 是否调用 ask_group_bot / 输出 pass"""
         from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
         return TBNapCatGroupLLM().decide(
-            username, group_id, group_name, text, short_memory, group_info_text, ask_bot_tools
+            uid, group_id, group_name, text, short_memory, group_info_text, ask_bot_tools
         )

@@ -53,8 +53,8 @@ class DateBacklog:
                     self._state.pop(k, None)
             state = self._state.setdefault(today, {})
 
-        for username, item in items:
-            key = self._item_key(username, item)
+        for uid, item in items:
+            key = self._item_key(uid, item)
             with self._lock:
                 entry = state.get(key)
                 if entry is None:
@@ -73,20 +73,20 @@ class DateBacklog:
                     with self._lock:
                         if m_str not in entry["fired"]:
                             entry["fired"].append(m_str)
-                    self._fire(username, item, m)
+                    self._fire(uid, item, m)
         self._save_state()
 
-    def _fire(self, username, item, moment):
+    def _fire(self, uid, item, moment):
         def _run():
             try:
                 time_str = str(item.get("time") or "")
                 content = str(item.get("content") or "")
                 qq = self._to_bool(item.get("qq"))
                 from func.pipeline.calendar_llm import DateCalendarLLM
-                DateCalendarLLM().remind(username, time_str, content)
+                DateCalendarLLM().remind(uid, time_str, content)
                 if qq:
                     from func.pipeline.calendar_toolbox import DateCalendarToolbox
-                    DateCalendarToolbox().remind(username, time_str, content)
+                    DateCalendarToolbox().remind(uid, time_str, content)
             except Exception:
                 self.log.exception("待办提醒触发异常")
 
@@ -121,20 +121,20 @@ class DateBacklog:
         """取全部待办条目：编号目录 + 老目录都算"""
         from func.pipeline.id_signup import IdSignupBridge
         result = []
-        for username, data in IdSignupBridge().backlog_entries():
+        for uid, data in IdSignupBridge().backlog_entries():
             todos = data.get("to_do_list")
             if isinstance(todos, list):
                 for item in todos:
                     if isinstance(item, dict):
-                        result.append((username, item))
+                        result.append((uid, item))
         return result
 
     @staticmethod
-    def _item_key(username, item):
+    def _item_key(uid, item):
         day = str(item.get("day") or "").strip()
         time_str = str(item.get("time") or "").strip()
         content = str(item.get("content") or "").strip()
-        return f"{username}::{day}::{time_str}::{content}"
+        return f"{uid}::{day}::{time_str}::{content}"
 
     @staticmethod
     def _parse_time(time_str):

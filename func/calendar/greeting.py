@@ -8,6 +8,8 @@ import json
 from func.log.default_log import DefaultLog
 
 
+
+from func.pipeline.id_signup import display_name as _disp
 class DateGreeting:
     """节日祝福文案加载与渲染（生日 / 节日 / 节气）
 
@@ -52,16 +54,16 @@ class DateGreeting:
     def render_birthday(self, username: str) -> str:
         data = self._load()
         tpl = str(data.get("生日") or self.DEFAULT_BIRTHDAY)
-        return tpl.replace("{username}", username)
+        return tpl.replace("{username}", _disp(username))
 
     def render_holiday(self, name: str, username: str) -> str:
         data = self._load()
         m = (data.get("节日") or {}).get(name)
         tpl = str(m or self.DEFAULT_HOLIDAY)
-        return tpl.replace("{name}", name).replace("{username}", username)
+        return tpl.replace("{name}", name).replace("{username}", _disp(username))
 
     def render_solar_term(self, name: str, username: str) -> str:
         data = self._load()
         m = (data.get("节气") or {}).get(name)
         tpl = str(m or self.DEFAULT_SOLAR_TERM)
-        return tpl.replace("{name}", name).replace("{username}", username)
+        return tpl.replace("{name}", name).replace("{username}", _disp(username))

@@ -47,14 +47,14 @@ class GetSubtitleBridge:
         self._last_tts = text
         self._send(text, role='tts', name=self._ai_name())
 
-    def send_asr(self, text, username=None):
-        """推送 ASR 语音识别字幕（用户说话内容，同文本去重；username 作为标签）"""
+    def send_asr(self, text, uid=None):
+        """推送 ASR 语音识别字幕（用户说话内容，同文本去重；uid 作为标签）"""
         if not text:
             return
         if text == self._last_asr:
             return
         self._last_asr = text
-        self._send(text, role='asr', name=username or '说话人')
+        self._send(text, role='asr', name=uid or '说话人')
 
     def send_lyric(self, text):
         """推送歌词字幕（不去重）"""

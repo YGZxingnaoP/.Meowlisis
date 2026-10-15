@@ -26,84 +26,41 @@ class IdSignupBridge:
         """取当前登记的说话人"""
         return dict(self._current)
 
-    def begin(self, platform, account, name=""):
-        """平台层进来先登记说话人，并返回统一昵称（没绑定原样返回）
-
-        登记进上下文的必须是统一昵称，否则下游按名字取编号时对不上。
-        """
-        raw = str(name or "").strip()
-        self.set_current(platform, account, raw)
-        nickname = ""
-        uid = self.current_id()
-        if uid:
-            nickname = self.nickname_of(uid)
-        if not nickname:
-            nickname = self.normalize_name(raw)
-        self.set_current(platform, account, nickname or raw)
-        return nickname or raw
+    def resolve_identity(self, platform, account):
+        platform = str(platform or "").strip()
+        account = str(account or "").strip()
+        if not account:
+            return {"uid": "", "nickname": "", "platform": platform, "account": ""}
+        uid = ""
+        try:
+            uid = self.resolve(platform, account) or self.resolve_name(account)
+            if not uid:
+                uid = str(self._store().ensure_temp(platform, account) or "")
+        except Exception:
+            self.log.exception("解析身份失败")
+        return {"uid": str(uid or ""), "nickname": self.nickname_of(uid) if uid else "",
+                "platform": platform, "account": account}
 
     def id_by_name(self, name):
         """按昵称找编号（临时身份不算），找不到回空串"""
         name = str(name or "").strip()
         if not name:
             return ""
+        hits = []
         for user in self.list_users():
             if self._store().is_temp(user.get("id")):
                 continue
             if str(user.get("nickname") or "").strip() == name:
-                return str(user.get("id") or "")
-        return ""
-
-    def current_id(self):
-        """按当前登记的说话人取编号；账号里带编号（昵称(编号)）或账号就是编号都能用"""
-        current = self._current
-        if not current:
+                hits.append(str(user.get("id") or ""))
+        if len(hits) > 1:
+            warned = getattr(self, "_ambiguous_warned", None)
+            if warned is None or len(warned) > 64:
+                warned = self._ambiguous_warned = set()
+            if name not in warned:
+                warned.add(name)
+                self.log.warning(f"昵称「{name}」对应多个编号 {hits}，按名字取身份被拒绝，请改用编号或绑定平台账号")
             return ""
-        account = str(current.get("account") or "").strip()
-        uid = self.uid_from_text(account)
-        if uid:
-            return uid
-        uid = self.resolve(current.get("platform"), account)
-        return "" if self._store().is_temp(uid) else uid
-
-    def voice_label(self, uid):
-        """声纹文件名该写成什么样：昵称(编号)"""
-        user = self.find(uid) or {}
-        nickname = str(user.get("nickname") or "").strip() or str(uid)
-        return f"{nickname}({uid})"
-
-    def uid_from_text(self, text):
-        """从「昵称(编号)」「编号」这类写法里取出编号（临时身份不算）"""
-        text = str(text or "").strip()
-        match = re.search(r"(\d{6})", text)
-        if match and self.find(match.group(1)):
-            return match.group(1)
-        return ""
-
-    @staticmethod
-    def nickname_part(text, uid):
-        """从「昵称(编号)」里取出昵称那一段，取不到回空"""
-        text = str(text or "").strip()
-        if not text:
-            return ""
-        part = re.sub(r"[（(]\s*" + re.escape(str(uid)) + r"\s*[)）]", "", text)
-        if part == text:
-            return ""
-        return part.strip(" -_·、,，")
-
-    def voice_begin(self, speaker):
-        """声纹侧登记：文件名写成「昵称(编号)」就能认出这个人
-
-        称呼按项目统一规则：身份表设了昵称就用昵称，没设置就用文件名里的昵称，再退到原名。
-        """
-        raw = str(speaker or "").strip()
-        uid = self.uid_from_text(raw)
-        if not uid:
-            self.set_current("voice", raw, raw)
-            return raw
-        nickname = self.nickname_of(uid) or self.nickname_part(raw, uid) or raw
-        self.set_current("voice", raw, nickname)
-        return nickname
+        return hits[0] if hits else ""
 
     def platform_options(self):
         """列出全部平台（含离线占位），供界面逐平台展示"""
@@ -155,185 +112,55 @@ class IdSignupBridge:
             return uid
         return ""
 
-    def _is_pure_placeholder(self, uid):
-        """判断编号是不是只有档案、还没挂任何平台账号（迁移出来的裸号）"""
-        if self._store().is_temp(uid):
-            return False
-        accounts = (self.find(uid) or {}).get("accounts") or {}
-        return not [p for p in accounts if accounts.get(p)]
-
-    def ensure_for(self, name):
-        """取编号并把当前平台账号挂到已有编号上；没绑定的只登记临时身份，仍然走原逻辑"""
-        text = str(name or "").strip()
-        current = self._current
-        same = bool(current) and str(current.get("name") or "").strip() == text
-        platform = str(current.get("platform") or "").strip() if current else ""
-        account = str(current.get("account") or "").strip() if current else ""
-        if same and platform and account:
-            bound = self.resolve(platform, account)
-            if bound and not self._store().is_temp(bound):
-                return bound
-            if not self.uid_of(text):
-                # 没绑定：发一个临时身份占位，档案照旧写老目录（临时号不能当身份用）
-                self._store().ensure_temp(platform, account, nickname=text)
-                return ""
-        uid = self.uid_of(text)
-        if not uid or not (same and platform and account):
-            return uid
-        ok, _msg, owner = self.bind(uid, platform, account)
-        return uid if ok else (owner or uid)
-
-    def normalize_name(self, name):
-        """把名字换成统一昵称，没绑定就原样返回"""
-        uid = self.uid_of(name)
-        if not uid:
-            return str(name or "")
-        user = self.find(uid)
-        return str(user.get("nickname") or "").strip() or str(name or "")
-
-    def user_dir(self, uid):
-        """取编号目录：跟着身份表的根目录走，测试切根就整块切走"""
-        root = getattr(self._store(), "dir", os.path.join("character", "userinfo"))
-        return os.path.join(root, str(uid))
-
-    def profile_path(self, uid):
-        """取编号对应的档案路径"""
-        return os.path.join(self.user_dir(uid), "profile.json")
-
-    def backlog_path(self, uid):
-        """取编号对应的待办路径"""
-        return os.path.join(self.user_dir(uid), "backlog.json")
-
-    def record_path(self, uid):
-        """取编号对应的短期记录路径"""
-        root = getattr(self._store(), "record_root", ".temp")
-        return os.path.join(root, f"{str(uid)}_record.txt")
-
-    @staticmethod
-    def safe_name(name):
-        """把名字清洗成能当文件名的形式"""
-        text = re.sub(r'[\\/:*?"<>|\r\n\t]', "_", str(name or "").strip())
-        return text or "空格"
-
-    def legacy_record_path(self, name):
-        """取老位置里按名字命名的记录路径"""
-        root = getattr(self._store(), "record_root", ".temp")
-        return os.path.join(root, f"{self.safe_name(name)}_record.txt")
-
-    def record_path_of(self, name):
-        """取短期记录路径：有编号就用编号命名，没绑定照旧用名字"""
-        uid = self.uid_of(str(name or "").strip())
-        if uid:
-            return self.record_path(uid)
-        return self.legacy_record_path(name)
-
-    def legacy_profile_path(self, name):
-        """取老目录里按名字命名的档案路径"""
-        safe = str(name or "").strip()
-        for ch in '\\/:*?"<>|\r\n\t':
-            safe = safe.replace(ch, "_")
-        return os.path.join("character", "info", "users_info", f"{safe}_latest.json")
-
     def nickname_of(self, uid):
-        """取编号的昵称"""
         return str((self.find(uid) or {}).get("nickname") or "").strip()
 
     @staticmethod
-    def _safe(name):
-        """把名字清洗成能当文件名的形式"""
-        text = str(name or "").strip()
-        for ch in '\\/:*?"<>|\r\n\t':
-            text = text.replace(ch, "_")
-        return text or "unnamed"
-
-    def legacy_backlog_path(self, name):
-        """取老目录里按名字命名的待办路径"""
-        return os.path.join("character", "backlog", f"{self._safe(name)}.json")
-
-    def backlog_path_of(self, name):
-        """取待办落盘路径：有编号进编号目录，没有照旧"""
-        uid = self.uid_of(name) or self.uid_by_nickname(name)
-        if uid:
-            return self.backlog_path(uid)
-        return self.legacy_backlog_path(name)
-
-    def uid_by_nickname(self, name):
-        """按昵称反查编号（配置界面传过来的是昵称，不是编号）"""
-        target = str(name or "").strip()
-        if not target:
-            return ""
-        try:
-            for user in self.list_users():
-                if str(user.get("nickname") or "").strip() == target:
-                    return str(user.get("id") or "")
-        except Exception:
-            self.log.exception("按昵称查编号失败")
-        return ""
-
-    def read_json_file(self, path):
-        """读一个 json 文件，读不到回空 dict"""
+    def read_json_file(path):
         try:
             if path and os.path.exists(path):
                 with open(path, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 return data if isinstance(data, dict) else {}
         except Exception:
-            self.log.exception(f"读取文件失败: {path}")
+            return {}
         return {}
 
-    def read_backlog(self, name):
-        """取待办：先编号目录，再老目录"""
-        for path in (self.backlog_path_of(name), self.legacy_backlog_path(name)):
-            data = self.read_json_file(path)
-            if data:
-                return data
-        return {}
+    def user_dir(self, uid):
+        root = getattr(self._store(), "dir", os.path.join("character", "userinfo"))
+        return os.path.join(root, str(uid))
 
-    def save_backlog(self, name, data):
-        """把待办写到该用户该在的位置，返回路径"""
-        path = self.backlog_path_of(name)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        payload = dict(data or {})
-        payload["username"] = payload.get("username") or name
-        if not isinstance(payload.get("to_do_list"), list):
-            payload["to_do_list"] = []
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-        return path
+    def profile_path(self, uid):
+        return os.path.join(self.user_dir(uid), "profile.json")
 
-    def backlog_entries(self):
-        """列出全部待办，返回 [(名字, 数据)]，编号目录优先、老目录去重"""
-        entries = []
-        names = set()
-        root = os.path.join("character", "userinfo")
-        if os.path.isdir(root):
-            for uid in sorted(os.listdir(root)):
-                data = self.read_json_file(os.path.join(root, uid, "backlog.json"))
-                if not data:
-                    continue
-                name = self.nickname_of(uid) or str(data.get("username") or uid)
-                entries.append((name, data))
-                names.add(str(data.get("username") or "").strip())
-                names.add(name)
-        legacy = os.path.join("character", "backlog")
-        if os.path.isdir(legacy):
-            for fname in sorted(os.listdir(legacy)):
-                if not fname.endswith(".json"):
-                    continue
-                data = self.read_json_file(os.path.join(legacy, fname))
-                if not data:
-                    continue
-                name = str(data.get("username") or "").strip() or fname[:-5]
-                if name in names:
-                    continue
-                entries.append((name, data))
-        return entries
+    def record_path(self, uid):
+        root = getattr(self._store(), "record_root", ".temp")
+        return os.path.join(root, f"{str(uid)}_record.txt")
+
+    def backlog_path(self, uid):
+        return os.path.join(self.user_dir(uid), "backlog.json")
+
+    def uid_or_temp(self, name):
+        text = str(name or "").strip()
+        uid = self.resolve_name(text)
+        if uid:
+            return uid
+        if not text:
+            return ""
+        try:
+            for key, user in (self._store()._load().get("users") or {}).items():
+                if self._store().is_temp(key) and str((user or {}).get("nickname") or "").strip() == text:
+                    return str(key)
+        except Exception:
+            self.log.exception("按昵称找临时身份失败")
+        return str(self._store().ensure_temp("local", text, nickname=text) or "")
 
     def resolve_name(self, name):
-        """按名字取编号（读侧宽松版）：编号、昵称都能认，不要求是当前说话人"""
         text = str(name or "").strip()
-        if not text or self._store().is_temp(text):
+        if not text:
             return ""
+        if self._store().is_temp(text):
+            return text
         if len(text) == 6 and text.isdigit() and self.find(text):
             return text
         uid = self.uid_from_text(text)
@@ -342,24 +169,104 @@ class IdSignupBridge:
         return self.id_by_name(text)
 
     def profile_path_of(self, name):
-        """按名字定档案路径：认得出编号就用编号目录，认不出才照旧老目录"""
-        uid = self.resolve_name(name)
-        if uid:
-            return self.profile_path(uid)
-        return self.legacy_profile_path(name)
+        return self.profile_path(self.uid_or_temp(name))
 
     def profile_of(self, name):
-        """按名字读档案，新老位置都找"""
-        for path in (self.profile_path_of(name), self.legacy_profile_path(name)):
-            try:
-                if path and os.path.exists(path):
-                    with open(path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    if isinstance(data, dict) and data:
-                        return data
-            except Exception:
-                self.log.exception(f"读取用户档案失败: {path}")
+        data = self.read_json_file(self.profile_path_of(name))
+        return data if isinstance(data, dict) else {}
+
+    def record_path_of(self, name):
+        return self.record_path(self.uid_or_temp(name))
+
+
+    def read_backlog(self, name):
+        uid = self.uid_or_temp(name)
+        data = self.read_json_file(self.backlog_path(uid))
+        if isinstance(data, dict):
+            data["uid"] = uid
+            return data
         return {}
+
+    def save_backlog(self, name, data):
+        uid = self.uid_or_temp(name)
+        path = self.backlog_path(uid)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        payload = dict(data or {})
+        payload["uid"] = uid
+        payload["username"] = payload.get("username") or name
+        if not isinstance(payload.get("to_do_list"), list):
+            payload["to_do_list"] = []
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return path
+
+    def backlog_entries(self):
+        entries = []
+        root = os.path.join("character", "userinfo")
+        if os.path.isdir(root):
+            for uid in sorted(os.listdir(root)):
+                data = self.read_json_file(os.path.join(root, uid, "backlog.json"))
+                if not data:
+                    continue
+                data["uid"] = uid
+                entries.append((self.nickname_of(uid) or uid, data))
+        return entries
+
+    @staticmethod
+    def safe_name(name):
+        text = re.sub(r'[\\/:*?"<>|\r\n\t]', "_", str(name or "").strip())
+        return text or "空格"
+
+    @staticmethod
+    def _safe(name):
+        text = str(name or "").strip()
+        for ch in '\\/:*?"<>|\r\n\t':
+            text = text.replace(ch, "_")
+        return text or "unnamed"
+
+    def display_name(self, platform, account, fallback=""):
+        """取展示名：身份表昵称优先，没有回退原名字"""
+        return self._store().display_name(platform, account, fallback)
+
+
+    def current_id(self):
+        """按当前登记的说话人取编号；账号里带编号（昵称(编号)）或账号就是编号都能用"""
+        current = self._current
+        if not current:
+            return ""
+        account = str(current.get("account") or "").strip()
+        uid = self.uid_from_text(account)
+        if uid:
+            return uid
+        uid = self.resolve(current.get("platform"), account)
+        return "" if self._store().is_temp(uid) else uid
+
+    def uid_from_text(self, text):
+        """从「昵称(编号)」「编号」这类写法里取出编号（临时身份不算）"""
+        text = str(text or "").strip()
+        match = re.search(r"(\d{6})", text)
+        if match and self.find(match.group(1)):
+            return match.group(1)
+        return ""
+
+    def _is_pure_placeholder(self, uid):
+        """判断编号是不是只有档案、还没挂任何平台账号（迁移出来的裸号）"""
+        if self._store().is_temp(uid):
+            return False
+        accounts = (self.find(uid) or {}).get("accounts") or {}
+        return not [p for p in accounts if accounts.get(p)]
+
+    def migrate_user(self, name):
+        """把一个老档案名字整体搬进编号目录"""
+        return self._merge().migrate(name)
+
+    def merge_plan(self, keys):
+        """打出合并方案"""
+        return self._merge().plan(keys)
+
+    def merge_apply(self, keys, keep="", dry_run=True):
+        """执行或预演合并"""
+        return self._merge().apply(keys, keep=keep, dry_run=dry_run)
 
     def affinity(self, name):
         """取好感度，读不到算 0"""
@@ -403,10 +310,6 @@ class IdSignupBridge:
     def resolve(self, platform, account):
         """平台加账号 → 编号，查不到回空串"""
         return self._store().resolve(platform, account)
-
-    def display_name(self, platform, account, fallback=""):
-        """取展示名：身份表昵称优先，没有回退原名字"""
-        return self._store().display_name(platform, account, fallback)
 
     def normalize(self, platform, account, name=""):
         """统一取身份入口：有绑定回昵称，没绑定原样返回"""
@@ -455,14 +358,10 @@ class IdSignupBridge:
             return uid
         return self._store().create_user(nickname)
 
-    def migrate_user(self, name):
-        """把一个老档案名字整体搬进编号目录"""
-        return self._merge().migrate(name)
 
-    def merge_plan(self, keys):
-        """打出合并方案"""
-        return self._merge().plan(keys)
-
-    def merge_apply(self, keys, keep="", dry_run=True):
-        """执行或预演合并"""
-        return self._merge().apply(keys, keep=keep, dry_run=dry_run)
+def display_name(value) -> str:
+    """编号/名字 -> 显示名：只做只读映射，认不出原样返回，不创建身份"""
+    try:
+        return IdSignupBridge().nickname_of(value) or str(value or "")
+    except Exception:
+        return str(value or "")

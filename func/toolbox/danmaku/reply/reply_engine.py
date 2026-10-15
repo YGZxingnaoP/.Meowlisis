@@ -14,6 +14,7 @@ from func.pipeline.toolbox_llm import ToolboxLLMBridge
 from func.pipeline.toolbox_tts import ToolboxTtsBridge
 
 
+from func.pipeline.id_signup import display_name as _disp
 @singleton
 class TBDanmakuReply:
     """弹幕回复引擎：按 SC 优先、普通弹幕算法选取，回复后清空对应队列。
@@ -62,8 +63,7 @@ class TBDanmakuReply:
             # 2.5 统一身份：逐条登记发送者并换成统一昵称（没绑定原样）
             from func.pipeline.id_signup import IdSignupBridge
             for d in picked:
-                d["username"] = IdSignupBridge().begin(
-                    "bili", d.get("uid", ""), d.get("username", "用户"))
+                d["username"] = IdSignupBridge().nickname_of(str(d.get("uid", "") or "")) or str(d.get("username", "用户"))
 
             # 3. 海龟汤游玩阶段：单条走判定，统一回复走主 LLM
             if self._is_turtle_soup_active():
@@ -103,7 +103,7 @@ class TBDanmakuReply:
             content = (d.get("content") or "").strip()
             if not content:
                 return
-            r = TBTurtleSoupCore().route_text(content, d.get("username", "用户"), channel="live")
+            r = TBTurtleSoupCore().route_text(content, d.get("uid", "") or d.get("username", "用户"), channel="live")
             if r == "pass":
                 self._reply_single(d)
         except Exception:
@@ -117,7 +117,7 @@ class TBDanmakuReply:
             return False
         try:
             from func.pipeline.toolbox_singer import ToolboxSingerBridge
-            return ToolboxSingerBridge().send_to_singer(content, d.get("username", "用户"), "danmaku")
+            return ToolboxSingerBridge().send_to_singer(content, d.get("uid", "") or d.get("username", "用户"), "danmaku")
         except Exception:
             self.log.exception("[DanmakuReply] 弹幕→meowsinger 处理异常")
             return False
@@ -129,7 +129,7 @@ class TBDanmakuReply:
             return
         try:
             from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(content, d.get("username", "用户"))
+            MsgToolboxBridge().send_to_toolbox(content, d.get("uid", "") or d.get("username", "用户"))
         except Exception:
             self.log.exception("[DanmakuReply] 弹幕→toolbox 分析异常")
 
@@ -139,7 +139,7 @@ class TBDanmakuReply:
             lines = [f"{d.get('username', '用户')}: {d.get('content', '')}" for d in picked]
             wrapped = "【弹幕】" + "；".join(lines)
             from func.pipeline.msg_toolbox import MsgToolboxBridge
-            MsgToolboxBridge().send_to_toolbox(wrapped, picked[0].get("username", "用户") if picked else "")
+            MsgToolboxBridge().send_to_toolbox(wrapped, (picked[0].get("uid", "") or picked[0].get("username", "用户")) if picked else "")
         except Exception:
             self.log.exception("[DanmakuReply] 统一回复→toolbox 分析异常")
 
@@ -183,15 +183,15 @@ class TBDanmakuReply:
 
     def _reply_single(self, d: dict):
         from func.pipeline.id_signup import IdSignupBridge
-        username = IdSignupBridge().begin("bili", d.get("uid", ""), d.get("username", "用户"))
+        uid = IdSignupBridge().resolve_identity("bili", str(d.get("uid", "")))["uid"] or str(d.get("username", "用户"))
         content = d.get("content", "")
-        wrapped = f"【弹幕】{username}: {content}"
+        wrapped = f"【弹幕】{_disp(uid)}: {content}"
         read_text = ""
         if self.config.read_aloud_enabled:
-            read_text = self.read_aloud.render_normal(username, content)
+            read_text = self.read_aloud.render_normal(uid, content)
         traceid = str(uuid.uuid4())
         self.toolbox_llm.send_to_llm(
-            wrapped, username, source="danmaku",
+            wrapped, uid, source="danmaku",
             preamble_text=read_text, traceid=traceid, multi_user=False,
             memory_config=self._memory_config(assistant_only=False),
         )
@@ -199,16 +199,16 @@ class TBDanmakuReply:
     # ==================== SC 回复 ====================
     def _reply_sc(self, sc: dict):
         from func.pipeline.id_signup import IdSignupBridge
-        username = IdSignupBridge().begin("bili", sc.get("uid", ""), sc.get("username", "用户"))
+        uid = IdSignupBridge().resolve_identity("bili", str(sc.get("uid", "")))["uid"] or str(sc.get("username", "用户"))
         content = sc.get("content", "")
-        read_text = self.read_aloud.render_sc(username, content)
+        read_text = self.read_aloud.render_sc(uid, content)
 
         if self.config.sc_llm_reply_enabled:
             # 朗读 SC + LLM 回复（连续任务）
-            wrapped = f"【弹幕】{username}: {content}"
+            wrapped = f"【弹幕】{_disp(uid)}: {content}"
             traceid = str(uuid.uuid4())
             self.toolbox_llm.send_to_llm(
-                wrapped, username, source="danmaku",
+                wrapped, uid, source="danmaku",
                 preamble_text=read_text, traceid=traceid, multi_user=False,
                 memory_config=self._memory_config(assistant_only=False),
             )

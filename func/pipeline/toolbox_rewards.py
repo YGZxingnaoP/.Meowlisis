@@ -22,7 +22,7 @@ class ToolboxRewardsBridge:
             return True
         return False
 
-    def on_gift(self, username="", gift_name="", gift_num=1, price=0,
+    def on_gift(self, uid="", gift_name="", gift_num=1, price=0,
                 coin_type='gold', paid=None):
         """礼物入账：付费礼物按 1000瓜子=1元=10电池 折算电池，随机选一种奖励整笔计入。
         返回入账事件 dict；未入账（免费/过小/无奖励项）返回 None。"""
@@ -37,7 +37,7 @@ class ToolboxRewardsBridge:
         if battery < 0.1:
             return None
         try:
-            event = self.store.add_gift(battery, user=username or "",
+            event = self.store.add_gift(battery, user=uid or "",
                                         gift=gift_name or "", num=gift_num)
         except Exception as e:
             self.log.exception(f"礼物入账失败: {e}")

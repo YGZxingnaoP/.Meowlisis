@@ -13,15 +13,22 @@ const IdentityUI = {
     },
     html() {
         return '<div class="form-section"><h4>' + this.t('用户 ID') + '</h4></div>' +
-            '<div class="help-text">' + this.t('输入编号（或昵称）查这个人，逐个平台看绑定情况') + '</div>' +
-            '<div class="form-group"><label>' + this.t('编号或昵称') + '</label>' +
-            '<input type="text" id="identityQuery" placeholder="000001"' +
-            ' onkeydown="if(event.key===\'Enter\'){IdentityUI.query();}"></div>' +
-            '<div class="speaker-actions">' +
-            '<button class="btn btn-primary" onclick="IdentityUI.query()">' + this.t('查询') + '</button>' +
-            '<button class="btn btn-secondary" onclick="IdentityUI.clear()">' + this.t('清空') + '</button>' +
+            '<div class="char-card" style="margin-bottom:12px;">' +
+            '<div class="form-group" style="margin-bottom:8px;">' +
+            '<label>' + this.t('查询用户') + '</label>' +
+            '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<input type="text" id="identityQuery" style="flex:1;min-width:0;" placeholder="' +
+            this.t('编号 / 昵称 / QQ号 / B站uid') + '"' +
+            ' onkeydown="if(event.key===\'Enter\'){IdentityUI.query();}">' +
+            '<button class="btn btn-primary" style="white-space:nowrap;" onclick="IdentityUI.query()">' +
+            this.t('查询') + '</button>' +
+            '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="IdentityUI.clear()">' +
+            this.t('清空') + '</button>' +
             '</div>' +
-            '<div id="identityMsg" class="help-text"></div>' +
+            '<div class="help-text">' + this.t('四种写法都认：编号 000001、昵称、QQ 号、B 站 uid') + '</div>' +
+            '</div>' +
+            '<div id="identityMsg" class="help-text" style="min-height:16px;"></div>' +
+            '</div>' +
             '<div id="identityDetail"></div>' +
             '<div class="form-section"><h4>' + this.t('绑定指令') + '</h4></div>' +
             '<div class="form-group"><label>' + this.t('绑定前缀词') + '</label>' +
@@ -59,7 +66,7 @@ const IdentityUI = {
     },
     async query() {
         const key = this.val('identityQuery');
-        if (!key) { this.msg(this.t('先填编号或昵称'), true); return; }
+        if (!key) { this.msg(this.t('先填编号 / 昵称 / QQ号 / B站uid'), true); return; }
         try {
             const res = await fetch('/api/identity/user?id=' + encodeURIComponent(key));
             if (!res.ok) {
@@ -89,29 +96,38 @@ const IdentityUI = {
         (d.platforms || []).forEach(p => {
             const key = this.esc(p.key);
             const account = this.esc(p.account);
-            rows += '<div class="form-group"><label>' + this.esc(p.label) + '</label>' +
-                '<input type="text" id="idacct_' + key + '" value="' + account + '" placeholder="' +
+            rows += '<div style="display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;">' +
+                '<div style="flex:1;min-width:0;">' +
+                '<label style="display:block;margin-bottom:4px;">' + this.esc(p.label) + '</label>' +
+                '<input type="text" id="idacct_' + key + '" value="' + account + '" style="width:100%;" placeholder="' +
                 this.t('填账号：QQ号 / B站uid / 声纹名') + '">' +
-                '<div class="speaker-actions">' +
-                '<button class="btn btn-primary" onclick="IdentityUI.bind(\'' + key + '\')">' +
+                '</div>' +
+                '<button class="btn btn-primary" style="white-space:nowrap;" onclick="IdentityUI.bind(\'' + key + '\')">' +
                 (p.account ? this.t('更换') : this.t('绑定')) + '</button>' +
-                '<button class="btn btn-secondary" onclick="IdentityUI.unbind(\'' + key + '\')">' +
+                '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="IdentityUI.unbind(\'' + key + '\')">' +
                 this.t('解绑') + '</button>' +
-                '</div></div>';
+                '</div>';
         });
-        box.innerHTML = '<div class="char-card">' +
-            '<div class="char-card-title">' + this.t('用户档案') + '</div>' +
-            '<div class="help-text">' + this.t('好感度') + ' ' + this.esc(d.affinity) + ' · ' +
-            this.t('生日') + ' ' + this.esc(d.birthday || this.t('未知')) + '</div>' +
-            '<div class="form-group"><label>' + this.t('编号') + '</label>' +
-            '<input type="text" id="identityId" value="' + this.esc(d.id) + '" disabled>' +
+        box.innerHTML =
+            '<div class="char-card">' +
+            '<div style="margin-bottom:10px;">' +
+            '<div style="font-size:18px;font-weight:600;line-height:1.3;">' +
+            this.esc(d.nickname || this.t('未设昵称')) + '</div>' +
+            '<div class="uid-sub">' + this.esc(d.id) + '</div>' +
+            '</div>' +
+            '<div class="help-text" style="margin-bottom:12px;">' +
+            this.t('好感度') + ' ' + this.esc(d.affinity) + ' &nbsp;&middot;&nbsp; ' +
+            this.t('生日') + ' ' + this.esc(d.birthday || this.t('未知')) +
             '</div>' +
             '<div class="form-group"><label>' + this.t('昵称') + '</label>' +
-            '<input type="text" id="identityNick" value="' + this.esc(d.nickname || '') + '" placeholder="' +
-            this.t('所有平台统一用这个称呼') + '">' +
-            '<div class="speaker-actions">' +
-            '<button class="btn btn-secondary" onclick="IdentityUI.nickname()">' + this.t('改昵称') + '</button>' +
-            '</div></div>' +
+            '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<input type="text" id="identityNick" style="flex:1;min-width:0;" value="' +
+            this.esc(d.nickname || '') + '" placeholder="' + this.t('所有平台统一用这个称呼') + '">' +
+            '<button class="btn btn-secondary" style="white-space:nowrap;" onclick="IdentityUI.nickname()">' +
+            this.t('改昵称') + '</button>' +
+            '</div>' +
+            '<div class="help-text">' + this.t('昵称不允许与其他人重复') + '</div>' +
+            '</div>' +
             '<div class="form-section"><h4>' + this.t('平台绑定') + '</h4></div>' +
             rows +
             '</div>';

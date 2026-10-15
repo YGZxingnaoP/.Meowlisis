@@ -45,7 +45,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
             prompt = SystemPromptBridge().get_napcat_group_prompt(
-                username=username, group_name=group_name,
+                uid=username, group_name=group_name,
                 group_info_text=group_info_text, current_message=current_message,
                 group_id=group_id,
             )

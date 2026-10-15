@@ -16,7 +16,7 @@ class MsgDatabaseBridge:
     def __init__(self):
         self.log = DefaultLog().getLogger()
 
-    def send_to_database(self, text: str, username: str = ""):
+    def send_to_database(self, text: str, uid: str = ""):
         """异步把文本送入 database_core 关键词匹配链"""
         if not text or not text.strip():
             return
@@ -25,7 +25,7 @@ class MsgDatabaseBridge:
         def _run():
             try:
                 from func.database.database_core import CatLearnCore
-                CatLearnCore().on_message(text.strip(), username)
+                CatLearnCore().on_message(text.strip(), uid)
             except Exception:
                 self.log.exception("msg → database 处理异常")
 
