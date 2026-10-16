@@ -53,6 +53,9 @@ class DesktopetBodySway:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.6)
+        # 未连接时跳过回正动画（无对象可回正，也不占用播放线程）
+        if not self.desktopet.is_connected():
+            return
         # 余弦平滑回正到 base
         cfg = self.config
         base = cfg.body_sway_base
@@ -71,6 +74,10 @@ class DesktopetBodySway:
         base = cfg.body_sway_base
         cur = base
         while self._running and not self._stop_event.is_set():
+            if not self.desktopet.is_connected():
+                # 未连接：跳过发送，隔一拍再检查（避免无意义调用）
+                self._stop_event.wait(0.5)
+                continue
             target = self._next_keyframe(cfg)
             duration = random.uniform(self.KEYFRAME_MIN_SEC, self.KEYFRAME_MAX_SEC)
             step = cfg.body_sway_interval_ms / 1000.0

@@ -4,6 +4,7 @@
 
 import json
 import threading
+import time
 import websocket
 from threading import Thread
 from func.log.default_log import DefaultLog
@@ -23,6 +24,8 @@ class DesktopetInit:
         self.ws = None
         self._connected = threading.Event()
         self._send_lock = threading.Lock()
+        # 未连接告警节流时间戳（避免每秒刷屏）
+        self._warn_ts = 0.0
         if self.desktopetConfig.switch == True:
             self.ws = websocket.WebSocketApp(
                 f"ws://{self.desktopetConfig.vtuber_websocket}",
@@ -73,21 +76,41 @@ class DesktopetInit:
         except Exception:
             pass
 
+    def is_connected(self) -> bool:
+        """连接是否就绪（非阻塞检查，供调用方跳过无意义的发送/动画）"""
+        return self._connected.is_set()
+
+    def _warn_not_connected(self, msg: str):
+        """未连接告警节流：最多每 30 秒提示一次，避免刷屏"""
+        now = time.time()
+        if now - self._warn_ts >= 30.0:
+            self._warn_ts = now
+            self.log.warning(msg)
+
     def send(self, data):
-        """发送原始指令；连接未就绪时等待，失败时返回 False"""
+        """发送原始指令；未连接时【立即返回】，绝不阻塞调用方。
+
+        历史问题：原实现用 self._connected.wait(timeout=5) 等连接，
+        而本方法会被播放线程（_set_playing → mouth_sync/body_sway 的 stop）同步调用，
+        桌宠未连接时每片语音播完要白等 13×5=65 秒，造成严重语音延迟。
+        """
         if self.desktopetConfig.switch == False or self.ws is None:
             return False
-        if not self._connected.wait(timeout=5):
-            self.log.warning("桌宠尚未连接，本次指令已跳过")
+        if not self._connected.is_set():
+            self._warn_not_connected("桌宠尚未连接，本次指令已跳过")
+            return False
+        if not self._send_lock.acquire(timeout=0.5):
+            self._warn_not_connected("桌宠发送锁等待超时，本次指令已跳过")
             return False
         try:
-            with self._send_lock:
-                self.ws.send(data)
+            self.ws.send(data)
             return True
         except Exception as e:
             self._connected.clear()
             self.log.warning(f"桌宠发送失败: {e}")
             return False
+        finally:
+            self._send_lock.release()
 
     # ============= 通用发送接口 =============
     def trigger_hotkey(self, hotkey_id: str) -> bool:

@@ -222,13 +222,38 @@ class TBDanmakuWeb:
 
         @staticmethod
         def _uid_of(message):
-            """取消息里的真实 uid；开放平台拿不到真实 uid 就返回空串。
+            """取消息里的真实 B站 uid。
 
-            注意：open_id 是「用户×应用」加密标识，不是 B 站 uid，不能当身份用
-            （否则每个观众都会被建成无昵称的临时身份）→ 一律舍弃，
-            身份改由弹幕昵称（uname）反查。
+            网页端通道的消息自带 uid；开放平台弹幕不给 uid（open_id 是「用户×应用」
+            加密标识，不是 B 站 uid，不能当身份用），此时按弹幕昵称（uname）反查真 uid。
+            查不到 / 多个同名 → 返回空串，由上层按「身份无法识别」丢弃，绝不猜人。
             """
-            return str(getattr(message, "uid", "") or "")
+            uid = str(getattr(message, "uid", "") or "").strip()
+            if uid:
+                return uid
+            uname = str(getattr(message, "uname", "") or "").strip()
+            if not uname:
+                return ""
+            # 一场直播内同一个昵称只反查一次（"查不到"也缓存），见 identity/uname_cache.py
+            from func.toolbox.danmaku.identity.uname_cache import TBDanmakuUnameCache
+            cache = TBDanmakuUnameCache()
+            cached = cache.get(uname)
+            if cached is not None:
+                return cached
+            from func.log.default_log import DefaultLog
+            log = DefaultLog().getLogger()
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                real_uid, err = IdSignupBridge().lookup_bili(uname)
+            except Exception as e:
+                log.warning(f"[DanmakuWeb] 弹幕昵称反查 uid 异常：{type(e).__name__} {e}")
+                return ""
+            cache.put(uname, real_uid)
+            if not real_uid:
+                log.warning(f"[DanmakuWeb] 弹幕昵称反查 uid 失败（{uname}）：{err}")
+            else:
+                log.info(f"[DanmakuWeb] 弹幕昵称反查 uid 成功：{uname} → {real_uid}")
+            return real_uid
 
         def _on_open_live_danmaku(self, client, message: open_models.DanmakuMessage):
             self.web._handle_danmaku(message.uname, message.msg, self._uid_of(message))

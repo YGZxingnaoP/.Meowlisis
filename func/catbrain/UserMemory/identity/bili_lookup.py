@@ -10,18 +10,17 @@ class BiliNicknameLookup:
 
     @staticmethod
     def _load_credential():
-        """复用项目自己的 B站登录态，先读 llm_active，再回退 danmaku"""
+        """读取 B站登录态：只认身份模块自己的 identity.sessdata / identity.bili_jct。
+
+        身份模块不读别的模块的配置（尤其不读 llm_active / danmaku）：
+        用哪个模块的 B站 能力，就在那个模块自己的配置里配登录态。
+        """
         from func.pipeline.config_reader import ConfigReader
-        cfg = ConfigReader().get("llm_active", {}) or {}
-        web_browse = cfg.get("web_browse", {}) if isinstance(cfg, dict) else {}
-        sessdata = str(web_browse.get("sessdata", "") or "").strip()
-        bili_jct = str(web_browse.get("bili_jct", "") or "").strip()
-        if not sessdata or not bili_jct:
-            danmaku = ConfigReader().get("danmaku", {}) or {}
-            blivedm = danmaku.get("blivedm", {}) if isinstance(danmaku, dict) else {}
-            sessdata = sessdata or str(blivedm.get("sessdata", "") or "").strip()
-            bili_jct = bili_jct or str(blivedm.get("bili_jct", "") or "").strip()
-        return sessdata, bili_jct
+        cfg = ConfigReader().get("identity", {}) or {}
+        if not isinstance(cfg, dict):
+            cfg = {}
+        return (str(cfg.get("sessdata", "") or "").strip(),
+                str(cfg.get("bili_jct", "") or "").strip())
 
     def _credential(self):
         """构造 bilibili_api 的登录态对象"""
@@ -64,7 +63,12 @@ class BiliNicknameLookup:
             return "", "B站昵称反查失败，请稍后再试，或直接填 uid"
         if not users:
             return "", f"没查到昵称「{keyword}」的 B站账号，请直接填 uid"
+        # 多个结果时取「完全同名」的那个（B站搜索把同名排最前，第 2 个起是模糊匹配的人）；
+        # 没有完全同名就取第 1 个 —— 宁可认第 1 个，也不因为"结果有多个"把这条消息丢掉。
+        exact = [u for u in users if u["uname"] == keyword]
+        hit = (exact or users)[0]
         if len(users) > 1:
             names = "、".join([f"{u['uname']}({u['mid']})" for u in users[:5]])
-            return "", f"昵称「{keyword}」匹配到多个账号：{names}，请直接填 uid"
-        return str(users[0]["mid"]), ""
+            self.log.info(f"[BiliLookup] 昵称「{keyword}」命中 {len(users)} 个，"
+                          f"采用 {hit['uname']}({hit['mid']})；候选：{names}")
+        return str(hit["mid"]), ""

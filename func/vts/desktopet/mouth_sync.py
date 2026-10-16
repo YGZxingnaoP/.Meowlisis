@@ -53,6 +53,9 @@ class DesktopetMouthSync:
         self._stop_event.set()
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.6)
+        # 未连接时跳过闭合动画（无对象可闭合，也不占用播放线程）
+        if not self.desktopet.is_connected():
+            return
         # 余弦平滑闭合到 close
         cfg = self.config
         close = cfg.mouth_sync_close
@@ -71,6 +74,10 @@ class DesktopetMouthSync:
         lo, hi = cfg.mouth_sync_min, cfg.mouth_sync_max
         cur = cfg.mouth_sync_close  # 从闭合开始
         while self._running and not self._stop_event.is_set():
+            if not self.desktopet.is_connected():
+                # 未连接：跳过发送，隔一拍再检查（避免无意义调用）
+                self._stop_event.wait(0.5)
+                continue
             target = random.uniform(lo, hi)  # 开合目标（保持原取值域）
             duration = random.uniform(self.KEYFRAME_MIN_SEC, self.KEYFRAME_MAX_SEC)
             step = cfg.mouth_sync_interval_ms / 1000.0

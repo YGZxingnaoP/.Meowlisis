@@ -6,8 +6,8 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.plugins.loader import PluginLoader
 from func.toolbox.plugins.registry import PluginRegistry
-from func.toolbox.plugins.sdk import (CHANNEL_MAIN, PluginContext, begin_request,
-                                      update_request)
+from func.toolbox.plugins.sdk import (CHANNEL_MAIN, ROOT, PluginContext,
+                                      begin_request, update_request)
 
 
 class _TriggerAdapter:
@@ -51,12 +51,19 @@ class PluginManager:
             return
         root = cfg.get("dir", "./plugins")
         if not os.path.isabs(root):
-            root = os.path.join(os.getcwd(), root)
+            root = os.path.join(ROOT, root)
         disabled = set(cfg.get("disabled", []) or [])
+        fail_fast = bool(cfg.get("fail_fast", False))
         self._root = root
         for pid in PluginLoader(root).discover():
-            if pid not in disabled:
+            if pid in disabled:
+                continue
+            try:
                 self._load_one(root, pid)
+            except Exception:
+                self.log.exception(f"加载插件失败: {pid}")
+                if fail_fast:
+                    raise
 
     def _load_one(self, root, pid):
         from func.toolbox.plugins import schema_io

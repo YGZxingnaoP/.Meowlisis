@@ -10,6 +10,7 @@ import uuid
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.danmaku.config import TBDanmakuConfig
+from func.toolbox.danmaku.identity.uname_cache import TBDanmakuUnameCache
 from func.toolbox.danmaku.web.web_client import TBDanmakuWeb
 from func.toolbox.danmaku.get_danmaku.get_danmaku import TBDanmakuReceiver
 from func.toolbox.danmaku.reply.reply_engine import TBDanmakuReply
@@ -45,6 +46,9 @@ class TBDanmakuCore:
             return
         # 注入礼物/舰长回调
         self.web.set_callbacks(on_gift=self.thank_gift, on_guard=self.thank_guard)
+
+        # 一场直播 = 一次会话：开播时清空「昵称→uid」反查缓存
+        TBDanmakuUnameCache().clear()
 
         if self._conn_thread and self._conn_thread.is_alive():
             self.log.warning("B站弹幕连接已在运行")

@@ -139,8 +139,13 @@ Object.assign(App, {
 
         const fillBack = (sessdata, biliJct, mid) => {
             // 回填到对应配置面板的输入框 + 内存 config 对象
-            const sPath = target === 'web_browse' ? 'llm_active.web_browse.sessdata' : 'danmaku.blivedm.sessdata';
-            const jPath = target === 'web_browse' ? 'llm_active.web_browse.bili_jct' : 'danmaku.blivedm.bili_jct';
+            const pathOf = (target === 'web_browse')
+                ? ['llm_active.web_browse.sessdata', 'llm_active.web_browse.bili_jct']
+                : (target === 'identity')
+                    ? ['identity.sessdata', 'identity.bili_jct']
+                    : ['danmaku.blivedm.sessdata', 'danmaku.blivedm.bili_jct'];
+            const sPath = pathOf[0];
+            const jPath = pathOf[1];
             const sInput = document.querySelector(`input[data-path="${sPath}"]`);
             const jInput = document.querySelector(`input[data-path="${jPath}"]`);
             if (sInput) sInput.value = sessdata || '';
@@ -156,6 +161,10 @@ Object.assign(App, {
                     this.config.llm_active.web_browse.sessdata = sessdata || '';
                     this.config.llm_active.web_browse.bili_jct = biliJct || '';
                     if (mid) this.config.llm_active.web_browse.mid = mid;
+                } else if (target === 'identity') {
+                    this.config.identity = this.config.identity || {};
+                    this.config.identity.sessdata = sessdata || '';
+                    this.config.identity.bili_jct = biliJct || '';
                 } else {
                     this.config.danmaku = this.config.danmaku || {};
                     this.config.danmaku.blivedm = this.config.danmaku.blivedm || {};

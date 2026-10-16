@@ -412,7 +412,7 @@ class IdSignupBridge:
         return self._store().get_user(key)
 
     def lookup_bili(self, keyword):
-        """按昵称反查 B站 meowid，返回 (meowid, 失败原因)"""
+        """B站昵称 / uid → uid，返回 (uid, 失败原因)"""
         from func.catbrain.UserMemory.identity.bili_lookup import BiliNicknameLookup
         return BiliNicknameLookup().lookup(keyword)
 

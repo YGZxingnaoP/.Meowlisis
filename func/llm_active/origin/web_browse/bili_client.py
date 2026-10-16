@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # func/llm_active/origin/web_browse/bili_client.py
-# B站客户端：复用 danmaku 登录态（SESSDATA/bili_jct）封装 bilibili_api 的同步调用
+# B站客户端：读 llm_active.web_browse 自己的登录态（SESSDATA/bili_jct）封装 bilibili_api 的同步调用
 
 import asyncio
 import random
@@ -13,7 +13,7 @@ from func.llm_active.origin.web_browse.config import AutoWebBrowseConfig
 class AutoBiliClient:
     """封装 bilibili_api 的异步调用，对外提供同步方法（内部 asyncio.run）。
 
-    - 登录态复用 llm_active.web_browse（回退 danmaku.blivedm）的 SESSDATA / bili_jct；
+    - 登录态只读 llm_active.web_browse 自己的 SESSDATA / bili_jct（不读别的模块的配置）；
     - 从 B站「首页推荐流」随机抓一个视频（每次刷新可换，等价于打开 bilibili.com 首页）；
     - 返回视频元信息 + 可抽帧的流地址。
     """
@@ -31,19 +31,12 @@ class AutoBiliClient:
 
     @staticmethod
     def _load_credential():
-        """读取 B站登录态：优先 llm_active.web_browse 独立配置，回退 danmaku.blivedm"""
+        """读取 B站登录态：只认 llm_active.web_browse 自己的配置，不读别的模块的配置"""
         from func.pipeline.config_reader import ConfigReader
         cfg = ConfigReader().get('llm_active', {})
         wb = cfg.get('web_browse', {}) if isinstance(cfg, dict) else {}
-        sessdata = str(wb.get('sessdata', '') or '').strip()
-        bili_jct = str(wb.get('bili_jct', '') or '').strip()
-
-        if not sessdata or not bili_jct:
-            danmaku = ConfigReader().get('danmaku', {})
-            blivedm = danmaku.get('blivedm', {}) if isinstance(danmaku, dict) else {}
-            sessdata = sessdata or str(blivedm.get('sessdata', '') or '').strip()
-            bili_jct = bili_jct or str(blivedm.get('bili_jct', '') or '').strip()
-        return sessdata, bili_jct
+        return (str(wb.get('sessdata', '') or '').strip(),
+                str(wb.get('bili_jct', '') or '').strip())
 
     def _credential(self):
         from bilibili_api import Credential

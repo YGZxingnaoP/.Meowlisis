@@ -40,12 +40,19 @@ class VtsMouthSync:
             return
         self._running = False
         self._stop_event.set()
+        # 未连接时跳过闭合发送（无对象可闭合，也不占用调用线程）
+        if not self.vts.is_connected():
+            return
         # 闭合
         self.vts.send_parameter(self.config.mouth_sync_parameter, self.config.mouth_sync_close)
 
     def _loop(self):
         cfg = self.config
         while self._running and not self._stop_event.is_set():
+            if not self.vts.is_connected():
+                # 未连接：跳过发送，隔一拍再检查（避免无意义调用）
+                self._stop_event.wait(0.5)
+                continue
             value = random.uniform(cfg.mouth_sync_min, cfg.mouth_sync_max)
             self.vts.send_parameter(cfg.mouth_sync_parameter, value)
             self._stop_event.wait(cfg.mouth_sync_interval_ms / 1000.0)

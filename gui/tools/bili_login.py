@@ -47,7 +47,7 @@ _lock = threading.Lock()
 def start_login(target="danmaku"):
     """生成 B站登录二维码，返回 dict（含二维码 base64 图片）
 
-    target: danmaku=写回 danmaku.blivedm；web_browse=写回 llm_active.web_browse
+    target: danmaku=写回 danmaku.blivedm；web_browse=写回 llm_active.web_browse；identity=写回 identity
     """
     target = target if target in ("danmaku", "web_browse") else "danmaku"
     try:
@@ -294,6 +294,7 @@ def update_config(sessdata, bili_jct, target="danmaku", mid=None):
 
     target=danmaku      → danmaku.blivedm.sessdata / bili_jct（弹幕兜底通道）
     target=web_browse   → llm_active.web_browse.sessdata / bili_jct / mid（主动回复 B站浏览）
+    target=identity     → identity.sessdata / bili_jct（身份反查 / 用户 ID）
     """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f) or {}
@@ -304,6 +305,10 @@ def update_config(sessdata, bili_jct, target="danmaku", mid=None):
         cfg["llm_active"]["web_browse"]["bili_jct"] = bili_jct
         if mid:
             cfg["llm_active"]["web_browse"]["mid"] = int(mid)
+    elif target == "identity":
+        cfg.setdefault("identity", {})
+        cfg["identity"]["sessdata"] = sessdata
+        cfg["identity"]["bili_jct"] = bili_jct
     else:
         cfg.setdefault("danmaku", {}).setdefault("blivedm", {})
         cfg["danmaku"]["blivedm"]["sessdata"] = sessdata

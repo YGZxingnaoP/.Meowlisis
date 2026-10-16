@@ -56,6 +56,9 @@ class VtsBodySway:
         # 先让插值线程退出，再做回正，避免两处并发发送
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=0.6)
+        # 未连接时跳过回正动画（无对象可回正，也不占用播放线程）
+        if not self.vts.is_connected():
+            return
         # 平滑回正：从最后注入值沿余弦快速回到 base（约 0.35s）
         cfg = self.config
         base = cfg.body_sway_base
@@ -75,6 +78,10 @@ class VtsBodySway:
         base = cfg.body_sway_base
         cur = base  # 当前关键帧起点
         while self._running and not self._stop_event.is_set():
+            if not self.vts.is_connected():
+                # 未连接：跳过发送，隔一拍再检查（避免无意义调用）
+                self._stop_event.wait(0.5)
+                continue
             # 1) 生成下一个随机关键帧目标（1~2s 后到达）
             target = self._next_keyframe(cfg)
             duration = random.uniform(self.KEYFRAME_MIN_SEC, self.KEYFRAME_MAX_SEC)

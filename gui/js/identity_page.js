@@ -36,6 +36,19 @@ const IdentityUI = {
             this.esc(this.cfg('identity.bind_prefix', 'Meowlisis账号绑定')) +
             '" placeholder="Meowlisis账号绑定">' +
             '<div class="help-text">' + this.t('用户发「前缀词 + 帮助」看用法；前缀词 + qq QQ号 或 前缀词 + bili uid/昵称 即完成绑定') + '</div>' +
+            '</div>' +
+            '<div class="form-section"><h4>' + this.t('B站登录态（身份反查用）') + '</h4></div>' +
+            '<div class="form-group"><label>SESSDATA</label>' +
+            '<input type="text" data-path="identity.sessdata" value="' +
+            this.esc(this.cfg('identity.sessdata', '')) + '">' +
+            '<div class="help-text">' + this.t('只读这里：按 B站昵称反查 uid（用户ID 绑定、弹幕身份）都用这个登录态') + '</div>' +
+            '</div>' +
+            '<div class="form-group"><label>bili_jct</label>' +
+            '<input type="text" data-path="identity.bili_jct" value="' +
+            this.esc(this.cfg('identity.bili_jct', '')) + '">' +
+            '<div style="margin-top:6px;">' +
+            '<button class="btn btn-secondary" onclick="App.openBiliLogin(\'identity\')">' +
+            this.t('B站扫码登录') + '</button></div>' +
             '</div>';
     },
     msg(text, bad) {
