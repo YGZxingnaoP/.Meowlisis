@@ -133,7 +133,8 @@
   },
   "1749329864": {
     "nickname": "chydbd",
-    "profile_name": "chydbd"
+    "profile_name": "chydbd",
+    "card": "不会吃鱼(chydbd)"
   },
   "3672873696": {
     "card": "Pluck（wanjiua）",
@@ -224,5 +225,9 @@
     "card": "龙痕Drn_Shadown",
     "nickname": "痕",
     "profile_name": "龙痕Drn_Shadown"
+  },
+  "3889001802": {
+    "nickname": "BLBotLite",
+    "profile_name": "BLBotLite"
   }
 }

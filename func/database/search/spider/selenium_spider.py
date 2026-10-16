@@ -102,18 +102,16 @@ class CatLearnSeleniumSpider:
 
     # ---------- 抓取 ----------
     def fetch(self, url: str, wait: float = 2.5, scroll: bool = False) -> str:
-        """用真实浏览器取回渲染后的 HTML；无头被拦时自动换成可视窗口再试一次"""
+        """用真实浏览器取回渲染后的 HTML。
+
+        只走无头：绝不弹可视窗口（反爬站直接返回失败，由上层决定怎么处理）。
+        """
         path = self.ensure_driver()
         if not path:
             return ""
         html = self._run(path, url, wait, scroll, headless=True)
         if self._blocked(html):
-            self.log.info("[Selenium] 无头模式被反爬拦住，改用可视窗口并延长等待重试")
-            html2 = self._run(path, url, wait, scroll, headless=False, polls=14)
-            if not self._blocked(html2):
-                return html2
-            self.log.warning("[Selenium] 可视窗口仍未通过反爬挑战（该站可能要求人工点击验证）")
-            return html2 or html
+            self.log.warning("[Selenium] 无头取页失败或命中反爬挑战（已禁用可视窗口回退）")
         return html
 
     def _blocked(self, html: str) -> bool:

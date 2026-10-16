@@ -118,7 +118,7 @@ def text(item):
     for entry in ((item or {}).get("joint") or []):
         one = resolve(entry)
         if one["meowid"] and one["nickname"] and one["meowid"] != one["nickname"]:
-            parts.append(f"{one['nickname']}({one['id']})")
+            parts.append(f"{one['nickname']}({one['meowid']})")
         else:
             parts.append(one["nickname"] or one["meowid"])
     return "、".join(p for p in parts if p)
