@@ -7,9 +7,8 @@ DEFAULTS = {
 
 
 class EpubConfig:
-    def __init__(self, data=None):
-        """读书插件配置（LLM 端口独立配置）"""
-        data = data or {}
+    def __init__(self, ctx):
+        data = ctx.config or {}
         llm = data.get("llm") or {}
         self.provider = str(llm.get("provider", "deepseek"))
         preset = DEFAULTS.get(self.provider, DEFAULTS["deepseek"])
@@ -18,10 +17,9 @@ class EpubConfig:
         self.model = str(llm.get("model") or preset["model"])
         self.temperature = float(llm.get("temperature", 0.7))
         self.max_tokens = int(llm.get("max_tokens", 2048))
-        self.books_dir = data.get("books_dir", "./character/books")
-        self.state_dir = data.get("state_dir", "./character/books/_state")
+        self.books_dir = ctx.resolve(data.get("books_dir") or "./character/books")
         self.emotion = str(data.get("emotion", "neutral"))
-        self.speed = self._clamp_speed(data.get("speed", 0.9))
+        self.speed = max(0.5, min(1.5, float(data.get("speed", 0.9))))
         self.min_chars = int(data.get("min_chars", 3000))
         self.section_paras = int(data.get("section_paras", 8))
         self.section_wait = float(data.get("section_wait", 3))
@@ -30,12 +28,3 @@ class EpubConfig:
         self.followup_window = float(data.get("followup_window", 300))
         self.followup_temperature = float(data.get("followup_temperature", 0.2))
         self.followup_max_tokens = int(data.get("followup_max_tokens", 256))
-
-    @staticmethod
-    def _clamp_speed(value):
-        """朗读语速限定在 0.5~1.5，异常值回退 0.9"""
-        try:
-            speed = float(value)
-        except Exception:
-            return 0.9
-        return max(0.5, min(1.5, speed))

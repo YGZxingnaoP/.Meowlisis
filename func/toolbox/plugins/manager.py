@@ -1,204 +1,162 @@
+import importlib
 import os
+import sys
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.plugins.loader import PluginLoader
 from func.toolbox.plugins.registry import PluginRegistry
-from func.toolbox.plugins.sdk import PluginContext
+from func.toolbox.plugins.sdk import (CHANNEL_MAIN, PluginContext, begin_request,
+                                      update_request)
 
 
 class _TriggerAdapter:
     def __init__(self, manager):
-        """触发型工具适配器：对接现有模块入口约定"""
         self.manager = manager
 
     def build_tools(self):
-        """返回全部插件触发型工具 schema"""
-        return self.manager.trigger_schemas()
+        return self.manager.trigger_schemas(CHANNEL_MAIN)
 
     def dispatch(self, name, arguments):
-        """按工具名执行语音链路"""
         return self.manager.dispatch(name, arguments)
 
     def dispatch_qq(self, name, arguments, qq_context):
-        """按工具名执行 QQ 链路"""
         return self.manager.dispatch_qq(name, arguments, qq_context)
 
     def set_meowid(self, meowid):
-        """注入当前用户名"""
-        self.manager.set_meowid(meowid)
+        begin_request(meowid)
 
     def set_context(self, context):
-        """注入调用上下文"""
-        self.manager.set_context(context)
+        update_request(**(context or {}))
 
 
 @singleton
 class PluginManager:
     def __init__(self):
-        """插件管理器：启动加载、注册到分析链路、统一分发"""
         self.log = DefaultLog().getLogger()
         self.registry = PluginRegistry()
         self._loaded = False
         self._adapter = _TriggerAdapter(self)
 
     def _config(self):
-        """读取 plugins 配置节点"""
-        try:
-            from func.pipeline.config_reader import ConfigReader
-            return ConfigReader().get("plugins", {}) or {}
-        except Exception:
-            return {}
+        from func.pipeline.config_reader import ConfigReader
+        return ConfigReader().get("plugins", {}) or {}
 
     def load_all(self):
-        """按配置加载全部插件"""
         if self._loaded:
             return
         self._loaded = True
         cfg = self._config()
-        if not cfg.get("enabled", True):
-            self.log.info("插件系统未启用")
-            return
-        if not cfg.get("auto_load", True):
+        if not cfg.get("enabled", True) or not cfg.get("auto_load", True):
             return
         root = cfg.get("dir", "./plugins")
         if not os.path.isabs(root):
             root = os.path.join(os.getcwd(), root)
-        from func.toolbox.plugins import schema_io
         disabled = set(cfg.get("disabled", []) or [])
+        self._root = root
+        for pid in PluginLoader(root).discover():
+            if pid not in disabled:
+                self._load_one(root, pid)
+
+    def _load_one(self, root, pid):
+        from func.toolbox.plugins import schema_io
         loader = PluginLoader(root)
-        for pid in loader.discover():
-            if pid in disabled:
-                continue
-            try:
-                plugin = loader.load(pid)
-                if plugin is None:
-                    self.log.warning(f"插件未导出实例: {pid}")
-                    continue
-                pdir = os.path.join(root, pid)
-                pcfg = schema_io.ensure_config(pdir)
-                if not pcfg.get("enabled", getattr(plugin, "default_enabled", True)):
-                    self.log.info(f"插件已关闭: {pid}")
-                    continue
-                ctx = PluginContext(pid, self.log, pcfg)
-                plugin.setup(ctx)
-                self.registry.add(plugin, ctx)
-                self.log.info(f"插件已加载: {pid}")
-            except Exception:
-                self.log.exception(f"加载插件失败: {pid}")
-                if cfg.get("fail_fast", False):
-                    raise
+        plugin = loader.load(pid)
+        if plugin is None:
+            self.log.warning(f"插件未导出实例: {pid}")
+            return
+        pcfg = schema_io.ensure_config(os.path.join(root, pid))
+        if not pcfg.get("enabled", plugin.default_enabled):
+            self.log.info(f"插件已关闭: {pid}")
+            return
+        ctx = PluginContext(pid, self.log, pcfg)
+        plugin.setup(ctx)
+        self.registry.add(plugin, ctx)
+        self.log.info(f"插件已加载: {pid}")
 
     def _ensure(self):
-        """确保插件已加载"""
         if not self._loaded:
             self.load_all()
 
+    def reload(self, pid):
+        self._ensure()
+        item = self.registry._plugins.get(pid)
+        if item is not None:
+            item[0].teardown()
+            self.registry.remove(pid)
+        for name in ("meowplug_", "meowschema_"):
+            sys.modules.pop(name + pid, None)
+        importlib.invalidate_caches()
+        self._load_one(self._root, pid)
+
     def adapter(self):
-        """返回触发型工具适配器"""
         self._ensure()
         return self._adapter
 
     def register_into(self, target):
-        """把触发型工具注册到目标分析器"""
         self._ensure()
         for name in self.registry.trigger_names():
             target.register(name, self._adapter)
 
-    def trigger_schemas(self):
-        """返回全部触发型工具 schema"""
+    def trigger_schemas(self, channel=None):
         self._ensure()
-        return self.registry.trigger_schemas()
+        return self.registry.trigger_schemas(channel)
 
     def has_trigger(self, name):
-        """判断是否为插件触发型工具"""
         self._ensure()
         return self.registry.has_trigger(name)
 
     def dispatch(self, name, arguments):
-        """语音链路分发"""
         self._ensure()
         return self.registry.dispatch(name, arguments)
 
     def dispatch_qq(self, name, arguments, qq_context):
-        """QQ 链路分发"""
         self._ensure()
         return self.registry.dispatch_qq(name, arguments, qq_context)
 
-    def set_meowid(self, meowid):
-        """注入当前用户名"""
-        self._ensure()
-        self.registry.set_meowid(meowid)
-
-    def set_context(self, context):
-        """注入调用上下文"""
-        self._ensure()
-        self.registry.set_context(context)
-
     def call_interface(self, name, **kwargs):
-        """按名调用接口型工具"""
         self._ensure()
         return self.registry.call(name, **kwargs)
 
     def prompt_hint(self):
-        """汇总插件引导文案"""
         self._ensure()
         hints = self.registry.prompt_hints()
-        if not hints:
-            return ""
-        return "【插件工具】\n" + "\n".join(hints)
+        return ("【插件工具】\n" + "\n".join(hints)) if hints else ""
 
     def list_plugins(self):
-        """返回已加载插件 id 列表"""
         self._ensure()
         return self.registry.plugin_ids()
 
     def state_decl(self, plugin_id):
-        """取插件声明的能力位（标准接口 state_decl()）；无声明返回 {}"""
         self._ensure()
-        try:
-            for plugin in self.registry.plugins():
-                if getattr(plugin, "id", "") == plugin_id:
-                    decl = getattr(plugin, "state_decl", None)
-                    return (decl() if callable(decl) else {}) or {}
-        except Exception:
-            self.log.exception("读取插件状态声明失败")
+        for plugin in self.registry.plugins():
+            if plugin.id == plugin_id:
+                decl = getattr(plugin, "state_decl", None)
+                return decl() if callable(decl) else {}
         return {}
 
     def match_keyword(self, text):
-        """关键词硬触发：返回 (工具名, 参数) 或 None"""
         self._ensure()
         text = str(text or "")
-        if not text:
-            return None
         for tool in self.registry.triggers():
-            words = getattr(tool, "trigger_words", None) or ()
-            for word in words:
+            for word in (tool.trigger_words or ()):
                 if word and word in text:
-                    return getattr(tool, "name", ""), {"request": text}
+                    return tool.name, {"request": text}
         return None
 
-    def route_text(self, text, meowid=""):
-        """会话拦截：交给声明了 route_text 的触发型工具，命中返回 True"""
+    def route_text(self, text, meowid="", channel=CHANNEL_MAIN):
         self._ensure()
+        text = str(text or "")
+        if not text.strip():
+            return False
         for tool in self.registry.triggers():
-            handler = getattr(tool, "route_text", None)
-            if not callable(handler):
+            if channel not in tool.channels:
                 continue
-            try:
-                if handler(text, meowid):
-                    return True
-            except Exception:
-                self.log.exception("插件会话拦截失败")
+            if tool.route_text(text, meowid, channel):
+                return True
         return False
 
     def route_qq(self, channel, text, qq_context=None, nickname=""):
-        """QQ 消息拦截：把消息递给插件。
-
-        身份契约（标准，插件必须遵守）：
-        - `qq_context["meowid"]`：**内部编号，唯一身份标准**，插件做键/存储/查档只用它；
-        - `qq_context["nickname"]` 与第 4 参 `nickname`：昵称（= 项目昵称），**只允许用于展示**；
-        """
         self._ensure()
         text = str(text or "")
         if not text.strip():
@@ -207,10 +165,7 @@ class PluginManager:
             handler = getattr(plugin, "route_qq", None)
             if not callable(handler):
                 continue
-            try:
-                if handler(text, dict(qq_context or {}), str(nickname or "")):
-                    self.log.info(f"[插件] {getattr(plugin, 'id', '')} 接管 {channel}: {text[:30]}")
-                    return True
-            except Exception:
-                self.log.exception(f"[插件] {getattr(plugin, 'id', '')} 消息拦截失败")
+            if handler(text, dict(qq_context or {}), str(nickname or "")):
+                self.log.info(f"[插件] {plugin.id} 接管 {channel}: {text[:30]}")
+                return True
         return False

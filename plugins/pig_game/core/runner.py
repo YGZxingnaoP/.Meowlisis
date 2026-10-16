@@ -27,7 +27,7 @@ class PigRunner:
         self.base = base_dir
         self.cfg = PigConfig(getattr(ctx, "config", {}) or {})
         self.assets_dir = os.path.join(base_dir, str(self.cfg.assets_dir))
-        self.data_dir = data_dir or os.path.join(base_dir, str(self.cfg.data_dir))
+        self.data_dir = data_dir or ctx.data_dir(per_user="")
         os.makedirs(self.data_dir, exist_ok=True)
         self.cache_dir = os.path.join(self.data_dir, "cache")   # 卡片图落盘目录
         self.book = SpeciesBook(self.assets_dir)

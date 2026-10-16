@@ -214,7 +214,7 @@ def _score_book(base, norm_query, volumes):
     return score
 
 
-def match_book(books_dir, query, state_dir=None, prefer=""):
+def match_book(books_dir, query, state_dir, prefer=""):
     """按书名/关键词模糊匹配书，返回 (完整路径, 标题)
 
     - 书名匹配：精确/归一化包含/打分（支持"读86第二本"这类混合口语）
@@ -255,7 +255,7 @@ def match_book(books_dir, query, state_dir=None, prefer=""):
     return _match_by_volume(folder, files, raw, volumes, state_dir, prefer)
 
 
-def _match_by_volume(folder, files, raw, volumes, state_dir=None, prefer=""):
+def _match_by_volume(folder, files, raw, volumes, state_dir, prefer=""):
     """按明确卷号定位书：书名线索 → 在读系列提示 → 进度文件 → 最近在读 → 最大系列"""
     vol = explicit_volume(raw)
     if not vol:
@@ -280,13 +280,11 @@ def _match_by_volume(folder, files, raw, volumes, state_dir=None, prefer=""):
     if len(cands) == 1:
         return os.path.join(folder, cands[0] + ".epub"), cands[0]
     # ③ 有进度文件的（读过/在读）
-    stated = [c for c in cands
-              if os.path.isfile(os.path.join(state_dir or os.path.join(folder, "_state"),
-                                             f"{c}.json"))]
+    stated = [c for c in cands if os.path.isfile(os.path.join(state_dir, f"{c}.json"))]
     if len(stated) == 1:
         return os.path.join(folder, stated[0] + ".epub"), stated[0]
     # ③ 最近在读的系列
-    recent_series, _ = _recent_state_series(state_dir or os.path.join(folder, "_state"))
+    recent_series, _ = _recent_state_series(state_dir)
     if recent_series:
         same = [c for c in cands if series_of(c) == recent_series]
         if len(same) == 1:

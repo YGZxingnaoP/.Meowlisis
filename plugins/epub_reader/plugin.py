@@ -1,4 +1,5 @@
-from func.toolbox.plugins.sdk import ToolboxPlugin, TriggerTool
+from func.pipeline.plugins_state import CAP_ACTIVE_REPLY, CAP_DANMAKU
+from func.toolbox.plugins.sdk import CHANNEL_MAIN, ToolboxPlugin, TriggerTool
 
 from .session import SESSION
 
@@ -19,53 +20,34 @@ class ReadBookTool(TriggerTool):
     required = []
     trigger_words = ("读书", "读小说", "读轻小说", "朗读", "念书", "读给我听", "听书", "说书")
     prompt_hint = "- 读书助手：用户想听书/朗读小说/读轻小说/继续读某本书 → 调用 read_book。"
+    channels = (CHANNEL_MAIN,)
 
     def handle(self, arguments, ctx):
-        """语音/弹幕触发：开始或续读"""
         SESSION.set_ctx(ctx)
         args = arguments or {}
-        meowid = str((self.context or {}).get("meowid") or "")
-        request = str(args.get("request") or "")
-        book = str(args.get("book") or "")
-        mode = str(args.get("mode") or "read")
-        return SESSION.start(request, book, mode, meowid)
+        return SESSION.start(str(args.get("request") or ""), str(args.get("book") or ""),
+                             str(args.get("mode") or "read"), self.uid)
 
-    def route_text(self, text, meowid=""):
-        """会话拦截：朗读中打断 / 窗口内续读"""
-        return SESSION.route_text(text, meowid)
+    def route_text(self, text, meowid="", channel=CHANNEL_MAIN):
+        return SESSION.route_text(text, meowid, channel)
 
 
 class Plugin(ToolboxPlugin):
     id = "epub_reader"
     title = "读书助手"
-    version = "1.0.0"
+    version = "2.0.0"
     default_enabled = True
 
     def trigger_tools(self):
-        """返回触发型工具列表"""
         return [ReadBookTool()]
 
     def prompt_hint(self):
-        """返回意图分析引导文案"""
         return "- 读书助手：用户想听书/朗读小说/读轻小说/继续读某本书 → 调用 read_book。"
 
     def state_decl(self):
-        """读书状态声明（标准接口）：不读弹幕 + 暂停主动回复计时
-
-        其余能力位保持默认允许：礼物/舰长照常播报、待办提醒照常触发、
-        语音闲聊不拦截（沿用原打断逻辑）。
-        """
-        try:
-            from func.pipeline.plugins_state import CAP_DANMAKU, CAP_ACTIVE_REPLY
-            return {
-                "title": "读书中",
-                "caps": {CAP_DANMAKU: False, CAP_ACTIVE_REPLY: False},
-            }
-        except Exception:
-            return {}
+        return {"title": "读书中", "caps": {CAP_DANMAKU: False, CAP_ACTIVE_REPLY: False}}
 
     def setup(self, ctx):
-        """插件初始化"""
         SESSION.set_ctx(ctx)
 
 

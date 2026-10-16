@@ -1,17 +1,94 @@
+import contextvars
+import json
+import os
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
+    os.path.abspath(__file__)))))
+
+CHANNEL_MAIN = "main"
+CHANNEL_QQ = "qq"
+CHANNELS = (CHANNEL_MAIN, CHANNEL_QQ)
+
+_REQUEST = contextvars.ContextVar("plugin_request", default={})
+
+
+def begin_request(meowid="", **rest):
+    _REQUEST.set({"meowid": str(meowid or ""), **rest})
+
+
+def update_request(**kw):
+    _REQUEST.set({**_REQUEST.get(), **kw})
+
+
+def current_request():
+    return _REQUEST.get()
+
+
+def current_uid():
+    return str(_REQUEST.get().get("meowid") or "")
+
+
+class JsonStore:
+    def __init__(self, path):
+        self.path = path
+
+    def load(self, default):
+        if not os.path.isfile(self.path):
+            return default
+        with open(self.path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def save(self, data):
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        tmp = self.path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, self.path)
+
+
 class PluginContext:
     def __init__(self, plugin_id, log, config):
-        """插件上下文：承载插件运行时依赖"""
         self.id = plugin_id
         self.log = log
         self.config = config or {}
+        self.dir = os.path.join(ROOT, "plugins", plugin_id)
+
+    def uid(self):
+        return current_uid()
+
+    def request(self):
+        return current_request()
+
+    def display_name(self, uid=None):
+        from func.pipeline.id_signup import display_name
+        return display_name(current_uid() if uid is None else uid)
+
+    def root(self):
+        return ROOT
+
+    def plugin_dir(self):
+        return self.dir
+
+    def path(self, *parts):
+        return os.path.join(ROOT, *[str(p) for p in parts])
+
+    def resolve(self, path):
+        p = os.path.expanduser(str(path))
+        return os.path.normpath(p if os.path.isabs(p) else os.path.join(ROOT, p))
+
+    def data_dir(self, per_user=None):
+        uid = current_uid() if per_user is None else str(per_user)
+        base = os.path.join(ROOT, "character", "plugin_data", self.id)
+        return os.path.join(base, uid) if uid else base
+
+    def store(self, name, per_user=None):
+        return JsonStore(os.path.join(self.data_dir(per_user), name + ".json"))
 
     def tts(self):
-        """返回 TTS 语音桥接"""
         from func.pipeline.toolbox_tts import ToolboxTtsBridge
         return ToolboxTtsBridge()
 
     def llm(self):
-        """返回 toolbox LLM 端口实例"""
         from func.toolbox.config import TBoxConfig
         cfg = TBoxConfig()
         if cfg.llm_type == "gemini":
@@ -24,53 +101,37 @@ class PluginContext:
         return TBoxDeepSeekLLM(cfg)
 
     def prompt(self):
-        """返回角色提示词获取器"""
         from func.toolbox.get_prompt import TBoxGetPrompt
         return TBoxGetPrompt()
 
     def napcat(self):
-        """返回 QQ 发送入口"""
         from func.toolbox.napcat.napcat_core import TBNapCatCore
         return TBNapCatCore()
 
     def short_memory(self):
-        """返回短期记忆桥接"""
         from func.pipeline.short_memory import ShortMemory
         return ShortMemory()
 
     def ltmem(self):
-        """返回长期/用户记忆桥接"""
         from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
         return MeowLLMLtMemBridge()
 
     def excuse(self):
-        """返回通用询问器"""
         from func.toolbox.excuse import TBExcuse
         return TBExcuse()
 
     def toolbox(self):
-        """返回 toolbox 总入口"""
         from func.toolbox.toolbox_core import TBoxCore
         return TBoxCore()
 
     def ai_name(self):
-        """返回 AI 名字"""
         from func.config.app_config import AppConfig
         return AppConfig().ai_name
 
     def state(self):
-        """返回本插件状态句柄（标准接口）：enter() / update(**caps) / exit()
-
-        能力位由插件自身的 state_decl() 声明，插件无需 import 框架内部单例。
-        """
         from func.pipeline.plugins_state import PluginStateHandle
-        decl = {}
-        try:
-            from func.toolbox.plugins.manager import PluginManager
-            decl = PluginManager().state_decl(self.id)
-        except Exception:
-            self.log.exception("读取插件状态声明失败")
-        return PluginStateHandle(self.id, decl, self.log)
+        from func.toolbox.plugins.manager import PluginManager
+        return PluginStateHandle(self.id, PluginManager().state_decl(self.id), self.log)
 
 
 class TriggerTool:
@@ -80,11 +141,13 @@ class TriggerTool:
     required = []
     prompt_hint = ""
     trigger_words = ()
-    meowid = ""
-    context = {}
+    channels = CHANNELS
+
+    @property
+    def uid(self):
+        return current_uid()
 
     def build_schema(self):
-        """生成 OpenAI function schema"""
         return {
             "type": "function",
             "function": {
@@ -99,34 +162,13 @@ class TriggerTool:
         }
 
     def handle(self, arguments, ctx):
-        """语音链路执行"""
         raise NotImplementedError
 
     def handle_qq(self, arguments, qq_context, ctx):
-        """QQ 链路执行，默认回退语音实现"""
-        return self.handle(arguments, ctx)
+        raise NotImplementedError
 
-    def route_text(self, text, meowid=""):
-        """语音/弹幕会话拦截，返回 True 表示已接管（默认不接管）
-
-        身份契约：`meowid` 是**内部编号**（身份标准），昵称由 display_name() 渲染，不要当昵称用。
-        """
+    def route_text(self, text, meowid="", channel=CHANNEL_MAIN):
         return False
-
-    def set_meowid(self, meowid):
-        """框架注入当前说话人的**内部编号**（身份标准）。
-
-        插件做键 / 存储 / 查档只用它；要展示就 display_name(meowid)，别把别的值当身份。
-        """
-        self.meowid = meowid or ""
-
-    def set_context(self, context):
-        """注入调用上下文。
-
-        契约：{meowid: 内部编号, text, short_memory, system_prompt}；
-        身份只走 `meowid` 这一个键，禁用 nickname / 账号 / 显示名顶替身份。
-        """
-        self.context = context or {}
 
 
 class InterfaceTool:
@@ -134,7 +176,6 @@ class InterfaceTool:
     description = ""
 
     def call(self, ctx, **kwargs):
-        """按名调用执行"""
         raise NotImplementedError
 
 
@@ -145,33 +186,19 @@ class ToolboxPlugin:
     default_enabled = True
 
     def trigger_tools(self):
-        """返回触发型工具列表"""
         return []
 
     def interface_tools(self):
-        """返回接口型工具列表"""
         return []
 
     def prompt_hint(self):
-        """返回意图分析引导文案"""
         return ""
 
     def state_decl(self):
-        """声明本插件「进入状态」时的能力占用（标准接口）；返回 {} 表示无状态。
-
-        返回格式：
-        {
-          "title": "读书中",                     # 展示名（日志 / GUI）
-          "caps": {CAP_DANMAKU: False, ...},     # 能力位，未列出的沿用默认 True
-          "meta": {...},                         # 可选附加信息
-        }
-        """
         return {}
 
     def setup(self, ctx):
-        """插件初始化"""
         pass
 
     def teardown(self):
-        """插件卸载清理"""
         pass

@@ -121,7 +121,6 @@ FIELDS = [
      "default": "grass,farm,night",
      "help": "对应 assets/scene_<名字>.png，玩家可用「设置猪圈场景」切换"},
     {"key": "assets_dir", "label": "图片目录", "type": "text", "default": "assets"},
-    {"key": "data_dir", "label": "数据目录", "type": "text", "default": "data"},
 
     # ---------- LLM ----------
     {"key": "llm.enabled", "label": "启用 LLM 点评", "type": "check", "default": True,

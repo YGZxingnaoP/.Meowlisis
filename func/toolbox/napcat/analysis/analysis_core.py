@@ -164,11 +164,10 @@ class TBNapcatAnalysis:
             handled = True
         else:
             from func.toolbox.plugins.manager import PluginManager
+            from func.toolbox.plugins.sdk import begin_request
             pm = PluginManager()
             if pm.has_trigger(name):
-                pm.set_meowid(meowid)
-                pm.set_context({"meowid": meowid, "text": text,
-                                "short_memory": short_memory or []})
+                begin_request(meowid, text=text, short_memory=short_memory or [])
                 pm.dispatch_qq(name, args, qq_context)
                 handled = True
             else:
@@ -266,7 +265,8 @@ class TBNapcatAnalysis:
             self.log.exception("构建 flux_paint 工具失败")
         try:
             from func.toolbox.plugins.manager import PluginManager
-            tools.extend(PluginManager().trigger_schemas())
+            from func.toolbox.plugins.sdk import CHANNEL_QQ
+            tools.extend(PluginManager().trigger_schemas(CHANNEL_QQ))
         except Exception:
             self.log.exception("构建插件工具失败")
         return tools

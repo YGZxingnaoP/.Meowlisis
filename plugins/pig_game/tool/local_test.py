@@ -38,6 +38,7 @@ import tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))          # pig_game/tool
 PLUGIN_ROOT = os.path.dirname(HERE)
 PLUGINS_ROOT = os.path.dirname(PLUGIN_ROOT)
+PROJECT_ROOT = os.path.dirname(PLUGINS_ROOT)
 if PLUGINS_ROOT not in sys.path:
     sys.path.insert(0, PLUGINS_ROOT)
 
@@ -118,6 +119,16 @@ class FakeCtx:
     def llm(self):
         return None
 
+    def root(self):
+        return PROJECT_ROOT
+
+    def data_dir(self, per_user=None):
+        return os.path.join(TEST_DATA_DIR, str(per_user)) if per_user else TEST_DATA_DIR
+
+    def resolve(self, path):
+        p = os.path.expanduser(str(path))
+        return os.path.normpath(p if os.path.isabs(p) else os.path.join(PROJECT_ROOT, p))
+
 
 class LocalApp(PigRunner):
     """复刻插件的运行器，只把发送换成控制台；玩法/解析与线上完全相同。"""
@@ -128,7 +139,7 @@ class LocalApp(PigRunner):
     def say(self, text, name, qq, group=None, at_self=True):
         """模拟「某个玩家发了一条消息」"""
         ctx = {"message_type": "group" if group else "private",
-               "target_id": group or qq, "user_id": qq, "nickname": name}
+               "target_id": group or qq, "user_id": qq, "nickname": name, "meowid": qq}
         if group:
             ctx["group_id"] = group
             ctx["self_id"] = "12345"
@@ -166,7 +177,7 @@ def load_config():
 
 
 def resolve_qq(app, name):
-    for _sc, q, pl in app.store.all_players():
+    for q, pl in app.store.players.items():
         if str(pl.get("nickname")) == name:
             return q
     return None
@@ -204,18 +215,18 @@ def interactive(app):
                 else:
                     print("  没这个玩家，用 :new 建一个")
             elif cmd == "new" and arg:
-                q = str(20000 + len(list(app.store.all_players())))
+                q = str(20000 + len(app.store.players))
                 app.engine.ensure("private", q, arg)
                 print("  新建 %s（QQ %s）" % (arg, q))
             elif cmd == "who":
-                for sc, q, pl in app.store.all_players():
-                    print("  [%s] %s(%s) 金币 %s 好感 %s 体力 %s 猪 %s 军队 %s"
-                          % (sc, pl.get("nickname"), q, pl.get("coins"), pl.get("affinity"),
+                for q, pl in app.store.players.items():
+                    print("  %s(%s) 群 %s 金币 %s 好感 %s 体力 %s 猪 %s 军队 %s"
+                          % (pl.get("nickname"), q, pl.get("scopes"), pl.get("coins"), pl.get("affinity"),
                              pl.get("stamina"), pl.get("pigs"), pl.get("army")))
             elif cmd == "give" and len(parts) > 2:
                 q = resolve_qq(app, arg)
                 sid = app.book.resolve(parts[2]) or parts[2]
-                p = app.store.get_player("private", q) or app.store.get_player("group", q)
+                p = app.store.get_player(q)
                 if p:
                     p["pigs"][sid] = int(p["pigs"].get(sid, 0)) + int(parts[3] if len(parts) > 3 else 1)
                     app.store.save("players")
@@ -223,7 +234,7 @@ def interactive(app):
                 else:
                     print("  没找到玩家")
             elif cmd == "coins" and arg:
-                p = app.store.get_player("private" if not mode["group"] else "group", qq)
+                p = app.store.get_player(qq)
                 if p:
                     p["coins"] = int(p.get("coins") or 0) + int(arg)
                     app.store.save("players")
@@ -254,7 +265,7 @@ def demo(app):
     A, B = "10001", "10002"
     app.engine.ensure("private", A, "小A")
     app.engine.ensure("private", B, "小B")
-    pb = app.store.get_player("private", B)
+    pb = app.store.get_player(B)
     pb["pigs"] = {"super_fat": 20, "flying": 3, "fish": 4}
     pb["coins"] = 500
     pb["army"] = {"super_fat": 8, "flying": 2}

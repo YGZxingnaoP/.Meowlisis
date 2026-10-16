@@ -73,7 +73,7 @@ def _resolve_args(arguments):
 def _run_job(request, doc_type, fmt, ctx, channel, qq_context, user_ctx):
     """后台执行任务并冒出完成信号"""
     try:
-        config = DocWriterConfig(ctx.config)
+        config = DocWriterConfig(ctx)
         result = DocAgent(ctx, config).run(request, doc_type, fmt,
                                            (user_ctx or {}).get("short_memory") or [])
         path = (result or {}).get("path")
@@ -162,7 +162,7 @@ class DocWriterProbeTool(InterfaceTool):
         from .imagesearch import ImageSearch
         from .port import DocLLM
 
-        config = DocWriterConfig(ctx.config)
+        config = DocWriterConfig(ctx)
         llm = DocLLM(config)
         out = {
             "llm": {"ok": bool(llm.available()), "model": config.model, "error": llm.last_error},

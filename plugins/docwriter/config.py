@@ -27,9 +27,8 @@ IMAGE_DEFAULTS = {
 
 
 class DocWriterConfig:
-    def __init__(self, data=None):
-        """文档助手配置（LLM / 生图 各自独立配置）"""
-        data = data or {}
+    def __init__(self, ctx):
+        data = ctx.config or {}
         llm = data.get("llm") or {}
         self.provider = str(llm.get("provider", "deepseek"))
         preset = DEFAULTS.get(self.provider, DEFAULTS["deepseek"])
@@ -40,13 +39,13 @@ class DocWriterConfig:
         self.max_tokens = int(llm.get("max_tokens", 8192))
 
         search = data.get("search") or {}
-        self.output_dir = data.get("output_dir", "./character/catfiles")
+        self.output_dir = ctx.resolve(data.get("output_dir") or "./character/catfiles")
         self.engine = str(search.get("engine", "both"))
         self.top_n = int(search.get("top_n", 5))
         self.timeout = int(search.get("timeout", 15))
         self.page_chars = int(search.get("page_chars", 4000))
         self.dynamic = str(search.get("dynamic", "auto"))
-        self.driver_dir = search.get("driver_dir", "./.temp/edgedriver")
+        self.driver_dir = ctx.resolve(search.get("driver_dir") or "./.temp/edgedriver")
         self.driver_mirror = search.get("driver_mirror", "https://msedgedriver.microsoft.com")
         self.agent_rounds = int(search.get("agent_rounds", data.get("agent_rounds", 20)))
 

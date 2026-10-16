@@ -28,13 +28,11 @@ CHARS = {"bullets": 40, "toc": 20, "points": 40, "caption": 30, "cell": 18, "mat
 # ==================== 通用 ====================
 
 def _resolve(output_dir, sub=""):
-    """解析并创建输出目录"""
-    if not os.path.isabs(output_dir):
-        output_dir = os.path.join(os.getcwd(), output_dir)
-    if sub:
-        output_dir = os.path.join(output_dir, sub)
-    os.makedirs(output_dir, exist_ok=True)
-    return output_dir
+    folder = os.path.join(str(output_dir), sub) if sub else str(output_dir)
+    if not os.path.isabs(folder):
+        raise ValueError(f"output_dir 必须是绝对路径，收到 {output_dir!r}")
+    os.makedirs(folder, exist_ok=True)
+    return folder
 
 
 def _filename(filename, ext):
@@ -65,7 +63,6 @@ def resolve_asset(path, base_dir):
         return p
     for cand in (os.path.join(base_dir, p),
                  os.path.join(base_dir, IMAGE_DIR, os.path.basename(p)),
-                 os.path.join(os.getcwd(), p),
                  p):
         if cand and os.path.isfile(cand):
             return os.path.abspath(cand)

@@ -79,14 +79,15 @@ class Engine:
         return self.app.ctx
 
     # ==================== 玩家 ====================
-    def new_player(self, qq, nick):
+    def new_player(self, uid, nick):
         cfg, t = self.cfg, today()
         init = {}
         for sid, cnt in (cfg.init_pigs or {}).items():
             if self.book.get(sid):
                 init[str(sid)] = int(cnt or 0)
         return {
-            "qq": str(qq), "nickname": str(nick),
+            "uid": str(uid), "nickname": str(nick),
+            "scopes": [], "last_scope": "",
             "coins": int(cfg.coins_init), "stamina": int(cfg.stamina_max),
             "stamina_date": t, "affinity": int(cfg.affinity_init),
             "last_checkin_date": "", "checkin_blocked_date": "",
@@ -97,24 +98,24 @@ class Engine:
             "joined_date": t,
         }
 
-    def ensure(self, scope, qq, nick=""):
-        """取/建玩家档案（存储键 = scope + QQ号，身份标准是 QQ号，昵称只是展示字段）。
-
-        昵称只接受「真昵称」：空值或纯数字（内部编号 / QQ号）一律拒收并记 ERROR，
-        绝不把编号/QQ号写进昵称位（否则私聊一句就把昵称刷成 000001）。
-        """
+    def ensure(self, scope, uid, nick=""):
         nick = str(nick or "").strip()
         if nick and nick.isdigit():
-            self.ctx.log.error(f"[猪猪游戏] 拒绝把纯数字当昵称写入档案: qq={qq} nick={nick}")
+            self.ctx.log.error(f"[猪猪游戏] 拒绝把纯数字当昵称写入档案: uid={uid} nick={nick}")
             nick = ""
-        p = self.store.get_player(scope, qq)
+        p = self.store.get_player(uid)
         if p is None:
             if not nick:
-                self.ctx.log.error(f"[猪猪游戏] 建档缺少昵称: qq={qq}")
-            p = self.new_player(qq, nick)
-            self.store.put_player(scope, qq, p)
+                self.ctx.log.error(f"[猪猪游戏] 建档缺少昵称: uid={uid}")
+            p = self.new_player(uid, nick)
+            self.store.put_player(uid, p)
         elif nick and p.get("nickname") != nick:
             p["nickname"] = nick
+        if scope:
+            scopes = p.setdefault("scopes", [])
+            if scope not in scopes:
+                scopes.append(scope)
+            p["last_scope"] = scope
         self.tick(p)
         return p
 
@@ -198,33 +199,37 @@ class Engine:
     def _own_pigs_text(self, p):
         return parse.pigs_text(self.book, p.get("pigs"))
 
+    @staticmethod
+    def _uid_of_ext(qq):
+        if not qq:
+            return None
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().resolve("qq", str(qq)) or None
+
     def resolve_target(self, scope, name, qq_context=None):
-        """昵称 → QQ：本群玩家 → 群成员列表 → 昵称映射。查不到返回 None。"""
         name = parse.clean_name(name)
         if not name:
             return None
-        for q, pl in self.store.scope_players(scope).items():
-            if str(pl["nickname"]) == name:
-                return str(q)
+        for uid, pl in self.store.players.items():
+            if str(pl.get("nickname") or "") == name:
+                return uid
         gid = None
         if qq_context and str(qq_context.get("message_type")) == "group":
             gid = qq_context.get("group_id") or qq_context.get("target_id")
         if gid:
             members = self._members(gid)
             for m in members:
-                if str(m.get("card") or "") == name or str(m.get("nickname") or "") == name:
-                    return str(m.get("user_id") or "")
+                if name == str(m.get("card") or "") or name == str(m.get("nickname") or ""):
+                    uid = self._uid_of_ext(m.get("user_id"))
+                    if uid:
+                        return uid
             for m in members:
-                if name and (name in str(m.get("card") or "") or name in str(m.get("nickname") or "")):
-                    return str(m.get("user_id") or "")
-        try:
-            from func.toolbox.napcat.groupchat.user_nickname import TBUserNicknameMap
-            q = TBUserNicknameMap().reverse(name)
-            if q:
-                return str(q)
-        except Exception:
-            pass
-        return None
+                if name in str(m.get("card") or "") or name in str(m.get("nickname") or ""):
+                    uid = self._uid_of_ext(m.get("user_id"))
+                    if uid:
+                        return uid
+        from func.pipeline.id_signup import IdSignupBridge
+        return IdSignupBridge().id_by_name(name) or None
 
     def _members(self, gid):
         key = str(gid)
@@ -317,51 +322,36 @@ class Engine:
 
     # ==================== 入口 ====================
     def identity(self, qq_context):
-        """从上下文取身份：qq=QQ号（存储键），nick=昵称（仅展示），meowid=内部编号（标准）。
-
-        禁止兜底：QQ 号只认 user_id 一个来源；昵称只认 nickname。
-        """
         mt = str(qq_context.get("message_type") or "private")
         if mt == "group":
             scope = str(qq_context.get("group_id") or "")
         else:
             scope = "private"
-        qq = str(qq_context.get("user_id") or "")
+        uid = str(qq_context.get("meowid") or "")
         nick = str(qq_context.get("nickname") or "")
-        return mt, scope, qq, nick
+        return mt, scope, uid, nick
 
     def handle(self, tool, arguments, qq_context):
         args = arguments or {}
-        mt, scope, qq, nick = self.identity(qq_context)
-        if not qq:
-            return self._res(rules.invalid("没能识别出你的身份（缺少 QQ 号）"))
-        if not nick:
-            return self._res(rules.invalid("没能识别出你的昵称（身份不完整）"))
-        p = self.ensure(scope, qq, nick)
+        mt, scope, uid, nick = self.identity(qq_context)
+        if not uid:
+            return self._res(rules.invalid("没能识别出你的身份（缺少 meowid）"))
+        p = self.ensure(scope, uid, nick)
         name = str(tool or "")
         if name.startswith("pig_"):
             name = name[4:]
         fn = getattr(self, "_cmd_" + name, None)
-        try:
-            res = fn(scope, qq, p, args, qq_context) if fn else self._res(rules.MENU)
-        except Exception:
-            try:
-                self.ctx.log.exception("养猪游戏：执行指令失败 %s" % tool)
-            except Exception:
-                pass
-            res = self._res(rules.missing(["刚才这条指令没能处理，请检查一下写法"], "游戏规则"))
-        # 被动提醒（对方下次交互时给出）
-        try:
-            notes = self.store.take_notes(scope, qq)
-            if notes:
-                res["text"] = (res.get("text") or "") + "\n\n【📮 有人找你】\n" + "\n".join(notes)
-        except Exception:
-            pass
+        if fn is None:
+            return self._res(rules.MENU)
+        res = fn(scope, uid, p, args, qq_context)
+        notes = self.store.take_notes(scope, uid)
+        if notes:
+            res["text"] = (res.get("text") or "") + "\n\n【📮 有人找你】\n" + "\n".join(notes)
         self.store.save_all()
         return res
 
     # ==================== 打卡 ====================
-    def _cmd_checkin(self, scope, qq, p, args, qq_context):
+    def _cmd_checkin(self, scope, uid, p, args, qq_context):
         cfg = self.cfg
         t = today()
         if p.get("last_checkin_date") == t:
@@ -439,17 +429,17 @@ class Engine:
         }, image=image)
 
     # ==================== 假扮打卡 ====================
-    def _cmd_fake(self, scope, qq, p, args, qq_context):
+    def _cmd_fake(self, scope, uid, p, args, qq_context):
         name = parse.clean_name(args.get("target"))
         if not name:
             return self._res(rules.missing(["缺少：目标玩家"], "假扮打卡@其乐容容"))
-        tqq = self.resolve_target(scope, name, qq_context)
-        if tqq == qq:
+        tuid = self.resolve_target(scope, name, qq_context)
+        if tuid == uid:
             return self._res(rules.invalid("不能假扮自己的猪圈"))
-        if not tqq:
+        if not tuid:
             return self._res(rules.missing(["目标玩家「%s」没找到（要写对方昵称）" % name],
                                            "假扮打卡@其乐容容"))
-        tp = self.store.get_player(scope, tqq)
+        tp = self.store.get_player(tuid)
         if tp is None or parse.total_pigs(tp.get("pigs")) <= 0:
             return self._res(rules.invalid("对方还没有开始养猪，没得假扮"))
         self.tick(tp)
@@ -482,7 +472,7 @@ class Engine:
         stolen = int(income * float(self.cfg.fake_steal_ratio))
         p["coins"] = int(p.get("coins") or 0) + stolen
         tp["checkin_blocked_date"] = t
-        self.store.add_note(scope, tqq,
+        self.store.add_note(scope, tuid,
                             "%s 假扮了你的猪圈，你今天无法打卡了！" % str(p["nickname"]))
         comment = self.app.llm.comment("fake", "假扮成功，偷了对方当日产出")
         top = None
@@ -501,18 +491,18 @@ class Engine:
         }, image=self.app.pig_image(top[0] if top else "super_fat"))
 
     # ==================== 偷猪 ====================
-    def _cmd_steal(self, scope, qq, p, args, qq_context):
+    def _cmd_steal(self, scope, uid, p, args, qq_context):
         cfg = self.cfg
         name = parse.clean_name(args.get("target"))
         if not name:
             return self._res(rules.missing(["缺少：目标玩家"], "偷其乐容容30只超级肥猪"))
-        tqq = self.resolve_target(scope, name, qq_context)
-        if tqq == qq:
+        tuid = self.resolve_target(scope, name, qq_context)
+        if tuid == uid:
             return self._res(rules.invalid("不能偷自己的猪"))
-        if not tqq:
+        if not tuid:
             return self._res(rules.missing(["目标玩家「%s」没找到（要写对方昵称）" % name],
                                            "偷其乐容容30只超级肥猪"))
-        tp = self.store.get_player(scope, tqq)
+        tp = self.store.get_player(tuid)
         if tp is None:
             return self._res(rules.invalid("对方还没有开始养猪，偷不到东西"))
         self.tick(tp)
@@ -566,7 +556,7 @@ class Engine:
         before = int(p["pigs"].get(sid, 0) or 0)
         tp["pigs"][sid] = own - take
         p["pigs"][sid] = before + take
-        self.store.add_note(scope, tqq,
+        self.store.add_note(scope, tuid,
                             "%s 从你的猪圈偷走了 %d 只%s！" % (str(p["nickname"]), take, sp["name"]))
         comment = self.app.llm.comment("steal", "偷猪成功，偷到 %d 只%s" % (take, sp["name"]))
         return self._card({
@@ -579,7 +569,7 @@ class Engine:
         }, image=self.app.pig_image(sid))
 
     # ==================== 猪猪军队 ====================
-    def _cmd_army(self, scope, qq, p, args, qq_context):
+    def _cmd_army(self, scope, uid, p, args, qq_context):
         squad = parse.parse_squad(self.book, args.get("squad") or args.get("request") or "")
         if not squad:
             return self._res(rules.missing(["缺少：守军编队"], "设置猪猪军队2只神奇飞猪1只鱼猪"))
@@ -600,27 +590,27 @@ class Engine:
         }, image=self.app.pig_image("flying"))
 
     # ==================== 抢猪 ====================
-    def _cmd_raid(self, scope, qq, p, args, qq_context):
+    def _cmd_raid(self, scope, uid, p, args, qq_context):
         action = str(args.get("action") or "").strip().lower()
         if action in ("accept", "接受", "迎战"):
-            return self._raid_accept(scope, qq, p)
+            return self._raid_accept(scope, uid, p)
         if action in ("reject", "拒绝", "拒战"):
-            return self._raid_reject(scope, qq, p)
+            return self._raid_reject(scope, uid, p)
         if action in ("force", "强制", "强制进攻"):
-            return self._raid_force(scope, qq, p, args, qq_context)
-        return self._raid_start(scope, qq, p, args, qq_context)
+            return self._raid_force(scope, uid, p, args, qq_context)
+        return self._raid_start(scope, uid, p, args, qq_context)
 
-    def _raid_start(self, scope, qq, p, args, qq_context):
+    def _raid_start(self, scope, uid, p, args, qq_context):
         name = parse.clean_name(args.get("target"))
         if not name:
             return self._res(rules.missing(["缺少：目标玩家"], "带领2只神奇飞猪去其乐容容的地盘抢猪"))
-        tqq = self.resolve_target(scope, name, qq_context)
-        if tqq == qq:
+        tuid = self.resolve_target(scope, name, qq_context)
+        if tuid == uid:
             return self._res(rules.invalid("不能抢自己的猪圈"))
-        if not tqq:
+        if not tuid:
             return self._res(rules.missing(["目标玩家「%s」没找到（要写对方昵称）" % name],
                                            "带领2只神奇飞猪去其乐容容的地盘抢猪"))
-        tp = self.store.get_player(scope, tqq)
+        tp = self.store.get_player(tuid)
         if tp is None or not any(int(v or 0) > 0 for v in (tp.get("army") or {}).values()):
             return self._res(rules.invalid("对方还没有设置猪猪军队，不能发起抢猪"))
         squad = parse.parse_squad(self.book, args.get("squad") or args.get("request") or "")
@@ -629,13 +619,13 @@ class Engine:
         for sid, cnt in squad.items():
             if int(cnt) > int(p["pigs"].get(sid, 0) or 0):
                 return self._res(rules.invalid("你没有那么多%s" % self.book.name(sid)))
-        bid = "%s-%d" % (qq, int(time.time() * 1000))
+        bid = "%s-%d" % (uid, int(time.time() * 1000))
         self.store.battles.append({
-            "id": bid, "scope": str(scope), "attacker": str(qq), "defender": str(tqq),
+            "id": bid, "scope": str(scope), "attacker": str(uid), "defender": str(tuid),
             "squad": {str(k): int(v) for k, v in squad.items()},
             "status": "pending", "date": today(),
         })
-        self.store.add_note(scope, tqq,
+        self.store.add_note(scope, tuid,
                             "%s 带着 %s 来抢你的猪圈了！回复「接受抢猪」或「拒绝抢猪」"
                             % (str(p["nickname"]), parse.squad_text(self.book, squad)))
         return self._card({
@@ -646,25 +636,25 @@ class Engine:
                       {"k": "状态", "v": "等对方回应"}],
         }, image=self.app.pig_image("flying"))
 
-    def _find_battle(self, scope, key_field, qq, status=None):
+    def _find_battle(self, scope, key_field, uid, status=None):
         for b in self.store.battles:
             if str(b.get("scope")) != str(scope):
                 continue
-            if str(b.get(key_field)) != str(qq):
+            if str(b.get(key_field)) != str(uid):
                 continue
             if status and b.get("status") != status:
                 continue
             return b
         return None
 
-    def _raid_accept(self, scope, qq, p):
-        b = self._find_battle(scope, "defender", qq, status="pending")
+    def _raid_accept(self, scope, uid, p):
+        b = self._find_battle(scope, "defender", uid, status="pending")
         if not b:
             return self._res(rules.invalid("你当前没有待处理的抢猪邀请"))
         return self._resolve_battle(scope, b, forced=False)
 
-    def _raid_reject(self, scope, qq, p):
-        b = self._find_battle(scope, "defender", qq, status="pending")
+    def _raid_reject(self, scope, uid, p):
+        b = self._find_battle(scope, "defender", uid, status="pending")
         if not b:
             return self._res(rules.invalid("你当前没有待处理的抢猪邀请"))
         b["status"] = "rejected"
@@ -678,18 +668,18 @@ class Engine:
                       {"k": "状态", "v": "已回绝"}],
         }, image=self.app.scene_image(str(p.get("scene") or "")))
 
-    def _raid_force(self, scope, qq, p, args, qq_context):
+    def _raid_force(self, scope, uid, p, args, qq_context):
         name = parse.clean_name(args.get("target"))
         b = None
         if name:
-            tqq = self.resolve_target(scope, name, qq_context)
+            tuid = self.resolve_target(scope, name, qq_context)
             for item in self.store.battles:
-                if (str(item.get("scope")) == str(scope) and str(item.get("attacker")) == str(qq)
-                        and str(item.get("defender")) == str(tqq or "") and item.get("status") == "rejected"):
+                if (str(item.get("scope")) == str(scope) and str(item.get("attacker")) == str(uid)
+                        and str(item.get("defender")) == str(tuid or "") and item.get("status") == "rejected"):
                     b = item
                     break
         if b is None:
-            b = self._find_battle(scope, "attacker", qq, status="rejected")
+            b = self._find_battle(scope, "attacker", uid, status="rejected")
         if not b:
             return self._res(rules.invalid("没有可以强制进攻的目标（要先被对方拒绝）",
                                            "强制进攻其乐容容"))
@@ -725,8 +715,8 @@ class Engine:
 
     def _resolve_battle(self, scope, b, forced):
         cfg = self.cfg
-        ap = self.store.get_player(scope, b["attacker"])
-        dp = self.store.get_player(scope, b["defender"])
+        ap = self.store.get_player(b["attacker"])
+        dp = self.store.get_player(b["defender"])
         if ap is None or dp is None:
             try:
                 self.store.battles.remove(b)
@@ -779,7 +769,7 @@ class Engine:
 
         lines = []
 
-        other = b["defender"] if str(winner.get("qq")) == str(b["attacker"]) else b["attacker"]
+        other = b["defender"] if str(winner.get("uid")) == str(b["attacker"]) else b["attacker"]
         self.store.add_note(scope, other,
                             "猪猪大战结束：%s 获胜，夺得 %s" % (str(winner["nickname"]), got_text))
         try:
@@ -798,7 +788,7 @@ class Engine:
         }, image=img)
 
     # ==================== 养互动 ====================
-    def _cmd_care(self, scope, qq, p, args, qq_context):
+    def _cmd_care(self, scope, uid, p, args, qq_context):
         raw = str(args.get("action") or "").strip().lower()
         table = {
             "ride": ("ride", "骑猪"), "骑猪": ("ride", "骑猪"),
@@ -830,7 +820,7 @@ class Engine:
         }, image=self.app.pig_image("super_fat"))
 
     # ==================== 池塘 ====================
-    def _cmd_pond(self, scope, qq, p, args, qq_context):
+    def _cmd_pond(self, scope, uid, p, args, qq_context):
         cfg = self.cfg
         cost = int(cfg.pond_cost)
         if int(p.get("coins") or 0) < cost:
@@ -849,7 +839,7 @@ class Engine:
         }, image=self.app.pig_image("fish"))
 
     # ==================== 合成魔法猪 ====================
-    def _cmd_craft(self, scope, qq, p, args, qq_context):
+    def _cmd_craft(self, scope, uid, p, args, qq_context):
         raw = args.get("magic") or args.get("request")
         sid = self.book.resolve(raw)
         sp = self.book.get(sid) if sid else None
@@ -908,7 +898,7 @@ class Engine:
             p["shop_date"] = t
             p["shop_bought"] = {}
 
-    def _cmd_shop(self, scope, qq, p, args, qq_context):
+    def _cmd_shop(self, scope, uid, p, args, qq_context):
         cfg = self.cfg
         if not bool(getattr(cfg, "shop_enabled", True)):
             return self._res(rules.invalid("天降猪猪今天没开张"))
@@ -1023,7 +1013,7 @@ class Engine:
         }, image=self.app.pig_image(offers[0][0]))
 
     # ==================== 猪圈 / 场景 ====================
-    def _cmd_pen(self, scope, qq, p, args, qq_context):
+    def _cmd_pen(self, scope, uid, p, args, qq_context):
         action = str(args.get("action") or "view").strip().lower()
         raw_scene = str(args.get("scene") or "").strip()
         cfg = self.cfg
@@ -1083,15 +1073,15 @@ class Engine:
         }, image=self.app.scene_image(str(p.get("scene") or "")))
 
     # ==================== 交易 ====================
-    def _cmd_trade(self, scope, qq, p, args, qq_context):
+    def _cmd_trade(self, scope, uid, p, args, qq_context):
         action = str(args.get("action") or "").strip().lower()
         if action in ("accept", "接受"):
-            return self._trade_accept(scope, qq, p)
+            return self._trade_accept(scope, uid, p)
         if action in ("reject", "拒绝"):
-            return self._trade_reject(scope, qq, p)
-        return self._trade_offer(scope, qq, p, args, qq_context)
+            return self._trade_reject(scope, uid, p)
+        return self._trade_offer(scope, uid, p, args, qq_context)
 
-    def _trade_offer(self, scope, qq, p, args, qq_context):
+    def _trade_offer(self, scope, uid, p, args, qq_context):
         cfg = self.cfg
         name = parse.clean_name(args.get("target"))
         sid = self.book.resolve(args.get("species"))
@@ -1099,16 +1089,16 @@ class Engine:
             return self._res(rules.missing(
                 ["缺少：目标玩家" if not name else "", "缺少：猪种" if not sid else ""],
                 "出价5金币买其乐容容1只超级肥猪"))
-        tqq = self.resolve_target(scope, name, qq_context)
-        if tqq == qq:
+        tuid = self.resolve_target(scope, name, qq_context)
+        if tuid == uid:
             return self._res(rules.invalid("不能买自己的猪"))
-        if not tqq:
+        if not tuid:
             return self._res(rules.missing(["目标玩家「%s」没找到（要写对方昵称）" % name],
                                            "出价5金币买其乐容容1只超级肥猪"))
         sp = self.book.get(sid)
         if not sp or not sp.get("tradable"):
             return self._res(rules.invalid("%s 不能交易" % (sp["name"] if sp else "这种猪")))
-        seller = self.store.get_player(scope, tqq)
+        seller = self.store.get_player(tuid)
         if seller is None:
             return self._res(rules.invalid("对方还没有开始养猪"))
         self.tick(seller)
@@ -1140,11 +1130,11 @@ class Engine:
         if int(p.get("coins") or 0) < price * cnt:
             return self._res(rules.invalid("你的金币不够，需要 %d 金币" % (price * cnt)))
         self.store.trades.append({
-            "id": "%s-%d" % (qq, int(time.time() * 1000)), "scope": str(scope),
-            "buyer": str(qq), "seller": str(tqq), "species": str(sid),
+            "id": "%s-%d" % (uid, int(time.time() * 1000)), "scope": str(scope),
+            "buyer": str(uid), "seller": str(tuid), "species": str(sid),
             "count": int(cnt), "price": int(price), "date": today(),
         })
-        self.store.add_note(scope, tqq,
+        self.store.add_note(scope, tuid,
                             "%s 想出价 %d 金币/只 买你 %d 只%s（估价约 %.1f），回复「接受交易」或「拒绝交易」"
                             % (str(p["nickname"]), price, cnt, sp["name"], est))
         return self._card({
@@ -1156,25 +1146,25 @@ class Engine:
                       {"k": "状态", "v": "等对方回应"}],
         }, image=self.app.pig_image(str(sid)))
 
-    def _trade_find(self, scope, field, qq):
+    def _trade_find(self, scope, field, uid):
         for t in self.store.trades:
-            if str(t.get("scope")) == str(scope) and str(t.get(field)) == str(qq):
+            if str(t.get("scope")) == str(scope) and str(t.get(field)) == str(uid):
                 return t
         return None
 
-    def _trade_accept(self, scope, qq, p):
-        t = self._trade_find(scope, "seller", qq)
+    def _trade_accept(self, scope, uid, p):
+        t = self._trade_find(scope, "seller", uid)
         if not t:
             return self._res(rules.invalid("你当前没有待处理的交易请求"))
-        buyer = self.store.get_player(scope, t["buyer"])
+        buyer = self.store.get_player(t["buyer"])
         if buyer is None:
             self._drop_trade(t)
             return self._res(rules.invalid("买家已经不在了，交易取消"))
         return self._trade_execute(scope, buyer, p, t["species"], int(t["count"]),
                                    int(t["price"]), skip=False, by_seller=True, trade=t)
 
-    def _trade_reject(self, scope, qq, p):
-        t = self._trade_find(scope, "seller", qq)
+    def _trade_reject(self, scope, uid, p):
+        t = self._trade_find(scope, "seller", uid)
         if not t:
             return self._res(rules.invalid("你当前没有待处理的交易请求"))
         self._drop_trade(t)
@@ -1216,12 +1206,12 @@ class Engine:
         b_name = str(buyer["nickname"])
         s_name = str(seller["nickname"])
         if skip:
-            self.store.add_note(scope, seller["qq"],
+            self.store.add_note(scope, seller["uid"],
                                 "%s 用超高价（单价 %d）直接买走了你 %d 只%s"
                                 % (b_name, int(price), int(cnt), sp["name"]))
             head = "【🐷 猪猪交易 · 成功（超高价直接成交）】"
         elif by_seller:
-            self.store.add_note(scope, buyer["qq"],
+            self.store.add_note(scope, buyer["uid"],
                                 "交易成功：你以单价 %d 买入 %s 的 %d 只%s，共 %d 金币"
                                 % (int(price), s_name, int(cnt), sp["name"], total))
             head = "【🐷 猪猪交易 · 成功】"
@@ -1240,7 +1230,7 @@ class Engine:
         }, image=self.app.pig_image(str(sid)))
 
     # ==================== 排行榜 ====================
-    def _cmd_rank(self, scope, qq, p, args, qq_context):
+    def _cmd_rank(self, scope, uid, p, args, qq_context):
         scope_arg = str(args.get("scope") or args.get("request") or "").strip()
         type_arg = str(args.get("type") or "").strip()
         global_rank = ("全服" in scope_arg) or ("global" in scope_arg.lower())
@@ -1249,30 +1239,22 @@ class Engine:
         title_scope = "全服" if global_rank else "全村"
 
         rows = {}
-        if global_rank:
-            for _sc, q, pl in self.store.all_players():
-                item = rows.setdefault(str(q), {"qq": str(q),
-                                                "name": str(pl["nickname"]),
-                                                "coins": 0, "count": 0})
-                item["coins"] += int(pl.get("coins") or 0)
-                item["count"] += parse.total_pigs(pl.get("pigs"))
-                if pl.get("nickname"):
-                    item["name"] = str(pl["nickname"])
-        else:
-            for q, pl in self.store.scope_players(scope).items():
-                rows[str(q)] = {"qq": str(q), "name": str(pl["nickname"]),
-                                "coins": int(pl.get("coins") or 0),
-                                "count": parse.total_pigs(pl.get("pigs"))}
+        for ouid, pl in self.store.players.items():
+            if not global_rank and scope not in (pl.get("scopes") or []):
+                continue
+            rows[ouid] = {"uid": ouid, "name": str(pl.get("nickname") or ouid),
+                          "coins": int(pl.get("coins") or 0),
+                          "count": parse.total_pigs(pl.get("pigs"))}
         key = "coins" if coin else "count"
         unit = "金币" if coin else "只"
         ordered = [x for x in sorted(rows.values(), key=lambda x: -x[key]) if x[key] > 0]
-        rank_rows, my_rank = [], ""
-        me = str(qq)
+        rank_rows = []
         for i, item in enumerate(ordered[:10], 1):
             rank_rows.append({"name": "%d. %s" % (i, item["name"]),
                               "v": "%d %s" % (item[key], unit)})
+        my_rank = ""
         for i, item in enumerate(ordered, 1):
-            if item.get("qq") and str(item["qq"]) == me:
+            if item["uid"] == str(uid):
                 my_rank = "第 %d 名" % i
                 break
         return self._card({
@@ -1284,5 +1266,5 @@ class Engine:
         })
 
     # ==================== 规则 ====================
-    def _cmd_rules(self, scope, qq, p, args, qq_context):
+    def _cmd_rules(self, scope, uid, p, args, qq_context):
         return self._card(rules.command_card())

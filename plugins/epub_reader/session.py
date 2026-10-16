@@ -3,6 +3,8 @@ import re
 import threading
 import time
 
+from func.toolbox.plugins.sdk import CHANNEL_MAIN
+
 from .config import EpubConfig
 from .parser import (list_books, match_book, load_book, split_sections, query_volumes,
                      explicit_volume, strip_volume_phrase, series_summary, recent_state_book)
@@ -33,7 +35,8 @@ class BookSession:
         self.log = None
         self._active = False
         self._asking = False          # 是否正在等用户回答"读哪一本"（防重入）
-        self._last_title = ""         # 本次/上次在读的书（用于只报卷号时消歧）
+        self._last_title = ""         # 本次/上次在读的书（无 uid 时的展示兜底）
+        self._last_titles = {}        # uid -> 该用户上次在读的书（消歧用，一人一份）
         self._stop = threading.Event()
         self._window = None
         self._meowid = ""
@@ -52,7 +55,30 @@ class BookSession:
 
     def config(self):
         """当前配置"""
-        return EpubConfig(self.ctx.config if self.ctx else {})
+        return EpubConfig(self.ctx)
+
+    @staticmethod
+    def _uid_of(meowid):
+        return str(meowid or "").strip()
+
+    def _scan_dir(self, uid):
+        return self.ctx.data_dir(per_user=uid) if uid else ""
+
+    def _last_title_of(self, cfg, uid):
+        """某人「上次在读的书」：先查内存，再扫他自己的进度档（别人的档不算数）"""
+        uid = self._uid_of(uid)
+        if not uid:
+            return self._last_title
+        if not self._last_titles.get(uid):
+            self._last_titles[uid] = recent_state_book(self._scan_dir(uid))
+        return self._last_titles[uid]
+
+    def _set_last_title(self, uid, title):
+        """记下某人正在读的书"""
+        self._last_title = title
+        uid = self._uid_of(uid)
+        if uid:
+            self._last_titles[uid] = title
 
     # ==================== 启动 ====================
     def start(self, request, book_query, mode, meowid):
@@ -75,14 +101,18 @@ class BookSession:
         probe = EpubLLM(cfg)
         if not probe.available():
             return self._tip_unavailable(probe.last_error)
-        if not self._last_title:
+        uid = self._uid_of(meowid)
+        scan = self._scan_dir(uid)
+        if not uid:
+            self.log.warning("[epub_reader] 没拿到 uid（meowid），本次不读档也不写档")
+        last = self._last_title_of(cfg, uid)
+        if not last:
             # 进程重启后沿用「上次在读的书」，让"接着读第二本"也能正确定位到同一系列
-            self._last_title = recent_state_book(cfg.state_dir)
-        path, title = match_book(cfg.books_dir, book_query or request, cfg.state_dir,
-                                 prefer=self._last_title)
-        if not path and self._last_title and self._is_continue(request, book_query):
+            last = recent_state_book(scan)
+        path, title = match_book(cfg.books_dir, book_query or request, scan, prefer=last)
+        if not path and last and self._is_continue(request, book_query):
             # 「继续读 / 接着念」但没点名书 → 接着上次那本（窗口过期后也能续上）
-            path, title = match_book(cfg.books_dir, self._last_title, cfg.state_dir)
+            path, title = match_book(cfg.books_dir, last, scan)
             if path:
                 self.log.info(f"续读意图命中上次的书：{title}")
         if not path:
@@ -94,9 +124,9 @@ class BookSession:
                 return self._tip_busy()
             self._clear_window()
             self._active = True              # 先占位，避免并发双开
-            self._meowid = str(meowid or "")
-            self._last_title = title         # 记下在读的书，供"接着读第二本"消歧
-            threading.Thread(target=self._run, args=(cfg, path, title, meowid),
+            self._meowid = uid
+            self._set_last_title(uid, title)  # 记下在读的书，供"接着读第二本"消歧
+            threading.Thread(target=self._run, args=(cfg, path, title, uid),
                              daemon=True).start()
         return "已开始"
 
@@ -111,7 +141,7 @@ class BookSession:
         return f"不可用：{err}"
 
     # ==================== 会话拦截 ====================
-    def route_text(self, text, meowid=""):
+    def route_text(self, text, meowid="", channel=CHANNEL_MAIN):
         """会话拦截：朗读中打断 / 窗口内续读
 
         原则：除「明确的停/继续指令」外，绝不吞掉用户输入。
@@ -199,6 +229,7 @@ class BookSession:
         """朗读主流程"""
         self._active = True
         self._stop.clear()
+        uid = self._uid_of(meowid)       # 进度档只认 uid
         read_buf = []
         char_count = 0
         chapter_idx = 0
@@ -214,7 +245,7 @@ class BookSession:
                 self._speak("这本书没有可读的内容呢")
                 return
             readable = True
-            state = load_state(cfg.state_dir, title)
+            state = load_state(self.ctx, uid, title)
             if state and not state.get("finished"):
                 chapter_idx = max(0, int(state.get("chapter", 0)))
                 section_idx = max(0, int(state.get("section", 0)))
@@ -238,7 +269,7 @@ class BookSession:
                     read_buf.append(sections[si])
                     char_count += len(sections[si])
                     section_idx = si + 1
-                    save_state(cfg.state_dir, title, chapter_idx, section_idx, False)
+                    save_state(self.ctx, uid, title, chapter_idx, section_idx, False)
                 if self._stop.is_set():
                     break
                 chapter_idx += 1
@@ -247,7 +278,7 @@ class BookSession:
                     break
             if chapter_idx >= len(chapters):
                 finished = True
-            save_state(cfg.state_dir, title, chapter_idx, section_idx, finished)
+            save_state(self.ctx, uid, title, chapter_idx, section_idx, finished)
             # 被打断时也要把「已读完的部分」写进记忆：只写记忆，不概括出声、不点评
             self._finish(cfg, title, meowid, "\n".join(read_buf), finished,
                          interrupted=self._stop.is_set())
@@ -380,7 +411,9 @@ class BookSession:
                 return
             if not reply:
                 return
-            path, title = self._pick_book(cfg, reply, books, prefer=self._last_title)
+            path, title = self._pick_book(cfg, self._scan_dir(self._uid_of(meowid)),
+                                          reply, books,
+                                          prefer=self._last_title_of(cfg, meowid))
             if path:
                 self.start(reply, title, "read", meowid)
             else:
@@ -392,21 +425,21 @@ class BookSession:
     _PICK_INDEX = re.compile(r"^\s*第?\s*\d{1,2}\s*[本卷册部集]?\s*$")
 
     @classmethod
-    def _pick_book(cls, cfg, reply, books, prefer=""):
+    def _pick_book(cls, cfg, scan, reply, books, prefer=""):
         """按回复选书
 
         1) 先交给 match_book：它已支持「只报卷号」（第二本 / 第2卷 / 从第二本开始读），
            并能按「在读系列（prefer）」在多系列间消歧；
         2) 只有回复是纯序号、且书名匹配不到时，才按库内顺序取第 N 本兜底。
         """
-        path, title = match_book(cfg.books_dir, reply, cfg.state_dir, prefer=prefer)
+        path, title = match_book(cfg.books_dir, reply, scan, prefer=prefer)
         if path:
             return path, title
         text = str(reply or "").strip()
         if cls._PICK_INDEX.match(text) and not strip_volume_phrase(text).strip():
             idx = int(re.sub(r"\D", "", text) or 0) - 1
             if 0 <= idx < len(books):
-                return match_book(cfg.books_dir, books[idx], cfg.state_dir)
+                return match_book(cfg.books_dir, books[idx], scan)
         return "", ""
 
     # ==================== 插件状态（标准接口） ====================

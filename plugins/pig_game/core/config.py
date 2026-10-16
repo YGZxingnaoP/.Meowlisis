@@ -61,7 +61,6 @@ DEFAULTS = {
     # ---------- 资源 ----------
     "scenes": ["grass", "farm", "night"],
     "assets_dir": "assets",
-    "data_dir": "data",
 
     # ---------- LLM ----------
     "llm": {"enabled": True, "api_key": "", "base_url": "", "model": "", "temperature": 0.8},

@@ -1,14 +1,3 @@
-# -*- coding: utf-8 -*-
-"""养猪游戏：数据落盘。
-
-目录下有 4 个 JSON：
-    players.json   {scope: {qq: Player}}
-    trades.json    [Trade]
-    battles.json   [Battle]
-    notes.json     {scope: {qq: [待提醒文本]}}
-每次变更整体落盘，单据完成即删。规模很小，够用。
-"""
-
 import json
 import os
 
@@ -24,7 +13,6 @@ class Store:
         self.notes = {}
         self.load()
 
-    # ---------- 路径与读写 ----------
     def _path(self, name):
         return os.path.join(self.dir, name + ".json")
 
@@ -32,12 +20,9 @@ class Store:
         path = self._path(name)
         if not os.path.isfile(path):
             return default
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return data if isinstance(data, type(default)) else default
-        except Exception:
-            return default
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, type(default)) else default
 
     def load(self):
         self.players = self._read("players", {})
@@ -46,48 +31,29 @@ class Store:
         self.notes = self._read("notes", {})
 
     def save(self, name):
-        try:
-            os.makedirs(self.dir, exist_ok=True)
-            payload = getattr(self, name)
-            tmp = self._path(name) + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, self._path(name))
-        except Exception:
-            pass
+        os.makedirs(self.dir, exist_ok=True)
+        tmp = self._path(name) + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(getattr(self, name), f, ensure_ascii=False, indent=2)
+        os.replace(tmp, self._path(name))
 
     def save_all(self):
         for name in FILES:
             self.save(name)
 
-    # ---------- 玩家 ----------
-    def get_player(self, scope, qq):
-        return (self.players.get(str(scope)) or {}).get(str(qq))
+    def get_player(self, uid):
+        return self.players.get(str(uid))
 
-    def put_player(self, scope, qq, player):
-        self.players.setdefault(str(scope), {})[str(qq)] = player
+    def put_player(self, uid, player):
+        self.players[str(uid)] = player
 
-    def scope_players(self, scope):
-        return self.players.get(str(scope)) or {}
-
-    def all_players(self):
-        """扁平遍历：产出 (scope, qq, player)"""
-        for scope, bucket in self.players.items():
-            for qq, p in (bucket or {}).items():
-                yield scope, qq, p
-
-    # ---------- 提醒（被动提醒，对方下次交互时给出）----------
-    def add_note(self, scope, qq, text):
-        if not text:
-            return
+    def add_note(self, scope, uid, text):
         bucket = self.notes.setdefault(str(scope), {})
-        bucket.setdefault(str(qq), []).append(str(text))
+        bucket.setdefault(str(uid), []).append(str(text))
 
-    def take_notes(self, scope, qq):
+    def take_notes(self, scope, uid):
         bucket = self.notes.get(str(scope)) or {}
-        items = bucket.pop(str(qq), [])
-        if not items:
-            return []
+        items = bucket.pop(str(uid), [])
         if not bucket:
             self.notes.pop(str(scope), None)
         return items

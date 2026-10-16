@@ -10,9 +10,8 @@ PLUGIN = {
 FIELDS = [
     {"key": "enabled", "label": "启用读书助手", "type": "check", "default": True,
      "help": "关闭后不再响应读书/读小说等触发"},
-    {"key": "books_dir", "label": "书库目录", "type": "text", "default": "./character/books"},
-    {"key": "state_dir", "label": "进度存档目录", "type": "text",
-     "default": "./character/books/_state"},
+    {"key": "books_dir", "label": "书库目录", "type": "text", "default": "./character/books",
+     "help": "相对路径以【主项目根】为基准，不是进程工作目录"},
     {"key": "emotion", "label": "朗读声线", "type": "text", "default": "neutral",
      "help": "默认 neutral；朗读期间临时生效，读完自动还原"},
     {"key": "speed", "label": "朗读语速", "type": "num", "default": 0.9,
