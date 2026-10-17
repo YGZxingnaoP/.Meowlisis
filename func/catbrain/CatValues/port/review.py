@@ -23,6 +23,9 @@ class MeowValuesReviewLLM:
     def _create(self):
         """按配置创建二次审查 LLM（覆盖对应平台的 apikey/base_url/model）"""
         llm_type = self.config.values_second_review_llm_type
+        if llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            llm = MeowLLMLLM()
         if llm_type == "aliyun":
             llm = MeowValuesAliyunLLM()
             llm.api_key = self.config.val_sr_aliyun_api_key

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MeowLLM 配置</title>
+<link rel="stylesheet" href="css/style.css?v=33">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 28px 20px 48px;
+    min-height: 100vh;
+    font: 14px/1.7 "Microsoft YaHei", system-ui, sans-serif;
+    color: var(--text-main);
+    background: linear-gradient(135deg, var(--white-soft) 0%, var(--pink-light) 50%, var(--pink-soft) 100%);
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .head {
+    display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  h1 { font-size: 22px; margin: 0; color: var(--pink-dark); letter-spacing: .5px; }
+  .badge {
+    font-size: 12px; color: var(--pink-deep); background: var(--pink-light);
+    border: 1px solid var(--pink-soft); border-radius: 999px; padding: 2px 10px;
+  }
+  .path { font-size: 12px; color: var(--text-light); word-break: break-all; margin: 6px 0 20px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+  .card {
+    background: var(--white);
+    border: 1px solid var(--pink-soft);
+    border-radius: 18px;
+    padding: 16px 18px 18px;
+    box-shadow: 0 6px 18px var(--shadow);
+  }
+  .card h2 {
+    font-size: 14px; margin: 0 0 6px; color: var(--pink-deep); font-weight: 700;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h2::before {
+    content: ""; width: 4px; height: 14px; border-radius: 2px;
+    background: linear-gradient(180deg, var(--pink-main), var(--pink-deep));
+  }
+  label { display: block; font-size: 12px; color: var(--text-light); margin: 10px 0 5px; }
+  input, select {
+    width: 100%; padding: 9px 11px; font-size: 13px; font-family: inherit;
+    color: var(--text-main); background: var(--white);
+    border: 1px solid var(--pink-soft); border-radius: 10px; outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  input:focus, select:focus {
+    border-color: var(--pink-main);
+    box-shadow: 0 0 0 3px rgba(255, 182, 193, .35);
+  }
+  input[type="checkbox"] {
+    width: 18px; height: 18px; accent-color: var(--pink-deep); cursor: pointer;
+  }
+  .bar {
+    margin-top: 22px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  button {
+    font-family: inherit; font-size: 14px; padding: 10px 22px; cursor: pointer;
+    border: none; border-radius: 12px; color: #fff;
+    background: linear-gradient(160deg, var(--pink-main), var(--pink-deep));
+    box-shadow: 0 4px 14px var(--shadow-deep);
+    transition: transform .08s ease, filter .15s ease;
+  }
+  button:hover { filter: brightness(1.05); }
+  button:active { transform: translateY(1px); }
+  button:disabled { opacity: .55; cursor: default; }
+  button.ghost {
+    background: var(--white); color: var(--pink-deep);
+    border: 1px solid var(--pink-soft); box-shadow: none;
+  }
+  #status { font-size: 13px; color: var(--pink-deep); }
+  #status.err { color: #e5484d; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <h1>MeowLLM 配置</h1>
+    <span class="badge">本地推理子服务</span>
+  </div>
+  <div class="path" id="cfgPath">读取中…</div>
+  <div class="grid" id="fields"></div>
+  <div class="bar">
+    <button id="save">保存配置</button>
+    <button class="ghost" id="reload">重新读取</button>
+    <span id="status"></span>
+  </div>
+</div>
+
+<script>
+const FIELDS = [
+  ['服务', [
+    ['server.port', '端口', 'number', 1],
+    ['model.name', '模型名', 'text'],
+    ['context.n_ctx', '上下文 n_ctx', 'number', 512],
+  ]],
+  ['引擎', [
+    ['engine.dualstream.model_dir', '权重目录', 'text'],
+    ['engine.dualstream.device', '设备', 'select', ['cuda', 'cpu']],
+    ['engine.dualstream.dtype', '精度', 'select', ['bfloat16', 'float16', 'float32']],
+    ['engine.dualstream.language', '探针语言', 'select', ['en', 'zh']],
+    ['engine.dualstream.probe_kind', '探针语义', 'select', ['roleplay', 'math']],
+    ['engine.dualstream.probe_every_tokens', '探针间隔 tokens', 'number', 1],
+  ]],
+  ['角色扮演', [
+    ['engine.dualstream.max_segments', '最多说几段', 'number', 1],
+    ['engine.dualstream.stop_after_no', '连续几次 no 收尾', 'number', 1],
+    ['engine.dualstream.fast_prefill', 'SDPA 快路', 'checkbox'],
+  ]],
+  ['上下文', [
+    ['context.max_prompt_tokens', 'prompt 裁剪上限', 'number', 512],
+    ['context.dual_max_prompt_tokens', '双流 prompt 上限', 'number', 512],
+  ]],
+  ['生成', [
+    ['gen.temperature', '温度', 'number', 0.05],
+    ['gen.top_p', 'Top P', 'number', 0.05],
+    ['gen.top_k', 'Top K', 'number', 1],
+    ['gen.repeat_penalty', '重复惩罚', 'number', 0.05],
+    ['gen.talk_max_tokens', 'Talk 最大输出 tokens', 'number', 16],
+  ]],
+  ['思考', [
+    ['thinking.default_level', '思考档位', 'select', ['off', 'low', 'medium', 'high']],
+    ['thinking.budgets.low', 'low 思考预算', 'number', 32],
+    ['thinking.budgets.medium', 'medium 思考预算', 'number', 32],
+    ['thinking.budgets.high', 'high 思考预算', 'number', 32],
+    ['thinking.force_off_when_tools', '带工具时强制关思考', 'checkbox'],
+  ]],
+  ['运行时', [
+    ['safety.max_local_model_params_b', '本机参数量上限(B)', 'number', 0.5],
+    ['queue.max_concurrency', '并发上限', 'number', 1],
+    ['queue.interactive_first', '交互优先', 'checkbox'],
+  ]],
+];
+
+let config = {};
+
+function read(obj, path) {
+  return path.split('.').reduce((n, k) => (n && typeof n === 'object') ? n[k] : undefined, obj);
+}
+
+function write(obj, path, value) {
+  const parts = path.split('.');
+  let node = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!node[parts[i]] || typeof node[parts[i]] !== 'object') node[parts[i]] = {};
+    node = node[parts[i]];
+  }
+  node[parts[parts.length - 1]] = value;
+}
+
+function render() {
+  const box = document.getElementById('fields');
+  box.innerHTML = FIELDS.map(([title, items]) => {
+    const rows = items.map(([path, label, type, extra]) => {
+      const id = 'f_' + path.replace(/\./g, '_');
+      if (type === 'select') {
+        const opts = extra.map(v => `<option value="${v}">${v}</option>`).join('');
+        return `<label for="${id}">${label}</label><select id="${id}" data-path="${path}">${opts}</select>`;
+      }
+      if (type === 'checkbox') {
+        return `<label for="${id}">${label}</label><input id="${id}" type="checkbox" data-path="${path}">`;
+      }
+      const step = type === 'number' ? ` step="${extra || 1}"` : '';
+      return `<label for="${id}">${label}</label><input id="${id}" type="${type}" data-path="${path}"${step}>`;
+    }).join('');
+    return `<div class="card"><h2>${title}</h2>${rows}</div>`;
+  }).join('');
+  document.querySelectorAll('#fields [data-path]').forEach(el => {
+    const value = read(config, el.dataset.path);
+    if (el.type === 'checkbox') el.checked = value === true;
+    else if (value !== undefined && value !== null) el.value = value;
+  });
+}
+
+function collect() {
+  const next = JSON.parse(JSON.stringify(config));
+  document.querySelectorAll('#fields [data-path]').forEach(el => {
+    let value;
+    if (el.type === 'checkbox') value = el.checked;
+    else if (el.type === 'number') {
+      if (el.value === '') return;
+      value = Number(el.value);
+    } else value = el.value;
+    write(next, el.dataset.path, value);
+  });
+  return next;
+}
+
+async function load() {
+  const status = document.getElementById('status');
+  status.className = '';
+  status.textContent = '读取中…';
+  try {
+    const res = await fetch('/api/meowllm/config');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    config = data.data || {};
+    document.getElementById('cfgPath').textContent = data.path || '';
+    render();
+    status.textContent = '';
+  } catch (e) {
+    status.className = 'err';
+    status.textContent = '读取失败：' + e.message;
+  }
+}
+
+async function save() {
+  const status = document.getElementById('status');
+  const btn = document.getElementById('save');
+  btn.disabled = true;
+  status.className = '';
+  status.textContent = '保存中…';
+  try {
+    const res = await fetch('/api/meowllm/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: collect() })
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    config = data.data || config;
+    render();
+    status.textContent = '已保存；引擎参数需重启 MeowLLM 生效';
+  } catch (e) {
+    status.className = 'err';
+    status.textContent = '保存失败：' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('save').addEventListener('click', save);
+document.getElementById('reload').addEventListener('click', load);
+load();
+</script>
+</body>
+</html>

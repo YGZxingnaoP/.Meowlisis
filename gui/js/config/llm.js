@@ -8,16 +8,18 @@ Object.assign(Config, {
         const type = this._val('llm.local_llm_type', 'deepseek');
         let h = this._section('LLM 大模型') +
             `<div class="form-group"><label>${this._t('LLM类型')}</label>
-            <select data-path="llm.local_llm_type">
+            <select data-path="llm.local_llm_type" onchange="Config.toggleMeowLLMLink(this)">
                 <option value="deepseek" ${type === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                 <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
-            </select></div>`;
+                <option value="meowllm" ${type === 'meowllm' ? 'selected' : ''}>MeowLLM</option>
+            </select>${this._mllLink(type === 'meowllm')}</div>`;
 
         h += `<div class="modal-tabs">
             <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="deepseek">DeepSeek</button>
             <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="aliyun">${this._t('阿里云')}</button>
             <button class="modal-tab${type === 'gemini' ? ' active' : ''}" data-tab="gemini">Gemini</button>
+            <button class="modal-tab${type === 'meowllm' ? ' active' : ''}" data-tab="meowllm">MeowLLM</button>
         </div>`;
 
         h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="deepseek">` +
@@ -52,6 +54,8 @@ Object.assign(Config, {
             this._check('启用流式输出', 'llm.gemini.stream', true) +
             this._check('启用思考模式', 'llm.gemini.enable_thinking', false) +
             `</div>`;
+
+        h += this.llm_meowllmPane(type);
 
         h += this._num('短期记忆轮数', 'llm.short_term_rounds', 5, 1, 60, 1) +
             this.splitFlagEditor('llm.split_flag') +
@@ -309,11 +313,55 @@ Object.assign(Config, {
     },
     _llmTypeSelect(label, path, current) {
         return `<div class="form-group"><label>${label}</label>
-            <select data-path="${path}">
+            <select data-path="${path}" onchange="Config.toggleMeowLLMLink(this)">
                 <option value="deepseek" ${current === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
                 <option value="aliyun" ${current === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
                 <option value="gemini" ${current === 'gemini' ? 'selected' : ''}>Gemini</option>
-            </select></div>`;
+                <option value="meowllm" ${current === 'meowllm' ? 'selected' : ''}>MeowLLM</option>
+            </select>${this._mllLink(current === 'meowllm')}</div>`;
+    },
+    _mllStyle() {
+        return `<style>
+            .mll-jump{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border:none;border-radius:12px;
+                background:linear-gradient(160deg,var(--pink-main,#FFB6C1),var(--pink-deep,#FF69B4));color:#fff;
+                font-size:13px;font-family:inherit;line-height:1;cursor:pointer;
+                box-shadow:0 4px 14px var(--shadow-deep,rgba(255,105,180,.3));
+                transition:transform .08s ease,filter .15s ease}
+            .mll-jump:hover{filter:brightness(1.05)}
+            .mll-jump:active{transform:translateY(1px)}
+            .mll-tip{margin-top:9px;padding:13px 15px;border:1px dashed var(--pink-main,#FFB6C1);border-radius:14px;
+                background:var(--pink-light,#FFF0F5);color:var(--text-light,#888);font-size:12px;line-height:1.8}
+        </style>`;
+    },
+    _mllLink(show) {
+        return `${this._mllStyle()}<div class="mll-tip mll-hint" style="display:${show ? '' : 'none'}">
+            <div>${this._t('MeowLLM 的连接、引擎、think/talk 预算、思考档位等参数，统一在子服务里配置。')}</div>
+            <div style="margin-top:9px">
+                <button type="button" class="mll-jump" onclick="window.open('/meowllm.html','_blank')">
+                    <span>🐾</span><span>${this._t('打开 MeowLLM 配置页')}</span>
+                </button>
+            </div>
+        </div>`;
+    },
+    toggleMeowLLMLink(sel) {
+        const group = sel.closest('.form-group');
+        if (!group) return;
+        const hint = group.querySelector('.mll-hint');
+        if (hint) hint.style.display = sel.value === 'meowllm' ? '' : 'none';
+    },
+    llm_meowllmPane(active) {
+        return `<div class="tab-content${active === 'meowllm' ? ' active' : ''}" data-tab-content="meowllm" id="meowllmPane">
+            ${this._mllStyle()}
+            <div class="mll-tip">
+                <div style="font-size:13px;color:var(--pink-deep,#FF69B4);margin-bottom:6px;font-weight:600">${this._t('MeowLLM 参数在独立页面里配置')}</div>
+                <div>${this._t('连接、引擎、think/talk 预算、思考档位等全部参数都收在子服务（.vendor/.MeowLLM/config.yml），这里不再重复一份，避免两处配置打架。')}</div>
+                <div style="margin-top:12px">
+                    <button type="button" class="mll-jump" onclick="window.open('/meowllm.html','_blank')">
+                        <span>🐾</span><span>${this._t('打开 MeowLLM 配置页')}</span>
+                    </button>
+                </div>
+            </div>
+        </div>`;
     },
     catbrain_rulesbreak(armor) {
         const a = armor || {};

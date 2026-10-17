@@ -15,6 +15,9 @@ class MeowMemoryReviewLLM:
     def _create(self):
         """按类型创建内层客户端并按需覆盖密钥与模型"""
         llm_type = self.config.llm_type or self.cat.abstract_llm_type
+        if llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            llm = MeowLLMLLM()
         if llm_type == "gemini":
             from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
             llm = MeowAbstractGeminiLLM()

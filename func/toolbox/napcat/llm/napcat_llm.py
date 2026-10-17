@@ -39,9 +39,15 @@ class TBNapCatLLM:
 
     def _llm(self):
         """创建 toolbox port 流式客户端（复用 func/llm 配置，medium 思考由 thinking_level 控制）"""
+        if self.cfg.local_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM(self.cfg), self.cfg.gemini_max_tokens
         if self.cfg.local_llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             return TBoxGeminiLLM(self.cfg), self.cfg.gemini_max_tokens
+        if self.cfg.local_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM(self.cfg), self.cfg.aliyun_max_tokens
         if self.cfg.local_llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(self.cfg), self.cfg.aliyun_max_tokens

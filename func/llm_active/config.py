@@ -38,7 +38,9 @@ class AutoActiveConfig:
         # 主动回复 LLM：复用 llm 后端类型与 apikey，max_tokens 为 llm 两倍且上限 2048
         llm = LLMConfig()
         self.llm_type = llm.local_llm_type
-        if self.llm_type == 'gemini':
+        if self.llm_type == 'meowllm':
+            base_max_tokens = llm.meowllm_talk_max_tokens
+        elif self.llm_type == 'gemini':
             base_max_tokens = llm.gemini_max_tokens
         elif self.llm_type == 'aliyun':
             base_max_tokens = llm.aliyun_max_tokens

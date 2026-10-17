@@ -1,0 +1,13 @@
+# MeowLLM 运行依赖
+#
+# B1/B2 阶段**不需要安装任何东西**：全部依赖已内置在项目 runtime/311
+#   fastapi 0.135.3 / uvicorn 0.41.0 / pydantic 2.12.5 / starlette 1.0.0
+#   openai 2.24.0 / httpx 0.28.1 / PyYAML 6.0.1 / numpy 2.4.2 / pillow 10.2.0
+#
+# 因此本文件刻意留空；需要独立环境时用：
+#   ..\..\runtime\311\python.exe -m venv --system-site-packages .venv
+#
+# 后续批次（B4 云端引擎）才会引入：
+#   vllm            （单独 venv，别装进项目 runtime）
+#   transformers    （已有）
+#   bitsandbytes / autoawq（仅引擎侧量化加载需要）

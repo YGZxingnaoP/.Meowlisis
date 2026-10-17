@@ -1,0 +1,63 @@
+# ---------------------------------------------------------------- 凭据（最重要）
+# AutoDL 的登录指令与实例密码：绝不入库
+labs/autoDL/
+autoDL/
+**/密码.txt
+**/password.txt
+**/passwd.txt
+
+# ---------------------------------------------------------------- 权重与模型
+# 本地权重（数 GB，可重新下载）
+models/
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+
+# llama.cpp 二进制与打包件
+llama.cpp/
+bags/
+bags.tar*
+llama-*
+*.tar.gz
+*.zip
+
+# ---------------------------------------------------------------- 运行期产物
+.test/
+labs/experiments/
+labs/out/
+logs/
+*.log
+port.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+npm-debug.log*
+package-lock.json.bak
+
+# ---------------------------------------------------------------- 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------- 实验/临时
+*.ndjson
+*.jsonl
+_tmp/
+tmp/
+scratch/

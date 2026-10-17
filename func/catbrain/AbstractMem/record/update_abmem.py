@@ -49,6 +49,9 @@ class MeowUpdateAbstractMemory:
 
     def _create_llm(self):
         """按配置创建摘要独立 LLM 客户端"""
+        if self.config.abstract_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM()
         if self.config.abstract_llm_type == "gemini":
             from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
             return MeowAbstractGeminiLLM()

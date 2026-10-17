@@ -7,6 +7,9 @@ from func.database.config import CatLearnConfig
 def get_search_llm():
     """按配置返回搜索模块 LLM 客户端（DeepSeek / Aliyun / Gemini）"""
     cfg = CatLearnConfig()
+    if cfg.search_llm_type == "meowllm":
+        from func.llm.port.meowllm import MeowLLMLLM
+        return MeowLLMLLM()
     if cfg.search_llm_type == "gemini":
         from func.database.search.port.gemini import CatLearnSearchGeminiLLM
         return CatLearnSearchGeminiLLM()

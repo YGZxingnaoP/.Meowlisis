@@ -112,6 +112,9 @@ class AutoVideoFilter:
     def _llm():
         from func.toolbox.config import TBoxConfig
         cfg = TBoxConfig()
+        if cfg.llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM(cfg)
         if cfg.llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             return TBoxGeminiLLM(cfg)

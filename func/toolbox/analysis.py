@@ -167,6 +167,9 @@ class TBoxAnalysis:
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
+            if self.config.llm_type == "meowllm":
+                from func.llm.port.meowllm import MeowLLMLLM
+                self.llm = MeowLLMLLM()
             if self.config.llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 self.llm = TBoxGeminiLLM()

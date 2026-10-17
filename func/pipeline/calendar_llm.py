@@ -30,6 +30,9 @@ class DateCalendarLLM:
         self.llm = self._create_llm()
 
     def _create_llm(self):
+        if self.config.local_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM(self.config)
         if self.config.local_llm_type == "gemini":
             from func.llm.port.gemini import GeminiLLM
             return GeminiLLM(self.config)

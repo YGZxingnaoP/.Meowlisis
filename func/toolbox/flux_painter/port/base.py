@@ -70,6 +70,9 @@ class TBFluxPainterLLMBase:
 
 def create_painter_llm(config):
     """工厂：按 config.llm_type 创建绘画模型端口（完全独立配置）"""
+    if config.llm_type == "meowllm":
+        from func.llm.port.meowllm import MeowLLMLLM
+        return MeowLLMLLM(config)
     if config.llm_type == "aliyun":
         from func.toolbox.flux_painter.port.aliyun import TBFluxPainterAliyunLLM
         return TBFluxPainterAliyunLLM(config)

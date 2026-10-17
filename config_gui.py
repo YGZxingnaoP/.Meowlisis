@@ -96,6 +96,30 @@ def post_config():
     return jsonify({'status': 'ok'})
 
 
+def _meowllm_io():
+    if str(BASE_DIR) not in sys.path:
+        sys.path.insert(0, str(BASE_DIR))
+    from func.llm import meowllm_config
+    return meowllm_config
+
+
+@app.route('/api/meowllm/config', methods=['GET'])
+def get_meowllm_config():
+    io = _meowllm_io()
+    return jsonify({'path': io.config_path(), 'data': io.data(force=True)})
+
+
+@app.route('/api/meowllm/config', methods=['POST'])
+def post_meowllm_config():
+    io = _meowllm_io()
+    payload = request.get_json() or {}
+    node = payload.get('data') if isinstance(payload, dict) else None
+    if not isinstance(node, dict):
+        node = payload
+    data = io.save(node)
+    return jsonify({'status': 'ok', 'data': data})
+
+
 # ==================== 插件（独立配置文件） ====================
 PLUGINS_DIR = BASE_DIR / "plugins"
 

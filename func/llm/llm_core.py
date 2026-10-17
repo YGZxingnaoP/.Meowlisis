@@ -45,6 +45,9 @@ class LLmCore:
 
     def _create_llm(self):
         """根据配置创建流式 LLM 客户端"""
+        if self.config.local_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM(self.config)
         if self.config.local_llm_type == "gemini":
             from func.llm.port.gemini import GeminiLLM
             return GeminiLLM(self.config)

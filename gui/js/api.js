@@ -20,6 +20,22 @@ const API = {
         return res.json();
     },
 
+    async getMeowLLMConfig() {
+        const res = await fetch('/api/meowllm/config');
+        if (!res.ok) throw new Error('Failed to load meowllm config');
+        return res.json();
+    },
+
+    async saveMeowLLMConfig(data) {
+        const res = await fetch('/api/meowllm/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ data })
+        });
+        if (!res.ok) throw new Error('Failed to save meowllm config');
+        return res.json();
+    },
+
     async getPlugins() {
         const res = await fetch('/api/plugins');
         if (!res.ok) return [];

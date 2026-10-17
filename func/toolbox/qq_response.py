@@ -781,6 +781,9 @@ class TBoxQQResponse:
                 {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
             ]
             cfg = LLMConfig()
+            if cfg.local_llm_type == "meowllm":
+                from func.llm.port.meowllm import MeowLLMLLM
+                llm = MeowLLMLLM(cfg)
             if cfg.local_llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 llm = TBoxGeminiLLM(cfg)

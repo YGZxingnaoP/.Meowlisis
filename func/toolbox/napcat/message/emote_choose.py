@@ -146,6 +146,9 @@ class TBEmoteChoose:
 
         工具调用需要足够的 max_tokens，避免 arguments 被截断导致 JSON 解析失败。
         """
+        if self.llm_cfg.local_llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            llm = MeowLLMLLM(self.llm_cfg)
         if self.llm_cfg.local_llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             llm = TBoxGeminiLLM(self.llm_cfg)

@@ -30,6 +30,9 @@ class MeowPsycheCore:
     def _ensure_llm(self):
         """按平台懒加载心理生成客户端"""
         if self._llm is None:
+            if self.config.llm_type == "meowllm":
+                from func.llm.port.meowllm import MeowLLMLLM
+                self._llm = MeowLLMLLM()
             if self.config.llm_type == "gemini":
                 from func.psyche.port.gemini import MeowPsycheGeminiLLM
                 self._llm = MeowPsycheGeminiLLM()

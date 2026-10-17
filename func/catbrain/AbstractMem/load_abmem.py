@@ -57,6 +57,9 @@ class MeowLoadAbstractMemory:
     def _ensure_llm(self):
         """懒加载摘要独立 LLM 客户端"""
         if self._llm is None:
+            if self.config.abstract_llm_type == "meowllm":
+                from func.llm.port.meowllm import MeowLLMLLM
+                self._llm = MeowLLMLLM()
             if self.config.abstract_llm_type == "gemini":
                 from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
                 self._llm = MeowAbstractGeminiLLM()

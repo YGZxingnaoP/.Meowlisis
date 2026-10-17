@@ -43,6 +43,9 @@ class AutoActiveCore:
 
     def _create_llm(self):
         """根据 llm 后端类型创建主动回复 LLM 客户端"""
+        if self.config.llm_type == "meowllm":
+            from func.llm.port.meowllm import MeowLLMLLM
+            return MeowLLMLLM()
         if self.config.llm_type == "gemini":
             from func.llm_active.port.gemini import AutoGeminiLLM
             return AutoGeminiLLM()
