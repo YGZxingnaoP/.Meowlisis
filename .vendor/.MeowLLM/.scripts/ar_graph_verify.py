@@ -34,7 +34,7 @@ STEPS = 6
 
 
 def run(use_graph: bool):
-    loop = DualStreamLoop(model, tok, language="en",
+    loop = DualStreamLoop(model, tok,
                           probe_every=10 ** 9, device="cuda")
     loop._graph_ok = use_graph                 # 关键开关
     loop._sample = lambda logits: int(logits.argmax().item())   # 贪心，确定性

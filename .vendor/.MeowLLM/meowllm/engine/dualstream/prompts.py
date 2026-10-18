@@ -1,18 +1,15 @@
 # -*- coding: utf-8 -*-
 """提示词，**逐字**取自官方实现 `async_reasoning/prompting.py`。
 
-为什么不再自己写
-----------------
-上一版我按论文 Figure 2 的**示意图**写了两段角色 system 说明，还拆成两个 Prompt Block。
-官方代码证明那是错的：
+官方只有这几个资产：
 
-    # thinker 看见：{input_prompt}{thinker_output}
-    # writer  看见：{input_prompt}{thinker_output}{writer_output}
-    # 模式切换    ：{mode_switching_prompt}{thinker_output}{writer_output}
+    thinker 看见：{input_prompt}{thinker_output}
+    writer  看见：{input_prompt}{thinker_output}{writer_output}
+    模式切换  ：{mode_switching_prompt}{thinker_output}{writer_output}{question}
 
-    input_prompt = "<|im_start|>user\\n{problem}\\n"
+`input_prompt` 就是一条普通 user 消息（**没有 system**）；角色区分完全靠两个输出
+前缀的文本：
 
-**没有 system prompt**。角色区分完全靠两个输出前缀的文本：
     思考流开头： "<|im_end|>\\n<|im_start|>assistant\\n<think>\\n"
     输出流开头： " ... [SYSTEM: thoughts will continue here]\\n</think>\\n"
 
@@ -24,17 +21,13 @@ from __future__ import annotations
 import json
 import re
 
-# ---------------------------------------------------------------- 官方原文
-#: 输入模板（只有 user 一条消息，没有 system）
-INPUT_PROMPT = "<|im_start|>user\n{problem}\n"
-
 #: 思考流的开头文本（含 chat template 的 assistant 头）
 THINKER_OUTPUT_PREFIX = "<|im_end|>\n<|im_start|>assistant\n<think>\n"
 
 #: 输出流的开头文本 —— 这就是论文的 linker
 WRITER_OUTPUT_PREFIX = " ... [SYSTEM: thoughts will continue here]\n</think>\n"
 
-#: 模式切换用的独立 prompt（第三个 worker 视图）
+#: 探针的固定提示词（官方逐字）：一段 user 轮，说明角色与判定规则
 MODE_SWITCHING_PROMPT = (
     "<|im_start|>user\n"
     "You are an AI assistant that can think and write responses concurrently, "
@@ -46,40 +39,6 @@ MODE_SWITCHING_PROMPT = (
     ' - Answer "no" if your thoughts aren\'t enough to write the next response paragraph, '
     "i.e. if your response ran out of of thoughts.\n"
 )
-
-#: 插在模式切换视图末尾的问句（官方逐字，注意原文就是 "my current thoughts"）
-MODE_SWITCHING_QUESTION = (
-    "...\n\nWait, are my current thoughts enough to write the next paragraph or formula? "
-    "(yes/no): "
-)
-
-YES_TOKEN = "yes"
-NO_TOKEN = "no"
-
-
-def pick(language: str = "en") -> dict:
-    """返回一份提示词表。
-
-    官方只有英文；`language` 保留是为了将来做中文实验，
-    但**默认必须用 EN**，否则就不是复刻了。
-    """
-    if language not in ("en", "zh"):
-        language = "en"
-    return {
-        "language": "en",                    # 资产一律用官方英文
-        "input_prompt": INPUT_PROMPT,
-        "thinker_output_prefix": THINKER_OUTPUT_PREFIX,
-        "writer_output_prefix": WRITER_OUTPUT_PREFIX,
-        "mode_switching_prompt": MODE_SWITCHING_PROMPT,
-        "mode_switching_question": MODE_SWITCHING_QUESTION,
-        "yes_token": YES_TOKEN,
-        "no_token": NO_TOKEN,
-    }
-
-
-def render_input(problem: str) -> str:
-    """把用户问题填进官方 input_prompt 模板。"""
-    return INPUT_PROMPT.format(problem=problem)
 
 
 def render_chat(messages: list[dict]) -> str:

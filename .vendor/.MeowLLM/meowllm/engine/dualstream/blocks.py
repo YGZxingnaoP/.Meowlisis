@@ -9,12 +9,14 @@ KV cache 里每个 token 只存一次，键按 **块内相对位置** 旋转：
     T 的第 j 个 token  -> 存储位置 j
     W 的第 k 个 token  -> 存储位置 k
 
-视图中转
+视图转换
 --------
-两个视图只看顺序不同：
+三个视图只看顺序不同：
 
     Writer  视图:  P -> T -> W
     Thinker 视图:  P -> W -> T
+    Mode    视图:  M -> T -> W -> Q      （论文附录 B 的第三视图：
+                                         M=模式切换提示词，Q=每次重填的问句）
 
 各块在视图内的逻辑起点（blockStart）：
 
@@ -48,7 +50,7 @@ except Exception:  # pragma: no cover - 版本缺失时给个可诊断的替身
 
 
 class Block(Enum):
-    """三块 KV，严格对齐官方实现 `shared_cache_manager.py`。
+    """五块 KV，严格对齐论文附录 B 的 cache 布局。
 
     官方 `cache_structure` 长这样：
 
@@ -60,24 +62,33 @@ class Block(Enum):
 
     linker 也不是独立块：它是 writer 流的**开头文本**
     `" ... [SYSTEM: thoughts will continue here]\\n</think>\\n"`。
+
+    MODE / QUESTION 只服务于探针视图：
+        MODE     固定的"你说你是并发思考/写作的助手，判断要不要停"提示词（用户轮）
+        QUESTION 每次重填的 yes/no 问句，判完立刻清空（提问不进思考流）
     """
 
-    PROMPT = "P"        # 共享的 prompt 块（两视图同一份）
+    PROMPT = "P"        # 共享的 prompt 块（三视图同一份）
     THINKER = "T"       # 思考流（worker 0）
     WRITER = "W"        # 输出流（worker 1）
+    MODE = "M"          # 模式切换的固定提示词
+    QUESTION = "Q"      # 模式切换的问句（每轮清空重填）
 
 
 class View(Enum):
-    """两种观察顺序。"""
+    """三种观察顺序。"""
 
     WRITER = "writer"
     THINKER = "thinker"
+    MODE = "mode"
 
 
 #: 每个视图里可见块的逻辑顺序：自己的 prompt → 对方 → 自己
-VIEW_ORDER: dict[View, tuple[Block, Block, Block]] = {
+VIEW_ORDER: dict[View, tuple[Block, ...]] = {
     View.WRITER: (Block.PROMPT, Block.THINKER, Block.WRITER),
     View.THINKER: (Block.PROMPT, Block.WRITER, Block.THINKER),
+    # 论文附录 B：mode_switching_view = [模式切换提示, 思考, 回复, 问句]
+    View.MODE: (Block.MODE, Block.THINKER, Block.WRITER, Block.QUESTION),
 }
 
 
@@ -148,7 +159,7 @@ class BlockLayout:
             offset += self.lengths[item]
         raise KeyError(f"{block} 不在视图 {view} 里")
 
-    def order(self, view: View) -> tuple[Block, Block, Block]:
+    def order(self, view: View) -> tuple[Block, ...]:
         """该视图下 KV 应当拼接的顺序。"""
         return VIEW_ORDER[view]
 
@@ -160,25 +171,25 @@ class BlockLayout:
         return self.start(query_block, view) - self.start(key_block, view)
 
     def delta_table(self, query_block: Block, view: View) -> dict[Block, int]:
-        """一行角度表：query_block 在 view 里对三个块分别要旋多少。"""
+        """一行角度表：query_block 在 view 里对各块分别要旋多少。"""
         return {kb: self.delta(query_block, kb, view)
                 for kb in VIEW_ORDER[view]}
 
 
 class BlockCache(Cache):
-    """三块 KV 的物理容器。
+    """五块 KV 的物理容器。
 
     与 transformers 的接口约定（5.x `Cache.update`）：
         update(key_states, value_states, layer_idx, cache_kwargs) -> (keys, values)
 
     我们在这里做的额外事情：
       1. 按 `self.target_block` 决定新 token 落到哪一块；
-      2. 返回 **按当前视图顺序拼接** 的 K/V，让 attention 只需按块切分；
+      2. 返回 **固定容量的整层物理缓冲**，attention 自己按 `phys_slice` 切块；
       3. 把 `sin/cos` 里的位置信息丢掉 —— 我们每层用同一套 delta，键的旋转
          已经由 `position_ids` 在 attention 之前完成。
 
-    注意：这里假设"每步每个视图只追加 1 个 token"。批量追加（prefill）走
-    `append_prefill`，由 `reference`/engine 在填 P 时调用。
+    写入永远发生在"当前视图里自己那块的末尾"，探针块 QUESTION 也在 mode 视图末尾，
+    所以 `get_seq_length()` 的算法统一成 `起点 + 本块长度 - 在途`。
     """
 
     def __init__(self, layout: BlockLayout, view: View = View.WRITER,
@@ -275,7 +286,7 @@ class BlockCache(Cache):
     def union_tensors(self, layer_idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         """返回整层固定缓冲（零拷贝）。
 
-        缓冲布局是 [P 容量][T 容量][W 容量]，各块在固定偏移上；
+        缓冲布局是 [P][T][W][M][Q] 五段，各块在固定偏移上；
         消费方（attention）用 `layout.phys_slice(block)` 取自己那一段。
         所以这里**不拼接、不分配** —— CUDA Graph 才能捕获。
         """
@@ -286,16 +297,23 @@ class BlockCache(Cache):
 
     # ------------------------------------------------------------ 元信息
     def get_seq_length(self, layer_idx: int = 0) -> int:
-        """**当前视图**的可见长度（不含本次在途 token）。
+        """**当前视图**里"本次前向之前已存在"的长度。
 
-        transformers 拿这个值推 cache_position，所以必须是"视图内逻辑长度"，
-        不是物理总长度 —— 每个视图都有一整个 Prompt Block / linker 看不见。
+        transformers 拿这个值推 cache_position。注意它不能用 view_total：
+        探针视图把 MODE 放在**最前面**，物理/视图总长并不是"已经存在的后文"。
+        写入永远发生在 own_block 的末尾，所以
+
+            已存在 = 起点(own, view) + 本块长度 - 在途
+
+        对 thinker/writer（在视图末尾追加）就退化成 view_total - pending；
+        对 MODE 首填（起点 0、长度 = 在途）得到 0，正好是"还没有上下文"。
         """
-        if self.rows:
-            # 批处理：各行的视图长度不同，取最大值（decode 时不需要掩码）
-            return max(0, max(self.layout.view_total(v) for v, _ in self.rows)
-                       - int(self.pending))
-        return max(0, self.layout.view_total(self.view) - int(self.pending))
+        rows = self.rows or [(self.view, self.target_block)]
+        base = 0
+        for view, own in rows:
+            base = max(base, self.layout.start(own, view)
+                       + int(self.layout.lengths[own]) - int(self.pending))
+        return max(0, base)
 
     def get_max_length(self) -> None:
         """动态缓存没有上限；返回 None 与 transformers 约定一致。"""
@@ -331,7 +349,8 @@ def block_slices(layout: BlockLayout, view: View) -> list[tuple[Block, slice]]:
 
 
 #: 物理存放顺序（与视图无关）：union_tensors 就是这个顺序
-PHYSICAL_ORDER: tuple[Block, ...] = (Block.PROMPT, Block.THINKER, Block.WRITER)
+PHYSICAL_ORDER: tuple[Block, ...] = (Block.PROMPT, Block.THINKER, Block.WRITER,
+                                     Block.MODE, Block.QUESTION)
 
 
 def physical_slices(layout: BlockLayout) -> dict[Block, slice]:

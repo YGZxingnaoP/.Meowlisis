@@ -70,8 +70,10 @@ async def reload_config(request: Request):
     changed = []
     for key in ("gen.talk_max_tokens", "gen.temperature", "gen.top_p",
                 "thinking.default_level", "thinking.budgets",
-                "engine.dualstream.max_segments", "engine.dualstream.stop_after_no",
-                "engine.dualstream.fast_prefill", "cache.prefix.enabled",
+                "engine.dualstream.probe_every_tokens",
+                "engine.dualstream.pause_on_paragraph",
+                "engine.dualstream.yes_bias", "engine.dualstream.fast_prefill",
+                "cache.prefix.enabled",
                 "queue.max_concurrency"):
         if fresh.get(key) != state.cfg.get(key):
             changed.append(key)

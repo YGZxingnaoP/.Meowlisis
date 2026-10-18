@@ -121,7 +121,7 @@ def main() -> int:
     from meowllm.engine.dualstream.loop import DualStreamLoop
 
     loop = DualStreamLoop(
-        model=model, tokenizer=tok, language="zh",
+        model=model, tokenizer=tok,
         thinker_max=min(48, args.steps * 4), writer_max=min(48, args.steps * 4),
         probe_every=args.probe_every or max(4, args.steps // 2), device=device,
         temperature=0.7, top_p=0.9, seed=1234)

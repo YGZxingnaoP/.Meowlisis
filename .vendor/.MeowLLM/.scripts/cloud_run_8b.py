@@ -107,7 +107,7 @@ model = AutoModelForCausalLM.from_pretrained(
 print("MODEL_OK", sum(p.numel() for p in model.parameters()) / 1e9, "B")
 print("VRAM", torch.cuda.memory_allocated() / 1e9, "GB")
 
-loop = DualStreamLoop(model, tok, language="en", probe_every=10**9, device="cuda")
+loop = DualStreamLoop(model, tok, probe_every=10**9, device="cuda")
 loop._graph_ok = False
 loop.reset([{"role": "user", "content": "What is 5 - 25 + 125?"}])
 torch.cuda.synchronize()

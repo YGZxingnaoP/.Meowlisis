@@ -43,11 +43,12 @@ DEFAULT_CONFIG: dict = {
             "model_dir": "models/Qwen3-0.6B",
             "device": "cuda",
             "dtype": "bfloat16",
-            "language": "en",
+            #: 每 N 个 decode step 问一次"想法够不够写下一段"（论文 T=20）
             "probe_every_tokens": 20,
-            "max_segments": 6,
-            "stop_after_no": 2,
-            "probe_kind": "roleplay",
+            #: writer 走到段落边界（空行）时先停，等新的想法
+            "pause_on_paragraph": True,
+            #: 论文 Figure 4 的 +Δ：给 yes 的对数概率加固定偏置
+            "yes_bias": 0.0,
             "fast_prefill": True,
         },
     },
@@ -335,15 +336,17 @@ class MeowLLMConfig:
             dtype = str(self.get("engine.dualstream.dtype", "bfloat16"))
             if dtype not in _DTYPES:
                 problems.append(f"engine.dualstream.dtype 只能是 {_DTYPES}: {dtype!r}")
-            probe = str(self.get("engine.dualstream.probe_kind", "roleplay"))
-            if probe not in ("roleplay", "math"):
-                problems.append(f"engine.dualstream.probe_kind 只能是 roleplay/math: {probe!r}")
-            segments = self.get("engine.dualstream.max_segments", 6)
-            if not isinstance(segments, int) or not (1 <= segments <= 32):
-                problems.append(f"engine.dualstream.max_segments 必须在 [1,32]: {segments!r}")
-            stop_no = self.get("engine.dualstream.stop_after_no", 2)
-            if not isinstance(stop_no, int) or not (1 <= stop_no <= 8):
-                problems.append(f"engine.dualstream.stop_after_no 必须在 [1,8]: {stop_no!r}")
+            every = self.get("engine.dualstream.probe_every_tokens", 20)
+            if not isinstance(every, int) or not (1 <= every <= 512):
+                problems.append(
+                    f"engine.dualstream.probe_every_tokens 必须在 [1,512]: {every!r}")
+            pause = self.get("engine.dualstream.pause_on_paragraph", True)
+            if not isinstance(pause, bool):
+                problems.append(
+                    f"engine.dualstream.pause_on_paragraph 必须是 bool: {pause!r}")
+            bias = self.get("engine.dualstream.yes_bias", 0.0)
+            if not isinstance(bias, (int, float)) or not (-5.0 <= float(bias) <= 5.0):
+                problems.append(f"engine.dualstream.yes_bias 必须在 [-5,5]: {bias!r}")
 
         for key in ("temperature", "top_p"):
             value = self.get(f"gen.{key}", 0)

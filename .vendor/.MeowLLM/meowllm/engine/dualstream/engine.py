@@ -548,11 +548,9 @@ class AsyncHFEngine(MeowLLMEngineBase):
 
     def _make_loop(self, params: MeowLLMGenParams) -> DualStreamLoop:
         cfg = self.cfg
-        language = (params.language or str(cfg.get("engine.dualstream.language", "zh")))[:2]
         return DualStreamLoop(
             model=self._model,
             tokenizer=self._tokenizer,
-            language=language,
             thinker_max=self._think_max(params),
             writer_max=self._talk_max(params),
             probe_every=int(cfg.get("engine.dualstream.probe_every_tokens", 20) or 20),
@@ -561,9 +559,9 @@ class AsyncHFEngine(MeowLLMEngineBase):
             top_p=float(params.top_p),
             seed=params.seed,
             prompt_capacity=self._n_ctx(),
-            max_segments=int(cfg.get("engine.dualstream.max_segments", 6) or 6),
-            stop_after_no=int(cfg.get("engine.dualstream.stop_after_no", 2) or 2),
-            probe_kind=str(cfg.get("engine.dualstream.probe_kind", "roleplay") or "roleplay"),
+            pause_on_paragraph=bool(
+                cfg.get("engine.dualstream.pause_on_paragraph", True)),
+            yes_bias=float(cfg.get("engine.dualstream.yes_bias", 0.0) or 0.0),
             fast_prefill=bool(cfg.get("engine.dualstream.fast_prefill", True)),
         )
 
@@ -703,9 +701,8 @@ class AsyncHFEngine(MeowLLMEngineBase):
         started = time.perf_counter()
         loop = self._make_loop(params)
         step_count = 0
-        budget = (self._talk_max(params) * max(1, loop.max_segments)
-                  + self._think_max(params) + 16)
-        has_tools = bool(getattr(params, "tools", None))
+        # 一个 step 最多推进 thinker / writer 各 1 个 token → 上界就是两者之和
+        budget = loop.thinker_max + loop.writer_max + 32
 
         try:
             await asyncio.to_thread(loop.reset, list(messages))
@@ -716,10 +713,9 @@ class AsyncHFEngine(MeowLLMEngineBase):
             return
         yield MeowLLMGenEvent(
             kind=KIND_META, meta={"stage": "prefill", "prompt_tokens": loop.prompt_tokens,
-                                  "blocks": dict(
-                                      (b.value, n) for b, n in loop.layout.lengths.items())})
+                                  "blocks": {b.value: n for b, n in
+                                             loop.layout.lengths.items()}})
 
-        writer_buf = ""
         while not loop.finished and step_count < budget:
             chunks = await asyncio.to_thread(loop.step)
             step_count += 1
@@ -728,50 +724,37 @@ class AsyncHFEngine(MeowLLMEngineBase):
                     yield MeowLLMGenEvent(kind=KIND_REASONING, text=chunk.text,
                                           stream="thinker")
                 elif chunk.stream == "writer":
-                    if has_tools:
-                        writer_buf += chunk.text
-                    else:
-                        yield MeowLLMGenEvent(kind=KIND_CONTENT, text=chunk.text,
-                                              stream="writer")
-                elif chunk.stream == "mode":
+                    yield MeowLLMGenEvent(kind=KIND_CONTENT, text=chunk.text,
+                                          stream="writer")
+                else:
                     yield MeowLLMGenEvent(kind=KIND_META, meta=chunk.detail)
 
-        finish_reason = "stop"
-        if has_tools:
-            calls = parse_tool_calls(writer_buf)
-            if calls:
-                for index, call in enumerate(calls):
-                    yield MeowLLMGenEvent(
-                        kind=KIND_TOOL_CALL, index=index,
-                        call_id=f"call_{index}",
-                        name=call["name"], arguments_delta=call["arguments"])
-                finish_reason = "tool_calls"
-            elif writer_buf:
-                yield MeowLLMGenEvent(kind=KIND_CONTENT, text=writer_buf,
-                                      stream="writer")
-
         stats = loop.stats
-        yield MeowLLMGenEvent(kind=KIND_FINISH, finish_reason=finish_reason, meta={
-            "engine": self.kind,
-            "mode": "dual",
-            "seconds": round(time.perf_counter() - started, 3),
-            "steps": step_count,
-            "prompt_tokens": loop.prompt_tokens,
-            "completion_tokens": stats.writer_tokens,
-            "reasoning_tokens": stats.thinker_tokens,
-            "writer_tokens": stats.writer_tokens,
-            "thinker_tokens": stats.thinker_tokens,
-            "thinker_ahead": stats.thinker_ahead,
-            "pauses": stats.pauses,
-            "resumes": stats.resumes,
-            "probes": stats.probes,
-            "probe_no": stats.probe_no,
-            "segments": stats.segments,
-            "segment_texts": list(getattr(loop, "segment_texts", [])),
-            "thinker_stop": loop.thinker_stop,
-            "thinking_level": params.thinking_level,
-            "memory": getattr(self, "_last_memory", {}),
-        })
+        truncated = loop.finish_reason == "length"
+        yield MeowLLMGenEvent(
+            kind=KIND_FINISH,
+            finish_reason="length" if truncated else "stop",
+            meta={
+                "engine": self.kind,
+                "mode": "dual",
+                "seconds": round(time.perf_counter() - started, 3),
+                "steps": step_count,
+                "prompt_tokens": loop.prompt_tokens,
+                "completion_tokens": stats.writer_tokens,
+                "reasoning_tokens": stats.thinker_tokens,
+                "writer_tokens": stats.writer_tokens,
+                "thinker_tokens": stats.thinker_tokens,
+                "thinker_ahead": stats.thinker_ahead,
+                "pauses": stats.pauses,
+                "resumes": stats.resumes,
+                "probes": stats.probes,
+                "probe_no": stats.probe_no,
+                "pause_thoughts": stats.pause_thoughts,
+                "pause_paragraph": stats.pause_paragraph,
+                "thinker_stop": loop.thinker_stop,
+                "thinking_level": params.thinking_level,
+                "memory": getattr(self, "_last_memory", {}),
+            })
 
     def kv_slot_stats(self) -> dict:
         return {"supported": False, "reason": "dualstream 自己管理 KV 块"}

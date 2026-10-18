@@ -45,7 +45,7 @@ def main() -> int:
         mdir, dtype=torch.bfloat16, device_map=device).eval()
 
     messages = [{"role": "user", "content": "3 的平方加上 4 的平方等于多少？"}]
-    loop = DualStreamLoop(model=model, tokenizer=tok, language="zh",
+    loop = DualStreamLoop(model=model, tokenizer=tok,
                           thinker_max=8, writer_max=8, probe_every=9999,
                           device=device, temperature=0.0, seed=1)
 

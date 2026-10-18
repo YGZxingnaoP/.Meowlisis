@@ -130,18 +130,16 @@ meowllm:
     top_p: 0.9
     top_k: 40
     repeat_penalty: 1.05
-    talk_max_tokens: 256    # 每段说话上限（思考长度由 thinking.budgets 控制）
+    talk_max_tokens: 256    # 整条回复的上限（思考长度由 thinking.budgets 控制）
   engine:
     kind: dualstream
     dualstream:
       model_dir: models/Qwen3-0.6B
       device: cuda
       dtype: bfloat16
-      language: en              # 探针语言
-      probe_every_tokens: 20
-      max_segments: 6           # 最多说几段
-      stop_after_no: 2          # 连续几次 no 就收尾
-      probe_kind: roleplay      # roleplay | math
+      probe_every_tokens: 20     # 每 N 个 decode step 问一次"想法够不够"
+      pause_on_paragraph: true   # 写作走到空行就让位给思考（论文附录 B）
+      yes_bias: 0.0              # 论文 Figure 4 的 +Δ（0.1 / 0.5 可试）
   safety:
     allow_engine: [dualstream]
     max_local_model_params_b: 1.0   # 本机闸门：超过就拒载
@@ -327,6 +325,29 @@ models/                本地权重
 
 引擎侧的分段机制（段边界标记、状态机、`segment_texts`、探针语义切换）全部保留，训练好的模型可以直接接上，不需要重写引擎。
 
+### ⑩ 推倒重来：严格按论文调度（当前版本）
+
+复盘①～⑨，根因不是"模型不想说"，而是**调度逻辑本身写反了**：
+
+| 论文（§3.2 + 附录 B） | ⑨ 之前那版 |
+|---|---|
+| 每 20 个 decode step（或思考出现空行）问一次 | 只在 writer **已经停**时才问 → pause 由 `writer_max` 触发 |
+| no → **立刻冻结 writer**，只推 think | no 只累加计数，writer 继续写 |
+| writer 走到空行 → 让位给思考，等下一次 yes | 没有段落概念，按固定 token 数硬切 |
+| `</think>` → 切 writer-only 把话说完 | 把 writer 一起判死，回复腰斩 |
+| 恢复 = 连续续写，什么都不塞 | 塞 `<|im_end|>\n<|im_start|>assistant\n`，模型以为开新轮 → 复述 |
+| 探针是第三视图 `M → T → W → Q` | 问句追加在 think 块末尾再截断（裸文本） |
+
+重构后（`blocks.py` 加 MODE/QUESTION 块 + `View.MODE`，`loop.py` 重写状态机）：
+
+- **并行**：一个 step 里 thinker / writer 各一个 token，一次前向（`_forward_pair`）
+- **让位**：writer 写出空行 → 冻结；下一次探针 yes 才继续 → 就是"说一段、停一下、想好了再说下一段"
+- **判定**：独立视图 `M(模式提示词) → T → W → Q(问句)`，判完清空 Q；no 会**立刻**冻结 writer
+- **收尾**：`</think>` 之后只写不想；writer 自然 `im_end` 就结束，不再有段数/连续 no 的硬终止
+- 删掉：`max_segments` / `stop_after_no` / `probing_stopped` / 段边界标记 / `segment_texts`
+
+0.6B 实测（本机 5060）：212 字回复、2 次段落让位 2 次续写、13 次探针、正文连续无复述。探针 p(no)≈0（0.6B 对英文问句不给"no"），8B 上再用 `yes_bias` 调。
+
 ---
 
 ## 文档
@@ -347,19 +368,20 @@ models/                本地权重
 
 **已验证**
 
-- 数学等价：块 KV + 查询旋转 ≡ 物理重排
+- 数学等价：块 KV + 查询旋转 ≡ 物理重排（三个视图都验过：thinker/writer KL≈0，
+  mode 视图因复用 T/W 的 KV，与"整段重算"有 0.45 的 KL 偏差 —— 官方实现同样如此）
 - 双流真交错：同一轮各出一个 token
 - HTTP 双通道分开流式；非流式 `usage` 有真实 token 数
-- 分段机制：`segments / resumes / probe_no / segment_texts` 计数与取文正确，边界标记不进用户文本
+- 论文式调度：段落让位 → 探针 → 续写，正文连续、无边界标记；`</think>` 后 writer-only 不腰斩
 - 架构探测：混合模型自动判 `dual_stream=false` 并降级 plain
 - 性能：容量动态化 + 单块 prefill SDPA + decode 长度切片；双流上限 900 → 16k token，每步 65 → 34 ms
 - 收尾自检（`.test/bin/selftest_final.py`）：health / models / plain / dual / tools / 流式 / 长 prompt 回退 / 坏请求 400 —— 8 项全过
 
 **未完成 / 已知限制**
 
-- **"说完再补一句"的行为没有做出来**：探针、许可式探针、从零再想一轮三种方案实测均失败（模型一律答"没有了"）。
-  能力是有的（改成指令就能补 76–207 字），缺的是行为倾向 → 留待 LoRA / 模型层改造，见 [设计设想](docs/notes/2026-10-18_设计设想_拟人化的分段说话.md)
+- 探针在 0.6B 上 p(no)≈0（英文问句 + 中文思维），实际表现为"每段固定多想 20 token"。
+  8B / 32B 上的判定质量待云端实测；必要时用 `engine.dualstream.yes_bias` 调
+- "说完一段后主动再补一段"仍然靠**段落让位 + 探针放行**实现；探针不会凭空让模型多说内容
 - 双流要在混合注意力模型上成立，需要给 48 个线性层做 per-view 递推状态——目前**没有任何参考实现**，不做
-- 官方 batch 前向（一次出两 token）仍是每步两次前向
 - `control/reload` 只对请求期读取的键生效（引擎与缓存按启动时配置构造）
-- 非流式响应里的 `segment_texts` 会与 `content` 重复一份文本，长回复时响应体偏大
+

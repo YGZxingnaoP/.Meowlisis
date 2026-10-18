@@ -54,7 +54,7 @@ def main() -> int:
     # attach 由 DualStreamLoop.__init__ 完成（需要 ctx），这里不再手动调用
 
     msgs = [{"role": "user", "content": "What is 5 - 25 + 125?"}]
-    loop = DualStreamLoop(model, tok, language="en", probe_every=10 ** 9,
+    loop = DualStreamLoop(model, tok, probe_every=10 ** 9,
                           device="cuda")
     loop.reset(msgs)
 
