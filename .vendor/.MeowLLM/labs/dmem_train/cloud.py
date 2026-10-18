@@ -136,8 +136,21 @@ class Cloud:
                 except IOError:
                     pass
 
+    def _same(self, src: str, dst: str) -> bool:
+        """同一份文件？**大小 + 修改时间** 都要对得上才算。
+
+        只比大小是错的：`stall_guard_tokens: 0 → 80` 这种改动字节数不变，
+        会被当成"已同步"跳过，云端还跑旧配置（实测踩过一次）。
+        """
+        try:
+            stat = self.sftp.stat(dst)
+        except IOError:
+            return False
+        return (int(stat.st_size) == os.path.getsize(src)
+                and int(stat.st_mtime) >= int(os.path.getmtime(src)))
+
     def put_dir(self, local: str, remote: str) -> tuple[int, int]:
-        """递归上传，跳过同尺寸文件。返回 (上传数, 跳过数)。"""
+        """递归上传，跳过"大小+时间都一样"的文件。返回 (上传数, 跳过数)。"""
         sent = skipped = 0
         self.makedirs(remote)
         for root, dirs, files in os.walk(local):
@@ -152,13 +165,9 @@ class Cloud:
                     continue
                 src = os.path.join(root, name)
                 dst = posixpath.join(target, name)
-                size = os.path.getsize(src)
-                try:
-                    if self.sftp.stat(dst).st_size == size:
-                        skipped += 1
-                        continue
-                except IOError:
-                    pass
+                if self._same(src, dst):
+                    skipped += 1
+                    continue
                 self.sftp.put(src, dst)
                 sent += 1
         return sent, skipped
@@ -192,13 +201,10 @@ def cmd_sync_model(cl: Cloud, args) -> int:
         src = os.path.join(local, name)
         dst = posixpath.join(remote, name)
         size = os.path.getsize(src)
-        try:
-            if cl.sftp.stat(dst).st_size == size:
-                print(f"  跳过（已同步）{name}")
-                skipped += 1
-                continue
-        except IOError:
-            pass
+        if cl._same(src, dst):
+            print(f"  跳过（已同步）{name}")
+            skipped += 1
+            continue
         t0 = time.time()
         cl.sftp.put(src, dst, callback=_progress(name, size, began))
         print(f"  {name} {size / 2**20:.0f}MB 用时 {time.time() - t0:.1f}s")
@@ -254,10 +260,7 @@ def cmd_upsync(cl: Cloud, _args) -> int:
         local = os.path.join(base, rel)
         target = posixpath.join(REMOTE_ROOT, remote_rel)
         if os.path.isfile(local):                    # 单文件（config.yml 这类）
-            try:
-                same = cl.sftp.stat(target).st_size == os.path.getsize(local)
-            except IOError:
-                same = False
+            same = cl._same(local, target)
             if same:
                 print(f"  {rel:24s} 已同步")
                 total_skip += 1
