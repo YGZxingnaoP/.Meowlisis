@@ -29,9 +29,32 @@ def load_config():
         return yaml.safe_load(f) or {}
 
 
+def _deep_merge(base, patch):
+    """把 patch 合并进 base：**base 里 patch 没有的键原样保留**。
+
+    为什么需要：配置页只认识它 schema 里渲染出来的字段，保存时 post 回来的
+    对象里没有"手工加进 config.yml 的键"（例如 `llm.meowllm`、或新增的平台段）。
+    以前这里是整体覆盖写 —— 一次保存就把手工加的段**静默删掉**，
+    还会把页面加载后又被改过的值回滚（例如 `local_llm_type`）。
+    现在改成深合并：只覆盖 patch 里真正出现的键。
+    """
+    if not isinstance(base, dict) or not isinstance(patch, dict):
+        return patch
+    out = dict(base)
+    for key, value in patch.items():
+        if key in out and isinstance(out[key], dict) and isinstance(value, dict):
+            out[key] = _deep_merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
 def save_config(cfg):
+    """保存配置。**深合并**到现有文件，避免把页面不认识的键冲掉。"""
+    merged = _deep_merge(load_config(), cfg or {})
     with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        yaml.dump(cfg, f, allow_unicode=True, sort_keys=False)
+        yaml.dump(merged, f, allow_unicode=True, sort_keys=False)
+    return merged
 
 
 def load_tts_config():

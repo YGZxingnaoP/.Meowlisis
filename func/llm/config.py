@@ -2,6 +2,8 @@
 # func/llm/config.py
 # LLM 配置项统一管理
 
+import os
+
 from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
@@ -69,15 +71,19 @@ class LLMConfig:
         self.gemini_stream = gemini_cfg.get('stream', True)
 
         # ========== MeowLLM（本地/自建，OpenAI 兼容）==========
-        # 与 deepseek / aliyun / gemini 完全并列。端点由启动器回写，
-        # 各模块统一从根 llm.meowllm 读（加载的是同一个 config.yml）。
-        meowllm_cfg = cfg.get('meowllm') or llm_cfg.get('meowllm') or {}
-        self.meowllm_base_url = meowllm_cfg.get(
-            'base_url', 'http://127.0.0.1:18100/meowllm/v1')
+        # 与 deepseek / aliyun / gemini 完全并列。这里的两层兜底是有意的：
+        #   1) 配置页只认它自己的 schema，保存时会把不认识的键（如 llm.meowllm）清掉，
+        #      所以**不能假设这个段一定存在**；
+        #   2) 端点也可能由启动器用环境变量 MEOWLLM_BASE_URL 注入。
+        # 因此：config 里没有就用默认值，绝不抛异常。
+        meowllm_cfg = cfg.get('meowllm') or {}
+        _env_url = os.environ.get("MEOWLLM_BASE_URL")
+        self.meowllm_base_url = (_env_url or meowllm_cfg.get(
+            'base_url') or 'http://127.0.0.1:18100/meowllm/v1')
         self.meowllm_model = meowllm_cfg.get('model', 'meowllm-local')
-        self.meowllm_temperature = meowllm_cfg.get('temperature', 0.8)
+        self.meowllm_temperature = float(meowllm_cfg.get('temperature', 0.8))
         self.meowllm_max_tokens = int(meowllm_cfg.get('max_tokens', 256))
-        self.meowllm_top_p = meowllm_cfg.get('top_p', 0.9)
+        self.meowllm_top_p = float(meowllm_cfg.get('top_p', 0.9))
         self.meowllm_top_k = int(meowllm_cfg.get('top_k', 40))
         self.meowllm_repeat_penalty = float(meowllm_cfg.get('repeat_penalty', 1.05))
         # 注意 YAML 的坑：裸写 `off` / `on` / `yes` / `no` 会被解析成布尔。
