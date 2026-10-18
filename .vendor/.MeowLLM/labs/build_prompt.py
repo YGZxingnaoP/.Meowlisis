@@ -27,6 +27,15 @@ MODULE_ROOT = os.path.dirname(HERE)                        # .../.MeowLLM
 PROJECT_ROOT = os.path.dirname(os.path.dirname(MODULE_ROOT))
 MEM_PATH = os.path.join(PROJECT_ROOT, ".temp", "public_short_mem.json")
 
+#: ⚠ 必须锁死 UTF-8：被别的进程用管道读走时，Python 默认用控制台代码页
+#: （中文 Windows = cp936/GBK）。GBK 的 JSON 再按 UTF-8 解就是满屏乱码
+#: —— 模型收到乱码 system 后也会跟着吐乱码（实测"ɶ����Ϣ…"）。
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:  # noqa: BLE001 - 老解释器没有 reconfigure
+    pass
+
 
 def _null_log() -> None:
     """把主项目的文件日志打桩：实验台不需要写 logs/（也让脚本能在只读环境跑）。"""

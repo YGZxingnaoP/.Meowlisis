@@ -105,10 +105,18 @@ async function meowllmHealth() {
  */
 function buildProjectMessages(uid, text, historyLimit) {
   const script = path.join(__dirname, 'build_prompt.py');
+  // PYTHONUTF8/PYTHONIOENCODING：脚本自己也 reconfigure 了，这里是双保险 ——
+  // 少了它 Python 会用 GBK 输出，Node 按 UTF-8 解就是乱码，模型跟着吐乱码。
   const out = execFileSync(LAB_PY, [
     script, '--uid', String(uid), '--text', String(text),
     '--history', String(historyLimit), '--full',
-  ], { encoding: 'utf-8', timeout: 180000, maxBuffer: 64 << 20 });
+  ], {
+    encoding: 'utf-8', timeout: 180000, maxBuffer: 64 << 20,
+    env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+  });
+  if (out.includes('\ufffd')) {
+    throw new Error('构建提示词返回了乱码（编码没对上）：' + out.slice(0, 120));
+  }
   const line = out.trim().split('\n').filter((l) => l.trim().startsWith('{')).pop();
   const data = JSON.parse(line || '{}');
   if (!Array.isArray(data.messages) || !data.messages.length) {
