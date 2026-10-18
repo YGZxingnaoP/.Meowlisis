@@ -1,30 +1,23 @@
 # -*- coding: utf-8 -*-
-# func/meowllm/memory.py
-"""δ-mem「按用户记忆」的协议适配层（只服务本地 MeowLLM，不污染其它平台）。
+# func/catbrain/UserMemory/identity/dmem_owner.py
+"""δ-mem「按用户记忆」的**策略层**：谁算正式用户、这一次请求用谁的记忆。
 
-设计目标（对应需求：自己写协议 + 各 port 只传用户）
---------------------------------------------------
-1. **协议集中一处**：请求体里的字段名 `memory_owner`、uid 的合法性规则，
-   都只在这个文件里定义。改协议只改这里。
-2. **调用处只传 uid**：任何调用点写 `options=memory.as_options(uid)` 即可。
-3. **不污染其它平台**：deepseek / aliyun / gemini 的 port 只读 `options["model"]`，
-   它们根本不会读这个键。
+它不关心平台（deepseek / aliyun / gemini / meowllm 都适用），只回答两件事：
+    1. 这个 uid 值不值得长期记忆（`^\\d{6}$` 才算，`temp-*` 不算）
+    2. 这一轮该把 `memory_owner` 设成谁
+
+协议字段名也在这里（`FIELD`）—— 它是"请求里那个键叫什么"的唯一出处。
+服务端要改字段名时，改这里一处 + 各端口 `_build_params` 里那一行。
 
 解析顺序（谁先有就用谁）
 ------------------------
     显式 uid  >  options["memory_owner"]  >  本线程的当前 uid  >  None
 
 **刻意不做"最近用户"兜底**：
-`func/` 里有 40+ 处 LLM 实例化，绝大多数是工具/分析类任务（新闻、天气、情绪
-更新、abmem 写入、弹幕、绘画…）。如果按"最近那个用户"猜，这些任务就会被动
-带上那个人的记忆 —— 轻则串人，重则**自我污染**（负责写记忆的任务带着记忆去
-写，越写越偏）。所以：**默认不带记忆，只有调用处显式传 uid（或本线程已标记）
-才带。**
-
-合法性（只认正式号）
---------------------
-    `^\\d{6}$` 才传；`temp-*`、空、未知一律 None —— 引擎侧也会再判一次，
-    这里是第一道闸，避免把临时会话写进长期记忆。
+`func/` 里有 40+ 处 LLM 实例化，绝大多数是工具/分析类任务（新闻、天气、情绪更新、
+abmem 写入、弹幕、绘画…）。如果按"最近那个用户"猜，这些任务就会被动带上那个人的
+记忆 —— 轻则串人，重则**自我污染**（负责写记忆的任务带着记忆去写，越写越偏）。
+所以：**默认不带记忆，只有调用处显式传 uid（或本线程已标记）才带。**
 """
 
 from __future__ import annotations
@@ -33,7 +26,7 @@ import re
 import threading
 from typing import Dict, Optional
 
-#: 协议字段名（唯一出处，改协议只改这里）
+#: 协议字段名（唯一出处）
 FIELD = "memory_owner"
 
 _FORMAL = re.compile(r"^\d{6}$")
@@ -67,13 +60,7 @@ def is_formal(uid) -> bool:
 
 
 def owner_for(uid=None, options: Optional[Dict] = None) -> Optional[str]:
-    """解析出本次请求该用谁的记忆。返回正式 uid 或 None（None = 不挂记忆）。
-
-    解析顺序：
-        1. 调用处显式传的 uid
-        2. options["memory_owner"]
-        3. **本线程的当前消息 uid**（由 llm_core 在处理一条消息时设置）
-    """
+    """解析出本次请求该用谁的记忆。返回正式 uid 或 None（None = 不挂记忆）。"""
     for candidate in (uid, (options or {}).get(FIELD), current_uid()):
         if is_formal(candidate):
             return str(candidate).strip()
@@ -81,7 +68,7 @@ def owner_for(uid=None, options: Optional[Dict] = None) -> Optional[str]:
 
 
 def as_options(uid=None, options: Optional[Dict] = None) -> Optional[Dict]:
-    """给调用处用：`options=memory.as_options(uid)`。
+    """给调用处用：`options=as_options(uid)`。
 
     - 已有 options 时合并（不覆盖原键）；
     - 解析不到正式 uid 时返回 None（调用方原样传 None 即可）。

@@ -10,7 +10,7 @@
 一轮对话的完整闭环（就是论文的在线更新）
 ----------------------------------------
     ① 用户说话
-    ② 引擎按 uid 加载记忆矩阵          （func/meowllm/memory.py 负责传 uid）
+    ② 引擎按 uid 加载记忆矩阵          （func/catbrain/UserMemory/identity/dmem_owner.py 负责传 uid）
     ③ 矩阵参与 attention → 生成回复
     ④ 回复结束 → 本模块把这一轮 append 进矩阵     ← 这里
     ⑤ 引擎落盘 character/userinfo/<uid>/mem/     （原子写 + 自动快照）
@@ -35,7 +35,7 @@
 * 写失败只记日志，绝不影响对话主链路；
 * 单飞 + **合并**：同一 uid 一次只跑一趟写入，期间到达的轮次并进待写队列，
   由这一趟顺手带出去（老版本是"3 秒内直接丢掉"，会静默丢一半对话）；
-* 端点从 `meowllm_config.base_url()` 推出来，不额外加配置项。
+* 端点从环境变量 MEOWLLM_BASE_URL 推（与 12 个 port 同一口径），不额外加配置项。
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 
 try:
-    from func.meowllm.memory import is_formal
+    from func.catbrain.UserMemory.identity.dmem_owner import is_formal
 except Exception: 
     import re
 
@@ -74,19 +74,19 @@ class DmemBridge:
 
     @staticmethod
     def _base() -> str:
-        """从 meowllm 的 OpenAI 兼容地址推出控制面地址。
+        """从 MeowLLM 的 OpenAI 兼容地址推出控制面地址。
 
-        meowllm_config.base_url() = http://host:port/meowllm/v1
-        控制面在        http://host:port/meowllm/control/...
+        base_url   = http://host:port/meowllm/v1
+        控制面在    http://host:port/meowllm/control/...
+        端点来自环境变量 MEOWLLM_BASE_URL（与 12 个 port 用的是同一个口径），
+        没有就用默认回环地址。
         """
-        try:
-            from func.meowllm import config as meowllm_config
+        import os
 
-            url = str(meowllm_config.base_url() or "").rstrip("/")
-            root = url[:-3] if url.endswith("/v1") else url
-            return root + "/control/dmem"
-        except Exception:
-            return "http://127.0.0.1:18100/meowllm/control/dmem"
+        url = str(os.environ.get("MEOWLLM_BASE_URL",
+                                 "http://127.0.0.1:18100/meowllm/v1")).rstrip("/")
+        root = url[:-3] if url.endswith("/v1") else url
+        return root + "/control/dmem"
 
     def _post(self, path: str, payload: dict, timeout: float = 20.0) -> dict:
         url = f"{self._base()}{path}"

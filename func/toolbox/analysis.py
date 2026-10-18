@@ -170,7 +170,7 @@ class TBoxAnalysis:
             if self.config.llm_type == "meowllm":
                 from func.toolbox.port.meowllm import TBoxMeowLLM
                 self.llm = TBoxMeowLLM()
-            if self.config.llm_type == "gemini":
+            elif self.config.llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 self.llm = TBoxGeminiLLM()
             elif self.config.llm_type == "aliyun":

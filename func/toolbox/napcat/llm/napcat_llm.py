@@ -38,16 +38,18 @@ class TBNapCatLLM:
         self._filtered = ""
 
     def _llm(self):
-        """创建 toolbox port 流式客户端（复用 func/llm 配置，medium 思考由 thinking_level 控制）"""
+        """创建 toolbox port 流式客户端（复用 func/llm 配置，medium 思考由 thinking_level 控制）
+
+        这里每一支都必须 `return`，否则后面那支会把前面建好的客户端覆盖掉
+        （`qq_response` / `emote_choose` 就是漏了 return 才一直在用 deepseek）。
+        """
         if self.cfg.local_llm_type == "meowllm":
             from func.toolbox.port.meowllm import TBoxMeowLLM
-            return TBoxMeowLLM(self.cfg), self.cfg.gemini_max_tokens
+            # 以前这里错用了 gemini_max_tokens，meowllm 该用自己的 talk_max_tokens
+            return TBoxMeowLLM(self.cfg), self.cfg.meowllm_talk_max_tokens
         if self.cfg.local_llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             return TBoxGeminiLLM(self.cfg), self.cfg.gemini_max_tokens
-        if self.cfg.local_llm_type == "meowllm":
-            from func.toolbox.port.meowllm import TBoxMeowLLM
-            return TBoxMeowLLM(self.cfg), self.cfg.aliyun_max_tokens
         if self.cfg.local_llm_type == "aliyun":
             from func.toolbox.port.aliyun import TBoxAliyunLLM
             return TBoxAliyunLLM(self.cfg), self.cfg.aliyun_max_tokens

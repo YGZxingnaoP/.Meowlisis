@@ -11,7 +11,8 @@ from func.llm.state import LLmState
 from func.config.app_config import AppConfig
 
 from func.llm.config import LLMConfig
-from func.meowllm import memory as memory_options
+# δ-mem 的「谁能用记忆」策略，属于用户身份层（与平台无关），沿用旧名 memory_options
+from func.catbrain.UserMemory.identity import dmem_owner as memory_options
 from func.llm.port.deepseek import DeepSeekLLM
 from func.llm.port.aliyun import AliyunLLM
 from func.llm.message_get import MessageGet
@@ -250,6 +251,11 @@ class LLmCore:
         memory_options.set_current_uid(uid)
         # 显式再传一次（双保险；显式优先于线程上下文）
         mem_options = memory_options.as_options(uid)
+        # 诊断：空回复时最需要知道的就是"这一轮到底带没带工具、带了几条、
+        # prompt 有多长"。没有这三项，日志里只剩一行空的 [AI回复]，完全无从判断。
+        self.log.info(f"[{traceid}] 请求 LLM: merged={merged} tools={len(tools)} "
+                      f"messages={len(messages)} "
+                      f"chars={sum(len(str(m.get('content') or '')) for m in messages)}")
         if merged:
             stream = self.llm.chat_stream(
                 messages, tools=tools, tool_choice="auto", enable_thinking=False,
@@ -258,15 +264,32 @@ class LLmCore:
         else:
             stream = self.llm.chat_stream(messages, options=mem_options)
         # 正文处理与非合并模式逐行一致：边流边送 TTS，不缓冲、不丢弃
+        got_content = False
         for chunk in stream:
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
             content = getattr(delta, "content", None)
             if content:
+                got_content = True
                 output.process_chunk(content, traceid)
             if merged and getattr(delta, "tool_calls", None):
                 acc.add(delta.tool_calls)
+
+        # 模型只回了工具调用、一个字正文都没写 → final_text 会是空串，用户看到的是
+        # "没回复"。本地 8B 特别容易这样（实测同一条消息：带 tools 时 0 字正文 +
+        # 1 个 tool_call；不带 tools 时 59 字正文）。云端 DeepSeek 会顺口说一句
+        # "好的，这就去发"，本地模型不会，所以这里必须补一句回执。
+        if not got_content and merged and acc.has_calls():
+            receipt = "好，我这就去办～"
+            self.log.info(f"[{traceid}] 模型只回了工具调用、没有正文，补一句回执")
+            output.process_chunk(receipt, traceid)
+        elif not got_content:
+            # 既没正文、也没工具调用 —— 这是个纯故障态，必须留下可诊断的现场。
+            self.log.warning(
+                f"[{traceid}] 模型没有输出任何正文（merged={merged} tools={len(tools)}）"
+                f"：要么 prompt 被裁坏，要么模型提前 EOS。检查 svc_main 日志上一行的"
+                f"「请求 LLM」记录与 meowllm 侧 truncated_requests")
 
         # 结束流式，获取清理后的完整回复（与非合并模式完全一致）
         final_text = output.finalize(traceid)
@@ -362,6 +385,13 @@ class LLmCore:
     def _dispatch_tool_calls(self, calls: list, uid: str, prompt: str, traceid: str):
         try:
             from func.pipeline.llm_toolbox import LLMToolboxBridge
+            # 这条日志以前没有：工具调用是"静默执行"的，出问题时日志里完全看不出
+            # 模型到底调了哪个工具、有没有交给工具箱。本地模型尤其需要它。
+            names = []
+            for call in calls or []:
+                fn = (call.get("function") or {}) if isinstance(call, dict) else {}
+                names.append(fn.get("name") or "?")
+            self.log.info(f"[{traceid}] 分发工具调用: {names or calls}")
             LLMToolboxBridge().handle_tool_calls(calls, uid, str(prompt or ""))
         except Exception:
             self.log.exception("工具分发异常")

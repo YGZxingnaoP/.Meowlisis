@@ -146,10 +146,12 @@ class TBEmoteChoose:
 
         工具调用需要足够的 max_tokens，避免 arguments 被截断导致 JSON 解析失败。
         """
+        # ⚠ 必须是一条 if/elif 链：以前 meowllm 是独立 if，后面又开 if/elif/else，
+        # 于是 meowllm 建完立刻被 else 覆盖成 deepseek（配置改了却没用上）。
         if self.llm_cfg.local_llm_type == "meowllm":
             from func.toolbox.port.meowllm import TBoxMeowLLM
             llm = TBoxMeowLLM(self.llm_cfg)
-        if self.llm_cfg.local_llm_type == "gemini":
+        elif self.llm_cfg.local_llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             llm = TBoxGeminiLLM(self.llm_cfg)
         elif self.llm_cfg.local_llm_type == "aliyun":

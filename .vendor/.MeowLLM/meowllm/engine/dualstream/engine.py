@@ -590,6 +590,19 @@ class AsyncHFEngine(MeowLLMEngineBase):
         if not params.memory_owner:
             self.dmem_registry.use(None)
             return {"attached": False, "reason": "no-owner"}
+        # **工具回合不挂记忆**（协议级规则，不是某个客户端的责任）。
+        # 实测：同一段 200 条消息 + 工具定义 + 同一条指令
+        #     无记忆      → finish=tool_calls，结构化调用 ✓
+        #     带记忆 α×1 → finish=stop，正文里出现 qq_send_message{"contact":...}
+        #     带记忆 α×4 → 重复死循环
+        # δ-mem 的注入会扰动回复开头的 <tool_call> 标记，导致格式不合法、
+        # parse_tool_calls 认不出，整段被当正文发出，工具从未执行。
+        # 放在这里而不是客户端，是为了让**任何**调用方（含 curl / 脚本 / 未来新平台）
+        # 都自动守规矩，客户端不需要知道 δ-mem 的存在。
+        if params.tools:
+            self.dmem_registry.use(None)
+            return {"attached": False, "reason": "tools",
+                    "owner": params.memory_owner, "tool_count": len(params.tools)}
         info: dict = {"owner": params.memory_owner}
         try:
             if params.memory_write:

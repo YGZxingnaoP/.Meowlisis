@@ -179,6 +179,14 @@ class Output:
             result = self._clean_punctuation(self.cleaner.cleaned)
         else:
             result = self._clean_punctuation(self.remove_analysis(self.filtered_content))
+        if not result.strip() and str(self.filtered_content or "").strip():
+            # 模型其实说话了，但被清洗规则整段吃掉 → 上层看到的是空回复。
+            # 最常见的就是整段用括号写动作（（歪头）…）或包在【】/<think> 里：
+            # remove_analysis 会把它们全部剥掉，剩下的就是空串。
+            # 这条日志以前没有，于是"没回复"完全无从排查。
+            self.log.warning(
+                f"[{traceid}] 回复被清洗规则吃掉：原始 {len(self.filtered_content)} 字 → 空。"
+                f"原文片段={str(self.filtered_content)[:120]!r}")
         return "" if self._is_punct_only(result) else result
 
     def _send(self, text: str, traceid: str, chat_status: str):

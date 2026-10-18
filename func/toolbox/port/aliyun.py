@@ -32,6 +32,8 @@ class TBoxAliyunLLM:
             return
         try:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            self.log.info(f"[toolbox] Qwen（阿里云）客户端就绪：{self.base_url} "
+                          f"model={self.model}")
         except Exception as e:
             self.log.error(f"初始化 Toolbox Qwen 客户端失败: {e}")
 

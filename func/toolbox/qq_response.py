@@ -781,10 +781,13 @@ class TBoxQQResponse:
                 {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
             ]
             cfg = LLMConfig()
+            # ⚠ 这里必须是 if/elif 一整条链：以前 meowllm 那支写成独立的 if，
+            # 紧跟一个新开的 if/elif/else，结果 meowllm 建完立刻被 else 覆盖成
+            # deepseek —— 配置写 meowllm 却一直在用 deepseek，且没有任何日志。
             if cfg.local_llm_type == "meowllm":
                 from func.toolbox.port.meowllm import TBoxMeowLLM
                 llm = TBoxMeowLLM(cfg)
-            if cfg.local_llm_type == "gemini":
+            elif cfg.local_llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 llm = TBoxGeminiLLM(cfg)
             elif cfg.local_llm_type == "aliyun":

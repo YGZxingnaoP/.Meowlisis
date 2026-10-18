@@ -33,7 +33,7 @@ class MeowPsycheCore:
             if self.config.llm_type == "meowllm":
                 from func.psyche.port.meowllm import MeowPsycheMeowLLM
                 self._llm = MeowPsycheMeowLLM()
-            if self.config.llm_type == "gemini":
+            elif self.config.llm_type == "gemini":
                 from func.psyche.port.gemini import MeowPsycheGeminiLLM
                 self._llm = MeowPsycheGeminiLLM()
             elif self.config.llm_type == "aliyun":

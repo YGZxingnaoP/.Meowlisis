@@ -18,7 +18,7 @@ class MeowMemoryReviewLLM:
         if llm_type == "meowllm":
             from func.catbrain.AbstractMem.port.meowllm import MeowAbstractMeowLLM
             llm = MeowAbstractMeowLLM()
-        if llm_type == "gemini":
+        elif llm_type == "gemini":
             from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
             llm = MeowAbstractGeminiLLM()
         elif llm_type == "aliyun":

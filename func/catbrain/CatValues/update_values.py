@@ -41,7 +41,7 @@ class MeowUpdateValues:
             if self.config.values_llm_type == "meowllm":
                 from func.catbrain.CatValues.port.meowllm import MeowValuesMeowLLM
                 self.llm = MeowValuesMeowLLM()
-            if self.config.values_llm_type == "gemini":
+            elif self.config.values_llm_type == "gemini":
                 from func.catbrain.CatValues.port.gemini import MeowValuesGeminiLLM
                 self.llm = MeowValuesGeminiLLM()
             elif self.config.values_llm_type == "aliyun":

@@ -29,7 +29,7 @@ class AutoVisionSender:
         if self.config.llm_type == "meowllm":
             from func.llm_active.origin.vision.port.meowllm import AutoVisionMeowLLM
             self.llm = AutoVisionMeowLLM(self.config)
-        if self.config.llm_type == "gemini":
+        elif self.config.llm_type == "gemini":
             from func.llm_active.origin.vision.port.gemini import AutoVisionGeminiLLM
             self.llm = AutoVisionGeminiLLM(self.config)
         else:

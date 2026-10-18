@@ -68,10 +68,26 @@ class LLMConfig:
         self.gemini_top_p = gemini_cfg.get('top_p', 0.9)
         self.gemini_stream = gemini_cfg.get('stream', True)
 
-        # ========== MeowLLM 本地模型 ==========
-        # 连接与其余采样参数统一由 func/meowllm/（基础设施）读
-        # .vendor/.MeowLLM/config.yml 后提供；这里只留唯一一个外部读者：
-        # llm_active 需要它来算主动回复的长度上限。
-        from func.meowllm import config as meowllm_config
-        self.meowllm_talk_max_tokens = int(meowllm_config.gen('talk_max_tokens', 256))
+        # ========== MeowLLM（本地/自建，OpenAI 兼容）==========
+        # 与 deepseek / aliyun / gemini 完全并列。端点由启动器回写，
+        # 各模块统一从根 llm.meowllm 读（加载的是同一个 config.yml）。
+        meowllm_cfg = cfg.get('meowllm') or llm_cfg.get('meowllm') or {}
+        self.meowllm_base_url = meowllm_cfg.get(
+            'base_url', 'http://127.0.0.1:18100/meowllm/v1')
+        self.meowllm_model = meowllm_cfg.get('model', 'meowllm-local')
+        self.meowllm_temperature = meowllm_cfg.get('temperature', 0.8)
+        self.meowllm_max_tokens = int(meowllm_cfg.get('max_tokens', 256))
+        self.meowllm_top_p = meowllm_cfg.get('top_p', 0.9)
+        self.meowllm_top_k = int(meowllm_cfg.get('top_k', 40))
+        self.meowllm_repeat_penalty = float(meowllm_cfg.get('repeat_penalty', 1.05))
+        # 注意 YAML 的坑：裸写 `off` / `on` / `yes` / `no` 会被解析成布尔。
+        # 这里做一次归一，配置里写加引号的 "off" 或直接写 false 都能用。
+        _level = meowllm_cfg.get('thinking_level', 'off')
+        if _level is False or _level is None:
+            _level = 'off'
+        elif _level is True:
+            _level = 'medium'
+        self.meowllm_thinking_level = str(_level)
+        # 兼容旧名（llm_active 用它算主动回复长度上限）
+        self.meowllm_talk_max_tokens = self.meowllm_max_tokens
         self.gemini_enable_thinking = gemini_cfg.get('enable_thinking', False)

@@ -60,7 +60,7 @@ class MeowLoadAbstractMemory:
             if self.config.abstract_llm_type == "meowllm":
                 from func.catbrain.AbstractMem.port.meowllm import MeowAbstractMeowLLM
                 self._llm = MeowAbstractMeowLLM()
-            if self.config.abstract_llm_type == "gemini":
+            elif self.config.abstract_llm_type == "gemini":
                 from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
                 self._llm = MeowAbstractGeminiLLM()
             elif self.config.abstract_llm_type == "aliyun":

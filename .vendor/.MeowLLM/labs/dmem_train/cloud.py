@@ -44,6 +44,7 @@ UPLOAD = [
     ("meowllm", "meowllm"),
     ("labs/dmem_train", "labs/dmem_train"),      # 含 data/ 与 presets/；不含 out/
     ("docs/notes", "docs/notes"),
+    ("api.md", "api.md"),                        # 协议说明：云端保留同一份
     ("config.yml", "config.yml"),
 ]
 #: 项目根下的额外目录

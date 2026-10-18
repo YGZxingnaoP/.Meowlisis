@@ -74,6 +74,48 @@ start.bat stop            :: 停止
 
 ---
 
+## 云端：换卡后怎么起
+
+**双击 `start_cloud.bat` 就行。** 它会依次问你要两样东西：
+
+```
+ssh -p 49229 root@connect.westb.seetacloud.com     ← AutoDL 的登录指令，整行粘进去
+密码（不回显）                                      ← 粘贴时看不到字符，是正常的
+```
+
+然后它自己做完这些（每步都打印，出错会指到具体那一步）：
+
+1. 连上 → **体检**：远端 shell / python / torch+cuda / transformers / backbone / δ-mem 权重 / 代码目录 / GPU 显存
+2. 云端没代码（新实例）→ 自动跑一次 `cloud.py upsync`
+3. 起服务（写 `serve.sh` 到远端再 `setsid nohup bash`，等 HTTP 200）
+4. 开本地隧道 `127.0.0.1:18100`，打印实验台地址
+5. 凭据存到 `labs/autoDL/`（`.gitignore` 已排除），**下次直接回车即可**
+
+命令行等价物：
+
+```bat
+.scripts\cloud_serve.py --ask --save      :: 交互输入凭据并保存（start_cloud.bat 就是这条）
+.scripts\cloud_serve.py                   :: 用上次保存的凭据直接起
+.scripts\cloud_serve.py --preflight       :: 只体检，不启动（先看缺什么）
+.scripts\cloud_serve.py --setup           :: 体检不过时：装依赖 + 从 HF 拉 backbone
+.scripts\cloud_serve.py --restart         :: 强制重启（代码改了之后必须）
+.scripts\cloud_serve.py --attach          :: 只开隧道，不动远端服务
+.scripts\cloud_serve.py --stop            :: 杀掉远端服务
+.scripts\cloud_serve.py --shared          :: 不隔离：状态直接写云端 character/userinfo
+```
+
+换卡后**必须**知道的三件事：
+
+- **host / port / 密码全都会变**，旧凭据必然连不上；报错会提示你 `--ask` 重输。
+- **backbone 不在**（`/root/autodl-tmp/models/Qwen3-8B`）：加 `--setup` 让它从 HF 拉。
+  也可以先用 `--preflight` 确认到底缺的是模型还是依赖。
+- 隧道是**随窗口消亡**的；远端服务不会跟着死，重开窗口用 `--attach` 秒接。
+
+> 卡换了显存也换了：起服务前的那次体检会打印 `GPU 名称 / 总显存 / 已占用`，
+> 8B bf16 需要约 17 GB，24 GB 卡可用；16 GB 卡会 OOM，得换小模型或量化。
+
+---
+
 ## 配置（`config.yml`）
 
 无 api_key：服务只绑回环，是私有进程。

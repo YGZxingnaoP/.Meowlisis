@@ -45,7 +45,7 @@ class MeowUpdateUserInfo:
             if self.config.user_llm_type == "meowllm":
                 from func.catbrain.UserMemory.port.meowllm import MeowUserMemoryMeowLLM
                 self.llm = MeowUserMemoryMeowLLM()
-            if self.config.user_llm_type == "gemini":
+            elif self.config.user_llm_type == "gemini":
                 from func.catbrain.UserMemory.port.gemini import MeowUserMemoryGeminiLLM
                 self.llm = MeowUserMemoryGeminiLLM()
             elif self.config.user_llm_type == "aliyun":

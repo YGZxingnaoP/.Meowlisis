@@ -232,7 +232,7 @@ class MeowMemorySlimmer:
             if llm_type == "meowllm":
                 from func.catbrain.AbstractMem.port.meowllm import MeowAbstractMeowLLM
                 self._llm = MeowAbstractMeowLLM()
-            if llm_type == "gemini":
+            elif llm_type == "gemini":
                 from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
                 self._llm = MeowAbstractGeminiLLM()
             elif llm_type == "aliyun":

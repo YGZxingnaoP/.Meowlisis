@@ -62,7 +62,7 @@ class TBImpromptuSing:
             if cfg.llm_type == "meowllm":
                 from func.toolbox.port.meowllm import TBoxMeowLLM
                 llm = TBoxMeowLLM(cfg)
-            if cfg.llm_type == "gemini":
+            elif cfg.llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 llm = TBoxGeminiLLM(cfg)
             elif cfg.llm_type == "aliyun":

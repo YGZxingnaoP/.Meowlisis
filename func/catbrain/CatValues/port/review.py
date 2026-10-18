@@ -26,7 +26,7 @@ class MeowValuesReviewLLM:
         if llm_type == "meowllm":
             from func.catbrain.CatValues.port.meowllm import MeowValuesMeowLLM
             llm = MeowValuesMeowLLM()
-        if llm_type == "aliyun":
+        elif llm_type == "aliyun":
             llm = MeowValuesAliyunLLM()
             llm.api_key = self.config.val_sr_aliyun_api_key
             llm.base_url = self.config.val_sr_aliyun_base_url

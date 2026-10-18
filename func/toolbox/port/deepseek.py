@@ -32,6 +32,11 @@ class TBoxDeepSeekLLM:
             return
         try:
             self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # 以前成功路径没有日志，导致"到底用了哪个模型"完全看不出来
+            # （配置写着 meowllm、实际在跑 deepseek 也发现不了）。现在每个 port
+            # 都会打一行就绪日志，日志里搜 "[toolbox]" 就能查清。
+            self.log.info(f"[toolbox] DeepSeek 客户端就绪：{self.base_url} "
+                          f"model={self.model}")
         except Exception as e:
             self.log.error(f"初始化 Toolbox DeepSeek 客户端失败: {e}")
 

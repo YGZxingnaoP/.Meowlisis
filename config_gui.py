@@ -96,11 +96,75 @@ def post_config():
     return jsonify({'status': 'ok'})
 
 
+class _MeowLLMConfigIO:
+    """配置页对 `.vendor/.MeowLLM/config.yml` 的读写。
+
+    这个文件是**服务端自己的配置**（paths / context / engine / memory / gen / thinking），
+    由 MeowLLM 读取，配置页只是给它做一个编辑界面。所以这里直接读写该文件，
+    不再经过项目侧的 `func/meowllm/`（该目录已删除：meowllm 是与 deepseek/aliyun
+    并列的平台，`func/` 下不允许有平台级目录）。
+    """
+
+    MEOWLLM_CFG = BASE_DIR / ".vendor" / ".MeowLLM" / "config.yml"
+
+    def __init__(self):
+        self._cache = None
+
+    def config_path(self) -> str:
+        return str(self.MEOWLLM_CFG)
+
+    def data(self, force: bool = False) -> dict:
+        if self._cache is None or force:
+            raw = {}
+            if self.MEOWLLM_CFG.exists():
+                with open(self.MEOWLLM_CFG, "r", encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
+            self._cache = raw.get("meowllm", raw) or {}
+        return self._cache
+
+    def base_url(self) -> str:
+        """服务端当前地址。优先运行期写的 port.json，其次项目 config.yml 的 llm.meowllm。"""
+        node = self.data()
+        state_dir = ((node.get("paths") or {}).get("state_dir") or ".test/state/meowllm")
+        state_path = (BASE_DIR / ".vendor" / ".MeowLLM" / str(state_dir) / "port.json")
+        try:
+            if state_path.is_file():
+                with open(state_path, "r", encoding="utf-8") as f:
+                    info = json.load(f) or {}
+                if info.get("base_url"):
+                    return str(info["base_url"])
+        except Exception:
+            pass
+        meow = (load_config().get("llm") or {}).get("meowllm") or {}
+        return str(meow.get("base_url") or "http://127.0.0.1:18100/meowllm/v1")
+
+    def save(self, node: dict) -> dict:
+        raw = {}
+        if self.MEOWLLM_CFG.exists():
+            try:
+                with open(self.MEOWLLM_CFG, "r", encoding="utf-8") as f:
+                    raw = yaml.safe_load(f) or {}
+            except Exception:
+                raw = {}
+        # 改之前留一份 .bak（config.yml.bak 已在 .gitignore 里）
+        try:
+            bak = self.MEOWLLM_CFG.with_suffix(".yml.bak")
+            bak.write_bytes(self.MEOWLLM_CFG.read_bytes())
+        except Exception:
+            pass
+        raw["meowllm"] = node
+        self.MEOWLLM_CFG.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.MEOWLLM_CFG, "w", encoding="utf-8") as f:
+            yaml.safe_dump(raw, f, allow_unicode=True, sort_keys=False)
+        self._cache = node
+        return {"status": "ok", "path": str(self.MEOWLLM_CFG)}
+
+
+_MEOWLLM_IO = _MeowLLMConfigIO()
+
+
 def _meowllm_io():
-    if str(BASE_DIR) not in sys.path:
-        sys.path.insert(0, str(BASE_DIR))
-    from func.meowllm import config as meowllm_config
-    return meowllm_config
+    return _MEOWLLM_IO
 
 
 @app.route('/api/meowllm/config', methods=['GET'])
