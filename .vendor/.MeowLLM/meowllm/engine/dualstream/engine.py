@@ -562,6 +562,8 @@ class AsyncHFEngine(MeowLLMEngineBase):
             pause_on_paragraph=bool(
                 cfg.get("engine.dualstream.pause_on_paragraph", True)),
             yes_bias=float(cfg.get("engine.dualstream.yes_bias", 0.0) or 0.0),
+            stall_guard_tokens=int(
+                cfg.get("engine.dualstream.stall_guard_tokens", 0) or 0),
             fast_prefill=bool(cfg.get("engine.dualstream.fast_prefill", True)),
         )
 
@@ -751,6 +753,7 @@ class AsyncHFEngine(MeowLLMEngineBase):
                 "probe_no": stats.probe_no,
                 "pause_thoughts": stats.pause_thoughts,
                 "pause_paragraph": stats.pause_paragraph,
+                "forced_resumes": stats.forced_resumes,
                 "thinker_stop": loop.thinker_stop,
                 "thinking_level": params.thinking_level,
                 "memory": getattr(self, "_last_memory", {}),

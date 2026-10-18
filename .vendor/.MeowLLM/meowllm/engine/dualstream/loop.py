@@ -80,6 +80,8 @@ class LoopStats:
     #: 两种暂停原因各多少次（观测用）
     pause_thoughts: int = 0
     pause_paragraph: int = 0
+    #: 保险丝生效次数（`stall_guard_tokens>0` 才有）
+    forced_resumes: int = 0
 
 
 class DualStreamLoop:
@@ -90,7 +92,8 @@ class DualStreamLoop:
                  device: str = "cuda", temperature: float = 0.8,
                  top_p: float = 0.9, seed: int | None = None,
                  prompt_capacity: int = 8192, pause_on_paragraph: bool = True,
-                 yes_bias: float = 0.0, fast_prefill: bool = True) -> None:
+                 yes_bias: float = 0.0, stall_guard_tokens: int = 0,
+                 fast_prefill: bool = True) -> None:
         self.model = model
         self.tok = tokenizer
         self.device = device
@@ -99,6 +102,9 @@ class DualStreamLoop:
         self.writer_max = max(1, int(writer_max))
         self.prompt_capacity = max(1024, int(prompt_capacity))
         self.pause_on_paragraph = bool(pause_on_paragraph)
+        #: 论文没有的保险丝：冻结超过这么多思考 token 仍等不到 yes，就强制放行一次
+        #: （0 = 关，保持论文原样。论文把这个失败形态叫 stalling。）
+        self.stall_guard_tokens = max(0, int(stall_guard_tokens))
         self.temperature = temperature
         self.top_p = top_p
         self.seed = seed
@@ -153,6 +159,8 @@ class DualStreamLoop:
         #: "stop" | "length"（被 writer 预算截断）
         self.finish_reason = "stop"
         self.pause_reason = ""
+        #: 冻结发生在第几个 step（保险丝用）
+        self._paused_at = 0
         self.steps = 0
         self._thinker_buf = ""
         self._writer_buf = ""
@@ -408,6 +416,13 @@ class DualStreamLoop:
             return
         self.mode.reset_counter()
 
+        # 可选保险丝（论文没有，默认关）：冻结太久等不到 yes，就先放它说一段。
+        # 论文把这种"提前说"当失败形态，只在 p(yes) 长期压不过 p(no) 时才需要它。
+        if (not self.writer_active and self.stall_guard_tokens > 0
+                and self.steps - self._paused_at >= self.stall_guard_tokens):
+            self._force_resume()
+            return
+
         decision: ModeDecision = self._probe()
         self.stats.probes += 1
         self.stats.last_probe_p_yes = decision.p_yes
@@ -436,9 +451,19 @@ class DualStreamLoop:
                 self.stats.pause_paragraph += 1
             else:
                 self.stats.pause_thoughts += 1
+            self._paused_at = self.steps
         self.writer_active = False
         self.pause_reason = reason
         self.mode.reset_counter()
+
+    def _force_resume(self) -> None:
+        """保险丝放行：不算探针，也不改 note。"""
+        if self.writer_active:
+            return
+        self.writer_active = True
+        self.pause_reason = ""
+        self.stats.resumes += 1
+        self.stats.forced_resumes += 1
 
     def _probe(self) -> ModeDecision:
         """论文附录 B 的第三视图：M -> T -> W -> Q，读完立刻清空 Q。"""

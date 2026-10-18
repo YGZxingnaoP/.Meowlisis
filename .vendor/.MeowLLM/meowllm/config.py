@@ -49,6 +49,8 @@ DEFAULT_CONFIG: dict = {
             "pause_on_paragraph": True,
             #: 论文 Figure 4 的 +Δ：给 yes 的对数概率加固定偏置
             "yes_bias": 0.0,
+            #: 论文没有的保险丝：冻结超过这么多思考 token 就强制放行一次（0=关）
+            "stall_guard_tokens": 0,
             "fast_prefill": True,
         },
     },
@@ -59,7 +61,9 @@ DEFAULT_CONFIG: dict = {
     },
     "thinking": {
         "default_level": "off",
-        "budgets": {"off": 0, "low": 256, "medium": 768, "high": 2048},
+        #: 思考预算（token）。low 256 会把中等长度的思维链切断 → 直接进 writer-only，
+        #: 回复质量掉得最明显，所以 low 提到 512、medium 到 1024。
+        "budgets": {"off": 0, "low": 512, "medium": 1024, "high": 2048},
         "force_off_when_tools": True,
     },
     "cache": {
@@ -347,6 +351,10 @@ class MeowLLMConfig:
             bias = self.get("engine.dualstream.yes_bias", 0.0)
             if not isinstance(bias, (int, float)) or not (-5.0 <= float(bias) <= 5.0):
                 problems.append(f"engine.dualstream.yes_bias 必须在 [-5,5]: {bias!r}")
+            guard = self.get("engine.dualstream.stall_guard_tokens", 0)
+            if not isinstance(guard, int) or not (0 <= guard <= 8192):
+                problems.append(
+                    f"engine.dualstream.stall_guard_tokens 必须在 [0,8192]: {guard!r}")
 
         for key in ("temperature", "top_p"):
             value = self.get(f"gen.{key}", 0)
