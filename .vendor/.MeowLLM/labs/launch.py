@@ -18,6 +18,10 @@ DEFAULT_PORT = 18100
 DEFAULT_SPAN = 9
 LAB_PORT = 18700
 
+#: 实验台用的沙箱目录与云端口径都收在 dmem_train/cloud_paths.py 一处
+sys.path.insert(0, str(HERE / "dmem_train"))
+import cloud_paths  # noqa: E402
+
 
 def health(port: int, timeout: float = 1.5) -> dict | None:
     try:
@@ -70,17 +74,26 @@ def find_node() -> str:
     return "node"
 
 
-def start_engine(py: str, port: int, engine: str | None) -> subprocess.Popen:
+def start_engine(py: str, port: int, engine: str | None,
+                 shared: bool = False) -> subprocess.Popen:
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
     env["MEOWLLM_ALLOW_LOCAL_MODEL"] = "1"
     if engine:
         env["MEOWLLM__ENGINE__KIND"] = engine
     env["MEOWLLM__SERVER__PORT"] = str(port)
+    # 数据隔离：实验台是"同一个服务、同一份 config.yml"，不隔离就会把实验用的
+    # δ-mem 状态写进主项目真实的 character/userinfo/<uid>/mem/。
+    env.update(cloud_paths.lab_env(shared))
     flags = 0
     if os.name == "nt":
         flags = subprocess.CREATE_NEW_CONSOLE
     print(f"[lab] 启动 MeowLLM（engine={engine or 'config.yml'}，端口 {port}）…")
+    if shared:
+        print("[lab] ⚠ --shared：状态/日志/记忆都指向主项目，实验会污染真实数据")
+    else:
+        print(f"[lab] 数据隔离：状态 -> {cloud_paths.REL_LAB_STATE}，"
+              f"δ-mem -> {cloud_paths.REL_LAB_USERINFO}（主项目 character/userinfo 不受影响）")
     return subprocess.Popen([py, "-m", "meowllm.server.app", "--log-level", "INFO"],
                             cwd=str(ROOT), env=env, creationflags=flags)
 
@@ -117,7 +130,7 @@ def start_lab(port: int, lab_port: int) -> subprocess.Popen:
         cwd=str(HERE), creationflags=flags)
 
 
-def _start_cloud(port: int) -> bool:
+def _start_cloud(port: int, shared: bool = False) -> bool:
     import importlib.util
     import threading
 
@@ -143,14 +156,17 @@ def _start_cloud(port: int) -> bool:
         return False
     print(f"[cloud] 已连接 {user}@{host}:{sshport}")
 
+    # 云端也是同一个模块根 + 同一份 config.yml，所以"数据隔离"用同一套相对路径，
+    # 只是这些目录落在 <REMOTE_ROOT>/labs/.lab/ 下。
+    lab_env = mod.cloud_paths.lab_env(shared)
+    env_prefix = " ".join(f"{k}={v}" for k, v in sorted(lab_env.items()))
     remote_cmd = (
         f"cd {mod.REMOTE_ROOT} && "
         f"MEOWLLM_ALLOW_LOCAL_MODEL=1 MEOWLLM__ENGINE__KIND=dualstream "
         f"MEOWLLM__SERVER__PORT={mod.REMOTE_PORT} "
-        f"MEOWLLM__SAFETY__MAX_LOCAL_MODEL_PARAMS_B=12 "
-        f"MEOWLLM__ENGINE__DUALSTREAM__MODEL_DIR=/root/autodl-tmp/models/Qwen3-8B "
-        f"nohup setsid /root/miniconda3/bin/python -m meowllm.server.app "
-        f"> /root/autodl-tmp/srv{mod.REMOTE_PORT}.log 2>&1 & echo ok"
+        f"{env_prefix} "
+        f"nohup setsid {mod.cloud_paths.remote_python()} -m meowllm.server.app "
+        f"> {mod.REMOTE_LOG} 2>&1 & echo ok"
     )
     try:
         client.exec_command(remote_cmd)
@@ -173,10 +189,39 @@ def main() -> int:
     ap.add_argument("--lab-port", type=int, default=LAB_PORT)
     ap.add_argument("--nobrowser", action="store_true")
     ap.add_argument("--cloud", action="store_true",
-                    help="本地没有实例时尝试连云端 8B（默认只起本地）")
+                    help="本地没有实例时尝试连云端（默认只起本地）")
     ap.add_argument("--local", action="store_true",
                     help="等价于不加 --cloud，保留兼容")
+    ap.add_argument("--shared", action="store_true",
+                    help="不隔离数据：状态/日志/δ-mem 都写主项目（实验会污染真实用户记忆）")
+    # 兼容 run_lab.bat 的老写法（start / attach / nobrowser / stub / llamacpp），
+    # 这些词在 README 里被写过很多次，argparse 不认识就会直接 exit 2。
+    ap.add_argument("words", nargs="*", default=[],
+                    help="可选位置词：start | attach | nobrowser | cloud | shared | "
+                         "stub | llamacpp | dualstream")
     args = ap.parse_args()
+
+    attach_only = False
+    for word in args.words:
+        word = str(word).strip().lower()
+        if word in ("", "start"):
+            continue
+        if word == "attach":
+            attach_only = True
+        elif word == "nobrowser":
+            args.nobrowser = True
+        elif word == "cloud":
+            args.cloud = True
+        elif word == "local":
+            args.local = True
+        elif word == "shared":
+            args.shared = True
+        elif word in ("stub", "llamacpp", "dualstream"):
+            args.engine = word
+        else:
+            print(f"[lab] 未知参数 {word!r}；可用：start attach nobrowser cloud "
+                  f"shared stub llamacpp dualstream")
+            return 2
 
     py = find_python()
     live_port = args.port
@@ -186,23 +231,30 @@ def main() -> int:
         live_port, data = hit
         eng = (data.get("engine") or {}).get("engine", "?")
         print(f"[lab] 复用已在运行的 MeowLLM（engine={eng}，端口 {live_port}）")
+        if not args.shared:
+            print("[lab] 注意：复用的是**已存在的**实例，它的数据目录由启动它的人决定；"
+                  "要保证隔离就别复用（先 stop 掉再跑本脚本）")
         engine_proc = None
+    elif attach_only:
+        print(f"[lab] attach 模式：{args.port}~{args.port + DEFAULT_SPAN - 1} "
+              f"上没找到 MeowLLM，先跑 .vendor\\.MeowLLM\\start.bat")
+        return 1
     elif args.cloud and not args.local:
         engine_proc = None
-        if _start_cloud(args.port):
+        if _start_cloud(args.port, shared=args.shared):
             hit = wait_ready(args.port, timeout=300)
             if hit is None:
                 print("[cloud] 云端没起来，退回本地")
             else:
                 live_port = hit[0]
         if hit is None:
-            engine_proc = start_engine(py, args.port, args.engine)
+            engine_proc = start_engine(py, args.port, args.engine, shared=args.shared)
             hit = wait_ready(args.port, proc=engine_proc)
             if hit is None:
                 return 1
             live_port = hit[0]
     else:
-        engine_proc = start_engine(py, args.port, args.engine)
+        engine_proc = start_engine(py, args.port, args.engine, shared=args.shared)
         hit = wait_ready(args.port, proc=engine_proc)
         if hit is None:
             return 1

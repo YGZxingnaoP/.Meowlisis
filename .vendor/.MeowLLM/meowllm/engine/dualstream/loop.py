@@ -84,6 +84,8 @@ class DualStreamLoop:
                  probe_kind: str = "roleplay", fast_prefill: bool = True) -> None:
         self.model = model
         self.tok = tokenizer
+        #: token -> 文本的增量解码缓冲（thinker / writer 各一份，见 _decode）
+        self._dec_buf: dict[str, dict] = {}
         self.language = language
         self.device = device
         self.thinker_max = thinker_max
@@ -223,8 +225,32 @@ class DualStreamLoop:
     def _encode(self, text: str, add_special_tokens: bool = False) -> list[int]:
         return list(self.tok.encode(text, add_special_tokens=add_special_tokens))
 
-    def _decode(self, token_id: int) -> str:
-        return self.tok.decode([token_id], skip_special_tokens=True)
+    def _decode(self, token_id: int, stream: str = "writer") -> str:
+        """**按累积 id 解码，不要单 token 解**。
+
+        中文一个字符经常横跨 2~3 个字节级 BPE token。`decode([id])` 单独解一个
+        不完整的 token，transformers 只能吐 U+FFFD（`�`）—— 实测"推荐"会变成
+        "�荐"、"比如"变成"�如"。这里把 id 攒起来整体解，遇到"解出来还剩半个字"
+        （末尾是 U+FFFD）就先不吐，等下一个 token 补齐；补齐后再一次性给出。
+
+        thinker / writer 是两条独立文本流，各用各的缓冲（stream 参数）。
+        """
+        buf = self._dec_buf.setdefault(stream, {"ids": [], "n": 0})
+        buf["ids"].append(int(token_id))
+        text = self.tok.decode(buf["ids"], skip_special_tokens=True)
+        if text.endswith("\ufffd"):
+            # 末尾是半个多字节字符：不推进已发长度，等下一个 token
+            return ""
+        delta = text[buf["n"]:]
+        buf["n"] = len(text)
+        return delta
+
+    def _reset_decoder(self, stream: str | None = None) -> None:
+        """换一段独立文本前清一次（stream=None 清全部）。"""
+        if stream is None:
+            self._dec_buf.clear()
+        else:
+            self._dec_buf.pop(stream, None)
 
     # ------------------------------------------------------------------ 启动
     def reset(self, messages: list[dict]) -> None:
@@ -274,6 +300,7 @@ class DualStreamLoop:
         self.consecutive_no = 0
         self._segment_writer_tokens = 0
         self.thinker_stop = ""
+        self._reset_decoder()          # 新请求：两条流都从干净缓冲开始
         self.segment_texts: list[str] = []
         self._segment_text_start = 0
         self.probing_stopped = False
@@ -363,7 +390,7 @@ class DualStreamLoop:
                     self.thinker_done = True
                     self.thinker_stop = "stop_token:%d" % int(token)
                 else:
-                    text = self._decode(token)
+                    text = self._decode(token, "thinker")
                     self.thinker_ids.append(token)
                     self.stats.thinker_tokens += 1
                     self._thinker_buf += text
@@ -409,7 +436,7 @@ class DualStreamLoop:
                 if token in self._stop_ids:
                     self._close_segment(chunks)
                 else:
-                    text = self._decode(token)
+                    text = self._decode(token, "writer")
                     self.writer_ids.append(token)
                     self.stats.writer_tokens += 1
                     self._segment_writer_tokens += 1

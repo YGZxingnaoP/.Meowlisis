@@ -193,7 +193,7 @@ class MeowLLMServiceState:
         }
 
     def metrics(self) -> dict:
-        return {
+        body = {
             "cache": {"prefix": self.prefix.stats(), "session": self.session.stats()},
             "perf": self.stats.snapshot(),
             "queue": self.scheduler.stats(),
@@ -201,6 +201,16 @@ class MeowLLMServiceState:
                        "loaded": self.engine.loaded,
                        "kv": self.engine.kv_slot_stats()},
         }
+        try:
+            from meowllm.server import gpu as gpu_mod
+
+            body["gpu"] = gpu_mod.sample()
+        except Exception:  # noqa: BLE001 - 面板信息，坏了不影响推理
+            pass
+        registry = getattr(self.engine, "dmem_registry", None)
+        if registry is not None:
+            body["memory"] = {"delta_mem": registry.stats()}
+        return body
 
 
 def _in(path: str, failed: list[str]) -> bool:

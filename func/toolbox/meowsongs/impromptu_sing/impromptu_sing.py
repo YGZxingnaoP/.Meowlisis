@@ -60,8 +60,8 @@ class TBImpromptuSing:
             from func.toolbox.get_prompt import TBoxGetPrompt
             cfg = TBoxConfig()
             if cfg.llm_type == "meowllm":
-                from func.llm.port.meowllm import MeowLLMLLM
-                llm = MeowLLMLLM(cfg)
+                from func.toolbox.port.meowllm import TBoxMeowLLM
+                llm = TBoxMeowLLM(cfg)
             if cfg.llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 llm = TBoxGeminiLLM(cfg)

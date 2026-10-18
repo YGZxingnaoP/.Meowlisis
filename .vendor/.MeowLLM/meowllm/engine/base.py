@@ -47,6 +47,11 @@ class MeowLLMGenParams:
     priority: str = "interactive"
     language: str | None = None
 
+    #: δ-mem 记忆归属（uid）。None = 不挂记忆（与未挂载时完全等价）。
+    memory_owner: str | None = None
+    #: 生成前临时追加写入状态的文本（一般不用；正常走 /control/dmem/write）
+    memory_write: list[str] = field(default_factory=list)
+
     #: 原始请求体里我们没消费的字段，留给引擎做透传
     raw: dict = field(default_factory=dict)
 
@@ -88,11 +93,6 @@ class MeowLLMEngineBase(ABC):
 
     # ---------- 判活 ----------
     @property
-    def client(self) -> bool:
-        """供上层 `if not engine.client` 判活，语义与项目 port 的 `llm.client` 对齐。"""
-        return self._loaded
-
-    @property
     def loaded(self) -> bool:
         return self._loaded
 
@@ -130,12 +130,6 @@ class MeowLLMEngineBase(ABC):
     # ---------- 缓存挂钩（默认为无能力） ----------
     def kv_slot_stats(self) -> dict:
         return {"supported": False}
-
-    def cache_take(self, key: str) -> str | None:
-        return None
-
-    def cache_give(self, key: str, handle: str) -> None:
-        return None
 
     # ---------- 工具 ----------
     @staticmethod

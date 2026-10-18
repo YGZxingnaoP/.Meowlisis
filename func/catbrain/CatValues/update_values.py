@@ -39,8 +39,8 @@ class MeowUpdateValues:
         """懒加载价值观独立 LLM 客户端"""
         if self.llm is None:
             if self.config.values_llm_type == "meowllm":
-                from func.llm.port.meowllm import MeowLLMLLM
-                self.llm = MeowLLMLLM()
+                from func.catbrain.CatValues.port.meowllm import MeowValuesMeowLLM
+                self.llm = MeowValuesMeowLLM()
             if self.config.values_llm_type == "gemini":
                 from func.catbrain.CatValues.port.gemini import MeowValuesGeminiLLM
                 self.llm = MeowValuesGeminiLLM()

@@ -277,8 +277,8 @@ class TBNapcatAnalysis:
         from func.llm.config import LLMConfig
         cfg = LLMConfig()
         if cfg.local_llm_type == "meowllm":
-            from func.llm.port.meowllm import MeowLLMLLM
-            return MeowLLMLLM(cfg)
+            from func.toolbox.port.meowllm import TBoxMeowLLM
+            return TBoxMeowLLM(cfg)
         if cfg.local_llm_type == "gemini":
             from func.toolbox.port.gemini import TBoxGeminiLLM
             return TBoxGeminiLLM(cfg)

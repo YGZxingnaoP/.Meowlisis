@@ -43,8 +43,8 @@ class MeowUpdateUserInfo:
         """懒加载用户记忆独立 LLM 客户端"""
         if self.llm is None:
             if self.config.user_llm_type == "meowllm":
-                from func.llm.port.meowllm import MeowLLMLLM
-                self.llm = MeowLLMLLM()
+                from func.catbrain.UserMemory.port.meowllm import MeowUserMemoryMeowLLM
+                self.llm = MeowUserMemoryMeowLLM()
             if self.config.user_llm_type == "gemini":
                 from func.catbrain.UserMemory.port.gemini import MeowUserMemoryGeminiLLM
                 self.llm = MeowUserMemoryGeminiLLM()

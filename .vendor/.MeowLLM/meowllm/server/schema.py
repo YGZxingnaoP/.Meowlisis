@@ -44,6 +44,10 @@ class MeowLLMExtras:
     pin_prefix: bool | None = None
     priority: str | None = None
     language: str | None = None
+    #: δ-mem 记忆归属（uid）
+    memory_owner: str | None = None
+    #: 生成前临时写入状态的文本列表
+    memory_write: list[str] = field(default_factory=list)
     origin: str = "default"
     unknown: list[str] = field(default_factory=list)
 
@@ -70,6 +74,24 @@ def _as_float(value: Any, name: str) -> float | None:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise MeowLLMContractError(f"{name} 必须是数字: {value!r}") from exc
+
+
+def _as_text_list(value: Any, name: str) -> list[str]:
+    """字符串列表（也接受单个字符串）。"""
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    if isinstance(value, (list, tuple)):
+        out = []
+        for item in value:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if text:
+                out.append(text)
+        return out
+    raise MeowLLMContractError(f"{name} 必须是字符串或字符串数组: {value!r}")
 
 
 def _as_bool(value: Any) -> bool | None:
@@ -114,6 +136,7 @@ def parse_meowllm_block(body: dict) -> MeowLLMExtras:
     known = {
         "thinking_level", "think_budget", "session_id", "context_limit",
         "max_tokens", "cache", "priority", "language",
+        "memory_owner", "memory_write",
     }
     unknown = [k for k in block if k not in known]
 
@@ -147,6 +170,9 @@ def parse_meowllm_block(body: dict) -> MeowLLMExtras:
         pin_prefix=pin_prefix,
         priority=priority,
         language=(str(block["language"]).strip() if block.get("language") else None),
+        memory_owner=(str(block["memory_owner"]).strip()
+                      if block.get("memory_owner") else None),
+        memory_write=_as_text_list(block.get("memory_write"), "meowllm.memory_write"),
         origin="meowllm",
         unknown=unknown,
     )
@@ -195,6 +221,8 @@ def resolve_extras(body: dict) -> MeowLLMExtras:
         pin_prefix=own.pin_prefix,
         priority=own.priority,
         language=own.language,
+        memory_owner=own.memory_owner,
+        memory_write=own.memory_write,
         origin=own.origin if own.origin == "meowllm" else legacy.origin,
         unknown=own.unknown,
     )
@@ -321,5 +349,7 @@ def build_params(body: dict, extras: MeowLLMExtras, cfg) -> MeowLLMGenParams:
         context_limit=context_limit,
         priority=extras.priority or "interactive",
         language=extras.language,
+        memory_owner=extras.memory_owner,
+        memory_write=list(extras.memory_write or []),
         raw=body,
     )

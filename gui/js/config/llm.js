@@ -335,7 +335,7 @@ Object.assign(Config, {
     },
     _mllLink(show) {
         return `${this._mllStyle()}<div class="mll-tip mll-hint" style="display:${show ? '' : 'none'}">
-            <div>${this._t('MeowLLM 的连接、引擎、think/talk 预算、思考档位等参数，统一在子服务里配置。')}</div>
+            <div>${this._t('MeowLLM 的连接、引擎（DualStream）、生成、思考、δ-mem 记忆等参数，统一在子服务里配置。')}</div>
             <div style="margin-top:9px">
                 <button type="button" class="mll-jump" onclick="window.open('/meowllm.html','_blank')">
                     <span>🐾</span><span>${this._t('打开 MeowLLM 配置页')}</span>
@@ -354,7 +354,7 @@ Object.assign(Config, {
             ${this._mllStyle()}
             <div class="mll-tip">
                 <div style="font-size:13px;color:var(--pink-deep,#FF69B4);margin-bottom:6px;font-weight:600">${this._t('MeowLLM 参数在独立页面里配置')}</div>
-                <div>${this._t('连接、引擎、think/talk 预算、思考档位等全部参数都收在子服务（.vendor/.MeowLLM/config.yml），这里不再重复一份，避免两处配置打架。')}</div>
+                <div>${this._t('连接、引擎（DualStream）、生成、思考、δ-mem 记忆与落盘等全部参数都收在子服务（.vendor/.MeowLLM/config.yml），这里不再重复一份，避免两处配置打架。配置页左侧有侧边栏，DualStream 引擎和 δ-mem 记忆是分开的两块。')}</div>
                 <div style="margin-top:12px">
                     <button type="button" class="mll-jump" onclick="window.open('/meowllm.html','_blank')">
                         <span>🐾</span><span>${this._t('打开 MeowLLM 配置页')}</span>

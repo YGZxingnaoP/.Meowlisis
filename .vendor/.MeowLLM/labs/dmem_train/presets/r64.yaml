@@ -1,0 +1,19 @@
+# δ-mem 训练预设：r=64 全层（本项目默认目标配置）
+# 用法：python train_sft.py --data data/sft.jsonl --preset presets/r64.yaml
+dmem:
+  rank: 64
+  n_states: 1
+  chunk: 16
+  alpha: 16.0
+  layers: ""              # 全层；显存/过拟合吃紧就改 "8-19"
+  epochs: 1
+  accum: 4
+  lr: 2.0e-4
+  warmup: 0.1
+  weight_decay: 0.0
+  context_len: 1024       # 32G 卡可以到 2048
+  answer_len: 256         # 与 gen.talk_max_tokens 对齐
+  window: 1024            # 写记忆的分段前向窗口
+  clip: 1.0
+  holdout: 0.05
+  save_every: 200

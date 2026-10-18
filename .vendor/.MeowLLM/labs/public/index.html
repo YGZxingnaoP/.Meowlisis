@@ -3,31 +3,42 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>MeowLLM · 双流对话</title>
+<title>MeowLLM · 双流对话 + 运行时</title>
 <style>
   :root{
     --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
     --fg:#e6e8ee; --dim:#8b93a5; --accent:#58b8ff; --think:#c9a85f;
-    --ok:#4ade80; --warn:#fbbf24; --err:#f87171;
+    --ok:#4ade80; --warn:#fbbf24; --err:#f87171; --mem:#a78bfa;
   }
   *{box-sizing:border-box}
   html,body{height:100%}
   body{
     margin:0; background:var(--bg); color:var(--fg);
     font:15px/1.65 "Segoe UI","Microsoft YaHei",system-ui,sans-serif;
-    display:flex; flex-direction:column;
+    display:flex; flex-direction:column; overflow:hidden;
   }
   header{
     display:flex; align-items:center; gap:10px; flex-wrap:wrap;
     padding:10px 18px; border-bottom:1px solid var(--line); background:var(--panel);
+    flex:0 0 auto;
   }
   header h1{font-size:15px; margin:0 10px 0 0; font-weight:600}
   .pill{font-size:12px; padding:2px 10px; border-radius:999px; border:1px solid var(--line); color:var(--dim); white-space:nowrap}
   .pill.ok{color:var(--ok); border-color:#245b3a; background:#12251a}
   .pill.warn{color:var(--warn); border-color:#5b4a1e; background:#241f12}
+  .pill.mem{color:var(--mem); border-color:#3f2f6b; background:#1b1530}
   .spacer{flex:1}
 
-  #chat{flex:1; overflow-y:auto; padding:22px 0}
+  /* ---- 两栏：左对话 / 右运行时 ---- */
+  #shell{flex:1 1 auto; display:flex; min-height:0}
+  #left{flex:1 1 auto; display:flex; flex-direction:column; min-width:0}
+  #side{
+    flex:0 0 336px; width:336px; overflow-y:auto;
+    border-left:1px solid var(--line); background:var(--panel);
+    padding:12px 12px 40px;
+  }
+
+  #chat{flex:1 1 auto; overflow-y:auto; padding:22px 0}
   .wrap{max-width:860px; margin:0 auto; padding:0 18px}
   .turn{display:flex; margin:14px 0; gap:10px}
   .turn.user{justify-content:flex-end}
@@ -36,18 +47,12 @@
   .turn.bot .bubble{background:var(--panel2); border:1px solid var(--line)}
   .who{font-size:11px; color:var(--dim); margin-bottom:4px}
   details.think{margin:0 0 8px; border-left:2px solid var(--think); padding-left:10px}
-  details.think summary{
-    cursor:pointer; color:var(--think); font-size:12.5px; list-style:none;
-    user-select:none;
-  }
+  details.think summary{cursor:pointer; color:var(--think); font-size:12.5px; list-style:none; user-select:none}
   details.think summary::-webkit-details-marker{display:none}
-  details.think .body{
-    color:#c8bd9a; font-size:13px; white-space:pre-wrap; margin-top:6px;
-    max-height:260px; overflow:auto;
-  }
+  details.think .body{color:#c8bd9a; font-size:13px; white-space:pre-wrap; margin-top:6px; max-height:260px; overflow:auto}
   .meta{font-size:11.5px; color:var(--dim); margin-top:8px}
 
-  footer{border-top:1px solid var(--line); background:var(--panel); padding:12px 0}
+  footer{border-top:1px solid var(--line); background:var(--panel); padding:12px 0; flex:0 0 auto}
   .composer{max-width:860px; margin:0 auto; padding:0 18px; display:flex; gap:10px; align-items:flex-end}
   textarea{
     flex:1; resize:none; min-height:52px; max-height:180px;
@@ -63,6 +68,37 @@
   button.ghost{background:transparent; color:var(--dim); border-color:var(--line); padding:8px 14px}
   .hint{max-width:860px; margin:8px auto 0; padding:0 18px; color:var(--dim); font-size:12px}
   .err{color:var(--err)}
+
+  /* ---- 右栏 ---- */
+  .card{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 11px; margin-bottom:10px}
+  .card h2{
+    font-size:11.5px; font-weight:600; color:var(--dim); margin:0 0 8px;
+    letter-spacing:.6px; text-transform:uppercase; display:flex; align-items:center; gap:6px;
+  }
+  .card h2 .dot{width:6px;height:6px;border-radius:50%;background:var(--line)}
+  .card h2 .dot.on{background:var(--ok)}
+  .card h2 .dot.off{background:var(--err)}
+  .card h2 .dot.idle{background:var(--warn)}
+  .kv{display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:12px}
+  .kv .k{color:var(--dim); white-space:nowrap}
+  .kv .v{color:var(--fg); text-align:right; word-break:break-all; font-variant-numeric:tabular-nums}
+  .kv .v.mono{font-family:Consolas,monospace; font-size:11px}
+  .v.ok{color:var(--ok)} .v.warn{color:var(--warn)} .v.err{color:var(--err)} .v.mem{color:var(--mem)}
+  .meter{margin:7px 0 2px}
+  .meter .top{display:flex; justify-content:space-between; font-size:11.5px; color:var(--dim); margin-bottom:3px}
+  .meter .track{height:7px; border-radius:999px; background:#0c0e12; border:1px solid var(--line); overflow:hidden}
+  .meter .fill{height:100%; width:0%; border-radius:999px; background:linear-gradient(90deg,#2c5677,var(--accent)); transition:width .4s ease}
+  .meter .fill.gpu{background:linear-gradient(90deg,#276749,var(--ok))}
+  .meter .fill.warn{background:linear-gradient(90deg,#6b4b12,var(--warn))}
+  .meter .fill.err{background:linear-gradient(90deg,#6b1d1d,var(--err))}
+  .meter .fill.mem{background:linear-gradient(90deg,#3f2f6b,var(--mem))}
+  .note{font-size:11px; color:var(--dim); margin-top:8px; line-height:1.5}
+  .reason{font-size:11.5px; color:var(--warn); line-height:1.55; word-break:break-word}
+  .foot{font-size:10.5px; color:#5d6474; text-align:right; margin-top:-4px}
+  @media (max-width: 980px){
+    #shell{flex-direction:column}
+    #side{flex:0 0 auto; width:100%; border-left:none; border-top:1px solid var(--line); max-height:42vh}
+  }
 </style>
 </head>
 <body>
@@ -71,19 +107,67 @@
   <span id="status" class="pill">连接中…</span>
   <span id="model" class="pill">—</span>
   <span id="engine" class="pill">—</span>
+  <span id="dmemPill" class="pill">δ-mem —</span>
   <span class="spacer"></span>
   <button id="reset" class="ghost">新对话</button>
 </header>
 
-<div id="chat"><div class="wrap" id="list"></div></div>
+<div id="shell">
+  <main id="left">
+    <div id="chat"><div class="wrap" id="list"></div></div>
+    <footer>
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+        <button id="send">发送</button>
+      </div>
+      <div class="hint" id="hint">思考流在气泡上方折叠显示；右栏是服务端的实时运行时数据。</div>
+    </footer>
+  </main>
 
-<footer>
-  <div class="composer">
-    <textarea id="input" rows="1" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
-    <button id="send">发送</button>
-  </div>
-  <div class="hint" id="hint">思考流在气泡上方折叠显示；它与正文同时产出，不是先想完再说。</div>
-</footer>
+  <aside id="side">
+    <div class="card">
+      <h2><span class="dot" id="dotEngine"></span>引擎 / 模型</h2>
+      <div class="kv" id="engineKv"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="dotGpu"></span>GPU</h2>
+      <div class="meter">
+        <div class="top"><span>显存（驱动层已用）</span><span id="vramTxt">—</span></div>
+        <div class="track"><div class="fill gpu" id="vramBar"></div></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span>本进程已分配</span><span id="allocTxt">—</span></div>
+        <div class="track"><div class="fill" id="allocBar"></div></div>
+      </div>
+      <div class="meter">
+        <div class="top"><span>利用率</span><span id="utilTxt">—</span></div>
+        <div class="track"><div class="fill warn" id="utilBar"></div></div>
+      </div>
+      <div class="kv" id="gpuKv" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h2><span class="dot" id="dotMem"></span>δ-mem 记忆</h2>
+      <div id="memState" class="kv"></div>
+      <div id="memReason" class="reason" style="display:none"></div>
+      <div class="kv" id="memCfg" style="margin-top:8px"></div>
+      <div class="kv" id="memReg" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <h2>本轮生成</h2>
+      <div class="kv" id="turnKv"><div class="k">—</div><div class="v">等一次对话</div></div>
+    </div>
+
+    <div class="card">
+      <h2>队列 / 缓存</h2>
+      <div class="kv" id="queueKv"></div>
+    </div>
+
+    <div class="foot" id="polled"></div>
+  </aside>
+</div>
 
 <script>
 'use strict';
@@ -94,7 +178,28 @@ let history = [];
 let busy = false;
 
 function esc(s){return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function num(v, digits){
+  if (v === null || v === undefined || v === '') return '—';
+  const n = Number(v);
+  if (!isFinite(n)) return String(v);
+  return digits === undefined ? String(n) : n.toFixed(digits);
+}
+/** 渲染一组 kv：[k, v, cls] */
+function renderKv(el, rows){
+  el.innerHTML = rows
+    .filter(r => r && r[1] !== undefined)
+    .map(([k, v, cls]) => `<div class="k">${esc(k)}</div><div class="v ${cls||''}">${esc(v)}</div>`)
+    .join('');
+}
+function setMeter(barEl, txtEl, used, total, unit){
+  if (!total || !isFinite(used)){ barEl.style.width='0%'; txtEl.textContent='—'; return; }
+  const pct = Math.max(0, Math.min(100, used / total * 100));
+  barEl.style.width = pct.toFixed(1) + '%';
+  txtEl.textContent = `${num(used,0)} / ${num(total,0)} ${unit}  (${pct.toFixed(0)}%)`;
+  barEl.className = 'fill ' + (pct > 92 ? 'err' : pct > 75 ? 'warn' : 'gpu');
+}
 
+/* ------------------------------------------------ 左栏对话 */
 async function refreshInfo(){
   try{
     const r = await fetch('/api/info'); const info = await r.json();
@@ -125,7 +230,6 @@ function addTurn(role, text){
   return b;
 }
 
-/** 机器人气泡：默认一个"思考中…"占位，收到正文后替换 */
 function addBotTurn(){
   const turn = document.createElement('div');
   turn.className = 'turn bot';
@@ -200,6 +304,8 @@ async function send(){
             `输出后仍在思考 ${s.overlap_chars ?? 0} 字`;
           history.push({ role:'assistant', content: content || '(空)' });
           $('hint').textContent = '完成';
+          renderTurn(s);
+          pollStats();          // 队列/缓存立刻刷新一次
         } else if (ev.type === 'error'){
           ui.body.innerHTML = `<span class="err">✗ ${esc(ev.message)}</span>`;
           $('hint').textContent = '出错';
@@ -215,6 +321,134 @@ async function send(){
   }
 }
 
+/* ------------------------------------------------ 右栏：本轮 */
+function renderTurn(s){
+  renderKv($('turnKv'), [
+    ['输入 tokens', num(s.prompt_tokens)],
+    ['输出 tokens', num(s.completion_tokens)],
+    ['合计 tokens', num(s.total_tokens)],
+    ['思考字数', `${num(s.reasoning_chars)} 字`, 'warn'],
+    ['正文字数', `${num(s.content_chars)} 字`, 'ok'],
+    ['首字延迟', s.first_content_ms == null ? '—' : `${num(s.first_content_ms)} ms`],
+    ['总耗时', `${num(s.total_ms)} ms`],
+    ['边说边想', `${num(s.overlap_chars)} 字 / ${num(s.overlap_chunks)} 片`,
+      (s.overlap_chars > 0 ? 'ok' : '')],
+    ['结束原因', s.finish_reason || '—'],
+  ]);
+}
+
+/* ------------------------------------------------ 右栏：轮询 */
+async function getJSON(url){
+  const r = await fetch(url, { cache:'no-store' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function pollRuntime(){
+  // GPU + δ-mem：2 秒级
+  try{
+    const g = await getJSON('/api/control/gpu');
+    $('dotGpu').className = 'dot ' + (g.available ? 'on' : 'off');
+    setMeter($('vramBar'), $('vramTxt'), g.memory_used_mb, g.memory_total_mb, 'MB');
+    setMeter($('allocBar'), $('allocTxt'), g.process_allocated_mb, g.memory_total_mb, 'MB');
+    const util = g.utilization_pct;
+    $('utilBar').style.width = (util == null ? 0 : util) + '%';
+    $('utilTxt').textContent = util == null ? '—（无 NVML）' : util + ' %';
+    $('utilBar').className = 'fill ' + (util > 92 ? 'err' : util > 75 ? 'warn' : 'warn');
+    renderKv($('gpuKv'), [
+      ['设备', g.name || '—'],
+      ['空闲显存', g.memory_free_mb == null ? '—' : `${num(g.memory_free_mb,0)} MB`],
+      ['本进程预留', g.process_reserved_mb == null ? '—' : `${num(g.process_reserved_mb,0)} MB`],
+      ['pid', num(g.pid)],
+    ]);
+  }catch(e){
+    $('dotGpu').className = 'dot off';
+    $('vramTxt').textContent = '—';
+  }
+
+  try{
+    const d = await getJSON('/api/control/dmem/status');
+    $('dotMem').className = 'dot ' + (d.enabled ? 'on' : 'off');
+    $('dmemPill').className = 'pill ' + (d.enabled ? 'mem' : 'warn');
+    $('dmemPill').textContent = d.enabled ? 'δ-mem 已挂载' : 'δ-mem 未挂载';
+
+    renderKv($('memState'), [
+      ['状态', d.enabled ? '已挂载' : '未挂载', d.enabled ? 'mem' : 'warn'],
+      ['参数', d.enabled && d.params
+        ? `${num(d.params.delta_mem_params/1e6, 2)} M（${num(d.params.ratio*100, 3)}%）` : '—'],
+      // ⚠ 必须是 params.layers（实际挂载层数 = 36），
+      //    config.layers 是配置里的**层白名单**（"" = 全层 → 空数组 → 恒显示 0）
+      ['层数', d.enabled && d.params && d.params.layers != null
+        ? `${d.params.layers} 层` : '—'],
+      ['基线参数量', d.enabled && d.params && d.params.backbone_params != null
+        ? `${num(d.params.backbone_params/1e9, 2)} B` : '—'],
+    ]);
+    if (!d.enabled && d.reason){
+      $('memReason').style.display = '';
+      $('memReason').textContent = '原因：' + d.reason;
+    } else {
+      $('memReason').style.display = 'none';
+    }
+    renderKv($('memCfg'), d.enabled && d.config ? [
+      ['r', num(d.config.rank)], ['chunk', num(d.config.chunk)],
+      ['N', num(d.config.n_states)], ['window', num(d.config.window)],
+      ['α', num(d.config.alpha, 2)],
+    ] : []);
+    renderKv($('memReg'), d.enabled && d.registry ? [
+      ['布局', d.registry.layout || '—'],
+      ['当前 owner', d.registry.current || '（无）'],
+      // 常驻用户是 **LRU 缓存**，上限 max_cached_owners（默认 8）；
+      // 到顶后每来一个新用户就淘汰最久没用的一个（evictions 会跟着涨）。
+      // 只显示个数会让人误以为"一直在涨、泄漏了"，所以把上限和淘汰数一起摆出来。
+      ['常驻用户', `${(d.registry.owners_cached||[]).length} / ${num(d.registry.max_cached)}`
+        + ((d.registry.evictions||0) > 0 ? `（已淘汰 ${num(d.registry.evictions)}）` : '')],
+      ['每个状态', d.registry.state_kb_per_owner == null ? '—' : `${num(d.registry.state_kb_per_owner,1)} KB`],
+      ['累计写入', `${num(d.registry.writes)} 次 / ${num(d.registry.write_ms_avg)} ms`],
+      ['累计 tokens', num(d.registry.tokens)],
+      ['命中/未命中', `${num(d.registry.hits)} / ${num(d.registry.misses)}`],
+      ['存储根', d.registry.root || '—', 'mono'],
+    ] : []);
+  }catch(e){
+    $('dotMem').className = 'dot off';
+    $('dmemPill').className = 'pill warn';
+    $('dmemPill').textContent = 'δ-mem ?';
+    $('memReason').style.display = '';
+    $('memReason').textContent = '查不到子服务：' + e.message;
+  }
+  $('polled').textContent = '更新于 ' + new Date().toLocaleTimeString();
+}
+
+async function pollStats(){
+  try{
+    const h = await getJSON('/api/control/health');
+    const e = h.engine || {};
+    $('dotEngine').className = 'dot ' + (e.loaded ? 'on' : 'idle');
+    renderKv($('engineKv'), [
+      ['模型', e.model || '—'], ['参数量', e.params_b == null ? '—' : `${num(e.params_b,3)} B`],
+      ['引擎', e.engine || '—'], ['模式', e.mode || '—'],
+      ['设备', e.device || '—'], ['已加载', e.loaded ? '是' : '否', e.loaded ? 'ok' : 'warn'],
+      ['架构', e.architecture || '—'], ['线性层', num(e.linear_layers)],
+      ['运行', h.uptime_s == null ? '—' : `${num(h.uptime_s,0)} s`],
+      ['版本', h.version || '—'],
+    ]);
+  }catch{ $('dotEngine').className = 'dot off'; }
+
+  try{
+    const s = await getJSON('/api/control/stats');
+    const q = s.queue || {}, p = (s.cache||{}).prefix || {}, se = (s.cache||{}).session || {};
+    renderKv($('queueKv'), [
+      ['并发生', num(q.running)], ['排队', num(q.queue_depth)],
+      ['并发上限', num(q.max_concurrency)], ['交互优先', q.interactive_first ? '是' : '否'],
+      ['平均等待', q.avg_waited_ms == null ? '—' : `${num(q.avg_waited_ms,0)} ms`],
+      ['前缀命中率', p.hit_rate == null ? '—' : `${num(p.hit_rate*100,1)} %`],
+      ['前缀槽位', `${num(p.entries)} / ${num(p.slots)}`],
+      ['会话数', `${num(se.sessions)} / ${num(se.max_sessions)}`],
+      ['会话 tokens', num(se.total_tokens)],
+    ]);
+  }catch{ /* 静默：服务刚起时 /stats 可能还没准备好 */ }
+}
+
+/* ------------------------------------------------ 启动 */
 $('send').addEventListener('click', send);
 $('input').addEventListener('keydown', (e)=>{
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); send(); }
@@ -222,7 +456,10 @@ $('input').addEventListener('keydown', (e)=>{
 $('reset').addEventListener('click', ()=>{
   history = []; list.innerHTML = ''; $('hint').textContent = '已开新对话';
 });
+
 refreshInfo(); setInterval(refreshInfo, 15000);
+pollRuntime(); setInterval(pollRuntime, 2000);
+pollStats();   setInterval(pollStats, 10000);
 $('input').focus();
 </script>
 </body>

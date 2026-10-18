@@ -221,16 +221,43 @@ async def sse_stream(events: AsyncIterator[MeowLLMGenEvent],
     yielded_any = False
     try:
         yield to_sse(writer.role())
+        local_meta: dict = {}
         async for event in events:
             if event.kind == KIND_META:
+                local_meta.update(event.meta or {})
                 if on_meta is not None:
                     on_meta(event.meta or {})
                 continue
+            if event.kind == KIND_FINISH and getattr(event, "meta", None):
+                # 结束块里带着 prompt_tokens / completion_tokens —— 收下来，
+                # 末尾那块 usage 就是从这里算的。
+                local_meta.update(event.meta)
             chunk = event_to_chunk(writer, event)
             if chunk is None:
                 continue
             yielded_any = True
             yield to_sse(chunk)
+        # 末尾补一块"只有 usage 的空 choices chunk"：对齐 OpenAI 的
+        # stream_options.include_usage。没有它，流式调用方永远拿不到 token 数
+        # （META 事件被上面 continue 掉了，只进了服务端自己的统计）。
+        if local_meta:
+            prompt_tokens = int(local_meta.get("prompt_tokens")
+                                or local_meta.get("prompt_n") or 0)
+            completion_tokens = int(local_meta.get("completion_tokens")
+                                    or local_meta.get("predicted_n") or 0)
+            yield to_sse({
+                "id": writer.id,
+                "object": _OBJECT_CHUNK,
+                "created": writer.created,
+                "model": writer.model,
+                "choices": [],
+                "usage": {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens,
+                },
+                "meowllm": local_meta,
+            })
     except Exception as exc:  # noqa: BLE001
         # 已开始输出时无法改状态码，只能补一个错误块再结束
         yield to_sse({

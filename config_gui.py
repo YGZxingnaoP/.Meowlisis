@@ -99,7 +99,7 @@ def post_config():
 def _meowllm_io():
     if str(BASE_DIR) not in sys.path:
         sys.path.insert(0, str(BASE_DIR))
-    from func.llm import meowllm_config
+    from func.meowllm import config as meowllm_config
     return meowllm_config
 
 
@@ -107,6 +107,59 @@ def _meowllm_io():
 def get_meowllm_config():
     io = _meowllm_io()
     return jsonify({'path': io.config_path(), 'data': io.data(force=True)})
+
+
+# ==================== MeowLLM 子服务控制面（代理） ====================
+# 配置页跑在 1801，MeowLLM 在 18100（或被占用后的回退端口）。
+# 浏览器直连子服务是跨域，所以「状态探测 / 重载」都从这里代理一次。
+# 只放行下面白名单里的路径 —— 这是配置页真正用到的全部，别的一律 404。
+# 注意：dmem/write、dmem/forget 刻意**不**放行 —— 记忆的写入属于主项目运行时行为
+# （func/catbrain/.../dmem_bridge.py），不该能从配置页手工灌进去。
+_MEOWLLM_CONTROL = {
+    'health', 'stats', 'version', 'reload', 'session/reset',
+    'dmem/status',
+}
+
+
+def _meowllm_control_base():
+    """从 meowllm 的 OpenAI 兼容地址（.../meowllm/v1）推出控制面根地址。"""
+    io = _meowllm_io()
+    url = str(io.base_url() or '').rstrip('/')
+    root = url[:-3] if url.endswith('/v1') else url
+    return root + '/control'
+
+
+@app.route('/api/meowllm/control/<path:sub>', methods=['GET', 'POST'])
+def proxy_meowllm_control(sub):
+    """把 /api/meowllm/control/x 转给子服务的 /meowllm/control/x。"""
+    import urllib.error
+    import urllib.request
+
+    sub = (sub or '').strip().strip('/')
+    if sub not in _MEOWLLM_CONTROL:
+        return jsonify({'error': f'不支持的控制面路径: {sub}'}), 404
+
+    payload = None
+    if request.method == 'POST':
+        payload = json.dumps(request.get_json(silent=True) or {}).encode('utf-8')
+    req = urllib.request.Request(
+        f'{_meowllm_control_base()}/{sub}', data=payload, method=request.method,
+        headers={'Content-Type': 'application/json; charset=utf-8',
+                 'Accept': 'application/json'})
+    try:
+        with urllib.request.urlopen(req, timeout=180) as resp:
+            body = resp.read().decode('utf-8', 'replace')
+            status = resp.status
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode('utf-8', 'replace')
+        status = exc.code
+    except Exception as exc:  # noqa: BLE001 - 子服务没起、端口没开、DNS 之类
+        return jsonify({'error': f'子服务不可达（{type(exc).__name__}: {exc}）'}), 502
+    try:
+        data = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        data = {'raw': body}
+    return jsonify(data), status
 
 
 @app.route('/api/meowllm/config', methods=['POST'])

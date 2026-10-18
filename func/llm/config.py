@@ -69,14 +69,9 @@ class LLMConfig:
         self.gemini_stream = gemini_cfg.get('stream', True)
 
         # ========== MeowLLM 本地模型 ==========
-        # 连接与采样参数统一由 .vendor/.MeowLLM/config.yml 提供
-        from func.llm import meowllm_config
-        self.meowllm_base_url = meowllm_config.base_url()
-        self.meowllm_model = meowllm_config.model_name()
-        self.meowllm_temperature = float(meowllm_config.gen('temperature', 0.8))
-        self.meowllm_top_p = float(meowllm_config.gen('top_p', 0.9))
-        self.meowllm_top_k = int(meowllm_config.gen('top_k', 40))
+        # 连接与其余采样参数统一由 func/meowllm/（基础设施）读
+        # .vendor/.MeowLLM/config.yml 后提供；这里只留唯一一个外部读者：
+        # llm_active 需要它来算主动回复的长度上限。
+        from func.meowllm import config as meowllm_config
         self.meowllm_talk_max_tokens = int(meowllm_config.gen('talk_max_tokens', 256))
-        self.meowllm_think_max_tokens = int(meowllm_config.gen('think_max_tokens', 1024))
-        self.meowllm_enable_thinking = meowllm_config.thinking_level() != 'off'
         self.gemini_enable_thinking = gemini_cfg.get('enable_thinking', False)

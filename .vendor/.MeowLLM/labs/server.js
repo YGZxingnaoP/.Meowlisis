@@ -132,6 +132,7 @@ async function streamChat({ messages, mode, maxTokens }, onEvent) {
   let firstReason = null;
   let firstContent = null;
   let finish = '';
+  let usage = null;
   let overlapChars = 0;      // 首个输出片**之后**才到达的思考字数
   let overlapChunks = 0;     // 同上，按片数
 
@@ -149,6 +150,7 @@ async function streamChat({ messages, mode, maxTokens }, onEvent) {
       let obj;
       try { obj = JSON.parse(payload); } catch { continue; }
       if (obj.meowllm) meta = { ...meta, ...obj.meowllm };
+      if (obj.usage) usage = obj.usage;      // 服务端在最后一块里带 usage
       for (const choice of obj.choices || []) {
         const delta = choice.delta || {};
         const ms = Date.now() - started;
@@ -188,6 +190,9 @@ async function streamChat({ messages, mode, maxTokens }, onEvent) {
     overlap_chars: overlapChars,
     overlap_chunks: overlapChunks,
     finish_reason: finish,
+    prompt_tokens: usage ? usage.prompt_tokens : (meta.prompt_tokens ?? null),
+    completion_tokens: usage ? usage.completion_tokens : (meta.completion_tokens ?? null),
+    total_tokens: usage ? usage.total_tokens : null,
     text: content,
     reasoning,
   };
@@ -221,6 +226,28 @@ async function handle(req, res) {
       modes: MODES,
       health,
     });
+  }
+
+  // ---- 控制面代理：页面只跟实验台说话，由实验台去问 MeowLLM（免跨域） ----
+  // 白名单照抄控制面里"只读"的那几个；写记忆/遗忘不开放给页面。
+  if (req.method === 'GET' && pathname.startsWith('/api/control/')) {
+    const sub = pathname.slice('/api/control/'.length).replace(/\/+$/, '');
+    const allowed = new Set(['health', 'gpu', 'stats', 'version', 'dmem/status']);
+    if (!allowed.has(sub)) {
+      return sendJSON(res, 404, { error: `不支持的控制面路径: ${sub}` });
+    }
+    try {
+      const r = await fetch(`${CTL}/${sub}`, { signal: AbortSignal.timeout(10000) });
+      const text = await r.text();
+      res.writeHead(r.status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end(text);
+    } catch (err) {
+      sendJSON(res, 502, { error: String((err && err.message) || err) });
+    }
+    return;
   }
 
   if (req.method === 'POST' && pathname === '/api/chat') {

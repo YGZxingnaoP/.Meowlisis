@@ -782,8 +782,8 @@ class TBoxQQResponse:
             ]
             cfg = LLMConfig()
             if cfg.local_llm_type == "meowllm":
-                from func.llm.port.meowllm import MeowLLMLLM
-                llm = MeowLLMLLM(cfg)
+                from func.toolbox.port.meowllm import TBoxMeowLLM
+                llm = TBoxMeowLLM(cfg)
             if cfg.local_llm_type == "gemini":
                 from func.toolbox.port.gemini import TBoxGeminiLLM
                 llm = TBoxGeminiLLM(cfg)

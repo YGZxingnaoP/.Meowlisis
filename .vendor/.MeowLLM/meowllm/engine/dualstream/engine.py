@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import time
 
 import torch
-from transformers import DynamicCache
 
 from meowllm.engine.dualstream import compat
 from meowllm.engine.dualstream.loop import DualStreamLoop
@@ -22,7 +22,7 @@ from meowllm.engine.base import (
     MeowLLMGenEvent,
     MeowLLMGenParams,
 )
-from meowllm.errors import MeowLLMEngineError
+from meowllm.errors import MeowLLMContractError, MeowLLMEngineError
 
 DEFAULT_MODEL_DIR = "models/Qwen3-0.6B"
 DEFAULT_PROMPT_CAPACITY = 8192
@@ -32,6 +32,38 @@ def _tf_text_cfg(model):
     cfg = getattr(model, "config", None)
     text_cfg = getattr(cfg, "text_config", None) if cfg is not None else None
     return text_cfg if text_cfg is not None else cfg
+
+
+def _parse_layers(value) -> tuple:
+    """`"8-19"` / `"0,5,9"` / `""`（= 全层）-> 层号元组。"""
+    if value is None:
+        return ()
+    if isinstance(value, (list, tuple)):
+        return tuple(int(x) for x in value)
+    text = str(value).strip()
+    if not text:
+        return ()
+    if "-" in text:
+        lo, hi = text.split("-", 1)
+        return tuple(range(int(lo), int(hi) + 1))
+    return tuple(int(x) for x in text.split(",") if x.strip())
+
+
+def _file_sha1(path: str, limit: int = 64 << 20) -> str:
+    """权重指纹（只读前 64MB，秒级；用于"状态与权重是否配套"的校验）。"""
+    try:
+        digest = hashlib.sha1()
+        with open(path, "rb") as fh:
+            remain = limit
+            while remain > 0:
+                chunk = fh.read(min(1 << 20, remain))
+                if not chunk:
+                    break
+                digest.update(chunk)
+                remain -= len(chunk)
+        return digest.hexdigest()[:16]
+    except OSError:
+        return ""
 
 
 def _apply_sampling(logits: torch.Tensor, temperature: float, top_p: float,
@@ -146,6 +178,11 @@ class PlainLoop:
         self.ids.append(int(token))
         self.stats["completion_tokens"] = len(self.ids)
         full = self.tok.decode(self.ids, skip_special_tokens=True)
+        if full.endswith("\ufffd"):
+            # 中文一个字符常横跨 2~3 个字节级 token：此刻解出来末尾还是半个字，
+            # transformers 只能给 U+FFFD。**先别吐**，等下一个 token 补齐再一起发
+            # —— 否则输出里会出现"推"变成"�"这种乱码（实测很常见）。
+            return int(token), ""
         delta = full[len(self.text):]
         self.text = full
         if any(mark and mark in self.text for mark in self._stop_strings):
@@ -169,6 +206,13 @@ class AsyncHFEngine(MeowLLMEngineBase):
         self._linear_layers = 0
         self._dual_stream_supported = True
         self._vision = False
+        #: δ-mem（`memory.delta_mem.enabled` 时才非 None）
+        self.dmem = None
+        self.dmem_registry = None
+        #: 为什么没挂上（"没开" / 权重缺失 / 形状不匹配 …）；对外经 dmem_status 暴露
+        self._dmem_reason = ""
+        #: 上一次生成用了谁的记忆（只做观测）
+        self._last_memory: dict = {}
 
     def load(self) -> None:
         problems = compat.self_check()
@@ -238,6 +282,7 @@ class AsyncHFEngine(MeowLLMEngineBase):
             self.log.warning("模型含 %d/%d 层 linear_attention，双流不可用，仅支持单流",
                              self._linear_layers, len(self._layer_types) or 0)
         self.log.info("就绪：params=%.3fB dir=%s", self._params_b, model_dir)
+        self._load_delta_mem()
 
     @staticmethod
     def _read_config(model_dir: str) -> dict:
@@ -280,7 +325,142 @@ class AsyncHFEngine(MeowLLMEngineBase):
         except Exception:
             return 0.0
 
+    # ------------------------------------------------------------ δ-mem
+    def _load_delta_mem(self) -> None:
+        """按 `memory.delta_mem` 挂载 δ-mem。
+
+        失败一律降级成"不挂记忆"：这是记忆增强，不是主链路，不能因为权重/路径
+        有问题就让整个本地模型起不来。但**降级原因必须留住**（`self._dmem_reason`），
+        否则运维只能看到 `enabled: false`，分不清"没开"和"开了但挂了"。
+        """
+        node = self.cfg.section("memory").get("delta_mem") or {}
+        if not node.get("enabled"):
+            self._dmem_reason = "config 里 memory.delta_mem.enabled=false（没开，不是出错）"
+            return
+        try:
+            from meowllm.dmem import DeltaMem, DeltaMemConfig
+            from meowllm.dmem.registry import DmemRegistry
+
+            weights = self.cfg.resolve(str(node.get("weights") or ""))
+            cfg = DeltaMemConfig(
+                rank=int(node.get("rank", 64)),
+                n_states=int(node.get("n_states", 1)),
+                chunk=int(node.get("chunk", 16)),
+                alpha=float(node.get("alpha", 16.0)),
+                layers=_parse_layers(node.get("layers")),
+                # 写记忆那趟前向的窗口。留空 = 跟上下文窗口一致；但训练时的窗口
+                # 通常是 512~1024，这里给出显式可配项（不是结构参数，只影响写入分块）。
+                window=int(node.get("window") or 0)
+                or int(self.cfg.get("context.n_ctx", 8192) or 8192),
+            )
+            dmem = DeltaMem(cfg)
+            if weights and os.path.isfile(weights):
+                dmem.load(weights, model=self._model)
+            elif node.get("allow_untrained"):
+                self.log.warning(
+                    "δ-mem 权重不存在（%s），按**未训练**随机初始化挂载 —— "
+                    "只在验管道时这么用，效果一定比不挂更差", weights or "(空)")
+                dmem.attach(self._model)
+            else:
+                # 默认不挂：随机初始化的 Δ-mem 会往 attention 里注入噪声，
+                # 比"没有记忆"更糟，而且从外面完全看不出来。
+                raise FileNotFoundError(
+                    f"δ-mem 权重不存在：{weights or '(config 里 weights 为空)'}；"
+                    "确实要用未训练权重验管道，就把 memory.delta_mem.allow_untrained 设成 true")
+            dmem.cfg = cfg
+            # 注入强度缩放：config 的 alpha 只是初始化值，真正生效的是每层学出来的
+            # log_alpha（≈16）。要调"记忆对 attention 的影响力"只能乘它。
+            alpha_scale = float(node.get("alpha_scale", 1.0) or 1.0)
+            if alpha_scale != 1.0:
+                info = dmem.scale_alpha(alpha_scale)
+                self.log.info("δ-mem 注入强度 ×%g：%s", alpha_scale, info)
+            report = dmem.param_report()
+            self.log.info("δ-mem 已挂载：%d 层 r=%d N=%d chunk=%d，%.2fM 参数（%.2f%%）",
+                          len(dmem.module_names), cfg.rank, cfg.n_states, cfg.chunk,
+                          report["delta_mem_params"] / 1e6,
+                          (report["ratio"] or 0) * 100)
+            state_dir = self.cfg.resolve(str(node.get("state_dir") or "")
+                                         or "character/memory/.dmem")
+            userinfo = self.cfg.resolve(str(node.get("userinfo_dir") or "")
+                                        or os.path.join("..", "..", "character",
+                                                        "userinfo"))
+            self.dmem_registry = DmemRegistry(
+                dmem,
+                layout=str(node.get("layout") or "userinfo"),
+                userinfo_dir=userinfo,
+                flat_dir=state_dir,
+                formal_pattern=str(node.get("formal_pattern") or r"^\d{6}$"),
+                strict_formal=bool(node.get("strict_formal", True)),
+                max_cached=int(node.get("max_cached_owners", 8)),
+                persist=bool(node.get("persist", True)),
+                weights_sha1=_file_sha1(weights) if os.path.isfile(weights) else "",
+                backup_keep=int(node.get("backup_keep", 5)))
+            self.log.info("δ-mem 状态存储：layout=%s root=%s（每用户独立目录）",
+                          self.dmem_registry.layout, self.dmem_registry._root())
+            self.dmem = dmem
+            self._dmem_reason = ""
+            if node.get("calibrate_on_load"):
+                self.log.info("δ-mem 定标：%s", dmem.calibrate(self._model))
+        except Exception as exc:  # noqa: BLE001
+            self.log.warning("δ-mem 挂载失败，本次按无记忆运行：%s", exc)
+            # 这两类异常的消息本身就是给人看的完整说明，不必再叠一层类型名
+            self._dmem_reason = (str(exc)
+                                 if isinstance(exc, (ValueError, FileNotFoundError))
+                                 else f"{type(exc).__name__}: {exc}")
+            self.dmem = None
+            self.dmem_registry = None
+
+    @property
+    def dmem_ready(self) -> bool:
+        return self.dmem is not None and self.dmem_registry is not None
+
+    def dmem_status(self) -> dict:
+        if not self.dmem_ready:
+            return {"enabled": False,
+                    "reason": self._dmem_reason or "未挂载（原因未记录）"}
+        return {"enabled": True,
+                "params": self.dmem.param_report(),
+                "config": self.dmem.cfg.to_dict(),
+                "registry": self.dmem_registry.stats()}
+
+    def dmem_write(self, owner: str, text: str, mode: str = "replace",
+                   source: str = "api") -> dict:
+        """把文本写进某 owner 的状态（等价 mem0 的 add）。"""
+        if not self.dmem_ready:
+            raise MeowLLMEngineError(
+                f"δ-mem 未挂载（{self._dmem_reason or '原因未记录'}）")
+        if not str(owner or "").strip():
+            raise MeowLLMContractError("owner 不能为空")
+        ids = self._tokenizer.encode(text or "", add_special_tokens=False)
+        if not ids:
+            raise MeowLLMContractError("text 为空")
+        stat = self.dmem_registry.write(owner, ids, self._model, device=self._device,
+                                        mode=mode, source_text=text or "",
+                                        source_tag=str(source or "api"))
+        self.log.info("δ-mem 写入 owner=%s %s：%d token / %d 段，%ss",
+                      owner, mode, stat.get("tokens"), stat.get("chunks"),
+                      stat.get("seconds"))
+        return stat
+
+    def dmem_forget(self, owner: str) -> dict:
+        if not self.dmem_ready:
+            raise MeowLLMEngineError(
+                f"δ-mem 未挂载（{self._dmem_reason or '原因未记录'}）")
+        return {"owner": owner, "removed": bool(self.dmem_registry.forget(owner))}
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+
     def unload(self) -> None:
+        try:
+            if self.dmem is not None:
+                self.dmem.detach()
+        except Exception:  # noqa: BLE001
+            pass
+        self.dmem = None
+        self.dmem_registry = None
+        self._dmem_reason = "引擎已卸载"
         self._model = None
         self._tokenizer = None
         try:
@@ -403,9 +583,35 @@ class AsyncHFEngine(MeowLLMEngineBase):
             return rest
         return [{"role": "system", "content": "\n\n".join(systems)}] + rest
 
+    def _apply_memory(self, params: MeowLLMGenParams) -> dict:
+        """按本次请求切到对应 owner 的记忆状态（没有 owner 就关掉 steering）。"""
+        if not self.dmem_ready:
+            return {"attached": False, "reason": "未挂载"}
+        if not params.memory_owner:
+            self.dmem_registry.use(None)
+            return {"attached": False, "reason": "no-owner"}
+        info: dict = {"owner": params.memory_owner}
+        try:
+            if params.memory_write:
+                text = "\n".join(t for t in params.memory_write if t)
+                mode = "append" if self.dmem_registry.exists(params.memory_owner) else "replace"
+                info["write"] = self.dmem_write(params.memory_owner, text, mode=mode)
+            info["attached"] = bool(self.dmem_registry.use(params.memory_owner))
+        except Exception as exc:  # noqa: BLE001 - 记忆出问题不能影响出字
+            self.log.warning("δ-mem 准备失败（owner=%s）：%s", params.memory_owner, exc)
+            self.dmem_registry.use(None)
+            info["attached"] = False
+            info["error"] = str(exc)
+        return info
+
     async def generate(self, messages: list[dict], params: MeowLLMGenParams):
         self.require_loaded()
         messages = self._normalize_messages(messages)
+        memory = self._apply_memory(params)
+        self._last_memory = memory
+        if memory.get("owner"):
+            self.log.info("δ-mem owner=%s attached=%s", memory.get("owner"),
+                          memory.get("attached"))
         if self._think_max(params) > 0 and not self._dual_stream_supported:
             self.log.info("线性注意力模型不支持双流，本次按单流执行")
         dual_cap = int(self.cfg.get("context.dual_max_prompt_tokens", 0) or 0)
@@ -477,6 +683,7 @@ class AsyncHFEngine(MeowLLMEngineBase):
             "prompt_tokens": loop.prompt_tokens,
             "completion_tokens": loop.stats["completion_tokens"],
             "thinking_level": "off",
+            "memory": getattr(self, "_last_memory", {}),
         })
 
     async def _generate_dual(self, messages: list[dict], params: MeowLLMGenParams):
@@ -550,6 +757,7 @@ class AsyncHFEngine(MeowLLMEngineBase):
             "segment_texts": list(getattr(loop, "segment_texts", [])),
             "thinker_stop": loop.thinker_stop,
             "thinking_level": params.thinking_level,
+            "memory": getattr(self, "_last_memory", {}),
         })
 
     def kv_slot_stats(self) -> dict:

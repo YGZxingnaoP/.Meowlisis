@@ -152,7 +152,6 @@ def create(cfg) -> MeowLLMEngineBase:
 
     builder = _REGISTRY[kind]
     engine = builder(cfg)
-    engine._meowllm_params_b = _safe_params_b(kind, cfg)  # noqa: SLF001
     return engine
 
 
@@ -161,15 +160,6 @@ def _model_path_of(cfg, kind: str) -> str:
         raw = str(cfg.get("engine.dualstream.model_dir", "") or "")
         return cfg.resolve(raw)
     return ""
-
-
-def _safe_params_b(kind: str, cfg) -> float:
-    if kind == "stub":
-        return 0.0
-    try:
-        return probe_params_b(_model_path_of(cfg, kind))
-    except Exception:  # noqa: BLE001
-        return float("inf")
 
 
 def _register_builtins() -> None:

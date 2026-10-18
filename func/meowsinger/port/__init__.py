@@ -7,8 +7,8 @@ from func.meowsinger.config import MeowSingerConfig
 def get_singer_llm():
     cfg = MeowSingerConfig()
     if cfg.llm_type == "meowllm":
-        from func.llm.port.meowllm import MeowLLMLLM
-        return MeowLLMLLM(cfg)
+        from func.meowsinger.port.meowllm import MeowSingerMeowLLM
+        return MeowSingerMeowLLM(cfg)
     if cfg.llm_type == "gemini":
         from func.meowsinger.port.gemini import MeowSingerGeminiLLM
         return MeowSingerGeminiLLM(cfg)

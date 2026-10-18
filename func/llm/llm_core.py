@@ -11,6 +11,7 @@ from func.llm.state import LLmState
 from func.config.app_config import AppConfig
 
 from func.llm.config import LLMConfig
+from func.meowllm import memory as memory_options
 from func.llm.port.deepseek import DeepSeekLLM
 from func.llm.port.aliyun import AliyunLLM
 from func.llm.message_get import MessageGet
@@ -128,16 +129,6 @@ class LLmCore:
         except Exception:
             self.log.exception("静默记录用户消息异常")
 
-    def add_system_message(self, text: str, uid: str = "主人"):
-        """系统主动消息入口：直接放入问题队列"""
-        traceid = str(uuid.uuid4())
-        llm_json = {"traceid": traceid, "prompt": text, "uid": uid}
-        self.llmData.QuestionList.put(llm_json)
-        # 通知主动回复模块：llm 收到用户消息
-        from func.pipeline.llm_timer import LLMTimerBridge
-        LLMTimerBridge().notify_user_message()
-        self.log.info(f"[{traceid}] 系统主动消息: {text}")
-
     def check_answer(self):
         """定时轮询：从问题队列取消息并异步处理"""
         if not self.llmData.QuestionList.empty() and self.llmData.is_ai_ready:
@@ -252,12 +243,20 @@ class LLmCore:
 
         acc = ToolCallAccumulator()
         merged = bool(merge_on and tools)
+        # δ-mem：标记"本线程正在处理哪个用户的消息"。
+        # 这样所有在本线程里调本地模型的调用点都自动带上该用户的记忆，
+        # 不用逐个改；而 Thread(...) 起的后台工具任务拿不到这个标记，
+        # 因此不会串人、也不会出现"写记忆的任务带着记忆去写"的自我污染。
+        memory_options.set_current_uid(uid)
+        # 显式再传一次（双保险；显式优先于线程上下文）
+        mem_options = memory_options.as_options(uid)
         if merged:
             stream = self.llm.chat_stream(
                 messages, tools=tools, tool_choice="auto", enable_thinking=False,
+                options=mem_options,
             )
         else:
-            stream = self.llm.chat_stream(messages)
+            stream = self.llm.chat_stream(messages, options=mem_options)
         # 正文处理与非合并模式逐行一致：边流边送 TTS，不缓冲、不丢弃
         for chunk in stream:
             if not chunk.choices:
@@ -272,6 +271,11 @@ class LLmCore:
         # 结束流式，获取清理后的完整回复（与非合并模式完全一致）
         final_text = output.finalize(traceid)
 
+        # 线程上下文用到这里就够了：后面的记忆写入/工具分发都用显式 uid。
+        # 不清的话，一旦哪天把 _ai_response 挪到线程池里，下一条消息就会
+        # 继承上一个人的 uid（owner_for 的第三优先级），静默串人。
+        memory_options.clear_current_uid()
+
         # 合并模式独有：仅把 LLM 分析出的工具调用交给 analysis（独立线程，不阻塞）
         if merged and acc.has_calls():
             Thread(target=self._dispatch_tool_calls,
@@ -280,6 +284,23 @@ class LLmCore:
         # 后置：异步调用工具更新情绪与性格（供下一轮 system prompt 使用，性格滞后一轮生效）
         if final_text:
             Thread(target=self._update_emotion_async, args=(prompt, final_text), daemon=True).start()
+
+        # ===== δ-mem：把这轮对话追加进该用户自己的记忆矩阵 =====
+        # 读（生成时按 uid 加载矩阵）在前，写在这里 —— 闭合"边说边更新"的环路。
+        # 非阻塞、只认正式号、失败只记日志，绝不影响对话主链路。
+        #
+        # 与弹幕隔离保持一致（上面 record_ltmem / assistant_only 两个开关的意义不变）：
+        #   * assistant_only：统一回复只该记助手侧，把一屏陌生人的弹幕写进某人记忆是错的；
+        #   * record_ltmem=False：用户只要求记档案，不记流水；
+        #   * multi_user：owner 只能是 uids[0]，而正文是全体内容 —— 必然写错人。
+        dmem_allowed = (not mc) or (record_ltmem and not assistant_only)
+        if final_text and dmem_allowed and not multi_user:
+            try:
+                from func.catbrain.UserMemory.identity.dmem_bridge import DmemBridge
+
+                DmemBridge().remember(uid, prompt, final_text)
+            except Exception:
+                self.log.exception("δ-mem 记忆追加失败")
 
         # ===== 助手侧记忆（短期记忆 / 长期记忆 / 用户记忆） =====
         if is_danmaku:

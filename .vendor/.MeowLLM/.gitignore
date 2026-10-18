@@ -8,7 +8,10 @@ autoDL/
 
 # ---------------------------------------------------------------- 权重与模型
 # 本地权重（数 GB，可重新下载）
-models/
+# 注意用 models/* 而不是 models/：目录整体排除后 git 不会进去看，
+# 后面的 !models/README.md 就没法把人话说明重新纳入版本库。
+models/*
+!models/README.md
 *.gguf
 *.safetensors
 *.bin
@@ -61,3 +64,24 @@ desktop.ini
 _tmp/
 tmp/
 scratch/
+
+# ---------------------------------------------------------------- δ-mem
+# 本模块自己的临时工作区（数据/权重/调试输出），别入库
+.dmem_work/
+# 每用户记忆状态（落到 character/userinfo/<uid>/mem/）
+.dmem/
+**/mem/delta_mem.pt
+
+# 实验台沙箱：labs/launch.py 起服务时把状态/日志/δ-mem 都指向这里，
+# 保证实验不会写进主项目真实的 character/userinfo/
+labs/.lab/
+
+# ---------------------------------------------------------------- 训练产物
+# 一次训练一个 run 目录，全是几十上百 MB 的权重与指标；只留占位文件
+labs/dmem_train/out/*
+!labs/dmem_train/out/.keep
+# cloud_serve.py 会在云端生成 serve.sh，本地一般没有；防手滑把调试副本提交上去
+serve.sh
+# 文档里的下载归档（权重/数据都在别处，这里只可能是较大的中间产物）
+docs/output/*/
+!docs/output/*/.keep

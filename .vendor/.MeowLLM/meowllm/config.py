@@ -78,6 +78,33 @@ DEFAULT_CONFIG: dict = {
         "max_concurrency": 1,
         "interactive_first": True,
     },
+    "memory": {
+        "delta_mem": {
+            "enabled": False,
+            "weights": "",
+            "rank": 64,
+            "n_states": 1,
+            "chunk": 16,
+            "alpha": 16.0,
+            #: 注入强度缩放：乘在**每层学出来的 log_alpha** 上（config.alpha 只是初始化值）
+            "alpha_scale": 1.0,
+            "layers": "",
+            "calibrate_on_load": False,
+            #: 写记忆一趟前向的窗口（0 = 跟 context.n_ctx）；应与训练时的值一致
+            "window": 0,
+            #: 权重文件缺失时是否仍用随机初始化挂载（只用于验管道，效果一定更差）
+            "allow_untrained": False,
+            # 存储：每用户一个独立目录（character/userinfo/<uid>/mem/）
+            "layout": "userinfo",
+            "userinfo_dir": "../../character/userinfo",
+            "formal_pattern": "^\\d{6}$",
+            "strict_formal": True,
+            "state_dir": "character/memory/.dmem",   # 仅 layout=flat / 迁移源用
+            "max_cached_owners": 8,
+            "persist": True,
+            "backup_keep": 5,
+        },
+    },
     "paths": {
         "state_dir": ".test/state/meowllm",
         "log_dir": ".test/logs",
@@ -322,6 +349,50 @@ class MeowLLMConfig:
             value = self.get(f"gen.{key}", 0)
             if not isinstance(value, (int, float)):
                 problems.append(f"gen.{key} 必须是数字: {value!r}")
+
+        dmem = self.get("memory.delta_mem", {}) or {}
+        if not isinstance(dmem, dict):
+            problems.append("memory.delta_mem 必须是映射")
+        else:
+            rank = dmem.get("rank", 64)
+            if not isinstance(rank, int) or not (1 <= rank <= 256):
+                problems.append(f"memory.delta_mem.rank 必须在 [1,256]: {rank!r}")
+            n_states = dmem.get("n_states", 1)
+            if not isinstance(n_states, int) or not (1 <= n_states <= 8):
+                problems.append(f"memory.delta_mem.n_states 必须在 [1,8]: {n_states!r}")
+            chunk = dmem.get("chunk", 16)
+            if not isinstance(chunk, int) or not (1 <= chunk <= 512):
+                problems.append(f"memory.delta_mem.chunk 必须在 [1,512]: {chunk!r}")
+            if dmem.get("enabled") and not str(dmem.get("weights") or "").strip():
+                problems.append("memory.delta_mem.enabled=true 时必须给 weights 路径")
+            layout = str(dmem.get("layout") or "userinfo").lower()
+            if layout not in ("userinfo", "flat"):
+                problems.append(f"memory.delta_mem.layout 只能是 userinfo/flat: {layout!r}")
+            if layout == "userinfo" and not str(dmem.get("userinfo_dir") or "").strip():
+                problems.append("layout=userinfo 时 memory.delta_mem.userinfo_dir 不能为空")
+            pattern = str(dmem.get("formal_pattern") or "")
+            if pattern:
+                try:
+                    import re as _re
+
+                    _re.compile(pattern)
+                except Exception:  # noqa: BLE001
+                    problems.append(f"memory.delta_mem.formal_pattern 不是合法正则: {pattern!r}")
+            window = dmem.get("window", 0)
+            if not isinstance(window, int) or window < 0 or window > 131072:
+                problems.append(f"memory.delta_mem.window 必须在 [0,131072]（0 = 跟 n_ctx）: {window!r}")
+            backup_keep = dmem.get("backup_keep", 5)
+            if not isinstance(backup_keep, int) or not (0 <= backup_keep <= 100):
+                problems.append(f"memory.delta_mem.backup_keep 必须在 [0,100]: {backup_keep!r}")
+            if not isinstance(dmem.get("allow_untrained", False), bool):
+                problems.append(
+                    f"memory.delta_mem.allow_untrained 必须是布尔: "
+                    f"{dmem.get('allow_untrained')!r}")
+            alpha_scale = dmem.get("alpha_scale", 1.0)
+            if not isinstance(alpha_scale, (int, float)) or not (0.05 <= float(alpha_scale) <= 64):
+                problems.append(
+                    f"memory.delta_mem.alpha_scale 必须在 [0.05,64]（1.0=不变）: "
+                    f"{alpha_scale!r}")
 
         if problems:
             raise MeowLLMConfigError(

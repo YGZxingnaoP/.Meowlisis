@@ -23,7 +23,6 @@ class EmotionController:
         self.emotion_bridge = LLMEmotionBridge()
         # 累积流式 tool_calls 分片：{index: {"id", "name", "arguments"}}
         self.tool_calls: Dict[int, Dict[str, str]] = {}
-        self.last_result = None
 
     def _get_personalities(self) -> List[str]:
         """从角色卡动态读取性格名列表（缺失或异常时返回空列表）"""
@@ -104,7 +103,6 @@ class EmotionController:
                         result["personality"] = args["personality"]
                 except Exception:
                     pass
-        self.last_result = result
         self._save_latest(result)
         self.emotion_bridge.set_emotion(result["emotion"], result["intensity"])
         if result["need_thinking"]:

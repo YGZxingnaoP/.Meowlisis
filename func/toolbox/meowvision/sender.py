@@ -27,8 +27,8 @@ class TBVisionSender:
         self.log = DefaultLog().getLogger()
         self.config = TBVisionConfig()
         if self.config.llm_type == "meowllm":
-            from func.llm.port.meowllm import MeowLLMLLM
-            self.llm = MeowLLMLLM(self.config)
+            from func.toolbox.meowvision.port.meowllm import TBVisionMeowLLM
+            self.llm = TBVisionMeowLLM(self.config)
         if self.config.llm_type == "gemini":
             from func.toolbox.meowvision.port.gemini import TBVisionGeminiLLM
             self.llm = TBVisionGeminiLLM(self.config)

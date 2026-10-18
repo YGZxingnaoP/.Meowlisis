@@ -1,0 +1,503 @@
+/* ===========================================================================
+   MeowLLM 配置页样式
+   配色沿用主 GUI 的 CSS 变量（gui/css/style.css :root），风格保持一致。
+   布局：左侧固定侧边栏 + 右侧可滚动的配置区。
+   =========================================================================== */
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font: 14px/1.7 "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  color: var(--text-main, #4A4A4A);
+  background: linear-gradient(135deg, var(--white-soft, #FAFAFA) 0%, var(--pink-light, #FFF0F5) 50%, var(--pink-soft, #FFD1DC) 100%);
+  background-attachment: fixed;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- 骨架 */
+.mll-shell {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------- 侧边栏 */
+.mll-side {
+  flex: 0 0 244px;
+  width: 244px;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 14px 16px;
+  background: rgba(255, 255, 255, .72);
+  border-right: 1px solid var(--pink-soft, #FFD1DC);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+}
+
+.mll-brand {
+  padding: 0 8px 16px;
+  border-bottom: 1px dashed var(--pink-soft, #FFD1DC);
+  margin-bottom: 14px;
+}
+
+.mll-brand-title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  color: var(--pink-dark, #FF1493);
+}
+
+.mll-brand-sub {
+  font-size: 11.5px;
+  color: var(--text-light, #888);
+  margin-top: 2px;
+}
+
+.mll-navs {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+}
+
+.mll-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--text-main, #4A4A4A);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+
+.mll-nav:hover {
+  background: var(--pink-light, #FFF0F5);
+  color: var(--pink-deep, #FF69B4);
+}
+
+.mll-nav-active {
+  background: linear-gradient(160deg, var(--pink-light, #FFF0F5), #fff);
+  border-color: var(--pink-main, #FFB6C1);
+  color: var(--pink-deep, #FF69B4);
+  font-weight: 600;
+  box-shadow: 0 3px 10px var(--shadow, rgba(255, 182, 193, .4));
+}
+
+.mll-nav-icon { font-size: 14px; width: 18px; text-align: center; flex: 0 0 18px; }
+.mll-nav-title { flex: 1 1 auto; }
+
+.mll-side-foot {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--pink-soft, #FFD1DC);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mll-dirty {
+  font-size: 12px;
+  color: var(--pink-dark, #FF1493);
+}
+
+.mll-side-btn {
+  padding: 9px 14px;
+  border: none;
+  border-radius: 11px;
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  background: linear-gradient(160deg, var(--pink-main, #FFB6C1), var(--pink-deep, #FF69B4));
+  box-shadow: 0 4px 14px var(--shadow-deep, rgba(255, 105, 180, .3));
+}
+
+/* --------------------------------------------------------------- 主区 */
+.mll-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mll-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 18px 28px 14px;
+  border-bottom: 1px solid var(--pink-soft, #FFD1DC);
+  background: rgba(255, 255, 255, .55);
+}
+
+.mll-head h1 {
+  font-size: 19px;
+  margin: 0;
+  color: var(--pink-dark, #FF1493);
+  letter-spacing: .4px;
+}
+
+.mll-path {
+  font-size: 11.5px;
+  color: var(--text-light, #888);
+  word-break: break-all;
+  margin-top: 3px;
+}
+
+.mll-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mll-status { font-size: 12.5px; color: var(--text-light, #888); max-width: 460px; }
+.mll-status-ok { color: #1a7f37; }
+.mll-status-err { color: #e5484d; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.mll-actions button {
+  font-size: 13px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(160deg, var(--pink-main, #FFB6C1), var(--pink-deep, #FF69B4));
+  box-shadow: 0 4px 14px var(--shadow-deep, rgba(255, 105, 180, .3));
+  transition: transform .08s ease, filter .15s ease;
+}
+
+.mll-actions button.ghost {
+  background: var(--white, #fff);
+  color: var(--pink-deep, #FF69B4);
+  border: 1px solid var(--pink-soft, #FFD1DC);
+  box-shadow: none;
+}
+
+.mll-actions button:hover { filter: brightness(1.05); }
+.mll-actions button:active { transform: translateY(1px); }
+.mll-actions button:disabled { opacity: .55; cursor: default; }
+
+.mll-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 22px 28px 64px;
+}
+
+/* --------------------------------------------------------------- 配置区 */
+.mll-hidden { display: none !important; }
+
+.mll-section { max-width: 980px; margin: 0 auto; }
+
+.mll-sec-head { margin-bottom: 16px; }
+
+.mll-sec-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 16.5px;
+  margin: 0 0 6px;
+  color: var(--pink-deep, #FF69B4);
+}
+
+.mll-sec-icon { font-size: 17px; }
+
+.mll-sec-desc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.85;
+  color: var(--text-light, #888);
+  max-width: 860px;
+}
+
+.mll-card {
+  background: var(--white, #fff);
+  border: 1px solid var(--pink-soft, #FFD1DC);
+  border-radius: 16px;
+  padding: 16px 20px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 6px 18px var(--shadow, rgba(255, 182, 193, .4));
+}
+
+.mll-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--pink-deep, #FF69B4);
+  margin: 0 0 12px;
+  padding-bottom: 9px;
+  border-bottom: 1px dashed var(--pink-soft, #FFD1DC);
+}
+
+.mll-card h3::before {
+  content: "";
+  width: 4px;
+  height: 13px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--pink-main, #FFB6C1), var(--pink-deep, #FF69B4));
+}
+
+/* --------------------------------------------------------------- 字段 */
+.mll-field { margin-bottom: 15px; }
+.mll-field:last-child { margin-bottom: 0; }
+
+.mll-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 5px;
+}
+
+.mll-field-head label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main, #4A4A4A);
+}
+
+.mll-key {
+  font-size: 10.5px;
+  color: var(--text-light, #888);
+  background: var(--pink-light, #FFF0F5);
+  border: 1px solid #f4dbe4;
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+input[type="text"],
+input[type="number"],
+select,
+textarea {
+  width: 100%;
+  padding: 9px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-main, #4A4A4A);
+  background: var(--white, #fff);
+  border: 1px solid var(--pink-soft, #FFD1DC);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--pink-main, #FFB6C1);
+  box-shadow: 0 0 0 3px rgba(255, 182, 193, .35);
+}
+
+textarea { resize: vertical; line-height: 1.7; }
+
+.mll-path-input { font-family: Consolas, "Cascadia Mono", monospace; font-size: 12.5px; }
+
+.mll-help {
+  margin-top: 6px;
+  font-size: 11.8px;
+  line-height: 1.8;
+  color: var(--text-light, #888);
+}
+
+.mll-help code,
+.mll-dim code,
+.mll-sec-desc code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 11.5px;
+  background: var(--pink-light, #FFF0F5);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.mll-tag {
+  display: inline-block;
+  margin-left: 7px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 16px;
+  vertical-align: 1px;
+}
+
+.mll-tag-restart {
+  color: var(--pink-deep, #FF69B4);
+  background: var(--pink-light, #FFF0F5);
+  border: 1px solid var(--pink-soft, #FFD1DC);
+}
+
+/* --------------------------------------------------------------- 开关 */
+.mll-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.mll-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+
+.mll-switch-track {
+  position: relative;
+  width: 42px;
+  height: 23px;
+  border-radius: 999px;
+  background: #e6e6e6;
+  transition: background .18s ease;
+  flex: 0 0 42px;
+}
+
+.mll-switch-dot {
+  position: absolute;
+  top: 2.5px;
+  left: 2.5px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .2);
+  transition: transform .18s ease;
+}
+
+.mll-switch input:checked + .mll-switch-track {
+  background: linear-gradient(160deg, var(--pink-main, #FFB6C1), var(--pink-deep, #FF69B4));
+}
+
+.mll-switch input:checked + .mll-switch-track .mll-switch-dot { transform: translateX(19px); }
+
+.mll-switch-text { font-size: 12.5px; color: var(--text-light, #888); }
+
+/* --------------------------------------------------------------- 状态区 */
+.mll-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+  gap: 8px 18px;
+  font-size: 12.5px;
+}
+
+.mll-kv > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mll-kv span {
+  flex: 0 0 auto;
+  color: var(--text-light, #888);
+}
+
+.mll-kv span::after { content: "："; }
+
+.mll-kv code {
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 12px;
+  color: var(--text-main, #4A4A4A);
+  word-break: break-all;
+}
+
+.mll-probe { font-size: 12.5px; }
+
+.mll-ok-box {
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid #bfe6c8;
+  background: #f4fbf5;
+}
+
+.mll-err {
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid #f2c2c3;
+  background: #fdf5f5;
+}
+
+.mll-ok { color: #1a7f37; }
+.mll-warn { color: #b4690e; }
+.mll-dim { color: var(--text-light, #888); font-size: 12px; }
+
+.mll-row-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.mll-mini {
+  font-size: 12.5px;
+  padding: 7px 14px;
+  border: 1px solid var(--pink-soft, #FFD1DC);
+  border-radius: 10px;
+  background: var(--white, #fff);
+  color: var(--pink-deep, #FF69B4);
+  transition: background .14s ease;
+}
+
+.mll-mini:hover { background: var(--pink-light, #FFF0F5); }
+.mll-mini:disabled { opacity: .55; cursor: default; }
+
+.mll-mini-danger { color: #e5484d; border-color: #f2c2c3; }
+.mll-mini-danger:hover { background: #fdf5f5; }
+
+.mll-card h3 .mll-mini {
+  margin-left: auto;
+  padding: 4px 11px;
+  font-size: 12px;
+}
+
+.mll-grid2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+
+.mll-error-box {
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 18px 20px;
+  border: 1px solid #f2c2c3;
+  border-radius: 14px;
+  background: #fdf5f5;
+  color: var(--text-main, #4A4A4A);
+}
+
+.mll-error-box b { display: block; margin-bottom: 6px; color: #e5484d; }
+
+/* --------------------------------------------------------------- 窄屏 */
+@media (max-width: 860px) {
+  html, body { overflow: auto; }
+  .mll-shell { flex-direction: column; height: auto; min-height: 100vh; }
+  .mll-side { flex: 0 0 auto; width: 100%; border-right: none; border-bottom: 1px solid var(--pink-soft, #FFD1DC); }
+  .mll-navs { flex-direction: row; overflow-x: auto; gap: 6px; padding-bottom: 4px; }
+  .mll-nav { width: auto; white-space: nowrap; }
+  .mll-side-foot { flex-direction: row; align-items: center; justify-content: space-between; }
+  .mll-main { overflow: visible; }
+  .mll-body { overflow: visible; padding: 18px 16px 48px; }
+  .mll-head { padding: 14px 16px 12px; }
+  .mll-key { display: none; }
+}
