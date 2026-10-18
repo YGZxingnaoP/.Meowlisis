@@ -21,6 +21,8 @@
  *   GET  /                 页面
  *   GET  /api/info         目标地址、引擎信息、健康状态
  *   POST /api/chat         实时对话（NDJSON：start/reasoning/content/meta/finish）
+ *                           带 project:{uid,text} 时走「主项目构建模式」——
+ *                           由 labs/build_prompt.py 按主项目真实链路拼 messages
  *   POST /api/run          跑对照实验并落盘
  */
 
@@ -29,6 +31,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 
 // 参数优先级：命令行 > 环境变量 > 默认值（run_lab.bat 用命令行形式传）
 const ARGV = process.argv.slice(2);
@@ -36,6 +39,14 @@ function argOf(flag) {
   const i = ARGV.indexOf(flag);
   return i >= 0 && ARGV[i + 1] ? ARGV[i + 1] : null;
 }
+
+// 主项目 python（构建提示词用）：labs 在 <proj>/.vendor/.MeowLLM/labs
+const PROJECT_ROOT = path.resolve(__dirname, '..', '..', '..');
+const LAB_PY = process.env.LAB_PYTHON
+  || [path.join(PROJECT_ROOT, 'runtime', '311', 'python.exe'),
+      path.join(PROJECT_ROOT, 'runtime', '312', 'python.exe')]
+       .find((p) => fs.existsSync(p))
+  || 'python';
 
 const LAB_PORT = Number(argOf('--port') || process.env.LAB_PORT || 18700);
 const MEOWLLM = (argOf('--meowllm') || process.env.MEOWLLM || 'http://127.0.0.1:18100')
@@ -85,6 +96,31 @@ async function meowllmHealth() {
   } catch (err) {
     return { ok: false, error: String((err && err.message) || err) };
   }
+}
+
+// ------------------------------------------------------------------ 主项目提示词
+/**
+ * 用主项目真实链路拼一条请求（system 来自 catbrain 人设 + 最近 N 轮短期记忆）。
+ * 由 build_prompt.py 完成，里面把 ShortMemory 的写入口全部打桩 —— 只读，不改记忆。
+ */
+function buildProjectMessages(uid, text, historyLimit) {
+  const script = path.join(__dirname, 'build_prompt.py');
+  const out = execFileSync(LAB_PY, [
+    script, '--uid', String(uid), '--text', String(text),
+    '--history', String(historyLimit), '--full',
+  ], { encoding: 'utf-8', timeout: 180000, maxBuffer: 64 << 20 });
+  const line = out.trim().split('\n').filter((l) => l.trim().startsWith('{')).pop();
+  const data = JSON.parse(line || '{}');
+  if (!Array.isArray(data.messages) || !data.messages.length) {
+    throw new Error('构建提示词失败：' + out.slice(-300));
+  }
+  return {
+    messages: data.messages,
+    info: {
+      uid, system_chars: data.system_chars, history_rounds: data.history_rounds,
+      memory_unchanged: data.memory_unchanged, turns: data.messages.length,
+    },
+  };
 }
 
 // ------------------------------------------------------------------ 双流中继
@@ -261,8 +297,18 @@ async function handle(req, res) {
       if (!res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
     };
     try {
+      let messages = body.messages || [];
+      if (body.project) {
+        // 主项目构建模式：提示词由主项目链路生成（只读，不碰短期记忆）
+        const built = buildProjectMessages(
+          body.project.uid || '000001',
+          body.project.text || '',
+          body.project.history || 20);
+        emit({ type: 'built', info: built.info });
+        messages = built.messages;
+      }
       await streamChat({
-        messages: body.messages || [],
+        messages,
         mode: body.mode || 'A_async',
         maxTokens: body.max_tokens,
       }, emit);

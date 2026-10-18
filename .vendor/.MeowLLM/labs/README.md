@@ -22,10 +22,29 @@ node run_headless.js        :: 无界面跑一轮对照（需要实验台已在�
 |---|---|
 | `launch.py` | **唯一编排入口**。找 python/node、探测 18100 起已有实例、没有就起一个、再起 `server.js`、开浏览器 |
 | `server.js` | 实验台后端（零依赖）：静态页 + 把 MeowLLM 的 SSE 转成 NDJSON 事件 |
+| `build_prompt.py` | **主项目构建模式**：按主项目真实链路（MeowPromptBuilder + PromptGet + 最近 N 轮短期记忆）拼一条 messages。**只读**：`ShortMemory` 的 `_mark_session/_write/save` 全部打桩，并在前后比对 `public_short_mem.json` 的 sha1 |
 | `public\index.html` | 单页前端（内联 CSS/JS，无构建） |
 | `run_lab.bat` | 薄壳，全部逻辑在 `launch.py` |
 | `run_headless.js` | 无界面跑一次，`POST /api/run` |
 | `autoDL\` | 云端凭据（`登录指令.txt` / `密码.txt`，已被 .gitignore 排除） |
+
+### 主项目构建模式（勾选即用）
+
+页面输入框下面勾「主项目构建模式（真实 system + 短期记忆，只读）」+ 填账号（默认
+`000001`），实验台就会调 `build_prompt.py` 现拼一条请求：
+
+```
+system   = catbrain 人设（api.py 里 register_builder 的那条链路）
+history  = .temp/public_short_mem.json 最近 N 轮（直接读 JSON，不走 ShortMemory）
+user     = 你输入的那句
+```
+
+发出去之后 `built` 事件会回传 system 字数 / 历史条数 / 记忆有没有被改动。
+命令行等价用法：
+
+```powershell
+..\..\..\runtime\311\python.exe build_prompt.py --uid 000001 --text "在吗" --full
+```
 
 `experiments\*.json` 是早期 MIRROR 实验的场景数据，**现在没有任何代码读它**
 （`server.js` 全文不引用），属于待删的历史文件。

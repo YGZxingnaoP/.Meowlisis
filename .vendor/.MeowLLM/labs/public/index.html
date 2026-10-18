@@ -120,6 +120,14 @@
         <textarea id="input" rows="1" placeholder="说点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
         <button id="send">发送</button>
       </div>
+      <div class="rowline" style="display:flex;gap:12px;align-items:center;margin-top:6px">
+        <label style="display:flex;gap:6px;align-items:center;cursor:pointer">
+          <input type="checkbox" id="projMode">
+          <span>主项目构建模式（真实 system + 短期记忆，只读）</span>
+        </label>
+        <span>账号</span>
+        <input id="projUid" value="000001" size="7" style="padding:2px 6px">
+      </div>
       <div class="hint" id="hint">思考流在气泡上方折叠显示；右栏是服务端的实时运行时数据。</div>
     </footer>
   </main>
@@ -269,9 +277,14 @@ async function send(){
 
   let reasoning = '', content = '';
   try{
+    const projectMode = $('projMode').checked;
+    const payload = projectMode
+      ? { mode:'A_async', max_tokens: 512,
+          project: { uid: ($('projUid').value || '000001').trim(), text } }
+      : { mode:'A_async', messages: history, max_tokens: 512 };
     const resp = await fetch('/api/chat', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ mode:'A_async', messages: history, max_tokens: 512 })
+      body: JSON.stringify(payload)
     });
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
 
@@ -286,7 +299,12 @@ async function send(){
         if (!line) continue;
         let ev; try { ev = JSON.parse(line); } catch { continue; }
 
-        if (ev.type === 'reasoning'){
+        if (ev.type === 'built'){
+          const b = ev.info || {};
+          $('hint').textContent =
+            `主项目提示词：system ${b.system_chars ?? '?'} 字 · 历史 ${b.history_rounds ?? '?'} 条`
+            + ` · 记忆${b.memory_unchanged ? '未变 ✓' : '被改动 ✗'}`;
+        } else if (ev.type === 'reasoning'){
           reasoning += ev.text;
           ui.thinkBody.textContent = reasoning;
           ui.det.querySelector('summary').textContent = `💭 思考中… (${reasoning.length} 字)`;

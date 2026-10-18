@@ -12,8 +12,9 @@
 1. **并行**：同一个 step 里 thinker / writer 各取一个 token（`_forward_pair` 一次前向）。
 2. **探针**：每 `probe_every` 个 decode step，或思考流出现 `\\n\\n`（段末），用独立视图
    `M -> T -> W -> Q` 判一次 yes/no（`_probe`）；判完把 Q 清空，问句不进思维链。
-3. **判定**：p(yes) > p(no) → 允许 writer 写；否则**立刻冻结 writer**、只推 thinker，
-   直到下一次 yes。`yes_bias` 就是论文 Figure 4 的 "+Δ"。
+3. **判定**：p(yes) > p(no) → 允许 writer 写；否则**不放行**（不再把半句话冻住，
+   见 `_switching` 里的说明：8B 在句子中间冻结后会一路答 no）。`yes_bias` 就是论文
+   Figure 4 的 "+Δ"。
 4. **让位**：writer 自己走到 `\\n\\n`（段落边界）时先停一下，等下一次 yes 再写
    （附录 B：prevents the writer from getting too far ahead）；思考流输出 `</think>`
    时切成 writer-only，让 writer 把回复写完。
@@ -75,6 +76,7 @@ class LoopStats:
     probes: int = 0
     probe_no: int = 0
     last_probe_p_yes: float = 0.0
+    last_probe_p_no: float = 0.0
     #: 思考领先输出多少个 token（正数 = 思考跑在前面）
     thinker_ahead: int = 0
     #: 两种暂停原因各多少次（观测用）
@@ -426,6 +428,7 @@ class DualStreamLoop:
         decision: ModeDecision = self._probe()
         self.stats.probes += 1
         self.stats.last_probe_p_yes = decision.p_yes
+        self.stats.last_probe_p_no = decision.p_no
         chunks.append(StreamChunk("mode", "", None, {
             "event": "probe",
             "continue_speaking": decision.continue_speaking,
@@ -441,7 +444,13 @@ class DualStreamLoop:
                 self.stats.resumes += 1
         else:
             self.stats.probe_no += 1
-            self._pause("thoughts")
+            # 论文是"no 就立刻冻结 writer"。实测（Qwen3-8B）在**句子中间**冻结之后，
+            # 探针会连续答 no（p(no)=0.73，12 次全 no）：它看到的是半句话，
+            # "够不够写下一段"永远不成立，writer 就再也放行不了 —— 只剩"一轮叫停"。
+            # 所以 no 只表示"先别开下一段"：writer 把当前这段写完，到空行自然冻结
+            # （段落让位本来就是论文的规则），于是每次判定都发生在段边界上。
+            if not self.writer_active:
+                self.pause_reason = self.pause_reason or "thoughts"
 
     def _pause(self, reason: str) -> None:
         """冻结 writer，并把探针计数清零（停过之后重新数 `probe_every` 步）。"""

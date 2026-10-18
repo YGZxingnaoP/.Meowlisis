@@ -24,10 +24,18 @@ from dataclasses import dataclass
 import torch
 
 #: 论文附录 B 的 Mode Switching question，逐字（注意原文就是 "my current thoughts"）
-PROBE_QUESTION = (
+QUESTION = (
     "...\n\nWait, are my current thoughts enough to write the next paragraph or formula? "
     "(yes/no): "
 )
+
+#: ⚠ 唯一一处**故意**偏离论文文本的地方：把问句包成一个真正的 user 轮。
+#: 为什么：论文把问句裸接在回复文本后面（assistant 空间），实测 0.6B/8B 都把它当成
+#: "继续写" 的上下文 —— 0.6B 上 p(yes)=0.031 / p(no)=0.001，其余 96% 的质量落在
+#: "4" "3" "I" 这种续写 token 上；8B 上 11 次探针 11 次 no，writer 一旦冻结就再也
+#: 放行不了。包成 user 轮之后 0.6B 上 p(yes)=0.328（" yes" 变成 top-1）、p(no)=0.054，
+#: 判定才真正落在 yes/no 上。问句本身一字未改。
+PROBE_QUESTION = "\n<|im_end|>\n<|im_start|>user\n" + QUESTION
 
 #: 代表"可以继续写"与"得再想想"的字面量（只看首 token）
 YES_WORDS = ("yes", " yes", "Yes", " Yes")
