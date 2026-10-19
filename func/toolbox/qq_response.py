@@ -61,6 +61,18 @@ class TBoxQQResponse:
                         "ext_name": ext_name, "meowid": meowid, "nickname": nickname_display}
         # 机器人消息（如幻梦）：仅参与当轮上下文，不写入任何记忆文件
         is_bot = self._is_bot(user_id)
+        # 0.6 Creeper 接龙彩蛋（命中则直接回复，不再走 LLM）
+        if not is_bot:
+            try:
+                from func.toolbox.napcat.creeper import TBCreeper
+                replies = TBCreeper().route(text, f"qq_private_{user_id}",
+                                            nickname_display, str(user_id))
+                if replies:
+                    for seg in replies:
+                        self.napcat_core.send_private_text(user_id, seg)
+                    return
+            except Exception:
+                self.log.exception("Creeper 彩蛋异常")
         # 0.5 数据库关键词匹配（仅私聊，机器人消息不进入）
         if not is_bot:
             try:
@@ -220,6 +232,19 @@ class TBoxQQResponse:
         # 1. 群聊回复总开关（先于图片检测，关闭时不做任何处理）
         if not self.napcat_config.group_reply_enabled:
             return
+
+        # 1.2 Creeper 接龙彩蛋（任意群成员都能往后接，命中则直接回复）
+        if not is_bot and text:
+            try:
+                from func.toolbox.napcat.creeper import TBCreeper
+                replies = TBCreeper().route(text, f"qq_group_{group_id}", username, "",
+                                            allow_trigger=at_self)
+                if replies:
+                    for seg in replies:
+                        self.napcat_core.send_group_text(group_id, seg)
+                    return
+            except Exception:
+                self.log.exception("Creeper 彩蛋异常")
 
         # 1.1 幻梦回复角色（markdown mention 提到角色 + 刚触发过）：必回复，消费式防重复
         if is_bot and parsed.get("mention_self"):

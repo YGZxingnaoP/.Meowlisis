@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # func/database/search/crawler.py
-# 搜索爬取编排：站点规则 + 通用爬虫（http/api/direct），同站队列、异站并行，缓存到 web_result
+# 搜索爬取组件：站点规则 + 通用爬虫（http/api/mediawiki/direct），供 Agent 的
+# search_site / visit_url 调用；批次落盘由 search_core 负责。
 
 import re
 import os
@@ -8,7 +9,6 @@ import json
 import time
 import uuid
 from urllib.parse import quote
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
@@ -20,13 +20,15 @@ from func.database.search.spider.direct_spider import CatLearnDirectSpider
 
 @singleton
 class CatLearnCrawler:
-    """搜索爬虫（单例）
+    """搜索爬取组件（单例）
 
-    - 站点解析规则（SITE_RULES）+ 三个通用爬虫；
-    - 相同站点串行（队列），不同站点并行；
-    - 每站爬取条数单独配置（默认 5）；
-    - 结果缓存 .temp/database/web_result/{batch_id}/{task_id}/（meta.json + content.txt）。
+    - 站点解析规则（SITE_RULES）+ 通用爬虫；
+    - 只提供 search_site（搜索）与 fetch_url（取正文）两个能力，供 Agent 调用；
+    - 批次落盘由 search_core 负责，本类不写 content.txt。
     """
+
+    # mediawiki 站点正文上限（api.php 是全文接口，取太多会撑爆分块与上下文）
+    MEDIAWIKI_CHARS = 3000
 
     # 站点解析规则：搜索 URL 模板 + 结果列表解析规则
     SITE_RULES = {
@@ -86,89 +88,6 @@ class CatLearnCrawler:
     def web_result_dir(self) -> str:
         return os.path.join(".temp", "database", "web_result")
 
-    # ==================== 编排入口 ====================
-    def crawl(self, batch_id: str, tasks: list):
-        """按站点分组：同站串行、异站并行，爬取结果落盘 web_result/{batch_id}/"""
-        if not batch_id or not tasks:
-            return
-        groups = {}
-        for t in tasks:
-            site = str(t.get("web_url", "") or "")
-            groups.setdefault(site, []).append(t)
-
-        with ThreadPoolExecutor(max_workers=max(1, len(groups))) as pool:
-            futures = {
-                pool.submit(self._crawl_group, batch_id, site, group): site
-                for site, group in groups.items()
-            }
-            for fut in as_completed(futures):
-                site = futures[fut]
-                try:
-                    fut.result()
-                except Exception:
-                    self.log.exception(f"站点 {site} 爬取组异常")
-
-    def _crawl_group(self, batch_id: str, site: str, tasks: list):
-        """同站串行队列：逐条爬取"""
-        for task in tasks:
-            try:
-                self._crawl_task(batch_id, site, task)
-            except Exception:
-                self.log.exception(f"爬取任务失败: site={site} task={task}")
-            # 同站限速
-            time.sleep(1.5)
-
-    def _crawl_task(self, batch_id: str, site: str, task: dict):
-        """单个任务：搜索 → 解析结果列表 → 抓前 N 条详情正文 → 合并落盘"""
-        site_cfg = self.config.site_config(site)
-        rule = self.SITE_RULES.get(site) or {}
-        strategy = str(site_cfg.get("strategy", "") or rule.get("spider", "http") or "http")
-        count = int(site_cfg.get("count", 5) or 5)
-        search_keys = str(task.get("search_keys", "") or "")
-
-        # 1. 抓搜索结果 → 解析结果列表
-        results = self._search(site, search_keys, strategy, rule, site_cfg)
-        results = results[:count]
-
-        # 2. 抓详情页正文（direct 爬虫，同站串行已由外层保证）
-        details = []
-        for item in results:
-            try:
-                content = self.direct_spider.fetch_detail(item["url"])
-                if content:
-                    details.append({
-                        "title": item.get("title", ""),
-                        "url": item.get("url", ""),
-                        "content": content,
-                    })
-            except Exception:
-                self.log.exception(f"抓详情失败: {item.get('url')}")
-            time.sleep(0.8)
-
-        # 3. 合并落盘
-        merged = "\n\n".join([
-            f"【{d.get('title','')}】\n{d.get('content','')}" for d in details
-        ])
-        if not merged.strip():
-            self.log.warning(f"task {task.get('task_id')} 无可写内容，跳过落盘")
-            return
-        task_id = str(task.get("task_id", "0"))
-        task_dir = os.path.join(self.web_result_dir, str(batch_id), task_id)
-        os.makedirs(task_dir, exist_ok=True)
-
-        meta = {
-            "task_id": task.get("task_id"),
-            "search_keys": search_keys,
-            "site": site,
-            "strategy": strategy,
-            "fetched_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "results": [{"title": d["title"], "url": d["url"]} for d in details],
-        }
-        with open(os.path.join(task_dir, "meta.json"), "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-        with open(os.path.join(task_dir, "content.txt"), "w", encoding="utf-8") as f:
-            f.write(merged or "")
-
     # ==================== 搜索 + 解析 ====================
     def search_site(self, site: str, query: str) -> list:
         """公开方法：用单个精准词搜索站点，返回结果列表 [{title, url}]（供 agent 调用）"""
@@ -180,16 +99,65 @@ class CatLearnCrawler:
         return self._search(site, query, strategy, rule, site_cfg)
 
     def fetch_url(self, url: str, site: str = None) -> str:
-        """公开方法：抓取单个 URL 正文（供 agent 调用）
+        """抓取单个 URL 正文（供 Agent 的 visit_url / collect_selected 调用）
 
-        - site 配置了 detail_xpath 时，走定向提取（如 3dm 只取游戏详情卡）；
+        - mediawiki 站点（萌娘百科）：HTML 详情页被 Cloudflare 拦成 403 挑战页，
+          改走 api.php 取正文（唯一可用路径）；
+        - site 配置了 detail_xpath：定向提取（如 3dm 只取游戏详情卡）；
         - 否则走默认 trafilatura/lxml 正文提取。
         """
-        if site:
-            rule = self.SITE_RULES.get(site)
-            if rule and rule.get("detail_xpath"):
-                return self._fetch_detail_by_xpath(url, rule["detail_xpath"])
+        rule = self.SITE_RULES.get(site) if site else None
+
+        if rule and str(rule.get("spider") or "") == "mediawiki":
+            title = self._wiki_title_of(url)
+            wiki = rule.get("wiki") or site
+            if title and wiki:
+                txt = self._mediawiki_extract(title, wiki)
+                if txt:
+                    return txt
+            self.log.warning(f"[MediaWiki] 未能取到正文，放弃该 URL: {url}")
+            return ""
+
+        if rule and rule.get("detail_xpath"):
+            txt = self._fetch_detail_by_xpath(url, rule["detail_xpath"])
+            if txt:
+                return txt
+            # 定向 xpath 会随站点改版失效；此时回落通用正文提取，避免静默丢内容
+            self.log.warning(f"定向提取为空，回落通用提取: {url}")
         return self.direct_spider.fetch_detail(url)
+
+    # ==================== MediaWiki（HTML 反爬站点的唯一可用路径） ====================
+    @staticmethod
+    def _wiki_title_of(url: str) -> str:
+        """从 MediaWiki 条目 URL 反解条目名
+
+        兼容两种形式：
+        - https://host/<条目名>（已 URL 编码）
+        - https://host/index.php?title=<条目名>
+        搜索页 / 首页返回空串（不是条目页）。
+        """
+        try:
+            from urllib.parse import urlparse, unquote, parse_qs
+            p = urlparse(url)
+            qs = parse_qs(p.query or "")
+            if qs.get("title"):
+                return str(qs["title"][0]).strip()
+            if qs.get("search") or not p.path or p.path in ("/", "/index.php", "/api.php"):
+                return ""
+            return unquote(p.path.rstrip("/").rsplit("/", 1)[-1]).strip()
+        except Exception:
+            return ""
+
+    def _mediawiki_extract(self, title: str, wiki: str) -> str:
+        """用 MediaWiki api.php 取条目正文（不抓 HTML，不会遇到 403 挑战页）"""
+        try:
+            from func.database.search.spider.mediawiki_spider import CatLearnMediaWikiSpider
+            if getattr(self, "_mw_spider", None) is None:
+                self._mw_spider = CatLearnMediaWikiSpider()
+            return self._mw_spider.extract(title, wiki, chars=self.MEDIAWIKI_CHARS) or ""
+        except Exception:
+            self.log.exception(f"[MediaWiki] 取正文异常: {wiki}/{title}")
+            return ""
 
     def _fetch_detail_by_xpath(self, url: str, xpath: str) -> str:
         """按 xpath 定向提取详情页正文（过滤导航/新闻/页脚）"""
@@ -283,10 +251,10 @@ class CatLearnCrawler:
             out.append(r)
         return out
     def _mediawiki_search(self, site: str, keyword: str, rule: dict, site_cfg: dict) -> list:
-        """mediawiki 策略：opensearch 找标题 → extracts 取正文（HTML 反爬也能用）"""
+        """mediawiki 策略：opensearch 找标题 → api.php 取正文（HTML 反爬也能用）"""
         try:
             from func.database.search.spider.mediawiki_spider import CatLearnMediaWikiSpider
-            if getattr(self, '_mw_spider', None) is None:
+            if getattr(self, "_mw_spider", None) is None:
                 self._mw_spider = CatLearnMediaWikiSpider()
             mw = self._mw_spider
             wiki = rule.get("wiki") or site
@@ -299,10 +267,9 @@ class CatLearnCrawler:
             for t in (titles or [])[:limit]:
                 if not t:
                     continue
-                txt = mw.extract(t, wiki, chars=1500)
+                txt = self._mediawiki_extract(t, wiki)
                 if not txt:
                     continue
-                from urllib.parse import quote
                 out.append({"title": t, "url": base_url + "/" + quote(t),
                             "snippet": re.sub(r"\s+", " ", txt)[:300], "content": txt})
             self.log.info(f"[搜索] mediawiki {wiki} 关键词《{keyword}》命中 {len(out)} 条")

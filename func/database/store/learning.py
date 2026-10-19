@@ -2,6 +2,7 @@
 # func/database/store/learning.py
 # 搜索学习入库：search 完成信号后，把 .temp/database/web_result 的网页文本向量化入库
 
+import hashlib
 import os
 import json
 import shutil
@@ -88,27 +89,23 @@ class CatLearnLearning:
 
         search_keys = str(task_meta.get("search_keys", "") or "").strip()
 
-        # 审查：用搜索词精确匹配已存文档，与已存原文做文本相似度比对
-        # 相似度 > 阈值判定重复 → 不写库、不更新向量、不入 raw，直接删除本次内容
+        # 内容质量门：反爬挑战页 / 错误页 / 过短内容一律不入库。
+        # 采集层已拦一次，这里再拦一次覆盖其它写入路径与历史残留。
         try:
-            from func.database.store.dedup import CatLearnDedup
-            if CatLearnDedup().is_duplicate(search_keys, text):
-                self.log.info(f"[审查] 与已存文档重复，舍弃并删除: {search_keys}")
+            from func.database.search.content_quality import is_junk
+            junk, reason = is_junk(text)
+            if junk:
+                self.log.warning(
+                    f"[审查] 内容质量不合格（{reason}），舍弃并删除: {search_keys}"
+                )
                 self._delete_task(task_dir)
                 return 0
         except Exception:
-            self.log.exception("检索结果审查异常，继续正常入库")
+            self.log.exception("内容质量检查异常，继续正常入库")
 
-        chunks = self.chunker.chunk(text, target_tokens=256, overlap_ratio=0.1)
-        chunks = [c for c in chunks if c and c.strip()]
-        if not chunks:
-            self._archive_task(batch_id, task_dir)
-            return 0
-
-        vectors = self.embedding.embed_texts(chunks)
         results = task_meta.get("results") or []
         first = results[0] if results else {}
-        # 命名规则统一为「搜索词」（保证审查可用 doc_name 精确匹配）
+        # doc_name 统一为「搜索词」，同时作为分块前缀
         doc_name = search_keys or str(
             first.get("title", "")
             or task_meta.get("title", "")
@@ -117,15 +114,58 @@ class CatLearnLearning:
         ).strip()
         if not doc_name:
             doc_name = str(task_meta.get("task_id", ""))
+
+        # 按标题分段 + 小节内切块（与 source_ingest 同一套实现）。
+        # 每块自带《文档》·小节 前缀，标题原文保留为 metadata.section。
+        from func.database.store.text_clean import build_units
+        units = build_units(text, doc_name, self.chunker,
+                            target_tokens=256, overlap_ratio=0.1)
+        if not units:
+            self._archive_task(batch_id, task_dir)
+            return 0
+
+        unit_texts = [u["text"] for u in units]
+        # 审查：逐单元精确去重（指纹比对，不做模糊匹配）。
+        # 先过滤再向量化，避免给库内已有的块白付 embedding 调用。
+        try:
+            from func.database.store.dedup import CatLearnDedup
+            new_texts, dup_count = CatLearnDedup().filter_new_chunks(unit_texts)
+            if dup_count:
+                self.log.info(
+                    f"[审查] {search_keys}: 跳过库内已存在的 {dup_count} 块，"
+                    f"新增 {len(new_texts)} 块"
+                )
+            if not new_texts:
+                self.log.info(f"[审查] 内容与库内完全重复，舍弃并删除: {search_keys}")
+                self._delete_task(task_dir)
+                return 0
+        except Exception:
+            self.log.exception("检索结果去重异常，继续正常入库")
+            new_texts = unit_texts
+
+        by_text = {}
+        for u in units:
+            by_text.setdefault(u["text"], u)
+        sel = [by_text[t] for t in new_texts]
+
+        vectors = self.embedding.embed_texts(new_texts)
+        site = str(task_meta.get("site", "") or "")
         base_meta = {
             "source_type": "web",
-            "source_id": str(task_meta.get("task_id", "")),
+            "source_id": self._doc_key(first, doc_name, site),
             "doc_name": doc_name,
             "url": str(first.get("url", "") or task_meta.get("url", "")),
-            "site": str(task_meta.get("site", "")),
+            "site": site,
             "tags": str(task_meta.get("search_keys", "")),
         }
-        payload = [{"text": c, "metadata": dict(base_meta)} for c in chunks]
+        payload = []
+        for u in sel:
+            m = dict(base_meta)
+            m["section"] = str(u.get("section") or "")
+            m["section_index"] = str(u.get("section_index") or 0)
+            m["chunk_index"] = str(u.get("chunk_index") or 1)
+            m["chunk_total"] = str(u.get("chunk_total") or 1)
+            payload.append({"text": u["text"], "metadata": m})
         written = self.vdb.add_with_embeddings(payload, vectors)
         # 处理完移出（归档原始文件）
         self._archive_task(batch_id, task_dir)
@@ -143,6 +183,18 @@ class CatLearnLearning:
                 shutil.move(task_dir, dest)
         except Exception:
             self.log.exception(f"归档 task 失败: {task_dir}")
+
+    @staticmethod
+    def _doc_key(first: dict, doc_name: str, site: str) -> str:
+        """文档稳定标识（source_id）
+
+        web 来源必须用 url 取指纹：同一页面会在不同搜索词下被反复抓到，只有 url
+        稳定；task_id 只是每批的序号（全库只有 "1"~"4"），没有任何标识能力。
+        取不到 url 时退化为「站点 + doc_name」，保证仍可复现。
+        """
+        url = str((first or {}).get("url") or "").strip()
+        basis = url if url else f"{site}|{doc_name}"
+        return "web_" + hashlib.md5(basis.encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
     def _delete_task(task_dir: str):

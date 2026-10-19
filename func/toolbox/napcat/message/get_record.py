@@ -2,11 +2,15 @@
 # func/toolbox/napcat/message/get_record.py
 # 获取当前用户聊天记录，整合为短期记忆（OpenAI messages 格式）
 
+import time
 from typing import List
 
 from func.log.default_log import DefaultLog
 from func.toolbox.napcat.config import TBNapCatConfig
 from func.toolbox.napcat.message.get_message import TBGetMessage
+from func.toolbox.napcat.message.time_split import (
+    GAP_SECONDS, build_markers, tier_of,
+)
 
 
 class TBGetRecord:
@@ -46,10 +50,14 @@ class TBGetRecord:
             return []
 
     def _build_messages(self, history: List[dict], self_id: str) -> List[dict]:
-        """合并连续同角色消息（逗号衔接），动画表情单独成条，换角色另起"""
+        """合并连续同角色消息，间隔 6 小时以上断开并插入会话分割标记"""
         result: List[dict] = []
         self_id = str(self_id or "")
+        now = int(time.time())
+        prev_ts = 0
         for msg in history:
+            ts = int(msg.get("time", 0) or 0) or prev_ts or now
+            prev_ts = ts
             # OneBot 历史消息的发送者在 sender.user_id，顶层可能没有 user_id
             sender = msg.get("sender") or {}
             sender_id = str(msg.get("user_id") or sender.get("user_id") or "")
@@ -57,12 +65,18 @@ class TBGetRecord:
             contents = TBGetMessage._parse_segments(msg.get("message"))
             if not contents:
                 continue
+            tier = tier_of(ts, now)
             for content in contents:
                 is_emote = content.startswith("[动画表情：")
-                if result and result[-1]["role"] == role and not is_emote:
+                last = result[-1] if result else None
+                time_break = bool(last) and (
+                    tier != last.get("_tier") or ts - last.get("_ts", 0) >= GAP_SECONDS)
+                if (last and last["role"] == role and not is_emote and not time_break):
                     # 连续同角色普通文本：逗号衔接合并
-                    result[-1]["content"] += "，" + content
+                    last["content"] += "，" + content
+                    last["_ts"] = ts
                 else:
-                    # 换角色或动画表情：另起新 content
-                    result.append({"role": role, "content": content})
-        return result
+                    # 换角色、动画表情或跨 6 小时：另起新 content
+                    result.append({"role": role, "content": content,
+                                   "_tier": tier, "_ts": ts})
+        return build_markers(result)

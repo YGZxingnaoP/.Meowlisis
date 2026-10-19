@@ -37,6 +37,7 @@ Object.assign(Config, {
             this._charText('QQ号', 'qq', c.qq) +
             this._charText('手机号', 'phone', c.phone) +
             this._charText('MBTI', 'mbti', c.mbti) +
+            this._charTextArea('MBTI 行为描述（附加条目，普通文本即可）', 'mbti_behavior', c.mbti_behavior, 10) +
             this._charText('最喜欢的东西', 'favorite', c.favorite) +
             this._charText('爱好', 'hobbies', c.hobbies) +
             this._charText('讨厌的东西', 'dislikes', c.dislikes) +
@@ -70,6 +71,11 @@ Object.assign(Config, {
     _charText(label, field, value) {
         return `<div class="form-group"><label>${label}</label>
             <textarea class="auto-grow" rows="2" data-char-field="${field}">${this._esc(value)}</textarea>
+        </div>`;
+    },
+    _charTextArea(label, field, value, rows) {
+        return `<div class="form-group"><label>${this._t(label)}</label>
+            <textarea class="auto-grow" rows="${rows || 8}" data-char-field="${field}">${this._esc(value)}</textarea>
         </div>`;
     },
     _settingRow(index, key, value) {

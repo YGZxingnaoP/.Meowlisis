@@ -1,67 +1,63 @@
 # -*- coding: utf-8 -*-
 # func/database/store/dedup.py
-# 检索结果审查：搜索词精确匹配已存文档 → 与已存原文做文本相似度比对，重复则舍弃
-
-import re
-from difflib import SequenceMatcher
+# 入库前重复过滤：逐 chunk 做精确指纹比对（不做模糊匹配）
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
-from func.database.store.vector_db import CatLearnVectorDB
-
-# 相似度阈值（硬编码）：相似度 > 该值判定为重复，舍弃不入库
-SIMILARITY_THRESHOLD = 0.6
-# 比对的文本长度上限（避免超长网页正文导致 difflib 性能退化）
-MAX_COMPARE_CHARS = 10000
-
-
-def _normalize(text: str) -> str:
-    """归一化：统一换行、压缩空白，去掉首尾空白"""
-    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
-    text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n{2,}", "\n", text)
-    return text.strip()
-
-
-def _trim(text: str) -> str:
-    """超长文本截断到 MAX_COMPARE_CHARS，避免 difflib 性能退化"""
-    if len(text) <= MAX_COMPARE_CHARS:
-        return text
-    return text[:MAX_COMPARE_CHARS]
+from func.database.store.vector_db import CatLearnVectorDB, doc_digest
 
 
 @singleton
 class CatLearnDedup:
-    """检索结果审查（单例）
+    """入库前重复过滤（单例）
 
-    - 用 search_keys 精确匹配 doc_name，找到已存文档的全部 chunk；
-    - 把 chunk 原文按顺序拼接成「旧文档原文」；
-    - 与本次搜索爬取到的「新文档原文」做文本相似度比对（difflib）；
-    - 相似度 > SIMILARITY_THRESHOLD 判定重复。
+    判定方式：把待入库文本切成 chunk，逐个算文本 md5，与库内已有 chunk 的指纹
+    集合比对。指纹相同即判定为重复，不做任何模糊相似度计算。
+
+    为什么不再用 SequenceMatcher：
+        旧实现把「该 doc_name 下全部 chunk 拼成一整篇」当旧文本，再和单篇新文本
+        算相似度。分母随文档增长被稀释，ratio 单调下降 —— 同一个页面被反复抓取
+        时越到后面越拦不住。实测：异环（237 chunk / 拼接 45271 字）与同一段 191
+        字正文的 ratio 只有 0.0375，28 份完全相同的正文全部入库；而逐 chunk 比对
+        的相似度是 1.0000，一次性拦住。
     """
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.vdb = CatLearnVectorDB()
 
-    def is_duplicate(self, search_keys: str, new_text: str) -> bool:
-        """判定新文本是否与已存同名词文档重复
+    def filter_new_chunks(self, chunks: list):
+        """过滤掉库内已存在的 chunk。
 
-        返回 True 表示重复（调用方应舍弃，不写库、不更新向量）。
+        Args:
+            chunks: 待入库的文本块列表。
+
+        Returns:
+            tuple[list, int]: (需要入库的新 chunk 列表, 被判为重复的 chunk 数)。
+
         """
-        key = str(search_keys or "").strip()
-        if not key:
-            return False
-        chunks = self.vdb.get_by_doc_name(key)
-        if not chunks:
-            return False
+        items = [str(c) for c in (chunks or []) if c and str(c).strip()]
+        if not items:
+            return [], 0
 
-        old_parts = [str(c.get("text", "") or "") for c in chunks]
-        old_text = _trim(_normalize("\n".join(old_parts)))
-        new_text = _trim(_normalize(new_text))
-        if not old_text or not new_text:
-            return False
+        known = set(self.vdb.document_hashes())
+        new_chunks = []
+        dup = 0
+        for c in items:
+            dg = doc_digest(c)
+            # 既跟库内已有指纹比，也跟本批次已接受的比：
+            # 同一篇里重复出现的段落只应入库一次
+            if dg in known:
+                dup += 1
+                continue
+            known.add(dg)
+            new_chunks.append(c)
+        return new_chunks, dup
 
-        ratio = SequenceMatcher(None, old_text, new_text).ratio()
-        self.log.info(f"[审查] doc_name={key} 旧/新文本相似度={ratio:.4f}")
-        return ratio > SIMILARITY_THRESHOLD
+    def is_duplicate(self, chunks: list) -> bool:
+        """整篇是否已完全存在（所有 chunk 都能在库内找到）。"""
+        items = [str(c) for c in (chunks or []) if c and str(c).strip()]
+        if not items:
+            return False
+        new_chunks, _dup = self.filter_new_chunks(items)
+        return not new_chunks

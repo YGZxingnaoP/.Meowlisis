@@ -8,6 +8,7 @@ from typing import List, Optional, Callable
 from func.log.default_log import DefaultLog
 from func.llm.config import LLMConfig
 from func.toolbox.napcat.config import TBNapCatConfig
+from func.toolbox.napcat.message.time_split import is_marker
 
 
 class TBNapCatLLM:
@@ -179,10 +180,16 @@ class TBNapCatLLM:
         """
         text = str(text or "").strip()
         msgs = list(short_memory or [])
+        # 末尾的时间分段标记先摘下来，处理完再放回去
+        tail = []
+        while msgs and is_marker(msgs[-1]):
+            tail.insert(0, msgs.pop())
         if not text or not msgs:
+            msgs.extend(tail)
             return msgs
         last = msgs[-1] or {}
         if str(last.get("role") or "") != "user":
+            msgs.extend(tail)
             return msgs
         content = str(last.get("content") or "")
         if content.strip() == text:
@@ -191,6 +198,7 @@ class TBNapCatLLM:
             msgs[-1] = {"role": "user", "content": content[: -(len(text) + 1)]}
         elif content.endswith(text):
             msgs[-1] = {"role": "user", "content": content[: -len(text)]}
+        msgs.extend(tail)
         return msgs
 
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
@@ -207,7 +215,7 @@ class TBNapCatLLM:
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             for m in self._drop_current_from_history(short_memory, text):
-                if m.get("role") in ("user", "assistant") and m.get("content"):
+                if (m.get("role") in ("user", "assistant") or is_marker(m)) and m.get("content"):
                     messages.append({"role": m["role"], "content": m["content"]})
             if quote:
                 messages.append({"role": "user", "content": (

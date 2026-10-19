@@ -680,6 +680,7 @@ window.__LOCALES__['en'] = {
     "错误词（回车添加，点击 × 删除）": "Wrong Words (Enter to add, × to delete)",
     "性格名": "Personality Name",
     "性格提示词": "Personality Prompt",
+    "MBTI 行为描述（附加条目，普通文本即可）": "MBTI Behavior (appended items, plain text)",
     "新建性格": "New Personality",
     "新建角色卡": "New Character Card",
     "暂无角色数据，请点击下方新建": "No character data yet. Click below to create one.",

@@ -2,12 +2,22 @@
 # func/database/store/vector_db.py
 # ChromaDB 本地向量库封装：初始化、写入、检索（供 learning / build_prompt 共用）
 
+import hashlib
 import os
 import uuid
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.database.config import CatLearnConfig
+
+
+def doc_digest(text: str) -> str:
+    """chunk 文本指纹（md5），用于精确去重
+
+    只对文本本身取指纹，不含元数据：同一段正文无论来自哪次抓取、哪个搜索词，
+    指纹都相同，因此可以确定性地判定"这段内容库里已经有了"。
+    """
+    return hashlib.md5((text or "").strip().encode("utf-8")).hexdigest()
 
 
 @singleton
@@ -27,6 +37,8 @@ class CatLearnVectorDB:
         self.config = CatLearnConfig()
         self._client = None
         self._collection = None
+        # chunk 文本指纹缓存（None = 未加载），用于精确去重
+        self._doc_hashes = None
         self._init()
 
     def _init(self):
@@ -49,6 +61,39 @@ class CatLearnVectorDB:
     def available(self) -> bool:
         return self._collection is not None
 
+    # ==================== 精确去重（chunk 文本指纹） ====================
+    def document_hashes(self) -> set:
+        """全库已有 chunk 文本指纹集合（首次调用加载并缓存）
+
+        返回 set[str]，元素为 doc_digest(text)。用于入库前"这段内容是否已存在"
+        的精确判定，不做模糊匹配。写库成功后缓存会增量更新，删除后失效。
+        """
+        if not self.available:
+            return set()
+        if self._doc_hashes is not None:
+            return self._doc_hashes
+        try:
+            res = self._collection.get(include=["documents"])
+            docs = (res or {}).get("documents") or []
+            self._doc_hashes = {doc_digest(d) for d in docs if d}
+            self.log.info(f"知识库指纹索引已加载: {len(self._doc_hashes)} 条")
+        except Exception:
+            self.log.exception("ChromaDB 读取文档指纹失败")
+            self._doc_hashes = set()
+        return self._doc_hashes
+
+    def remember_hashes(self, docs) -> None:
+        """把刚写入的文本补进指纹缓存（缓存未加载时不做事，下次会重新全量加载）"""
+        if self._doc_hashes is None:
+            return
+        for d in docs or []:
+            if d:
+                self._doc_hashes.add(doc_digest(d))
+
+    def forget_hashes(self) -> None:
+        """让指纹缓存失效（删除/重建集合后必须调用）"""
+        self._doc_hashes = None
+
     def add_chunks(self, chunks: list) -> int:
         """批量写入 chunk。
 
@@ -67,6 +112,7 @@ class CatLearnVectorDB:
             metas.append({k: str(v) for k, v in m.items()})
         try:
             self._collection.add(ids=ids, documents=docs, metadatas=metas)
+            self.remember_hashes(docs)
             return len(ids)
         except Exception:
             self.log.exception("ChromaDB 写入失败")
@@ -96,6 +142,7 @@ class CatLearnVectorDB:
             return 0
         try:
             self._collection.add(ids=ids, documents=docs, metadatas=metas, embeddings=embeds)
+            self.remember_hashes(docs)
             return len(ids)
         except Exception:
             self.log.exception("ChromaDB 带向量写入失败")
@@ -134,24 +181,11 @@ class CatLearnVectorDB:
                 metadatas=metas,
                 embeddings=embeds,
             )
+            self.remember_hashes(docs)
             return len(docs)
         except Exception:
             self.log.exception("ChromaDB 幂等写入失败")
             return 0
-
-    def has_source(self, source_type: str) -> bool:
-        """判断知识库中是否已存在指定 source_type 的记录（用于种子幂等跳过）"""
-        if not self.available:
-            return False
-        try:
-            res = self._collection.get(
-                where={"source_type": str(source_type)},
-                limit=1,
-            )
-            return bool(res and res.get("ids"))
-        except Exception:
-            self.log.exception("ChromaDB 查询失败")
-            return False
 
     def delete_source(self, source_type: str) -> int:
         """删除指定 source_type 的全部记录，返回删除条数（用于重新预填充前清理）"""
@@ -165,32 +199,42 @@ class CatLearnVectorDB:
             ids = (res or {}).get("ids") or []
             if ids:
                 self._collection.delete(ids=ids)
+            self.forget_hashes()
             return len(ids)
         except Exception:
             self.log.exception("ChromaDB 删除失败")
             return 0
 
-    def get_by_doc_name(self, doc_name: str) -> list:
-        """按 doc_name 精确查询全部 chunk，返回 [{"text": str, "metadata": dict}]（按存储顺序）"""
-        if not self.available or not doc_name:
-            return []
+    def delete_by_url(self, url: str) -> int:
+        """按 url 精确删除某个网页的全部 chunk，返回删除条数
+
+        web 来源的 doc_name 是"搜索词"，同一页面会在不同搜索词下重复出现，
+        因此按文档清理必须用 url（唯一且稳定），不能用 doc_name。
+        """
+        if not self.available or not url:
+            return 0
         try:
-            res = self._collection.get(
-                where={"doc_name": str(doc_name)},
-                include=["documents", "metadatas"],
-            )
-            docs = (res or {}).get("documents") or []
-            metas = (res or {}).get("metadatas") or []
-            out = []
-            for i in range(len(docs)):
-                out.append({
-                    "text": docs[i] if i < len(docs) else "",
-                    "metadata": metas[i] if i < len(metas) else {},
-                })
-            return out
+            res = self._collection.get(where={"url": str(url)}, include=[])
+            ids = (res or {}).get("ids") or []
+            if ids:
+                self._collection.delete(ids=ids)
+                self.forget_hashes()
+            return len(ids)
         except Exception:
-            self.log.exception("ChromaDB 按 doc_name 查询失败")
-            return []
+            self.log.exception("ChromaDB 按 url 删除失败")
+            return 0
+
+    def delete_ids(self, ids: list) -> int:
+        """按 chunk id 批量删除，返回删除条数（供维护脚本清理冗余用）"""
+        if not self.available or not ids:
+            return 0
+        try:
+            self._collection.delete(ids=[str(i) for i in ids])
+            self.forget_hashes()
+            return len(ids)
+        except Exception:
+            self.log.exception("ChromaDB 按 id 删除失败")
+            return 0
 
     def query(self, query_embeddings: list, top_k: int = 5) -> list:
         """按向量检索，返回 [{"text": str, "metadata": dict, "distance": float}]"""

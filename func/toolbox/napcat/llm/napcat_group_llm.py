@@ -7,7 +7,7 @@ from typing import List, Optional, Callable
 
 from func.log.default_log import DefaultLog
 from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
-from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
+from func.toolbox.napcat.message.time_split import is_marker
 
 
 class TBNapCatGroupLLM(TBNapCatLLM):
@@ -80,7 +80,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             messages.append({"role": "system", "content": system_prompt})
         # 群记录里也含“当前这条”，再当当前输入传一遍会变成说两遍（模型会回“你重复两遍”）
         for m in TBNapCatLLM._drop_current_from_history(short_memory, text):
-            if m.get("role") in ("user", "assistant") and m.get("content"):
+            if (m.get("role") in ("user", "assistant") or is_marker(m)) and m.get("content"):
                 messages.append({"role": m["role"], "content": m["content"]})
         if quote:
             messages.append({"role": "user", "content": (

@@ -2,11 +2,15 @@
 # func/toolbox/napcat/groupchat/get_group_record.py
 # 获取群聊历史记录，分用户整理为短期记忆（content 标注【用户名】:内容，跳过表情/转发）
 
+import time
 from typing import List
 
 from func.log.default_log import DefaultLog
 from func.toolbox.napcat.config import TBNapCatConfig
 from func.toolbox.napcat.groupchat.get_group_message import TBGetGroupMessage
+from func.toolbox.napcat.message.time_split import (
+    GAP_SECONDS, build_markers, tier_of,
+)
 
 
 class TBGetGroupRecord:
@@ -53,10 +57,14 @@ class TBGetGroupRecord:
             return []
 
     def _build_messages(self, history: List[dict], self_id: str) -> List[dict]:
-        """合并连续同用户消息，content 为【用户名】:消息内容；换用户另起"""
+        """合并连续同用户消息，间隔 6 小时以上断开并插入会话分割标记"""
         result: List[dict] = []
         self_id = str(self_id or "")
+        now = int(time.time())
+        prev_ts = 0
         for msg in history:
+            ts = int(msg.get("time", 0) or 0) or prev_ts or now
+            prev_ts = ts
             sender = msg.get("sender") or {}
             sender_id = str(msg.get("user_id") or sender.get("user_id") or "")
             role = "assistant" if (sender_id and sender_id == self_id) else "user"
@@ -64,14 +72,18 @@ class TBGetGroupRecord:
             segments = self.get_message._parse_segments(msg.get("message"))
             if not segments:
                 continue
-            content = f"【{username}】:" + "，".join(segments)
-            if result and result[-1]["role"] == role and result[-1].get("_user") == sender_id:
+            tier = tier_of(ts, now)
+            last = result[-1] if result else None
+            time_break = bool(last) and (
+                tier != last.get("_tier") or ts - last.get("_ts", 0) >= GAP_SECONDS)
+            if (last and last["role"] == role and last.get("_user") == sender_id
+                    and not time_break):
                 # 连续同用户：追加到上一条
-                result[-1]["content"] += "，" + "，".join(segments)
+                last["content"] += "，" + "，".join(segments)
+                last["_ts"] = ts
             else:
-                item = {"role": role, "content": content, "_user": sender_id}
-                result.append(item)
-        # 去掉内部标记字段
-        for item in result:
-            item.pop("_user", None)
-        return result
+                # 换用户或跨 6 小时：另起一条
+                result.append({"role": role,
+                               "content": f"【{username}】:" + "，".join(segments),
+                               "_user": sender_id, "_tier": tier, "_ts": ts})
+        return build_markers(result)

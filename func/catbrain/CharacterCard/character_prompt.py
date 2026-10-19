@@ -98,6 +98,12 @@ class MeowCharacterPrompt:
         if personality_prompt:
             lines.append(f"- 角色性格：{personality_prompt}")
 
+        # MBTI 行为倾向：这是"怎么表现"的约束，不是个人信息，所以放在性格之后、
+        # 设定之前。不加空行也不加标题——直接续在「角色性格」下面，保持附属感。
+        mbti_behavior = str(info.get("mbti_behavior", "") or "").strip()
+        if mbti_behavior:
+            lines.append(mbti_behavior)
+
         # 设定（紧接性格，字典多条；兼容旧字符串格式）
         setting = info.get("setting") or {}
         if isinstance(setting, dict):
@@ -124,7 +130,11 @@ class MeowCharacterPrompt:
             ("角色身份证号", info.get("id_card", "")),
             ("QQ号", info.get("qq", "")),
             ("手机号", info.get("phone", "")),
-            ("MBTI", info.get("mbti", "")),
+        ]
+        # 已有 mbti_behavior 表达了倾向时，不再把 MBTI 当个人信息重复一遍
+        if not mbti_behavior:
+            fields.append(("MBTI", info.get("mbti", "")))
+        fields += [
             ("最喜欢的东西", info.get("favorite", "")),
             ("角色爱好", info.get("hobbies", "")),
             ("讨厌的东西", info.get("dislikes", "")),
