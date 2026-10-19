@@ -157,7 +157,7 @@ class TBCreeper:
                 consumed = self._consume(norm_text, idx)
                 if consumed <= 0:
                     self._states.pop(key, None)
-                    self.log.info("[Creeper] 接龙中断")
+                    self.log.info(f"[Creeper] 接龙中断: {body[:30]}")
                     return None
                 bot_idx = idx + consumed
                 nxt = bot_idx

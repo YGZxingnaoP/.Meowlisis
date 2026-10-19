@@ -324,6 +324,18 @@ class TBSender:
                 continue
         return ""
 
+    @staticmethod
+    def _check(resp) -> str:
+        """校验 NapCat 返回：成功返回空串，失败返回原因"""
+        if not isinstance(resp, dict):
+            return "无响应（连接未就绪或超时）"
+        code = resp.get("retcode")
+        status = str(resp.get("status") or "")
+        if code == 0 or status == "ok":
+            return ""
+        detail = resp.get("message") or resp.get("wording") or resp.get("msg") or ""
+        return f"retcode={code} status={status} {detail}".strip()
+
     def send_text(self, target_type: str, target_id, text: str) -> str:
         if not text or not target_id:
             return "发送失败：缺少目标或内容"
@@ -333,11 +345,16 @@ class TBSender:
         try:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             action, key = self._action_and_key(target_type)
-            TBNapCatCore().call_action_sync(action, {
+            resp = TBNapCatCore().call_action_sync(action, {
                 key: int(gid),
                 "message": [{"type": "text", "data": {"text": text}}],
             })
-            return f"已发送：{text[:30]}"
+            why = self._check(resp)
+            if why:
+                self.log.warning(f"[主动发送] 文本 -> {gid} 失败: {why}")
+                return f"发送失败：{why}"
+            self.log.info(f"[主动发送] 文本 -> {gid} 成功")
+            return f"已发送给 {gid}：{text[:30]}"
         except Exception:
             self.log.exception("主动发送文本失败")
             return "发送失败"
@@ -376,12 +393,16 @@ class TBSender:
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             core = TBNapCatCore()
             action, key = self._action_and_key(target_type)
-            core.call_action_sync(action, {
+            resp = core.call_action_sync(action, {
                 key: int(gid),
                 "message": [{"type": "image",
                              "data": {"file": core.api_client._to_file_uri(path)}}],
             })
-            return f"已发送图片：{path}"
+            why = self._check(resp)
+            if why:
+                self.log.warning(f"[主动发送] 图片 -> {gid} 失败: {why}")
+                return f"发送失败：{why}"
+            return f"已发送图片给 {gid}：{path}"
         except Exception:
             self.log.exception("主动发送图片失败")
             return "发送失败"
@@ -402,12 +423,16 @@ class TBSender:
             core = TBNapCatCore()
             name = os.path.basename(path)
             if str(target_type) == "group":
-                core.call_action_sync("upload_group_file", {
+                resp = core.call_action_sync("upload_group_file", {
                     "group_id": int(gid), "file": path, "name": name})
             else:
-                core.call_action_sync("upload_private_file", {
+                resp = core.call_action_sync("upload_private_file", {
                     "user_id": int(gid), "file": path, "name": name})
-            return f"已发送文件：{path}"
+            why = self._check(resp)
+            if why:
+                self.log.warning(f"[主动发送] 文件 -> {gid} 失败: {why}")
+                return f"发送失败：{why}"
+            return f"已发送文件给 {gid}：{path}"
         except Exception:
             self.log.exception("主动发送文件失败")
             return "发送失败"
