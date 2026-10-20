@@ -18,6 +18,8 @@ export class Player {
     this._idleSrc = null;
     this._keep = null;
     this._lastTrace = '';
+    // 时间线允许的最大领先量（秒）：超过就判定为异常（后台冻结/积压）并重置
+    this._maxLead = 4;
   }
 
   /** 0~1：调 WebAudio 增益（在 MediaStreamDestination 之前，改的是进流的 PCM，iOS 拦不住），
@@ -82,6 +84,37 @@ export class Player {
     return this._nextStart > this.ctx.currentTime + 0.02;
   }
 
+  /** 回到前台 / WS 重连后重新对齐
+   *
+   * 息屏或切后台时轮询会被冻结：`_lastSeq` 停在旧位置，`_inflight` 还可能永远不结束
+   * （表现就是一回来先补播一大段旧语音，或者干脆再也不拉流）。
+   * 这里统一归零：下次拿到数据直接跳到最新（`_firstBatch`），时间线从当前时刻重排。
+   */
+  resync(reason) {
+    this._firstBatch = true;
+    this._nextStart = 0;
+    this._lastTrace = '';
+    this._inflight = false;
+    this._resyncReason = reason || '';
+    try {
+      if (this.ctx && this.ctx.state !== 'running') this.ctx.resume();
+    } catch (e) {}
+    try {
+      if (this.audio && this.audio.paused) {
+        const p = this.audio.play();
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (e) {}
+  }
+
+  /** 时间线看门狗：排到 4 秒之后的一定是异常（后台冻结/积压），直接重置。
+   *  否则 isPlaying() 长期为真会把手机麦克风一直掐住（表现：电脑彻底听不到你说话） */
+  _guardTimeline() {
+    const ctx = this.ctx;
+    if (!ctx || !this._nextStart) return;
+    if (this._nextStart > ctx.currentTime + this._maxLead) this._nextStart = 0;
+  }
+
   stop() {
     if (this._timer) clearInterval(this._timer);
     this._timer = null;
@@ -122,6 +155,9 @@ export class Player {
   }
 
   _poll() {
+    // 看门狗放在最前面：即使某次 fetch 永远没回来（_inflight 卡住），
+    // 时间线也照样会被纠正，不会让 isPlaying() 永久为真把麦克风掐死
+    this._guardTimeline();
     if (this._inflight) return;
     this._inflight = true;
     fetch('/api/tts/pending?seq=' + this._lastSeq)

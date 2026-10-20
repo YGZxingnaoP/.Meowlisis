@@ -59,7 +59,8 @@ def _write_mode(mode):
 tts_relay = TtsRelay(phone_config.TTS_MAX_BLOCKS, phone_config.TTS_PENDING_LIMIT,
                      phone_config.TTS_META_HOLD_SECS,
                      phone_config.TTS_MAX_PENDING_BYTES,
-                     phone_config.TTS_MAX_BLOCK_BYTES)
+                     phone_config.TTS_MAX_BLOCK_BYTES,
+                     phone_config.TTS_MAX_AGE_SECS)
 tts_relay.set_mode(_read_mode())
 audio_gateway = AudioGateway(
     API_BASE,
@@ -73,7 +74,23 @@ audio_gateway = AudioGateway(
     batch_secs=phone_config.AUDIO_SEND_BATCH_SECS,
     log=print,
 )
-ws_hub = WsHub(on_audio=audio_gateway.feed, gop_max=phone_config.VIDEO_GOP_MAX)
+
+
+def _on_ws_drop(conn):
+    """手机连接断开/被心跳回收：清掉上行残留，避免上一句的半句拼到新一句开头"""
+    if getattr(conn, 'role', None) != 'phone':
+        return
+    try:
+        audio_gateway.reset()
+    except Exception:
+        pass
+
+
+ws_hub = WsHub(on_audio=audio_gateway.feed, gop_max=phone_config.VIDEO_GOP_MAX,
+               on_drop=_on_ws_drop, log=print,
+               ping_idle=phone_config.WS_PING_IDLE_SECS,
+               pong_timeout=phone_config.WS_PONG_TIMEOUT_SECS,
+               keep_interval=phone_config.WS_KEEP_INTERVAL_SECS)
 
 
 class PhoneRequestHandler(WSGIRequestHandler):
@@ -236,6 +253,20 @@ def api_mode():
 def tts_debug():
     """排查用：最近若干条手机音频流的来源/保留/字节数"""
     return jsonify(tts_relay.debug())
+
+
+@app.route('/api/reset', methods=['GET', 'POST'])
+def api_reset():
+    """兜底接口：清空中继缓冲与上行残留，遇到怪状态不必重启进程/刷新页面"""
+    try:
+        tts_relay.reset()
+    except Exception:
+        pass
+    try:
+        audio_gateway.reset()
+    except Exception:
+        pass
+    return jsonify({'status': 'ok', 'mode': tts_relay.get_mode()})
 
 
 def start_obs_http():

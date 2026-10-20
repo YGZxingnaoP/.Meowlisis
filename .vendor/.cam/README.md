@@ -23,7 +23,7 @@
 5. 电脑端打开 `https://<电脑IP>:8443/cam`：WebCodecs `VideoDecoder` 解码 → canvas 播放，带极简 **REC 取景框**（红点 REC + 四角框 + 状态/帧率）。
 6. 关闭摄像头会 `track.stop()` 释放设备（省电），观看端提示「手机摄像头已关闭」。
 
-> **尺寸/方向以实际视频帧为准**：手机端**先把摄像头画面画进 canvas，再从这个 canvas 编码**，且这块 canvas 就是手机上的预览画面 —— 所以"手机上看到什么，电脑端就收到什么"，不会出现横竖颠倒或拉伸。编码尺寸取 `video.videoWidth/videoHeight`（不用 `track.getSettings()`，它在 iOS 上可能返回传感器尺寸）；观看端用解码后 `VideoFrame.displayWidth/displayHeight` 决定画布尺寸与显示比例，并按窗口等比自适应，中途旋转/切换前后摄像头也会自动重建编码器与解码器。
+> **尺寸/方向以实际视频帧为准**：手机端默认**直接从 `<video>` 取帧编码**（`new VideoFrame(video)`，不经 canvas 重绘、不做任何缩放），预览也由这个 `<video>` 显示 —— 所以"手机上看到什么，电脑端就收到什么"，不会出现横竖颠倒或拉伸。但 `VideoFrame(video)` 拿到的是**解码原始帧、不含渲染时的旋转**（竖屏摄像头的原始帧是横的，而 `videoWidth/Height` 是旋转后的），所以每路视频都会先做一次**几何自检**：原始帧尺寸与显示尺寸不一致时自动退回 canvas 归一化编码（`drawImage` 走渲染后画面、自带旋转），画面不会变形；一致时才走直取快路径。编码尺寸取 `video.videoWidth/videoHeight`（命中缓存属性，每帧不再调 `track.getSettings()`，它在 iOS 上还可能返回传感器尺寸）；观看端用解码后 `VideoFrame.displayWidth/displayHeight` 决定画布尺寸与显示比例，并按窗口等比自适应，中途旋转/切换前后摄像头也会自动重建编码器与解码器。
 
 > 前端静态资源以 `Cache-Control: no-store, must-revalidate` 提供（手机页、观看页、OBS 页三处都是），改动后刷新即生效，不会被浏览器缓存住旧版本。
 
@@ -33,6 +33,19 @@
 
 - `VIDEO_ENC_MAX_QUEUE`：编码器/发送队列上限，超过就丢帧（智能丢帧第一层）；
 - `AUDIO_SEPARATE_SOCKET`：手机端音频与视频走**两条独立 WS**，音频永不被视频积压拖住。
+
+### 息屏 / 切后台 / 杀进程之后的自愈
+
+手机息屏、切后台、或被系统杀掉时，浏览器会冻结定时器、且不发 FIN 就断开，容易留下三类错位状态。
+三处都已自愈，**正常情况下不需要再重启任何进程或刷新页面**：
+
+| 环节 | 原来会怎样 | 现在的做法 |
+|---|---|---|
+| 手机播放 `player.js` | `_lastSeq` 停在旧位置，回来先补播几十秒前的语音；`_nextStart` 悬在未来 → `isPlaying()` 长期为真 → **麦克风被闸门一直掐住** | 回前台 / `pageshow` / WS 重连时 `resync()`：`_firstBatch` 重新对齐到最新、时间线归零；`_poll()` 里再加"领先 > 4 秒就重置"的看门狗；页面隐藏时停掉轮询 |
+| 中继 `tts_relay.py` | 只按条数/字节裁剪，**手机离开一分钟，回来还能听到一分钟前的话** | 每块带写入时间，超过 `TTS_MAX_AGE_SECS`（默认 3 秒）直接丢弃；`TTS_MAX_BLOCKS` 降到 120 兜内存 |
+| 连接 `ws_hub.py` | 从不主动 ping，半开连接让读线程永久阻塞，连接/线程只增不减 → 越用越怪直到重启服务 | 空闲 15 秒发协议级 ping（浏览器自动回 pong），60 秒一帧都没收到就判定半开并回收；手机连接被回收时通知 `audio_gateway` 清掉上行残留，避免上一句的半句拼到新一句 |
+
+兜底手段：浏览器打开或 `curl -k https://<IP>:8443/api/reset`，清空中继缓冲 + 上行残留，不必重启 `serve.py`。
 
 ## 二、麦克风（手机 → 主项目 SenseVoice）
 
@@ -271,6 +284,7 @@ https://<电脑IP>:8443
 | GET/POST | `/api/tts/phone` `/api/tts/pending` | 手机 TTS 推送 / 拉取 |
 | GET/POST | `/api/mode` | 查询 / 切换 聊天·通话 |
 | GET | `/api/tts/debug` | 中继诊断 JSON |
+| GET/POST | `/api/reset` | 兜底：清空中继缓冲与上行残留（不必重启进程） |
 | GET | `/api/who` | uid → 昵称（转 GUI 1801 的身份接口） |
 
 ## 常见问题

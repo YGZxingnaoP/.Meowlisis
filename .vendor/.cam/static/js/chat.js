@@ -45,6 +45,12 @@ export class Chat {
     this._timer = null;
   }
 
+  /** 回前台 / WS 重连：清掉可能永远不返回的那次轮询标记
+   *  （否则 /api/phone/audio 的"单飞"标记会一直卡住，手机再也收不到语音识别字幕） */
+  resync() {
+    this._audioBusy = false;
+  }
+
   _pollAudio() {
     if (this._audioBusy) return;
     this._audioBusy = true;

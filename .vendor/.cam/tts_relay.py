@@ -7,7 +7,8 @@ class TtsRelay:
     """手机 TTS 中继：按 seq 缓冲 PCM，按模式过滤来源，meta 延迟回收"""
 
     def __init__(self, max_blocks=600, pending_limit=60, hold_secs=4.0,
-                 max_pending_bytes=262144, max_block_bytes=16384):
+                 max_pending_bytes=262144, max_block_bytes=16384,
+                 max_age_secs=3.0):
         self._buf = []
         self._seq = 0
         self._meta = {}
@@ -19,6 +20,8 @@ class TtsRelay:
         self._hold_secs = float(hold_secs)
         self._max_pending_bytes = int(max_pending_bytes)
         self._max_block_bytes = max(1024, int(max_block_bytes))
+        # 超过这个岁数的块不再发给手机（实时语音没有补播价值，补播只会串音/拖死时间线）
+        self._max_age = max(0.5, float(max_age_secs or 0))
         self._mode = 'chat'
         self._dropping = False
         self._cur_source = ''
@@ -31,6 +34,17 @@ class TtsRelay:
         self._running = True
         self._cleaner = threading.Thread(target=self._clean_loop, daemon=True, name='tts-relay')
         self._cleaner.start()
+
+    def reset(self):
+        """清空中继缓冲与 meta（兜底接口：遇到怪状态不用重启进程/刷新页面）"""
+        with self._lock:
+            self._buf = []
+            self._meta.clear()
+            self._dropping = False
+            self._cur_source = ''
+            self._kept_traces.clear()
+            self._last_block_ts = time.time()
+            self._record('', '', True, note='reset')
 
     def set_mode(self, mode):
         """切换 chat|call，并清空缓冲避免串台"""
@@ -121,7 +135,7 @@ class TtsRelay:
             pass
 
     def push(self, data):
-        """追加 PCM（拆成小块）并分配单调递增 seq"""
+        """追加 PCM（拆成小块）并分配单调递增 seq；每块带写入时间用于龄期丢弃"""
         if not data:
             return
         with self._lock:
@@ -129,17 +143,28 @@ class TtsRelay:
                 self._cur['bytes'] = int(self._cur.get('bytes', 0)) + len(data)
             if self._dropping:
                 return
-            self._last_block_ts = time.time()
+            now = time.time()
+            self._last_block_ts = now
             step = self._max_block_bytes
             for i in range(0, len(data), step):
-                self._buf.append((self._seq, bytes(data[i:i + step])))
+                self._buf.append((self._seq, now, bytes(data[i:i + step])))
                 self._seq += 1
             if len(self._buf) > self._max_blocks:
                 del self._buf[:len(self._buf) - self._max_blocks]
 
+    def _purge_stale(self, now):
+        """丢掉超龄的块（调用方已持锁）：手机不在时攒下的旧语音，回来也不该再播"""
+        drop = 0
+        while drop < len(self._buf) and (now - self._buf[drop][1]) > self._max_age:
+            drop += 1
+        if drop:
+            del self._buf[:drop]
+
     def pending(self, seq):
-        """取 seq 之后的新块（同时受条数与字节上限约束）与当前 meta"""
+        """取 seq 之后的新块（受条数/字节/龄期三重约束）与当前 meta"""
         with self._lock:
+            now = time.time()
+            self._purge_stale(now)
             start = 0
             while start < len(self._buf) and self._buf[start][0] <= seq:
                 start += 1
@@ -147,7 +172,7 @@ class TtsRelay:
             total = 0
             i = start
             while i < len(self._buf) and len(items) < self._pending_limit:
-                s, d = self._buf[i]
+                s, _ts, d = self._buf[i]
                 if items and (total + len(d)) > self._max_pending_bytes:
                     break
                 items.append((s, d))
@@ -174,7 +199,7 @@ class TtsRelay:
                 'mode': self._mode,
                 'seq': self._seq,
                 'buffered_blocks': len(self._buf),
-                'buffered_bytes': sum(len(d) for _, d in self._buf),
+                'buffered_bytes': sum(len(d) for _s, _t, d in self._buf),
                 'meta': {k: v for k, v in self._meta.items() if not str(k).startswith('_')},
                 'log': list(self._log),
             }

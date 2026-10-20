@@ -208,18 +208,35 @@ class TBNapCatEventHandler:
             if message_type == "group":
                 ShortMemory().save({
                     "role": "assistant",
-                    "content": f"【来自QQ群的消息】{complain_text}",
+                    "content": f"【来自QQ，{self._resolve_group_name(session_id)}的群消息】{complain_text}",
                     "type": "qq_groupchat",
                 }, self.config.group_memory_limit)
             else:
                 ShortMemory().save({
                     "role": "assistant",
-                    "content": f"【来自QQ的消息】{complain_text}",
+                    "content": f"【来自QQ，{self._poke_qq_name(event)}的消息】{complain_text}",
                     "type": "qq_response",
                 }, self.config.short_mem_rounds)
             self.log.info(f"[戳一戳] 已发牢骚: {complain_text[:30]}")
         except Exception:
             self.log.exception("戳一戳发牢骚失败")
+
+    def _poke_qq_name(self, event: dict) -> str:
+        """戳一戳写记忆时的说话人：先用 meowid 对应的昵称，没有再回退 QQ 真实昵称"""
+        try:
+            user_id = str(event.get("_poke_user_id") or event.get("user_id") or "")
+            if not user_id:
+                return ""
+            from func.pipeline.id_signup import IdSignupBridge
+            meowid = IdSignupBridge().resolve("qq", user_id)
+            name = IdSignupBridge().nickname_of(meowid) if meowid else ""
+            if not name:
+                from func.toolbox.napcat.groupchat.user_nickname import TBUserNicknameMap
+                name = TBUserNicknameMap().resolve(user_id) or ""
+            return str(name or "").strip()
+        except Exception:
+            self.log.exception("戳一戳取昵称异常")
+            return ""
 
     # ==================== 群聊消息处理 ====================
     def _handle_group_message(self, event: dict):

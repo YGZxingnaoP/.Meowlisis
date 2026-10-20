@@ -7,6 +7,7 @@ import datetime
 import random
 from typing import List, Dict
 
+from func.log.default_log import DefaultLog
 from func.pipeline.short_memory import ShortMemory
 
 
@@ -26,6 +27,7 @@ class MessageBuilder:
     ]
 
     def __init__(self, max_rounds: int = 60):
+        self.log = DefaultLog().getLogger()
         # 短期记忆总轮数（含内存缓存的2轮）
         self.max_rounds = max_rounds
         # json 归档上限轮数（总轮数减2）
@@ -63,18 +65,40 @@ class MessageBuilder:
         self._flush()
 
     def _flush(self):
-        """内存缓存超出2轮时，将最旧完整轮次格式化后归档到 pipeline 短期记忆"""
+        """内存缓存超出2轮时，将最旧完整轮次格式化后归档到 pipeline 短期记忆
+
+        开头的孤立消息（如本地规则硬触发命中后没有 assistant 回复的那条 user）必须先归档掉：
+        否则 _complete_rounds 从第 0 条就 break，archive_rounds 恒为负，归档永久停摆
+        —— 对话只留在内存里、json 不再更新，重启即丢。
+        """
+        while self._starts_with_orphan():
+            self._archive_item(self.history.pop(0))
         complete = self._complete_rounds(self.history)
         archive_rounds = complete - self.HISTORY_ROUNDS
-        if archive_rounds > 0:
-            for _ in range(archive_rounds * 2):
-                item = self.history.pop(0)
-                formatted = self._format_item(item)
-                self.short_memory.save({
-                    "role": item["role"],
-                    "content": formatted,
-                    "type": item.get("type", "llm_fast_response"),
-                }, self.json_max_rounds)
+        for _ in range(max(0, archive_rounds) * 2):
+            self._archive_item(self.history.pop(0))
+
+    def _starts_with_orphan(self) -> bool:
+        """内存缓存开头是不是配不上对的孤立消息（不是 user→assistant 的正常一轮）
+
+        只有 1 条时（当前轮还没回复）不算孤立，必须留在内存里等回复。
+        """
+        if len(self.history) < 2:
+            return False
+        first, second = self.history[0], self.history[1]
+        if first.get("role") == "user" and second.get("role") == "assistant":
+            return False
+        self.log.warning(f"[短期记忆] 开头有孤立消息（role={first.get('role')}），直接归档，避免归档停摆")
+        return True
+
+    def _archive_item(self, item: Dict):
+        """把一条内存缓存格式化后写入 json 短期记忆"""
+        formatted = self._format_item(item)
+        self.short_memory.save({
+            "role": item["role"],
+            "content": formatted,
+            "type": item.get("type", "llm_fast_response"),
+        }, self.json_max_rounds)
 
     @staticmethod
     def format_user_content(username: str, content: str) -> str:

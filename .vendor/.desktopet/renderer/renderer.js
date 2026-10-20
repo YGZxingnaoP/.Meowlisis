@@ -197,15 +197,52 @@
   }
 
   // ---- 视口变化：居中 + 自适应模式下重算缩放（旋转/窗口变化）----
-  function onViewportResize() {
+  // 手机横屏旋转最容易出的两个问题：① iframe 里的 resize 晚于布局（iOS）；
+  // ② PIXI 的 resizeTo 没跟上，画布仍是竖屏尺寸 —— 模型被摆到竖屏中心，横屏下就在屏幕外。
+  // 所以这里不依赖 resizeTo：直接以 window.innerWidth/Height 为准强制同步渲染尺寸，
+  // 而且在下一帧、320ms 后各再对齐一次（幂等，尺寸没变时什么都不做）。
+  let _vpW = 0, _vpH = 0;
+
+  function syncRendererSize() {
+    const w = Math.max(1, Math.round(window.innerWidth || 0));
+    const h = Math.max(1, Math.round(window.innerHeight || 0));
+    if (!(w > 0) || !(h > 0)) return [app.screen.width, app.screen.height];
+    if (Math.round(app.screen.width) !== w || Math.round(app.screen.height) !== h) {
+      try { app.renderer.resize(w, h); } catch (e) {}
+    }
+    return [w, h];
+  }
+
+  function applyViewportLayout() {
+    const size = syncRendererSize();
+    const w = size[0], h = size[1];
+    if (_vpW > 0 && _vpH > 0 && (w !== _vpW || h !== _vpH)) {
+      // 尺寸变了（旋转/窗口变化）：拖拽偏移按比例换算，人物留在原来的相对位置；
+      // 否则竖屏拖到下方的偏移，横屏后会贴边甚至出屏。
+      dragOffsetX *= w / _vpW;
+      dragOffsetY *= h / _vpH;
+    }
+    _vpW = w;
+    _vpH = h;
     recenter();
     if (autoFitMode) {
       const fs = computeFitScale();
       if (fs && fs > 0) applyScale(fs * manualFactor);
     }
   }
+
+  function onViewportResize() {
+    applyViewportLayout();
+    requestAnimationFrame(() => applyViewportLayout());
+    setTimeout(() => applyViewportLayout(), 320);
+  }
+
   window.addEventListener('resize', onViewportResize);
   window.addEventListener('orientationchange', onViewportResize);
+  if (window.visualViewport) {
+    try { window.visualViewport.addEventListener('resize', onViewportResize); } catch (e) {}
+  }
+  applyViewportLayout();   // 首次进入也按真实视口对齐一次
 
   // ---- 手机 iframe（自适应模式）：按住人物拖拽移动，双击回中 ----
   if (autoFitMode) {
@@ -413,5 +450,12 @@
       const fs = computeFitScale();
       if (fs && fs > 0) applyScale(fs * manualFactor);
     }
+  });
+
+  // 手机页发来的「重新贴合」：旋转/视口变化后由父页面兜底催一次
+  window.addEventListener('message', (e) => {
+    const d = e.data;
+    if (!d || d.source !== 'meow-phone' || d.type !== 'pet-refit') return;
+    onViewportResize();
   });
 })();

@@ -19,6 +19,11 @@ SUB_VIDEO = 0x01
 SUB_AUDIO = 0x02
 SUB_AUDIO_MON = 0x03
 
+# 心跳默认值（serve.py 用 config.py 里的配置传入）
+PING_IDLE_SECS = 15.0
+PONG_TIMEOUT_SECS = 60.0
+KEEP_INTERVAL_SECS = 5.0
+
 
 def compute_accept(key):
     """计算 Sec-WebSocket-Accept"""
@@ -75,6 +80,10 @@ class WsConn:
         self._q = collections.deque()
         self.dropped = 0
         self._sender = None
+        # 心跳/半开连接判定：手机被系统杀掉不会发 FIN，只有靠 ping/pong 超时才能回收
+        self.created = time.time()
+        self.last_rx = self.created
+        self.last_ping = 0.0
 
     # ---------- 异步发送（防慢客户端拖死上行） ----------
     def start_sender(self):
@@ -127,6 +136,10 @@ class WsConn:
         """发送二进制帧（同步，用于握手/小数据）"""
         self._send(OP_BIN, payload)
 
+    def ping(self):
+        """发协议级 ping：浏览器/观看端的 WS 栈会自动回 pong，不需要前端 JS 参与"""
+        return self._send(OP_PING, b'')
+
     def close(self):
         """关闭连接"""
         with self._send_lock:
@@ -137,6 +150,15 @@ class WsConn:
                 self._sock.sendall(_encode_frame(OP_CLOSE, b''))
             except Exception:
                 pass
+        self.wakeup()
+        try:
+            self._sock.shutdown(2)
+        except Exception:
+            pass
+
+    def close_hard(self):
+        """回收半开连接专用：不发 CLOSE 帧、不等发送锁，避免卡住的 sendall 把回收线程一起拖死"""
+        self.alive = False
         self.wakeup()
         try:
             self._sock.shutdown(2)
@@ -161,6 +183,8 @@ class WsConn:
             head = _recv_exact(self._sock, 2)
             if head is None:
                 return None
+            # 只要收到任何帧（含浏览器自动回的 pong）就说明链路还活着
+            self.last_rx = time.time()
             b1, b2 = head[0], head[1]
             fin = bool(b1 & 0x80)
             opcode = b1 & 0x0F
@@ -212,7 +236,9 @@ class WsConn:
 class WsHub:
     """手机/观看端复用同一 WS 端点：手机上行音视频，观看端下行视频"""
 
-    def __init__(self, on_audio=None, gop_max=16, log=None):
+    def __init__(self, on_audio=None, gop_max=16, log=None, on_drop=None,
+                 ping_idle=PING_IDLE_SECS, pong_timeout=PONG_TIMEOUT_SECS,
+                 keep_interval=KEEP_INTERVAL_SECS):
         self._lock = threading.Lock()
         self._conns = set()
         self._viewers = set()
@@ -221,7 +247,63 @@ class WsHub:
         self._last_reqkey = 0.0
         self._gop_max = int(gop_max)   # 兼容旧参数（已不再重放积压）
         self._on_audio = on_audio
+        self._on_drop = on_drop
         self._log = log
+        self._ping_idle = float(ping_idle)
+        self._pong_timeout = float(pong_timeout)
+        self._keep_interval = max(1.0, float(keep_interval))
+        self._keeper = None
+        self._keeper_lock = threading.Lock()
+
+    # ---------- 心跳：回收半开连接 ----------
+    def _ensure_keeper(self):
+        """惰性启动心跳线程（有连接才需要）"""
+        if self._keeper is not None:
+            return
+        with self._keeper_lock:
+            if self._keeper is not None:
+                return
+            self._keeper = threading.Thread(target=self._keep_loop, daemon=True, name='ws-keep')
+            self._keeper.start()
+
+    def _keep_loop(self):
+        while True:
+            time.sleep(self._keep_interval)
+            try:
+                self.check_keepalive()
+            except Exception:
+                pass
+
+    def check_keepalive(self, now=None):
+        """空闲连接发 ping；超过超时时间一帧都没收到的判为半开连接，直接关掉触发回收
+
+        手机被系统杀掉/息屏不会发 FIN，读线程会永久卡在 recv 里：
+        连接和线程只增不减，最后表现成"越用越怪，只能重启服务"。
+        """
+        now = time.time() if now is None else float(now)
+        with self._lock:
+            conns = list(self._conns)
+        for c in conns:
+            if not c.alive:
+                continue
+            idle = now - (c.last_rx or now)
+            if idle > self._pong_timeout:
+                if self._log:
+                    try:
+                        self._log('[ws] 回收半开连接 role=%s 空闲 %.0fs' % (c.role or '-', idle))
+                    except Exception:
+                        pass
+                try:
+                    c.close_hard()
+                except Exception:
+                    pass
+                continue
+            if idle > self._ping_idle and (now - (c.last_ping or 0.0)) > self._ping_idle:
+                c.last_ping = now
+                try:
+                    c.ping()
+                except Exception:
+                    pass
 
     def serve(self, sock, headers):
         """完成握手并进入读写循环（在请求线程内阻塞）"""
@@ -242,6 +324,7 @@ class WsHub:
         conn.start_sender()
         with self._lock:
             self._conns.add(conn)
+        self._ensure_keeper()
         try:
             self._loop(conn)
         finally:
@@ -363,10 +446,18 @@ class WsHub:
             p.send_text({'t': 'reqkey'})
 
     def _drop(self, conn):
-        """移除断开的连接"""
+        """移除断开的连接（只在真正移除时通知上层一次）"""
         conn.alive = False
         conn.wakeup()
+        removed = False
         with self._lock:
-            self._conns.discard(conn)
+            if conn in self._conns:
+                self._conns.discard(conn)
+                removed = True
             self._viewers.discard(conn)
             self._phones.discard(conn)
+        if removed and self._on_drop:
+            try:
+                self._on_drop(conn)
+            except Exception:
+                pass

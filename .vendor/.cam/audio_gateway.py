@@ -31,6 +31,7 @@ class AudioGateway:
         self._lock = threading.Lock()
         self._sess = None
         self._running = True
+        self._reset_flag = False
         self.fails = 0
         self.dropped = 0
         self._worker = threading.Thread(target=self._loop, daemon=True, name='phone-audio')
@@ -59,6 +60,19 @@ class AudioGateway:
             except queue.Empty:
                 pass
             self.dropped += 1
+
+    def reset(self):
+        """手机连接断开/重连：清空上行残留（积压队列 + 没发完的半句），避免拼到下一次的第一句"""
+        with self._lock:
+            self._reset_flag = True
+
+    def _take_reset(self):
+        """取一次 reset 信号（只在采集线程里调用）"""
+        with self._lock:
+            if not self._reset_flag:
+                return False
+            self._reset_flag = False
+            return True
 
     def stop(self):
         """停止网关线程"""
@@ -152,6 +166,22 @@ class AudioGateway:
                 pass
 
         while self._running:
+            if self._take_reset():
+                # 手机侧连接断了/重连了：先把没发完的半句收尾，再清掉积压与残留半帧，
+                # 否则上一句的零头会拼到新一句开头（表现就是"声音错乱"）
+                if speaking:
+                    end_utterance()
+                speaking = False
+                silence_frames = 0
+                utter_frames = 0
+                pending = bytearray()
+                outbuf = bytearray()
+                while True:
+                    try:
+                        self._q.get_nowait()
+                    except queue.Empty:
+                        break
+                last_flush = time.time()
             try:
                 rate, channels, data = self._q.get(timeout=0.05)
             except queue.Empty:

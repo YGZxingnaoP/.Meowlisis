@@ -42,11 +42,19 @@ AUDIO_MIC_GATE = True
 # relay → 主程序：把 30ms 小帧攒成一批再 POST（秒），降低请求数并抗超时
 AUDIO_SEND_BATCH_SECS = 0.15
 
-TTS_MAX_BLOCKS = 600
+TTS_MAX_BLOCKS = 120
 TTS_PENDING_LIMIT = 60
 TTS_META_HOLD_SECS = 4.0
 TTS_MAX_PENDING_BYTES = 262144
 TTS_MAX_BLOCK_BYTES = 16384
+# 手机 TTS 中继：超过这个秒数的音频直接丢弃。
+# 语音是实时媒体，手机息屏/切后台回来再补播几十秒前的句子只会更糟（串音、时间线错位、麦克风被闸门掐死）
+TTS_MAX_AGE_SECS = 3.0
+# WS 心跳：空闲多久发 ping；多久收不到任何帧就判定半开连接并回收
+# （手机被系统杀掉不会发 FIN，不回收会一直占着读线程与连接集合，越用越慢直到必须重启服务）
+WS_PING_IDLE_SECS = 15.0
+WS_PONG_TIMEOUT_SECS = 60.0
+WS_KEEP_INTERVAL_SECS = 5.0
 MODE_FILE = os.path.join(BASE_DIR, 'mode.txt')
 # 默认模式：call=手机听全部语音（默认）；chat=只听手机自己发起的对话
 DEFAULT_MODE = 'call'

@@ -1,3 +1,6 @@
+// 麦克风闸门「连续掐断」的总时长上限：超过就强制放行，避免上行被永久静音
+const GATE_MAX_MS = 20000;
+
 export class Mic {
   constructor(bus, gate, opts) {
     this.bus = bus;
@@ -12,6 +15,7 @@ export class Mic {
     this.on = false;
     this.onError = null;
     this._holdUntil = 0;
+    this._holdStart = 0;
     this._watch = 0;
     this._restarts = 0;
     this.held = 0;
@@ -53,9 +57,14 @@ export class Mic {
     this._watch = setInterval(() => this._check(), 2000);
   }
 
-  /** 看门狗：iOS 来电/Siri/切后台会让音频上下文挂起或轨道结束，自动救回来 */
+  /** 看门狗：iOS 来电/Siri/切后台会让音频上下文挂起或被系统关掉，自动救回来 */
   async _check() {
     if (!this.on) return;
+    // 上下文被系统关掉（长时间息屏/后台）：光 resume 救不回来，整条链路重建
+    if (this.ctx && this.ctx.state === 'closed') {
+      await this._restart('音频上下文已关闭');
+      return;
+    }
     try {
       if (this.ctx && this.ctx.state === 'suspended') {
         await this.ctx.resume();
@@ -63,18 +72,23 @@ export class Mic {
     } catch (e) {}
     const track = this.stream ? this.stream.getAudioTracks()[0] : null;
     if (!track || track.readyState === 'ended') {
-      if (this._restarts >= 5) return;
-      this._restarts += 1;
-      if (this.onError) {
-        try {
-          this.onError(new Error('麦克风中断，正在自动恢复(' + this._restarts + ')'));
-        } catch (e) {}
-      }
+      await this._restart('麦克风中断');
+    }
+  }
+
+  /** 自动恢复：连续失败 5 次才放弃（start() 成功会把计数清零，所以偶发中断永远不会用尽） */
+  async _restart(reason) {
+    if (this._restarts >= 5) return;
+    this._restarts += 1;
+    if (this.onError) {
       try {
-        await this.stop();
-        await this.start();
+        this.onError(new Error(reason + '，正在自动恢复(' + this._restarts + ')'));
       } catch (e) {}
     }
+    try {
+      await this.stop();
+      await this.start();
+    } catch (e) {}
   }
 
   async stop() {
@@ -123,7 +137,14 @@ export class Mic {
 
   _onPcm(f32) {
     const now = performance.now();
-    if (this.gateOn && this.gate && this.gate()) this._holdUntil = now + 150;
+    if (this.gateOn && this.gate && this.gate()) {
+      // 每帧续期 150ms，但连续掐断总时长不超过 GATE_MAX_MS：
+      // 播放侧时间线真出问题时也不能把上行永久掐死（否则电脑彻底听不到你说话）
+      if (!this._holdStart) this._holdStart = now;
+      this._holdUntil = Math.min(now + 150, this._holdStart + GATE_MAX_MS);
+    } else {
+      this._holdStart = 0;
+    }
     if (now < this._holdUntil) {
       this.held += 1;
       return;

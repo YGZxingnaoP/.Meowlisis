@@ -55,6 +55,8 @@ class TBoxQQResponse:
             return
         # 昵称只用于展示：唯一规则 display_name()，禁止把内部编号当昵称传给下游
         nickname_display = display_name(meowid)
+        # 短期记忆里的说话人：先用 meowid 对应的昵称，没有再回退 QQ 真实昵称（ext_name）
+        mem_name = IdSignupBridge().nickname_of(meowid) or str(ext_name or "").strip()
         # 私聊统一上下文：meowid=唯一身份键，nickname=展示名
         base_context = {"channel": "qq", "message_type": "private", "target_id": str(user_id),
                         "user_id": str(user_id), "ext_account": str(user_id),
@@ -119,12 +121,12 @@ class TBoxQQResponse:
         if self.napcat_config.short_mem_enabled and not is_bot:
             self.short_memory.save({
                 "role": "user",
-                "content": f"【来自QQ的消息】{text}",
+                "content": f"【来自QQ，{mem_name}的消息】{text}",
                 "type": "qq_response",
             }, self.napcat_config.short_mem_rounds)
         # 2. 记录用户消息长期记忆（默认关闭）
         if not is_bot:
-            self.napcat_ltmem.record_user(meowid, text)
+            self.napcat_ltmem.record_user(meowid, text, name=ext_name)
         # 3. napcat 独立 LLM 回复（流式短句回传发送）
         _pace = self._make_pacer("private")
         final_text = self.napcat_llm.send_to_llm(
@@ -136,12 +138,12 @@ class TBoxQQResponse:
         if final_text and self.napcat_config.short_mem_enabled and not is_bot:
             self.short_memory.save({
                 "role": "assistant",
-                "content": f"【来自QQ的消息】{final_text}",
+                "content": f"【来自QQ，{mem_name}的消息】{final_text}",
                 "type": "qq_response",
             }, self.napcat_config.short_mem_rounds)
         # 5. 记录 AI 回复长期记忆（默认关闭）
         if final_text and not is_bot:
-            self.napcat_ltmem.record_ai(meowid, final_text)
+            self.napcat_ltmem.record_ai(meowid, final_text, name=ext_name)
         # 6. 表情触发（概率 = 配置概率 + 好感度）
         if final_text:
             self._maybe_send_emote(meowid, user_id, text, final_text, short_memory)
@@ -467,13 +469,13 @@ class TBoxQQResponse:
                 self.log.error(f"[NapCat群聊] 参与者身份无法识别，跳过档案: {ext_account}")
                 continue
             try:
-                self.napcat_ltmem.record_user(p_meowid, ptext)
+                self.napcat_ltmem.record_user(p_meowid, ptext, group_name=group_name)
             except Exception:
                 self.log.exception("群聊记录用户档案失败")
             if self.napcat_config.short_mem_enabled:
                 self.short_memory.save({
                     "role": "user",
-                    "content": f"【来自QQ群的消息】{ptext}",
+                    "content": f"【来自QQ，{group_name}的群消息】{ptext}",
                     "type": "qq_response",
                 }, self.napcat_config.short_mem_rounds)
 
@@ -734,13 +736,13 @@ class TBoxQQResponse:
             if at_self:
                 self.short_memory.save({
                     "role": "assistant",
-                    "content": f"【来自QQ群的消息】{final}",
+                    "content": f"【来自QQ，{group_name}的群消息】{final}",
                     "type": "qq_response",
                 }, self.napcat_config.short_mem_rounds)
             else:
                 self.short_memory.save({
                     "role": "assistant",
-                    "content": f"【来自QQ群的消息】{final}",
+                    "content": f"【来自QQ，{group_name}的群消息】{final}",
                     "type": "qq_groupchat",
                 }, self.napcat_config.group_memory_limit)
         # 群性质概括计数

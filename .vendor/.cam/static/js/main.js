@@ -36,6 +36,7 @@ const sendBtn = el('sendBtn');
 const nameTag = el('nameTag');
 const nameValue = el('nameValue');
 const nameInput = el('nameInput');
+const petFrame = el('petFrame');
 
 const bus = new Bus('phone');
 // 麦克风走独立 WS：视频大帧永远不会把音频堵在后面（原来音视频同一条连接 = 语音忽大忽小/丢句）
@@ -150,6 +151,9 @@ function setBall(btn, on) {
 function syncUser() {
   chat.setUsername(username);
   bus.send({ t: 'user', name: username });
+  // 麦克风走独立 WS：身份必须单独带上，否则上行音频没有编号，
+  // 主项目会按默认的「手机用户」另建一个临时身份（语音记忆就记到别人身上了）
+  audioBus.send({ t: 'user', name: username });
 }
 
 async function toggleCam() {
@@ -308,6 +312,17 @@ function initBus() {
   bus.onText((msg) => {
     if (msg && msg.t === 'reqkey') camera.requestKeyframe();
   });
+  // 断线重连后补发身份：发送队列只负责断线期间的文本，重连成功时不会自动重放
+  bus.onOpen(() => {
+    bus.send({ t: 'user', name: username });
+    // 重连等同一次"重新开始"：新的服务端连接上旧的 seq/时间线没有意义
+    try { player.resync('ws'); } catch (e) {}
+    try { chat.resync(); } catch (e) {}
+  });
+  audioBus.onOpen(() => {
+    audioBus.send({ t: 'user', name: username });
+    try { player.resync('ws-audio'); } catch (e) {}
+  });
   bus.connect();
   audioBus.connect();
 }
@@ -317,6 +332,51 @@ window.addEventListener('message', (e) => {
   if (!d || d.source !== 'meow-desktopet' || d.type !== 'pet-rect') return;
   bubble.setPetRect({ x: d.x, y: d.y, w: d.w, h: d.h });
 });
+
+// ---- 旋转 / 视口变化：通知桌宠 iframe 重新贴合 ----
+// iframe 自己的 resize 在部分手机上会晚于布局甚至不触发，横屏后桌宠会留在竖屏坐标上（跑到屏幕外）
+function refitPet() {
+  try {
+    if (petFrame && petFrame.contentWindow) {
+      petFrame.contentWindow.postMessage({ source: 'meow-phone', type: 'pet-refit' }, '*');
+    }
+  } catch (e) {}
+}
+
+function initViewport() {
+  window.addEventListener('resize', refitPet);
+  window.addEventListener('orientationchange', () => {
+    refitPet();
+    setTimeout(refitPet, 320);   // iOS 旋转时布局滞后，稍后再补一次
+  });
+  if (window.visualViewport) {
+    try {
+      window.visualViewport.addEventListener('resize', refitPet);
+    } catch (e) {}
+  }
+}
+
+// ---- 息屏 / 切后台 / 回前台：音频链路必须重新对齐 ----
+// 后台会冻结定时器，回来时旧的 seq 与时间线会把积压的语音一次性补播，
+// 麦克风还会被闸门一直掐住（表现就是"电脑彻底听不到你说话，只能重启"）。
+// 这里统一：隐藏时停轮询（省电、不攒错位状态），回到前台重新对齐后再拉。
+function initVisibility() {
+  const onHide = () => {
+    try { player.stop(); } catch (e) {}
+    try { chat.stop(); } catch (e) {}
+  };
+  const onShow = (reason) => {
+    try { player.resync(reason); } catch (e) {}
+    try { chat.resync(); } catch (e) {}
+    try { player.start(); } catch (e) {}
+    try { chat.start(); } catch (e) {}
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) onHide();
+    else onShow('visible');
+  });
+  window.addEventListener('pageshow', () => onShow('pageshow'));
+}
 
 camBtn.addEventListener('click', toggleCam);
 micBtn.addEventListener('click', toggleMic);
@@ -353,6 +413,8 @@ chat.onError = (msg) => notify('发送失败：' + msg);
 initNameUi();
 initBus();
 initPlayer();
+initViewport();
+initVisibility();
 syncUser();
 chat.start();
 mode.load();

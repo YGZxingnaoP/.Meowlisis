@@ -16,8 +16,11 @@ export class Camera {
     this._lastKey = 0;
     this._forceKey = true;
     this._busy = false;
+    // 编码缓冲（离屏，只用于「原始帧带旋转」时归一化）；_canvasSafe=true 表示本次会话必须走它
     this._canvas = null;
     this._cctx = null;
+    this._canvasSafe = false;
+    this._rotWarned = false;
     this._w = MEDIA.videoWidth;
     this._h = MEDIA.videoHeight;
     // 丢帧策略与统计
@@ -65,8 +68,10 @@ export class Camera {
     const size = this._liveSize();
     this._w = size[0];
     this._h = size[1];
-    this._resetCanvas();
     await this._setupEncoder(this._w, this._h);
+    this._hidePreview();   // 预览交给 <video> 自己显示（合成器完成，不再重绘 canvas）
+    this._canvasSafe = false;   // 新的一路视频，重新试探快路径
+    this._rotWarned = false;
     this.on = true;
     this._last = -1;
     this._next = 0;
@@ -99,7 +104,7 @@ export class Camera {
       this.stream = null;
     }
     this.video.srcObject = null;
-    this._clearCanvas();
+    this._paintIdle();
     this.bus.send({ t: 'vstop' });
   }
 
@@ -119,10 +124,11 @@ export class Camera {
   }
 
   _liveSize() {
-    const track = this.stream ? this.stream.getVideoTracks()[0] : null;
-    const st = (track && track.getSettings) ? track.getSettings() : {};
-    const w = this.video.videoWidth || st.width || MEDIA.videoWidth;
-    const h = this.video.videoHeight || st.height || MEDIA.videoHeight;
+    // 只读 <video> 的固有尺寸（浏览器缓存属性，无对象分配）：
+    // 原来每帧调 track.getSettings() 会分配 MediaTrackSettings 并走一次媒体管线，是主线程最大的固定开销。
+    // 尺寸变化由 <video> 的 resize 事件与 videoWidth/Height 自行反映，不需要问 track。
+    const w = this.video.videoWidth || this._w || MEDIA.videoWidth;
+    const h = this.video.videoHeight || this._h || MEDIA.videoHeight;
     return [this._even(w), this._even(h)];
   }
 
@@ -150,13 +156,13 @@ export class Camera {
     this._busy = true;
     this._w = size[0];
     this._h = size[1];
+    this._canvasSafe = false;   // 尺寸变了，重新试探快路径（旋转后横竖一致时能回到快路径）
     if (this.encoder) {
       try {
         this.encoder.close();
       } catch (e) {}
       this.encoder = null;
     }
-    this._resetCanvas();
     this._setupEncoder(this._w, this._h).then(() => {
       this._forceKey = true;
       this._lastKey = 0;
@@ -219,22 +225,81 @@ export class Camera {
   }
 
   _makeFrame(ts) {
-    if (!this._cctx) this._resetCanvas();
-    this._cctx.drawImage(this.video, 0, 0, this._w, this._h);
+    // 快路径：直接从 <video> 取帧（浏览器内部已有现成纹理，省掉整帧重绘 + 拷贝）。
+    // ⚠️ 但 VideoFrame(video) 拿到的是**解码原始帧，不含 <video> 渲染时的旋转**：
+    //    竖屏摄像头的原始帧是横的（如 1280×720），而 videoWidth/Height 是旋转后的（720×1280）。
+    //    这种帧塞进按视频尺寸配置的编码器就会被硬拉伸成畸形，所以必须先做几何自检，
+    //    尺寸对不上就退回 canvas 归一化（drawImage 走的是渲染后画面，自带旋转，不会变形）。
+    if (!this._canvasSafe) {
+      let frame = null;
+      try {
+        frame = new VideoFrame(this.video, { timestamp: ts });
+        const fw = frame.displayWidth || frame.codedWidth;
+        const fh = frame.displayHeight || frame.codedHeight;
+        if (fw === this._w && fh === this._h) return frame;
+        try { frame.close(); } catch (e) {}
+        if (!this._rotWarned) {
+          this._rotWarned = true;
+          console.info('[camera] 原始帧 ' + fw + 'x' + fh + ' 与显示尺寸 '
+            + this._w + 'x' + this._h + ' 不一致（旋转/方向差异），改用 canvas 归一化编码');
+        }
+      } catch (e) {
+        if (frame) {
+          try { frame.close(); } catch (err) {}
+        }
+      }
+      this._canvasSafe = true;   // 本次摄像头会话固定用慢路径，不再反复试探
+    }
+
+    // 慢路径（与历史行为一致）：画进 canvas 再编码，drawImage 会带上旋转，画面不变形
+    const ctx = this._ensureCanvas();
+    if (!ctx) return null;
+    ctx.drawImage(this.video, 0, 0, this._w, this._h);
     return new VideoFrame(this._canvas, { timestamp: ts });
   }
 
-  _resetCanvas() {
-    this._canvas = this.view || document.createElement('canvas');
-    this._canvas.width = this._w;
-    this._canvas.height = this._h;
-    this._cctx = this._canvas.getContext('2d', { alpha: false });
+  _ensureCanvas() {
+    // 纯离屏编码缓冲：不再兼任预览（预览由 <video> 自己显示）
+    if (!this._canvas) {
+      this._canvas = document.createElement('canvas');
+      this._cctx = null;
+    }
+    if (this._canvas.width !== this._w || this._canvas.height !== this._h) {
+      this._canvas.width = this._w;
+      this._canvas.height = this._h;
+      this._cctx = null;
+    }
+    if (!this._cctx) {
+      try {
+        this._cctx = this._canvas.getContext('2d', { alpha: false });
+      } catch (e) {
+        this._cctx = null;
+      }
+    }
+    return this._cctx;
   }
 
-  _clearCanvas() {
-    if (!this._cctx) return;
-    this._cctx.fillStyle = '#000';
-    this._cctx.fillRect(0, 0, this._canvas.width, this._canvas.height);
+  _hidePreview() {
+    // 让 <video id="cam"> 自己露出来：手机上由合成器直接出画面，不需要每帧重绘 canvas
+    if (this.view) this.view.style.display = 'none';
+  }
+
+  _paintIdle() {
+    // 关摄像头后保持「黑屏」观感：用 canvas 填黑盖住 <video> 残留的最后一帧
+    if (!this.view) return;
+    const c = this.view;
+    const w = Math.max(2, this._w);
+    const h = Math.max(2, this._h);
+    if (c.width !== w || c.height !== h) {
+      c.width = w;
+      c.height = h;
+    }
+    const ctx = c.getContext('2d', { alpha: false });
+    if (ctx) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, c.width, c.height);
+    }
+    c.style.display = 'block';
   }
 
   _loop() {
@@ -244,9 +309,6 @@ export class Camera {
         return;
       }
       this._raf = requestAnimationFrame(step);
-      this._sync();
-      const enc = this.encoder;
-      if (!enc || this._busy) return;
       const now = performance.now();
       const interval = 1000 / MEDIA.videoFps;
       if (this._last < 0) {
@@ -259,6 +321,12 @@ export class Camera {
       this._next += interval;
       if (now - this._next > interval * 3) this._next = now;
       this._last = now;
+
+      // 尺寸守卫放到节流之后：最多 30 次/秒（原来跟在 rAF 里 60 次/秒空算），
+      // 而且这里只比对 <video> 的缓存属性，不再调 track.getSettings()
+      this._sync();
+      const enc = this.encoder;
+      if (!enc || this._busy) return;
 
       // ---- 智能丢帧的第一层：编码器排队 / WS 发送积压 → 直接丢这一帧 ----
       const q = enc.encodeQueueSize || 0;
@@ -282,8 +350,10 @@ export class Camera {
       let frame = null;
       try {
         frame = this._makeFrame(Math.round(now * 1000));
-        enc.encode(frame, { keyFrame: key });
-        this._sent += 1;
+        if (frame) {
+          enc.encode(frame, { keyFrame: key });
+          this._sent += 1;
+        }
       } catch (e) {
       } finally {
         if (frame) {
