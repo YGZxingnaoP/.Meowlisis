@@ -47,6 +47,7 @@ class SystemPromptBridge:
 【红线 · 禁止编造数据与事实】天气/气温/新闻/时间/数字/群成员这类可以查证的内容，一律以工具返回为准：先调用对应工具、拿到真实结果再开口。绝不许凭印象、记忆或想象直接给出这类具体数值（例如凭空说出「北京今天多云转晴，13到25度」）；没有调用工具，就不许说这类数据，宁可说「我去查」，也不许编。
 其它工具仅在用户「明确」表达对应意图时调用：
 - 所有可能用到qq发消息指令，如：发消息/qq发消息/发文件/发链接 → napcat_send；
+  发消息是有副作用的动作，**必须先真的调用 napcat_send**：没调用就等于没发出去，绝不许只回一句「发了 / 问了 / 这就去发」而不调工具。
 - 需要查询群成员列表、某人在群里的QQ号、或要@群里的某个人 → get_group_member_list；
 - 用户提到**幻梦**，话题和幻梦有关，或者提到「去xx群艾特/叫/让幻梦做xx」，提到QQbot → napcat_ask_bot。
 - 明确询问天气/气温/下雨 → query_weather；
@@ -341,6 +342,32 @@ class SystemPromptBridge:
             pass
         return self._append_turtle_soup(prompt, session_key)
 
+    def _napcat_group_context(self, group_name: str, group_id: str) -> str:
+        lines = []
+        try:
+            from func.toolbox.napcat.config import TBNapCatConfig
+            self_name = str(TBNapCatConfig().self_nickname or "").strip()
+        except Exception:
+            self_name = ""
+        if self_name:
+            lines.append(f"聊天记录里【{self_name}】是你自己说的话，其它【名字】是别人说的")
+        else:
+            lines.append("聊天记录里【名字】是别人说的")
+        names = []
+        try:
+            from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
+            names = [str(m.get("name") or "").strip()
+                     for m in TBGetGroupRecord().members(group_id)]
+            names = [n for n in names if n and n != self_name]
+        except Exception:
+            names = []
+        if names:
+            lines.append("群里在的人：")
+            lines.append("```")
+            lines.extend(names)
+            lines.append("```")
+        return "\n".join(lines)
+
     def get_napcat_group_prompt(self, uid=None, group_name: str = "",
                                 group_info_text: str = "", current_message: str = "",
                                 group_id: str = "") -> str:
@@ -369,12 +396,15 @@ class SystemPromptBridge:
             _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
             _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
             front = (
-                f"{front}\n你在QQ群【{group_name}】里聊天，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
+                f"{front}\n你在QQ群【{group_name}】里聊天，群里有多个人，你说的话全群都看得见，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
                 f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
                 f"{_punct_line}\n"
                 f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收\n"
                 f"只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
             )
+        group_ctx = self._napcat_group_context(group_name, group_id)
+        if group_ctx:
+            front = f"{front}\n{group_ctx}" if front else group_ctx
         post = self.get_post_prompt()
         if post:
             post = f"{post}\n你现在在QQ群【{group_name}】内和大家聊天"

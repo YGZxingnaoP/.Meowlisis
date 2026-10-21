@@ -3,6 +3,7 @@
 # 群聊回复协调器：聚合同群多触发/多用户，窗口内合并为一次回复，避免刷屏。
 
 import random
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -192,6 +193,15 @@ class TBGroupReplyCoordinator:
                 pass
             st["timer"] = None
 
+    @staticmethod
+    def _tagged(name, text) -> str:
+        body = str(text or "").strip()
+        if not body:
+            return ""
+        if re.match(r"^【[^】]*】", body):
+            return body
+        return f"【{name or '有人'}】:{body}"
+
     def _build_merged(self, gid: str, st: dict, participants: "OrderedDict") -> dict:
         plist = []
         at_users = []
@@ -208,11 +218,12 @@ class TBGroupReplyCoordinator:
             if directed:
                 mode = "at"
                 at_users.append({"user_id": uid, "username": p["username"]})
-        if len(plist) == 1:
-            merged_text = plist[0]["text"] or f"{plist[0]['username'] or '有人'}@了你"
-        else:
-            lines = [f"【{p['username'] or p['user_id']}】{p['text']}" for p in plist if p["text"]]
-            merged_text = "\n".join(lines) or "有人@了你"
+        lines = [t for t in (self._tagged(p["username"] or p["user_id"], p["text"])
+                             for p in plist if p["text"]) if t]
+        merged_text = "\n".join(lines)
+        if not merged_text:
+            p0 = plist[0] if plist else {}
+            merged_text = f"【{p0.get('username') or p0.get('user_id') or '有人'}】@了你"
         return {"group_id": gid, "group_name": st.get("group_name", ""),
                 "self_id": st.get("self_id", ""), "participants": plist,
                 "mode": mode, "at_users": at_users, "merged_text": merged_text,

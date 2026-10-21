@@ -213,7 +213,7 @@ class TBNapcatAnalysis:
                         "group_id": str(qq_context.get("target_id", "")),
                         "group_name": str(qq_context.get("group_name", "") or ""),
                         "user_id": str(qq_context.get("user_id", "")),
-                        "username": meowid,
+                        "username": str(qq_context.get("ext_name", "") or meowid),
                         "self_id": str(qq_context.get("self_id", "")),
                         "texts": [text.strip()],
                     }

@@ -416,6 +416,8 @@ class TBoxQQResponse:
         primary = (at_users[0] if at_users else (participants[0] if participants else {})) or {}
         primary_ext_account = str(primary.get("user_id", "") or "")
         primary_ext_name = str(primary.get("username", "") or "")
+        plain_text = "\n".join([p.get("text") or "" for p in participants
+                               if str(p.get("text") or "").strip()]) or merged_text
 
         # 身份标准：内部编号（唯一）。禁止兜底到群显示名，拿不到身份就明确失败
         from func.pipeline.id_signup import IdSignupBridge
@@ -433,7 +435,7 @@ class TBoxQQResponse:
         try:
             from func.toolbox.flux_painter.edit_router import TBFluxEditRouter
             qq_context = dict(base_context)
-            if TBFluxEditRouter().try_handle(f"qq_group_{gid}", "directed", merged_text,
+            if TBFluxEditRouter().try_handle(f"qq_group_{gid}", "directed", plain_text,
                                              qq_context, reply_meowid):
                 return
         except Exception:
@@ -443,7 +445,7 @@ class TBoxQQResponse:
         try:
             from func.toolbox.plugins.manager import PluginManager
             qq_context = dict(base_context)
-            if PluginManager().route_qq(f"qq_group_{gid}", merged_text,
+            if PluginManager().route_qq(f"qq_group_{gid}", plain_text,
                                         qq_context, reply_nickname):
                 return
         except Exception:
@@ -489,7 +491,7 @@ class TBoxQQResponse:
                           "user_id": primary_ext_account, "ext_account": primary_ext_account,
                           "ext_name": primary_ext_name, "group_name": group_name, "self_id": self_id,
                           "meowid": reply_meowid, "nickname": reply_nickname}
-            if TBNapcatAnalysis().decide_and_run(merged_text, reply_meowid, qq_context, short_memory):
+            if TBNapcatAnalysis().decide_and_run(plain_text, reply_meowid, qq_context, short_memory):
                 return
         except Exception:
             self.log.exception("群聊意图分析异常")
@@ -499,7 +501,7 @@ class TBoxQQResponse:
         try:
             from func.catbrain.rules_break.rules_break import TBRulesBreak
             nsfw_triggered = TBRulesBreak().check_and_store_qq(
-                f"qq_group:{gid}", reply_meowid, merged_text, short_memory)
+                f"qq_group:{gid}", reply_meowid, plain_text, short_memory)
         except Exception:
             self.log.exception("QQ 群聊破甲审查异常")
 

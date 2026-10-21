@@ -2,6 +2,7 @@
 # func/toolbox/napcat/groupchat/get_group_record.py
 # 获取群聊历史记录，分用户整理为短期记忆（content 标注【用户名】:内容，跳过表情/转发）
 
+import threading
 import time
 from typing import List
 
@@ -16,10 +17,59 @@ from func.toolbox.napcat.message.time_split import (
 class TBGetGroupRecord:
     """拉取群聊历史并构建短期记忆（连续同用户消息合并，content 标注用户名）"""
 
+    MEMBER_TTL = 600
+    MEMBER_EMPTY_TTL = 60
+    MEMBER_LIMIT = 30
+    MEMBER_CACHE_LIMIT = 200
+    MEMBER_TIMEOUT = 3.0
+    _member_cache = {}
+    _member_lock = threading.Lock()
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBNapCatConfig()
         self.get_message = TBGetGroupMessage()
+
+    def members(self, group_id, limit: int = None) -> List[dict]:
+        gid = str(group_id or "")
+        if not gid:
+            return []
+        limit = int(limit or self.MEMBER_LIMIT)
+        now = time.time()
+        with self._member_lock:
+            hit = self._member_cache.get(gid)
+        if hit:
+            ttl = self.MEMBER_TTL if hit[1] else self.MEMBER_EMPTY_TTL
+            if now - hit[0] < ttl:
+                return hit[1][:limit]
+        data = []
+        try:
+            from func.toolbox.napcat.napcat_core import TBNapCatCore
+            ret = TBNapCatCore().call_action_sync(
+                "get_group_member_list", {"group_id": int(gid)},
+                timeout=self.MEMBER_TIMEOUT)
+            if isinstance(ret, dict):
+                data = ret.get("data") or []
+            elif isinstance(ret, list):
+                data = ret
+        except Exception:
+            self.log.exception(f"拉取群成员失败: {gid}")
+        rank = {"owner": 0, "admin": 1}
+        rows = []
+        for item in data or []:
+            if not isinstance(item, dict):
+                continue
+            qq = str(item.get("user_id", "") or "").strip()
+            name = str(item.get("card") or item.get("nickname") or qq).strip()
+            if not qq or not name:
+                continue
+            rows.append({"qq": qq, "name": name,
+                         "role": str(item.get("role", "") or "")})
+        rows.sort(key=lambda r: (rank.get(r["role"], 2), r["name"]))
+        rows = rows[:self.MEMBER_CACHE_LIMIT]
+        with self._member_lock:
+            self._member_cache[gid] = (now, rows)
+        return rows[:limit]
 
     def fetch(self, group_id: str, self_id: str, limit: int = None) -> List[dict]:
         """拉取群聊历史并构建 OpenAI messages（旧→新，user/assistant）"""

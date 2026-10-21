@@ -171,33 +171,43 @@ class TBNapCatLLM:
         return final
 
     @staticmethod
-    def _drop_current_from_history(short_memory: List[dict], text: str) -> List[dict]:
-        """把历史末尾的"当前这条"去掉，避免同一句话出现两遍。
+    def _split_prefix(text: str):
+        raw = str(text or "")
+        m = re.match(r"^\s*(?:【[^】]*】\s*[:：]?\s*)+", raw)
+        if not m:
+            return "", raw.strip()
+        return m.group(0), raw[m.end():].strip()
 
-        NapCat 的聊天记录里已经包含刚收到的这条消息（get_friend_msg_history），
-        而 reply() 还会把 text 当当前输入再 append 一次；不去掉模型就会回"你重复两遍"。
-        历史里连续同角色消息是被逗号合并的，所以末尾可能是 "...，当前这句"。
-        """
-        text = str(text or "").strip()
+    @classmethod
+    def _drop_current_from_history(cls, short_memory: List[dict], text: str) -> List[dict]:
         msgs = list(short_memory or [])
-        # 末尾的时间分段标记先摘下来，处理完再放回去
         tail = []
         while msgs and is_marker(msgs[-1]):
             tail.insert(0, msgs.pop())
-        if not text or not msgs:
+        bodies = [b for b in (cls._split_prefix(line)[1]
+                              for line in str(text or "").split("\n")) if b]
+        if not bodies or not msgs:
             msgs.extend(tail)
             return msgs
-        last = msgs[-1] or {}
-        if str(last.get("role") or "") != "user":
-            msgs.extend(tail)
-            return msgs
-        content = str(last.get("content") or "")
-        if content.strip() == text:
-            msgs.pop()
-        elif content.endswith("，" + text):
-            msgs[-1] = {"role": "user", "content": content[: -(len(text) + 1)]}
-        elif content.endswith(text):
-            msgs[-1] = {"role": "user", "content": content[: -len(text)]}
+        for _ in range(len(bodies)):
+            if not msgs or str(msgs[-1].get("role") or "") != "user":
+                break
+            prefix, body = cls._split_prefix(msgs[-1].get("content") or "")
+            if not body:
+                msgs.pop()
+                continue
+            if body in bodies:
+                msgs.pop()
+                continue
+            hit = next((b for b in bodies if body.endswith("，" + b) or body.endswith(b)), None)
+            if not hit:
+                break
+            rest = body[: -len(hit)].rstrip("，, ")
+            if rest:
+                msgs[-1] = {"role": "user", "content": prefix + rest}
+            else:
+                msgs.pop()
+            break
         msgs.extend(tail)
         return msgs
 

@@ -91,22 +91,74 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             messages.append({"role": "user", "content": text})
         return messages
 
+    def _at_tools(self) -> List[dict]:
+        try:
+            from func.toolbox.napcat.groupchat.group_at import TBGroupAt
+            return TBGroupAt().build_tools()
+        except Exception:
+            self.log.exception("构建 group_at 工具失败")
+            return []
+
+    def _generate_with_tools(self, messages: List[dict], group_id: str,
+                             tools: List[dict]):
+        llm, _ = self._llm()
+        if llm is None or not llm.client:
+            self.log.error("NapCat 群聊回复 LLM 不可用")
+            return "", None
+        try:
+            resp = llm.chat(messages, tools=tools, tool_choice="auto", enable_thinking=False)
+        except Exception:
+            self.log.exception("群聊带工具回复失败，回退流式回复")
+            return self._generate(messages), None
+        if not resp or not resp.choices:
+            self.log.warning("群聊带工具回复为空，回退流式回复")
+            return self._generate(messages), None
+        msg = resp.choices[0].message
+        target = None
+        for tc in (msg.tool_calls or []):
+            if tc.function.name != "group_at":
+                continue
+            try:
+                args = json.loads(tc.function.arguments or "{}")
+            except Exception:
+                args = {}
+            from func.toolbox.napcat.groupchat.group_at import TBGroupAt
+            target = TBGroupAt().resolve(group_id, args.get("member", ""))
+            if target is None:
+                self.log.warning(f"[群聊@] 未找到成员 {args.get('member')!r}，按普通消息发送")
+            break
+        return self.remove_analysis(msg.content or "").strip(), target
+
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
               nsfw: bool = False, quote: Optional[str] = None) -> str:
-        """@ 触发或强制回复：流式生成并回传短句，返回完整回复
+        """@ 触发或强制回复：生成并回传短句，返回完整回复
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
         """
         self._nsfw_split = bool(nsfw)
         try:
+            tools = self._at_tools()
             messages = self._messages(username, group_name, group_info_text, text, short_memory,
                                       decide=False, group_id=group_id, quote=quote)
-            final = self._clean_reply(self._generate(messages))
+            if tools and messages and messages[0].get("role") == "system":
+                messages[0]["content"] += (
+                    "\ngroup_at 是可选的：默认不要 @ 人，大多数回复直接说就行；"
+                    "只有确实要单独对某个群成员说话、需要他看到时才调用（member 填他的群名片或 QQ 号）")
+            if tools:
+                raw, target = self._generate_with_tools(messages, group_id, tools)
+            else:
+                raw, target = self._generate(messages), None
+            final = self._clean_reply(raw)
             final = self._rewrite_if_too_long(messages, final,
-                                             self.napcat_cfg.word_count_for("group"), channel="group")
-            for seg in self.split_segments(final):
+                                              self.napcat_cfg.word_count_for("group"), channel="group")
+            segments = self.split_segments(final)
+            if target and on_segment:
+                from func.toolbox.napcat.groupchat.group_at import TBGroupAt
+                TBGroupAt().send(group_id, target, segments[0] if segments else "")
+                segments = segments[1:]
+            for seg in segments:
                 if on_segment and seg:
                     on_segment(seg)
             self.log.info(f"[NapCat群聊] 回复 {group_name}: {final[:50]}...")
@@ -123,7 +175,6 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         - 若输出 pass，返回 "pass"；
         - 否则返回完整回复内容。
         """
-        # 带 ask_group_bot 工具时用非流式（可稳定拿到 tool_calls）
         if ask_bot_tools:
             return self._decide_with_tools(
                 username, group_name, group_info_text, text, short_memory, group_id, ask_bot_tools
@@ -150,7 +201,6 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         if not resp or not resp.choices:
             return ""
         msg = resp.choices[0].message
-        # 工具调用：ask_group_bot
         for tc in (msg.tool_calls or []):
             if tc.function.name == "ask_group_bot":
                 try:

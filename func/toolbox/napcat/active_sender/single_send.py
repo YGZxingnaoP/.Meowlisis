@@ -66,7 +66,9 @@ class TBSingleSend:
             return err
         friends = self.get_friendlist.get()
         if not friends:
-            return "未获取到好友列表，无法发送"
+            # 把真实原因带出去（原来一律只说"未获取到好友列表"，查不出是超时/报错/空表）
+            detail = str(getattr(self.get_friendlist, "last_error", "") or "").strip()
+            return "未获取到好友列表，无法发送" + ("（%s）" % detail if detail else "")
 
         plan = self._plan(request, friends, meowid, content_type=content_type,
                           text=text, url=url, file_path=file_path)

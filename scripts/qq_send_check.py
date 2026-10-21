@@ -110,11 +110,16 @@ elif KEY == "why":
 else:
     print("===== 好友表里能不能解析出'卡戎星'这类昵称 =====")
     resp = api.call_action_sync("get_friend_list", {})
+    print("  原始响应 = %s" % (str(resp)[:400] if resp is not None else "None"))
     if resp is None:
-        print("  get_friend_list 返回 None（同上：静默失败）")
+        print("  get_friend_list 返回 None（未启用 / 事件循环未就绪 / ws 断开 / 5 秒超时，且不抛异常）")
     else:
         data = resp.get("data") or []
-        print("  好友总数 = %d   retcode=%s" % (len(data), resp.get("retcode")))
+        if isinstance(data, dict):
+            # 兼容 data.friends / data.list 这类包法
+            data = data.get("friends") or data.get("list") or []
+        print("  好友总数 = %d   retcode=%s   wording=%s"
+              % (len(data), resp.get("retcode"), resp.get("wording") or resp.get("message") or ""))
         for kw in ("卡戎", "喵呜", "爱你的"):
             hit = [f for f in data if kw in str(f.get("nickname", "")) or kw in str(f.get("remark", ""))]
             print("  含'%s'的好友 = %d 个" % (kw, len(hit)))
