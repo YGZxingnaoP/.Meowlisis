@@ -154,6 +154,13 @@ class TBNapCatConfig:
         # 生成期间新触发最多再补聚合的轮数
         self.group_merge_max_extra_rounds = int(mg.get('max_extra_rounds', 1))
 
+        fu = cfg.get('group_followup', {}) or {}
+        self.group_followup_enabled = bool(fu.get('enabled', False))
+        self.group_followup_judge_history = int(fu.get('judge_history', 20))
+        self.group_followup_judge_max_tokens = int(fu.get('judge_max_tokens', 256))
+        self.group_followup_skip_bots = bool(fu.get('skip_bots', True))
+        self.group_followup_max_rounds = int(fu.get('max_rounds', 0))
+
         # ========== 主动发送（active_sender 触发型工具，受 toolcalls 控制） ==========
         as_cfg = cfg.get('active_sender', {}) or {}
         # 是否启用主动发送（AI 主动给好友/群发消息、文件、链接）

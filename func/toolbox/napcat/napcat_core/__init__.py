@@ -63,6 +63,11 @@ class TBNapCatCore:
         self.buffer._clear_buffers()
         self.buffer._clear_group_buffers()
         try:
+            from func.toolbox.napcat.groupchat.group_followup import TBGroupFollowup
+            TBGroupFollowup().clear()
+        except Exception:
+            pass
+        try:
             from func.toolbox.napcat.groupchat.group_coordinator import TBGroupReplyCoordinator
             TBGroupReplyCoordinator().clear()
         except Exception:

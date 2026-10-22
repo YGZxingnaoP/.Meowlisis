@@ -275,8 +275,12 @@ class TBoxQQResponse:
             pending = coord.cancel_user(group_id, user_id)
             image_text = TBImageSearch.text_from_segments(raw_message)
             merged = "，".join([t for t in (pending, image_text) if t and t.strip()])
-            self._reply_group_image(group_id, group_name, user_id, username, merged,
-                                    images, is_bot, self_id)
+            reply = self._reply_group_image(group_id, group_name, user_id, username, merged,
+                                            images, is_bot, self_id)
+            self._followup_arm(group_id, group_name, self_id,
+                               {"user_id": user_id, "username": username},
+                               merged or text, "视觉")
+            self._followup_note(group_id, reply)
             return
 
         # 1.6 该用户已在触发窗口内（@ / 关键词续聊）：后续消息合并，绝不另起回复
@@ -292,7 +296,9 @@ class TBoxQQResponse:
             # 文本 / 表情：合并进该用户条目并重置计时
             emote_text = self._extract_emote_text(raw_message)
             merge_text = "，".join([t for t in (text, emote_text) if t and t.strip()])
-            coord.add_text(group_id, user_id, merge_text)
+            directed_kind = ("at" if at_self else
+                             ("keyword" if (text and self._keyword_hit(text)) else ""))
+            coord.add_text(group_id, user_id, merge_text, directed_kind)
             return
 
         # 1.7 @ 触发（无图）：进入协调器（窗口内后续消息合并 / 多人合并）
@@ -312,6 +318,9 @@ class TBoxQQResponse:
                 "username": username, "self_id": self_id, "text": text,
                 "kind": "keyword", "at_self": True, "has_real_text": True,
             })
+            return
+
+        if self._followup_feed(parsed):
             return
 
         # 2. 普通图片检测（非 @ 且无缓冲）：[暂禁 2026-09-09] 主动判断"是否需要看图/是否回复"
@@ -396,7 +405,7 @@ class TBoxQQResponse:
 
     # ==================== 合并回复执行 ====================
     def _reply_group_merged(self, merged: dict):
-        """按合并结果派发回复：directed（@/关键词）或 active（主动插话）"""
+        """按合并结果派发回复：directed（@/关键词）、followup（续聊）或 active（主动插话）"""
         gid = str(merged.get("group_id", "") or "")
         group_name = str(merged.get("group_name", "") or "")
         self_id = str(merged.get("self_id", "") or "")
@@ -405,13 +414,20 @@ class TBoxQQResponse:
         participants = merged.get("participants") or []
         at_users = merged.get("at_users") or []
         if mode == "at":
-            self._reply_group_directed(gid, group_name, self_id, merged_text, participants, at_users)
+            anchor = at_users[0] if at_users else (participants[0] if participants else {})
+            trigger = "@" if any(str(p.get("kind") or "") == "at" for p in participants) else "关键词"
+            self._followup_arm(gid, group_name, self_id, anchor, merged_text, trigger)
+            final = self._reply_group_directed(gid, group_name, self_id, merged_text,
+                                              participants, at_users)
+            self._followup_note(gid, final)
+        elif mode == "followup":
+            self._reply_group_followup(gid, group_name, self_id, merged)
         else:
             self._reply_group_active(gid, group_name, self_id, merged_text, participants,
                                      bool(merged.get("force")))
 
     def _reply_group_directed(self, gid: str, group_name: str, self_id: str, merged_text: str,
-                              participants: list, at_users: list):
+                              participants: list, at_users: list, followup: bool = False) -> str:
         """@ / 关键词合并回复：改图判定 → 意图分析（工具）→ 破甲 → 流式回复"""
         primary = (at_users[0] if at_users else (participants[0] if participants else {})) or {}
         primary_ext_account = str(primary.get("user_id", "") or "")
@@ -424,7 +440,7 @@ class TBoxQQResponse:
         reply_meowid = IdSignupBridge().meowid_of_account("qq", primary_ext_account, primary_ext_name)
         if not reply_meowid:
             self.log.error(f"[NapCat群聊] 主发言人身份无法识别，放弃回复: {primary_ext_account}")
-            return
+            return ""
         reply_nickname = display_name(reply_meowid)
         base_context = {"channel": "qq", "message_type": "group", "target_id": gid, "group_id": gid,
                         "group_name": group_name, "self_id": self_id, "user_id": primary_ext_account,
@@ -437,7 +453,7 @@ class TBoxQQResponse:
             qq_context = dict(base_context)
             if TBFluxEditRouter().try_handle(f"qq_group_{gid}", "directed", plain_text,
                                              qq_context, reply_meowid):
-                return
+                return ""
         except Exception:
             self.log.exception("群聊改图判定异常")
 
@@ -447,7 +463,7 @@ class TBoxQQResponse:
             qq_context = dict(base_context)
             if PluginManager().route_qq(f"qq_group_{gid}", plain_text,
                                         qq_context, reply_nickname):
-                return
+                return ""
         except Exception:
             self.log.exception("群聊插件拦截异常")
 
@@ -478,8 +494,9 @@ class TBoxQQResponse:
                 self.short_memory.save({
                     "role": "user",
                     "content": f"【来自QQ，{group_name}的群消息】{ptext}",
-                    "type": "qq_response",
-                }, self.napcat_config.short_mem_rounds)
+                    "type": "qq_groupchat" if followup else "qq_response",
+                }, self.napcat_config.group_memory_limit if followup
+                    else self.napcat_config.short_mem_rounds)
 
         # 参与者记完，把当前说话人恢复成主发言人
         IdSignupBridge().set_current("qq", str(primary_ext_account or ""))
@@ -492,7 +509,7 @@ class TBoxQQResponse:
                           "ext_name": primary_ext_name, "group_name": group_name, "self_id": self_id,
                           "meowid": reply_meowid, "nickname": reply_nickname}
             if TBNapcatAnalysis().decide_and_run(plain_text, reply_meowid, qq_context, short_memory):
-                return
+                return ""
         except Exception:
             self.log.exception("群聊意图分析异常")
 
@@ -513,9 +530,10 @@ class TBoxQQResponse:
         )
         if final and final.strip().lower() != "pass":
             parsed = {"group_id": gid, "group_name": group_name, "user_id": primary_ext_account,
-                      "username": primary_ext_name, "at_self": True}
-            self._after_group_reply(parsed, final, True)
+                      "username": primary_ext_name, "at_self": not followup}
+            self._after_group_reply(parsed, final, not followup)
             self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
+        return final
 
     def _reply_group_active(self, gid: str, group_name: str, self_id: str, merged_text: str,
                             participants: list, force: bool):
@@ -590,6 +608,82 @@ class TBoxQQResponse:
             self._after_group_reply(parsed, final, at_self=False)
             self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
 
+    def _followup_feed(self, parsed: dict) -> bool:
+        """续聊会话内的普通消息：交给协调器合并（kind=followup），返回 True=已消费"""
+        if not self.napcat_config.group_followup_enabled:
+            return False
+        if self.napcat_config.group_followup_skip_bots and self._is_bot(parsed.get("user_id")):
+            return False
+        text = str(parsed.get("text") or "").strip()
+        if not text:
+            text = self._extract_emote_text(parsed.get("raw_message"))
+        if not text:
+            return False
+        from func.toolbox.napcat.groupchat.group_followup import TBGroupFollowup
+        if not TBGroupFollowup().active(parsed.get("group_id")):
+            return False
+        self._coord().offer({
+            "group_id": str(parsed.get("group_id", "")),
+            "group_name": str(parsed.get("group_name", "") or ""),
+            "user_id": str(parsed.get("user_id", "")),
+            "username": str(parsed.get("username", "") or ""),
+            "self_id": str(parsed.get("self_id", "") or ""),
+            "text": text,
+            "kind": "followup", "at_self": False, "has_real_text": True,
+        })
+        return True
+
+    def _followup_arm(self, gid, group_name, self_id, user, text, trigger):
+        if not self.napcat_config.group_followup_enabled:
+            return
+        from func.toolbox.napcat.groupchat.group_followup import TBGroupFollowup
+        TBGroupFollowup().arm(gid, group_name, self_id, user or {}, text, trigger or "@")
+
+    def _followup_note(self, gid, final):
+        if not self.napcat_config.group_followup_enabled:
+            return
+        from func.toolbox.napcat.groupchat.group_followup import TBGroupFollowup
+        TBGroupFollowup().note_reply(gid, final)
+
+    def _reply_group_followup(self, gid: str, group_name: str, self_id: str, merged: dict):
+        """续聊批次：先由判断器决定要不要接，再走与 @ 同一条回复链路（记忆写 qq_groupchat）"""
+        from func.toolbox.napcat.groupchat.group_followup import TBGroupFollowup
+        from func.toolbox.napcat.analysis.followup_judge import TBNapcatFollowupJudge
+        participants = merged.get("participants") or []
+        merged_text = str(merged.get("merged_text") or "")
+        followup = TBGroupFollowup()
+        if not followup.active(gid) or not participants:
+            return
+        ctx = followup.judge_context(gid, self_id, merged_text, participants, group_name)
+        verdict = TBNapcatFollowupJudge().judge(ctx)
+        reason = str(verdict.get("reason") or "")
+        if str(verdict.get("decision") or "") != "continue":
+            followup.mark_pass(gid)
+            self.log.info(f"[群续聊] pass 群 {group_name}：{reason[:60]}")
+            return
+        target = self._followup_target(verdict.get("target"), participants)
+        final = self._reply_group_directed(gid, group_name, self_id, merged_text, participants,
+                                           [target] if target else [], followup=True)
+        followup.note_reply(gid, final)
+        if followup.mark_reply(gid):
+            self.log.info(f"[群续聊] 达到最大轮数，会话结束（群 {group_name}）")
+        self.log.info(f"[群续聊] continue 群 {group_name}：{reason[:40]} → {(final or '')[:30]}")
+
+    @staticmethod
+    def _followup_target(raw, participants) -> dict:
+        want = str(raw or "").strip()
+        rows = [p for p in (participants or []) if isinstance(p, dict)]
+        if not rows:
+            return {}
+        if want:
+            for row in rows:
+                if want in (str(row.get("user_id") or ""), str(row.get("username") or "")):
+                    return row
+            for row in rows:
+                if want in str(row.get("username") or ""):
+                    return row
+        return rows[0]
+
     def _ext_name_of_qq(self, user_id: str) -> str:
         """按 QQ 号（ext_account）取该通道的外部显示名（原逻辑来源，失败返回空串）"""
         try:
@@ -611,7 +705,7 @@ class TBoxQQResponse:
 
     # ==================== 群聊图片视觉回复 ====================
     def _reply_group_image(self, group_id, group_name, user_id, username, text,
-                           images, is_bot, self_id, static_only=False):
+                           images, is_bot, self_id, static_only=False) -> str:
         """群聊图片视觉回复：无文本向上检索 → 落地图片 → 视觉 → 发群"""
         from func.toolbox.napcat.image.image_search import TBImageSearch
         from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
@@ -646,6 +740,8 @@ class TBoxQQResponse:
                 for seg in TBNapCatGroupLLM.split_segments(vision_reply):
                     self.napcat_core.send_group_text(group_id, seg)
                 self.log.info(f"[视觉] 群图片视觉回复已发群 {group_name}: {vision_reply[:30]}")
+            return vision_reply
+        return ""
 
     # ==================== 幻梦回复评价 ====================
     def _reply_bot_reply(self, parsed: dict):

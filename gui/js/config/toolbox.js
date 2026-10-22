@@ -126,6 +126,17 @@ Object.assign(Config, {
             this._num('单用户续聊窗口-上限(秒)', 'napcat.group_merge.user_window_max', 15, 1, 120, 1) +
             this._num('在途补聚合轮数', 'napcat.group_merge.max_extra_rounds', 1, 0, 5, 1,
                 '回复生成期间的新触发最多再补聚合的轮数') +
+            this._section('群聊 AT 续聊（触发后持续监听）') +
+            this._check('启用 AT/关键词续聊', 'napcat.group_followup.enabled', false,
+                '被 @ / 关键词触发回复后继续监听该群普通消息，由 AI 判断要不要接着回；关闭则不影响现有行为') +
+            this._num('判断时附带历史条数', 'napcat.group_followup.judge_history', 20, 1, 100, 1,
+                '只把最近这些条群聊交给判断，用于理解上下文') +
+            this._num('判断 max_tokens', 'napcat.group_followup.judge_max_tokens', 256, 64, 2048, 64,
+                '判断只产出一次工具调用，不需要长文本') +
+            this._check('忽略群机器人的发言', 'napcat.group_followup.skip_bots', true,
+                '群机器人（如幻梦）的发言不触发续聊判断，避免两个机器人互相接话') +
+            this._num('最大回复轮数（0=不限）', 'napcat.group_followup.max_rounds', 0, 0, 100, 1,
+                '0 表示一直监听；配正值则连续回复该轮数后自动结束本次续聊') +
             this._section('群聊主动插话（按消息数判断）') +
             this._check('启用群聊主动插话', 'napcat.group_active_enabled', true) +
             this._num('触发基数（更新 N 次后判断）', 'napcat.group_reply_base', 6, 1, 100, 1,

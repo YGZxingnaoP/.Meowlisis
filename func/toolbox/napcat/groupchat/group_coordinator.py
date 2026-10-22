@@ -68,7 +68,7 @@ class TBGroupReplyCoordinator:
         """同 cancel_user（语义别名，图片路径使用）"""
         return self.cancel_user(group_id, user_id)
 
-    def add_text(self, group_id, user_id, text):
+    def add_text(self, group_id, user_id, text, kind: str = ""):
         """续聊合并：把该用户后续文本并入其条目并重置计时"""
         gid = str(group_id or "")
         uid = str(user_id or "")
@@ -83,6 +83,9 @@ class TBGroupReplyCoordinator:
             if text:
                 p["texts"].append(text)
                 p["has_real_text"] = True
+            if kind:
+                p["kinds"].add(kind)
+                p["at_self"] = bool(p["at_self"] or kind in ("at", "keyword"))
             self._rearm(gid, st, new_user=False)
 
     def offer(self, item: dict):
@@ -206,12 +209,15 @@ class TBGroupReplyCoordinator:
         plist = []
         at_users = []
         mode = "active"
+        all_kinds = set()
         for uid, p in participants.items():
             texts = [t for t in p["texts"] if t and t.strip()]
             text = "，".join(texts)
             kinds = p["kinds"]
+            all_kinds |= kinds
             directed = bool(p["at_self"]) or ("at" in kinds) or ("keyword" in kinds)
-            kind = "at" if "at" in kinds else ("keyword" if "keyword" in kinds else "active")
+            kind = ("at" if "at" in kinds else ("keyword" if "keyword" in kinds else
+                    ("followup" if "followup" in kinds else "active")))
             plist.append({"user_id": uid, "username": p["username"], "text": text,
                           "kind": kind, "at_self": bool(p["at_self"]),
                           "has_real_text": bool(p["has_real_text"]), "force": bool(p["force"])})
@@ -220,6 +226,8 @@ class TBGroupReplyCoordinator:
                 at_users.append({"user_id": uid, "username": p["username"]})
         lines = [t for t in (self._tagged(p["username"] or p["user_id"], p["text"])
                              for p in plist if p["text"]) if t]
+        if mode == "active" and "followup" in all_kinds and not any(p["force"] for p in plist):
+            mode = "followup"
         merged_text = "\n".join(lines)
         if not merged_text:
             p0 = plist[0] if plist else {}
