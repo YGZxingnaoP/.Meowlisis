@@ -158,6 +158,7 @@ class TBNapCatConfig:
         self.group_followup_enabled = bool(fu.get('enabled', False))
         self.group_followup_judge_history = int(fu.get('judge_history', 20))
         self.group_followup_judge_max_tokens = int(fu.get('judge_max_tokens', 256))
+        self.group_followup_max_passes = int(fu.get('max_passes', 5))
         self.group_followup_skip_bots = bool(fu.get('skip_bots', True))
         self.group_followup_max_rounds = int(fu.get('max_rounds', 0))
 

@@ -658,8 +658,10 @@ class TBoxQQResponse:
         verdict = TBNapcatFollowupJudge().judge(ctx)
         reason = str(verdict.get("reason") or "")
         if str(verdict.get("decision") or "") != "continue":
-            followup.mark_pass(gid)
+            ended = followup.mark_pass(gid)
             self.log.info(f"[群续聊] pass 群 {group_name}：{reason[:60]}")
+            if ended:
+                self.log.info(f"[群续聊] 连续 pass 达到上限，结束监听（群 {group_name}）")
             return
         target = self._followup_target(verdict.get("target"), participants)
         final = self._reply_group_directed(gid, group_name, self_id, merged_text, participants,

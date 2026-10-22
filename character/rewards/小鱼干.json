@@ -4,34 +4,8 @@
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
   "total_acquired": 14.6,
-  "balance": 0.8,
+  "balance": 0.4,
   "history": [
-    {
-      "ts": 1789996702,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
-    {
-      "ts": 1790079219,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
-    {
-      "ts": 1790080381,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "粉丝团灯牌x1",
-      "user": "小胆123"
-    },
-    {
-      "ts": 1790080382,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "粉丝团灯牌x1",
-      "user": "小胆123"
-    },
     {
       "ts": 1790080515,
       "type": "gift",
@@ -617,6 +591,30 @@
     },
     {
       "ts": 1792588051,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792655645,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792660567,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792671379,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792674068,
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"

@@ -73,11 +73,18 @@ class TBGroupFollowup:
                 st["last_reply"] = body
             st["last_reply_at"] = time.time()
 
-    def mark_pass(self, group_id):
+    def mark_pass(self, group_id) -> bool:
+        gid = str(group_id or "")
         with self._lock:
-            st = self._state.get(str(group_id or ""))
-            if st:
-                st["passes"] = int(st.get("passes") or 0) + 1
+            st = self._state.get(gid)
+            if not st:
+                return False
+            st["passes"] = int(st.get("passes") or 0) + 1
+            limit = int(getattr(self.config, "group_followup_max_passes", 5) or 0)
+            if limit > 0 and st["passes"] >= limit:
+                self._state.pop(gid, None)
+                return True
+            return False
 
     def mark_reply(self, group_id) -> bool:
         gid = str(group_id or "")
@@ -86,6 +93,7 @@ class TBGroupFollowup:
             if not st:
                 return False
             st["rounds"] = int(st.get("rounds") or 0) + 1
+            st["passes"] = 0
             limit = int(getattr(self.config, "group_followup_max_rounds", 0) or 0)
             if limit > 0 and st["rounds"] >= limit:
                 self._state.pop(gid, None)

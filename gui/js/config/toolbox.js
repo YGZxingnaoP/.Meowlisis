@@ -133,6 +133,8 @@ Object.assign(Config, {
                 '只把最近这些条群聊交给判断，用于理解上下文') +
             this._num('判断 max_tokens', 'napcat.group_followup.judge_max_tokens', 256, 64, 2048, 64,
                 '判断只产出一次工具调用，不需要长文本') +
+            this._num('连续 pass 上限（0=不限）', 'napcat.group_followup.max_passes', 5, 0, 100, 1,
+                '连续这么多次判断都不接话就自动结束本次续聊监听，避免一直空烧 token；回复一次后计数清零') +
             this._check('忽略群机器人的发言', 'napcat.group_followup.skip_bots', true,
                 '群机器人（如幻梦）的发言不触发续聊判断，避免两个机器人互相接话') +
             this._num('最大回复轮数（0=不限）', 'napcat.group_followup.max_rounds', 0, 0, 100, 1,

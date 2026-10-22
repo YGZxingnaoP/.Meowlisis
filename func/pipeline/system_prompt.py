@@ -157,6 +157,7 @@ class SystemPromptBridge:
         if not (theme or content):
             return ""
         lines = ["# 我心里装着的"]
+        lines.append("（以下是内部状态，不可直说：只影响你说话的语气和取舍；不许念出来、不许改写成台词，只输出说出口的话）")
         if theme:
             lines.append(theme)
         lines.extend(content)

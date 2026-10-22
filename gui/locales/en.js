@@ -1025,6 +1025,8 @@ window.__LOCALES__['en'] = {
     "只把最近这些条群聊交给判断，用于理解上下文": "Only the most recent messages are given to the judge for context.",
     "判断 max_tokens": "Judge max_tokens",
     "判断只产出一次工具调用，不需要长文本": "The judge only emits a single tool call, so long text is unnecessary.",
+    "连续 pass 上限（0=不限）": "Max Consecutive Passes (0 = unlimited)",
+    "连续这么多次判断都不接话就自动结束本次续聊监听，避免一直空烧 token；回复一次后计数清零": "End the follow-up session after this many consecutive pass judgments so it stops burning tokens; the counter resets after one reply.",
     "忽略群机器人的发言": "Ignore Group Bot Messages",
     "群机器人（如幻梦）的发言不触发续聊判断，避免两个机器人互相接话": "Messages from group bots (e.g. 幻梦) do not trigger the follow-up judge, preventing bot-to-bot loops.",
     "最大回复轮数（0=不限）": "Max Reply Rounds (0 = unlimited)",
