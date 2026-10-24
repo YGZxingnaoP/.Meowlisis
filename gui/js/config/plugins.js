@@ -45,13 +45,21 @@ Object.assign(Config, {
         const label = f.label || f.key;
         const help = f.help || '';
         const type = f.type || 'text';
+        // 插件配置是独立文件（plugins/<id>/config.yml），不走「API 平台」去重。
+        // 文本/密码字段直接用 api_platforms.js 提供的"直接拼 HTML"，绕开所有拦截层。
+        if ((type === 'password' || type === 'text') && this._rawField) {
+            const v = this._val(path, def);
+            return this._rawField(label, path, v == null ? '' : v, type === 'password', help);
+        }
         if (type === 'check') return this._check(label, path, def, help);
         if (type === 'num') return this._num(label, path, def, f.min, f.max, f.step, help);
         if (type === 'select') return this._select(label, path, f.options || [], def, help);
-        if (type === 'password') return this._password(label, path, def, help);
         if (type === 'list') return this._list(label, path, def, help);
         if (type === 'area') return this._area(label, path, def, help);
-        return this._text(label, path, def, help);
+        const rawText = this._baseText || this._text;
+        const rawPassword = this._basePassword || this._password;
+        if (type === 'password') return rawPassword.call(this, label, path, def, help);
+        return rawText.call(this, label, path, def, help);
     },
 
     applyPluginUpdates(id, updates) {

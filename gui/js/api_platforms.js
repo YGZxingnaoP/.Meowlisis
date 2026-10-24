@@ -12,10 +12,22 @@
  */
 (function () {
     if (typeof Config === 'undefined') return;
+    // 幂等：本文件若被重复引入/重复执行，第二次直接返回。
+    if (Config.__apiPlatformsInstalled) {
+        console.warn('[api_platforms] duplicate load detected and skipped');
+        return;
+    }
+    Config.__apiPlatformsInstalled = true;
+    const BUILD = 'v37';
+    try { console.log('[api_platforms] ' + BUILD + ' ready'); } catch (e) { }
 
-    // 原始渲染函数：汇总页自己要用它们（见下方 apiPlatforms）
-    const origText = Config._text;
-    const origPassword = Config._password;
+    // 原始渲染函数：优先用 core.js 在定义处钉死的引用（不受重复加载/拦截顺序影响）
+    const origText = Config._baseText || Config._text;
+    const origPassword = Config._basePassword || Config._password;
+
+    // 插件配置卡片要绕过下面的「去重」拦截，直接拿原始渲染函数
+    Config._rawText = origText;
+    Config._rawPassword = origPassword;
 
     // ---------------- 1. 平台 → 各引用点 ----------------
     Config.API_PLATFORMS = [
@@ -77,22 +89,70 @@
         }
     ];
 
-    /** 渲染汇总面板（挂到「基本设置」页尾） */
+    /** 渲染汇总面板（挂到「基本设置」页尾）
+     *  这里自己拼 HTML，不调用 Config._text / Config._password：
+     *  那两个函数被本文件的「去重」逻辑包过，只要捕获时机或加载次数有一点偏差，
+     *  行就会变成空字符串（面板看起来像空壳）。自己拼 HTML 则完全不受影响。
+     */
     Config.apiPlatforms = function () {
+        try {
+            return this._apiPlatformsImpl();
+        } catch (e) {
+            try { console.error('[api_platforms] impl failed', e); } catch (e2) { }
+            return '<div class="form-section"><h4>API 平台 · ' + BUILD + '</h4></div>' +
+                '<div class="help-text" style="color:#c62828;font-weight:600">' +
+                'DEBUG impl-failed: ' + (e && e.message ? e.message : e) +
+                ' · BUILD=' + BUILD + '</div>';
+        }
+    };
+
+    Config._apiPlatformsImpl = function () {
+        const esc = (s) => (typeof U !== 'undefined' && U.escAttr)
+            ? U.escAttr(s == null ? '' : s) : String(s == null ? '' : s);
+        const field = (label, path, value, isPassword, help) =>
+            '<div class="form-group"><label>' + esc(label) + '</label>' +
+            '<input type="' + (isPassword ? 'password' : 'text') + '"' +
+            ' data-path="' + esc(path) + '" value="' + esc(value) + '">' +
+            (help ? '<div class="help-text">' + esc(help) + '</div>' : '') +
+            '</div>';
+        // 插件卡片（config/plugins.js）复用同一份"直接拼 HTML"，同样绕开拦截器
+        Config._rawField = field;
+
         let h = this._section('API 平台') +
             '<div class="help-text">' +
             this._t('这里集中填写各平台的 API Key 与 Base URL；「模型」仍在各自卡片里单独设置') +
+            '<br>' +
+            this._t('插件自己的 API Key / Base URL 在对应插件卡片里填写，不在这里汇总') +
             '</div>';
         this.API_PLATFORMS.forEach(p => {
-            const rows = p.nodes.map(([label, base]) => {
-                const name = this._t(label);
-                // 用"原始"渲染函数：本页要显示的正是 .api_key / .base_url，
-                // 不能走下面那条"拦截重复项"的包装。
-                return origPassword.call(this, name + ' · ' + this._t('API Key'), base + '.api_key', '') +
-                       origText.call(this, name + ' · ' + this._t('Base URL'), base + '.base_url', p.url);
-            }).join('');
+            let rows = '';
+            try {
+                rows = p.nodes.map(([label, base]) => {
+                    const name = this._t(label);
+                    const keyPath = base + '.api_key';
+                    const urlPath = base + '.base_url';
+                    return field(name + ' · ' + this._t('API Key'), keyPath,
+                                 this._val(keyPath, ''), true, '') +
+                           field(name + ' · ' + this._t('Base URL'), urlPath,
+                                 this._val(urlPath, p.url), false, '');
+                }).join('');
+            } catch (e) {
+                rows = '';
+                try { console.error('[api_platforms] build rows failed', e); } catch (e2) { }
+            }
+            // 自诊断：行是空的就把原因印在面板里，别再让人对着空白猜
+            if (!rows) {
+                rows = '<div class="help-text" style="color:#c62828;font-weight:600">' +
+                       'DEBUG rows-empty: nodes=' + p.nodes.length +
+                       ' · rawField=' + (typeof Config._rawField) +
+                       ' · _val=' + (typeof this._val) +
+                       ' · _fold=' + (typeof this._fold) +
+                       ' · BUILD=' + BUILD +
+                       '</div>';
+            }
             const title = this._t(p.title) + '（' + p.nodes.length + ' ' + this._t('处') + '）';
-            h += this._fold(title, rows);
+            // 默认展开：点进页签就能看到输入框，不用再逐个点开折叠
+            h += this._fold(title, rows, true);
         });
         return h;
     };
@@ -109,10 +169,13 @@
     }
 
     Config._text = function (label, path, def, help) {
+        // 插件卡片渲染期间放行（见 config/plugins.js 的 _pluginMode）
+        if (Config._pluginMode) return origText.apply(this, arguments);
         if (isCredField(path)) return '';
         return origText.apply(this, arguments);
     };
     Config._password = function (label, path, def, help) {
+        if (Config._pluginMode) return origPassword.apply(this, arguments);
         if (isCredField(path)) return '';
         return origPassword.apply(this, arguments);
     };

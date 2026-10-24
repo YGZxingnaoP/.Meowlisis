@@ -18,7 +18,8 @@
     Config.SIMPLE = {
         'active_browse': ['llm_active.vision.base_url', 'llm_active.vision.gemini.base_url', 'llm_active.vision.gemini.model', 'llm_active.vision.llm_type', 'llm_active.vision.model', 'llm_active.web_browse.allow_topics', 'llm_active.web_browse.cache_dir', 'llm_active.web_browse.collect_dir', 'llm_active.web_browse.enabled', 'llm_active.web_browse.forbid_abstract', 'llm_active.web_browse.strictness'],
         'add_backlog': ['add_backlog.enabled', 'add_backlog.qq_enabled'],
-        'basic': ['AiName', 'app.port'],
+        // 'basic' 不进白名单：它的面板是页签结构（礼物 / API / 端口），
+        // 精简会删掉页签内容，导致"卡片点开是空的、高级设置点开却正常"。
         'catbrain_abstract': ['catbrain.abstract_mem.aliyun.base_url', 'catbrain.abstract_mem.aliyun.model', 'catbrain.abstract_mem.deepseek.base_url', 'catbrain.abstract_mem.deepseek.model', 'catbrain.abstract_mem.gemini.base_url', 'catbrain.abstract_mem.gemini.model', 'catbrain.abstract_mem.llm_type'],
         'catbrain_ltmem': ['catbrain.long_term_mem.inject_recent'],
         'catbrain_rulesbreak': ['rulebreak.deepseek.base_url', 'rulebreak.deepseek.model', 'rulebreak.enabled_msg', 'rulebreak.enabled_qq'],
@@ -59,6 +60,9 @@
         const keep = Config.SIMPLE[cardId];
         if (!keep || !root) return;
         root.querySelectorAll('[data-path]').forEach(function (el) {
+            // 页签（礼物 / API / 端口）是卡片的详细部分，不参与精简：
+            // 否则「基本」卡的 API 页签会被这条规则整片删掉，面板看起来是空的。
+            if (el.closest('[data-tab-content]')) return;
             const p = el.dataset.path || '';
             const hit = keep.some(function (k) { return p === k || p.indexOf(k + '.') === 0; });
             if (!hit) {
@@ -67,6 +71,7 @@
             }
         });
         root.querySelectorAll('.form-section').forEach(function (s) {
+            if (s.closest('[data-tab-content]')) return;
             const n = s.nextElementSibling;
             if (!n || (n.classList && n.classList.contains('form-section'))) s.remove();
         });
@@ -412,7 +417,7 @@
             try {
                 if (this.onSave) {
                     await this.onSave();
-                    if (App.showToast) App.showToast(T('配置已保存（重启对应服务后生效）'));
+                    if (App.showToast) App.showToast(T('配置已保存（已热重载）'));
                     return;
                 }
                 const updates = [];

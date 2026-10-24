@@ -33,6 +33,7 @@ const App = {
 
         try {
             this.config = await API.getConfig();
+            API.setSnapshot(this.config);   // 增量保存的基准
             window._config = this.config;
             Config.setConfig(this.config);
         } catch (e) {
@@ -153,6 +154,8 @@ const App = {
 
         const panelMap = {
             'basic': { title: '基本设置', fn: () => Config.basic(), special: true },
+            // 兜底：万一有卡片/子卡用这个 id，也不会落到 "No panel found" 而什么都不显示
+            'api_platforms': { title: 'API 平台', fn: () => Config.apiPlatforms() },
             'subtitle': { title: '字幕设置', fn: () => Config.subtitle() },
             'active': { title: '主动回复设置', fn: () => Config.llm_active() }
         };
@@ -312,7 +315,10 @@ const App = {
 
         const apiTab =
             '<div class="tab-content" data-tab-content="basic_api">' +
-                (C.apiPlatforms ? C.apiPlatforms() : '') +
+                (typeof C.apiPlatforms === 'function'
+                    ? C.apiPlatforms()
+                    : '<div class="help-text" style="color:#c62828;font-weight:600">' +
+                      'DEBUG apiPlatforms 未定义：api_platforms.js 没有加载或版本不匹配</div>') +
             '</div>';
 
         const portTab =
@@ -322,9 +328,19 @@ const App = {
                 '<div class="help-text">' + this._t('配置管理器自身的监听端口；改动后需重启配置管理器生效') + '</div>' +
             '</div>';
 
-        return C._section('基础信息') +
+        const html = C._section('基础信息') +
             C._text('AI名称', 'AiName', '喵呜') +
             tabs + giftTab + apiTab + portTab;
+        try {
+            const n = (html.match(/data-path=/g) || []).length;
+            const i0 = html.indexOf('data-tab-content="basic_api"');
+            const i1 = html.indexOf('data-tab-content="basic_port"');
+            console.log('[DIAG] basicPanel html=' + html.length +
+                        ' inputs=' + n +
+                        ' apiTabLen=' + ((i0 >= 0 && i1 > i0) ? (i1 - i0) : -1) +
+                        ' apiFn=' + (typeof C.apiPlatforms));
+        } catch (e) { }
+        return html;
     },
 
     async openBasicPanel() {
@@ -342,6 +358,15 @@ const App = {
             });
             this.loadRewards();
             setTimeout(() => this.bindTabs(), 10);   // 页签切换：礼物 / API / 端口
+            try {
+                const shown = Modal.overlay && Modal.overlay.classList.contains('show');
+                const inBody = document.querySelectorAll('#modalBody [data-path]').length;
+                const inApi = document.querySelectorAll('[data-tab-content="basic_api"] [data-path]').length;
+                const bodyLen = Modal.body ? Modal.body.innerHTML.length : -1;
+                console.log('[DIAG] modal shown=' + shown + ' bodyInputs=' + inBody +
+                            ' apiInputs=' + inApi + ' bodyLen=' + bodyLen +
+                            ' overlayDisplay=' + (Modal.overlay ? getComputedStyle(Modal.overlay).display : 'n/a'));
+            } catch (e) { }
         } catch (e) {
             console.error('Error rendering basic panel:', e);
             this.showToast('面板渲染失败: {msg}', true, { msg: e.message });

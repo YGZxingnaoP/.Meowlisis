@@ -1233,6 +1233,7 @@ window.__LOCALES__['en'] = {
     // ================= API 平台汇总页（js/api_platforms.js） =================
     "API 平台": "API Platforms",
     "这里集中填写各平台的 API Key 与 Base URL；「模型」仍在各自卡片里单独设置": "Fill in each platform's API Key and Base URL here; the model is still configured on its own card.",
+    "插件自己的 API Key / Base URL 在对应插件卡片里填写，不在这里汇总": "Plugins keep their own API Key / Base URL on their own cards; they are not aggregated here.",
     "API Key": "API Key",
     "Base URL": "Base URL",
     "处": "places",
@@ -1295,7 +1296,6 @@ window.__LOCALES__['en'] = {
     "JSON 格式错误：": "Invalid JSON: ",
     "配置已保存（重启主程序后生效）": "Saved (restart the main program to apply)",
     "配置已保存（已热重载）": "Saved (hot-reloaded, already in effect)",
-    "配置已保存（重启对应服务后生效）": "Saved (restart the related service to apply)",
     "暂无插件": "No plugins",
     " · 配置": " · Settings",
     "（JSON）": " (JSON)",

@@ -10,7 +10,48 @@ const API = {
         return res.json();
     },
 
+    /** 服务端当前配置的快照，用于计算增量（只提交改过的键） */
+    _snapshot: null,
+
+    setSnapshot(cfg) {
+        try { this._snapshot = JSON.parse(JSON.stringify(cfg || {})); }
+        catch (e) { this._snapshot = null; }
+    },
+
+    /** 递归比较两份配置，输出 [{path, value}] */
+    _diff(prev, next, prefix, out) {
+        out = out || [];
+        const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
+        if (isObj(prev) && isObj(next)) {
+            Object.keys(next).forEach((k) => {
+                this._diff(prev[k], next[k], prefix ? prefix + '.' + k : k, out);
+            });
+            Object.keys(prev).forEach((k) => {
+                if (!(k in next)) out.push({ path: prefix ? prefix + '.' + k : k, value: null });
+            });
+        } else if (JSON.stringify(prev) !== JSON.stringify(next)) {
+            out.push({ path: prefix, value: next });
+        }
+        return out;
+    },
+
+    /**
+     * 保存配置。有快照时只提交改动过的路径（/api/config/patch，服务端深合并）；
+     * 没有快照（异常情况）才退回整份提交。
+     */
     async saveConfig(config) {
+        if (this._snapshot) {
+            const updates = this._diff(this._snapshot, config);
+            if (!updates.length) return { status: 'ok', hot_reload: 'unchanged', changed: 0 };
+            const res = await fetch('/api/config/patch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates })
+            });
+            if (!res.ok) throw new Error('Failed to save config');
+            this.setSnapshot(config);
+            return res.json();
+        }
         const res = await fetch('/api/config', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

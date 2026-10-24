@@ -82,6 +82,11 @@ def _notify_reload():
         return False
 
 
+def _notify_reload_async():
+    """后台通知热重载：reload_all 可能跑几秒，不能挡住保存响应"""
+    Thread(target=_notify_reload, daemon=True).start()
+
+
 def load_tts_config():
     tts_yaml = BASE_DIR / ".vendor/.Sovits" / "tts_infer.yaml"
     if not tts_yaml.exists():
@@ -141,7 +146,41 @@ def get_config():
 def post_config():
     cfg = request.get_json()
     save_config(cfg)
-    return jsonify({'status': 'ok', 'hot_reload': _notify_reload()})
+    _notify_reload_async()
+    return jsonify({'status': 'ok', 'hot_reload': 'queued'})
+
+
+def _apply_updates(root, updates):
+    """把 [{path: 'a.b.c', value: x}] 还原成嵌套 dict，供深合并使用"""
+    for it in updates or []:
+        path = (it or {}).get('path')
+        if not path:
+            continue
+        cur = root
+        keys = path.split('.')
+        for k in keys[:-1]:
+            nxt = cur.get(k)
+            if not isinstance(nxt, dict):
+                nxt = {}
+                cur[k] = nxt
+            cur = nxt
+        cur[keys[-1]] = (it or {}).get('value')
+    return root
+
+
+@app.route('/api/config/patch', methods=['POST'])
+def post_config_patch():
+    """增量保存：前端只提交真正改过的路径，服务端深合并后一次性写盘。
+
+    热重载通知放到后台线程，保存响应不等主程序跑完 reload_all（那一步可能几秒）。
+    """
+    data = request.get_json(silent=True) or {}
+    updates = data.get('updates') or []
+    patch = _apply_updates({}, updates)
+    if patch:
+        save_config(patch)
+    _notify_reload_async()
+    return jsonify({'status': 'ok', 'hot_reload': 'queued', 'changed': len(updates)})
 
 
 class _MeowLLMConfigIO:

@@ -142,8 +142,8 @@ const Config = {
     _section(title) {
         return `<div class="form-section"><h4>${this._t(title)}</h4></div>`;
     },
-    _fold(title, body) {
-        return `<details class="ref-fold">
+    _fold(title, body, open) {
+        return `<details class="ref-fold"${open ? ' open' : ''}>
             <summary class="ref-fold-summary">
                 <span class="ref-fold-name">${this._t(title)}</span>
                 <span class="ref-fold-arrow">▾</span>
@@ -307,5 +307,12 @@ const Config = {
         }
     },
 };
+
+// 在定义处就把「原始」渲染函数钉死：
+// 之后 api_platforms.js 会把 _text / _password 包成拦截器，
+// 汇总页与插件卡片必须走这两个原始引用，否则会被拦成空字符串。
+// 放在这里而不是运行时捕获，是为了不受脚本加载次数/顺序影响。
+Config._baseText = Config._text;
+Config._basePassword = Config._password;
 
 
