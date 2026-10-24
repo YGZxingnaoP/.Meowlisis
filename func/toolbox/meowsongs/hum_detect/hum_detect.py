@@ -13,6 +13,12 @@ from func.toolbox.meowsongs.config import TBMeowSongsConfig
 from func.sensevoice.config import SenseVoiceConfig
 
 SAMPLE_RATE = 16000
+# 判定用音高范围：覆盖人声哼唱（男声低音 C2 ≈ 65Hz）
+F0_MIN = 65.0
+F0_MAX = 800.0
+# 判定用帧长与帧移：只统计有声/稳定/音符数，不需要更细的时间分辨率
+JUDGE_FRAME_LENGTH = 1024
+JUDGE_HOP = 1024
 
 
 @singleton
@@ -44,6 +50,8 @@ class TBHumDetect:
         self._last_event_type = ""
         # 判定成功时置位，供 toolbox_audio 落盘时决定是否丢弃哼唱对应的 ASR final（只丢弃一次）
         self._need_discard = False
+        # 最近一次判定的指标快照（ratio / stable_ratio / unique_notes），供测试与调参
+        self._last_metrics = {}
 
     def feed(self, frame: bytes):
         """喂一帧 16k 单声道 PCM：有效语音累积，满 hum_collect_sec 立即判定，段结束兜底"""
@@ -112,7 +120,7 @@ class TBHumDetect:
             self._trigger_sing(need_match=True)
 
     def _analyze_buffer(self):
-        """判定当前累积缓冲是否为哼唱（yin fl1024），返回 bool，不触发匹配"""
+        """判定当前累积缓冲是否为哼唱（pyin fl1024），返回 bool，不触发匹配"""
         try:
             with self._lock:
                 if self._buf_seconds < self.config.hum_collect_sec:
@@ -121,21 +129,36 @@ class TBHumDetect:
             if audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
                 return False
             import librosa
-            f0 = librosa.yin(
+            f0, voiced_flag, voiced_prob = librosa.pyin(
                 audio.astype(np.float32) / 32768.0,
-                fmin=80, fmax=800,
-                sr=SAMPLE_RATE, frame_length=1024, hop_length=256,
+                fmin=F0_MIN, fmax=F0_MAX,
+                sr=SAMPLE_RATE, frame_length=JUDGE_FRAME_LENGTH, hop_length=JUDGE_HOP,
             )
-            valid = f0[~np.isnan(f0)]
-            if valid.size < 3:
+            # 有声帧：pyin 判定有声且置信度足够（静音帧不参与统计）
+            weight = np.clip((voiced_prob - 0.30) / 0.50, 0.0, 1.0)
+            voiced = voiced_flag & (weight > 0.05)
+            if int(voiced.sum()) < 3:
+                with self._lock:
+                    self._last_metrics = {
+                        "ratio": 0.0, "stable_ratio": 0.0, "unique_notes": 0,
+                        "voiced_frames": int(voiced.sum()), "total_frames": int(f0.size),
+                    }
                 return False
-            ratio = valid.size / float(f0.size)
-            midi = 12.0 * np.log2(valid / 440.0) + 69.0
+            ratio = float(voiced.mean())
+            midi = 12.0 * np.log2(f0[voiced] / 440.0) + 69.0
             # 稳定帧占比：相邻帧音高差 < 阈值半音的帧占比
             # （哼唱音符内音高稳定、占比高；说话音高连续乱飘、占比低）
             abs_diff = np.abs(np.diff(midi))
             stable_ratio = float(np.mean(abs_diff < self.config.f0_stable_half_step))
             unique_notes = len(np.unique(np.round(midi).astype(int)))
+            with self._lock:
+                self._last_metrics = {
+                    "ratio": round(ratio, 3),
+                    "stable_ratio": round(stable_ratio, 3),
+                    "unique_notes": unique_notes,
+                    "voiced_frames": int(voiced.sum()),
+                    "total_frames": int(f0.size),
+                }
             return (
                 ratio >= self.config.f0_voiced_ratio
                 and stable_ratio >= self.config.f0_stable_ratio
@@ -188,6 +211,11 @@ class TBHumDetect:
         """返回最近一次触发的事件类型（"lock" 或 "sing"）"""
         with self._lock:
             return self._last_event_type
+
+    def get_last_metrics(self):
+        """返回最近一次判定的指标快照（ratio / stable_ratio / unique_notes 等）"""
+        with self._lock:
+            return dict(self._last_metrics)
 
     def get_and_clear_need_discard(self):
         """读取并复位「需要丢弃哼唱 ASR final」标志（toolbox_audio 落盘时调用）"""

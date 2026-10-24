@@ -9,7 +9,7 @@ import sys
 import json
 import yaml
 import subprocess
-from threading import Thread
+from threading import Thread, Lock
 from pathlib import Path
 from urllib.parse import urlparse
 from flask import Flask, send_from_directory, jsonify, request
@@ -20,6 +20,9 @@ app = Flask(__name__)
 BASE_DIR = Path(__file__).parent
 CONFIG_PATH = BASE_DIR / "config.yml"
 GUI_DIR = BASE_DIR / "gui"
+
+# 保存互斥：Flask 是多线程的，两个保存请求同时写同一个临时文件会写出半截内容
+_save_lock = Lock()
 
 
 def load_config():
@@ -50,11 +53,33 @@ def _deep_merge(base, patch):
 
 
 def save_config(cfg):
-    """保存配置。**深合并**到现有文件，避免把页面不认识的键冲掉。"""
-    merged = _deep_merge(load_config(), cfg or {})
-    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
-        yaml.dump(merged, f, allow_unicode=True, sort_keys=False)
-    return merged
+    """保存配置。**深合并**到现有文件，避免把页面不认识的键冲掉。
+
+    原子写（临时文件 + os.replace）：主程序有文件监听线程，读到半截 YAML 会解析失败。
+    """
+    with _save_lock:
+        merged = _deep_merge(load_config(), cfg or {})
+        _atomic_write(CONFIG_PATH, yaml.dump(merged, allow_unicode=True, sort_keys=False))
+        return merged
+
+
+def _atomic_write(path, text):
+    """原子写文本文件：先写同目录临时文件再替换，避免读到写了一半的内容"""
+    tmp = Path(str(path) + ".tmp")
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def _notify_reload():
+    """通知主程序热重载（主程序没起就忽略；另有文件监听兜底，这里主要为拿回执）"""
+    try:
+        import requests
+        port = (load_config().get('app') or {}).get('port', 1800)
+        r = requests.post(f'http://127.0.0.1:{port}/api/config/reload', timeout=3)
+        return r.ok
+    except Exception:
+        return False
 
 
 def load_tts_config():
@@ -116,7 +141,7 @@ def get_config():
 def post_config():
     cfg = request.get_json()
     save_config(cfg)
-    return jsonify({'status': 'ok'})
+    return jsonify({'status': 'ok', 'hot_reload': _notify_reload()})
 
 
 class _MeowLLMConfigIO:

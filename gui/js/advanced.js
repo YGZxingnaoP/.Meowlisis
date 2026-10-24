@@ -37,7 +37,7 @@
         'meowsinger_model': ['meowsinger.aliyun.base_url', 'meowsinger.aliyun.model', 'meowsinger.deepseek.base_url', 'meowsinger.deepseek.model', 'meowsinger.enabled', 'meowsinger.gemini.base_url', 'meowsinger.gemini.model', 'meowsinger.llm_type', 'meowsinger.prompt.reply', 'meowsinger.stop.keywords'],
         'meowsinger_sentiment': ['meowsinger.sentiment.enabled', 'meowsinger.sentiment.word_count'],
         'meowsinger_song': ['meowsinger.song.enabled', 'meowsinger.song.intent', 'meowsinger.song.netease_url', 'meowsinger.song.prefix', 'meowsinger.song.trigger_mode'],
-        'meowsongs': ['meowsongs.enabled', 'meowsongs.max_duration', 'meowsongs.pass_the_baton.ask_prompt', 'meowsongs.pass_the_baton.enabled', 'meowsongs.pass_the_baton.feeling_prompt'],
+        'meowsongs': ['meowsongs.enabled', 'meowsongs.pass_the_baton.enabled', 'meowsongs.pass_the_baton.feeling_prompt', 'meowsongs.pass_the_baton.match_threshold', 'meowsongs.pass_the_baton.min_margin'],
         'meowvision': ['meowvision.base_url', 'meowvision.cache_dir', 'meowvision.gemini.base_url', 'meowvision.gemini.model', 'meowvision.llm_type', 'meowvision.model', 'meowvision.watching.enabled', 'meowvision.watching.max_duration'],
         'minecraft': ['minecraft.enabled', 'minecraft.encoding', 'minecraft.filter_players', 'minecraft.ignore_self_messages', 'minecraft.include_player_name_in_prompt', 'minecraft.log_path', 'minecraft.use_player_name', 'minecraft.username_fixed'],
         'napcat_account': ['napcat.debug_event_dump', 'napcat.emote_dir', 'napcat.enabled', 'napcat.ltmem_enabled', 'napcat.poke_enabled', 'napcat.self_nickname', 'napcat.short_mem_enabled', 'napcat.ws_url'],
@@ -430,7 +430,7 @@
                 });
                 Config.applyUpdates(updates, App.config);
                 await API.saveConfig(App.config);
-                if (App.showToast) App.showToast(T('配置已保存（重启主程序后生效）'));
+                if (App.showToast) App.showToast(T('配置已保存（已热重载）'));
             } catch (e) {
                 if (App.showToast) App.showToast(T('保存失败: ') + (e && e.message ? e.message : e), true);
                 else alert(T('保存失败: ') + (e && e.message ? e.message : e));

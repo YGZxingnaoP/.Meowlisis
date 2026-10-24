@@ -12,6 +12,9 @@ from func.sensevoice.interrupt import InterruptDetector
 class SenseVoiceSession:
     """封装一个音频源的完整识别链路，断线自动重连"""
 
+    # 连接类异常：识别服务未启动是常见状态，不该按 error 刷屏
+    CONN_ERR_QUIET_SECONDS = 30.0
+
     def __init__(self, source_id, config, log, hub, callback, tts_bridge,
                  allow_interrupt=True, speaker_verify=True, username="主人",
                  llm_source="llm", subtitle_publish=False, subtitle=None,
@@ -27,6 +30,7 @@ class SenseVoiceSession:
         self.speaker_verify = bool(speaker_verify)
         self.username = username
         self._is_running = is_running or (lambda: True)
+        self._last_conn_log = 0.0
 
         # inject 源为「按住说话」语义：边界由 end 事件/断流决定，不套用环境能量 VAD
         self.ptt_mode = (source_id == 'inject')
@@ -81,12 +85,36 @@ class SenseVoiceSession:
             except Exception as e:
                 if not self._is_running():
                     break
-                self.log.error(f"[{self.source_id}] 会话异常: {e}")
+                self._log_session_error(e)
                 await asyncio.sleep(1)
             finally:
                 for t in (capture, recv):
                     if t is not None and not t.done():
                         t.cancel()
+
+    @staticmethod
+    def _is_conn_error(exc) -> bool:
+        """是否为「连不上识别服务」这类异常（服务未启动时必然出现）"""
+        if isinstance(exc, (OSError, ConnectionError, asyncio.TimeoutError)):
+            return True
+        try:
+            import websockets
+            return isinstance(exc, websockets.exceptions.WebSocketException)
+        except Exception:
+            return False
+
+    def _log_session_error(self, exc):
+        """会话异常日志：连接类降为 warning 并限流，避免识别服务未启动时刷屏"""
+        if not self._is_conn_error(exc):
+            self.log.error(f"[{self.source_id}] 会话异常: {exc}")
+            return
+        now = time.monotonic()
+        if now - self._last_conn_log < self.CONN_ERR_QUIET_SECONDS:
+            return
+        self._last_conn_log = now
+        self.log.warning(
+            f"[{self.source_id}] 识别服务未就绪（{exc}），后台每秒重试，稍后自动连上"
+        )
 
     def _after_reconnect(self):
         self._ptt_speaking = False

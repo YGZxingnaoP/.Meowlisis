@@ -47,6 +47,13 @@ class InterruptManager:
         self._thread.start()
         self.log.info(f"TTS 打断监听已启动: mode={self.config.interrupt_mode}, key={self.config.interrupt_key}")
 
+    def restart(self):
+        """配置热重载：重解析打断按键，并在模式从 off 变成可用时补起监听线程"""
+        self.vk = self._parse_key(self.config.interrupt_key)
+        if self._thread is not None and self._thread.is_alive():
+            return                      # 线程常驻，_loop 每轮都现读 interrupt_mode，无需重启
+        self.start()
+
     def _loop(self):
         """轮询打断信号，暂停时重置状态"""
         interval = max(0.01, self.config.interrupt_poll_interval)

@@ -149,17 +149,17 @@ Object.assign(Config, {
             <div class="formula-block">
                 <div class="formula-row">
                     <span class="formula-name">${this._t('有效语音 ')}<code>hum_collect_sec</code></span>
-                    <span class="formula-expr">${this._t('RMS ≥ 能量阈值，持续 ≥ 7 秒')}</span>
-                    <span class="formula-cond">${this._t('静音 ≥ 2 秒判段结束（能量/静音阈值读 SenseVoice）')}</span>
+                    <span class="formula-expr">${this._t('RMS ≥ 能量阈值，持续 ≥ 累积时长阈值')}</span>
+                    <span class="formula-cond">${this._t('静音 ≥ 静音阈值判段结束（能量/静音阈值读 SenseVoice）')}</span>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('音高发声占比 ')}<code>f0_voiced_ratio</code></span>
-                    <span class="formula-expr">${this._t('voiced_ratio = 有声帧 / 总帧 ≥ 0.6')}</span>
-                    <span class="formula-cond">${this._t('pyin 提取 F0，过滤清辅音与停顿')}</span>
+                    <span class="formula-expr">${this._t('voiced_ratio = 有声帧 / 总帧 ≥ 阈值')}</span>
+                    <span class="formula-cond">${this._t('pyin 提取 F0，只统计有声帧')}</span>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('稳定帧占比 ')}<code>f0_stable_ratio</code></span>
-                    <span class="formula-expr">${this._t('stable_ratio = ( 相邻帧 |Δ半音| &lt; 0.5 ) 帧占比 ≥ 0.6')}</span>
+                    <span class="formula-expr">${this._t('stable_ratio = ( 相邻帧 |Δ半音| &lt; 半音差阈值 ) 帧占比 ≥ 阈值')}</span>
                     <span class="formula-cond">${this._t('哼唱音符内稳定；说话音高连续乱飘')}</span>
                 </div>
                 <div class="formula-row">
@@ -175,12 +175,12 @@ Object.assign(Config, {
                 <div class="formula-row">
                     <span class="formula-name">${this._t('最终判定')}</span>
                     <span class="formula-expr">${this._t('三项同时满足 → 判为哼唱')}</span>
-                    <span class="formula-cond">${this._t('通过后才进入 QBH 歌曲匹配 ')}<code>match_threshold</code></span>
+                    <span class="formula-cond">${this._t('通过后进入歌曲匹配：得分 ≥ 阈值且分差 ≥ 下限')}<code>match_threshold</code>/<code>min_margin</code></span>
                 </div>
             </div>
             <div class="formula-params">
                 voiced_ratio 过滤纯语音；stable_ratio 区分哼唱与说话；unique_notes 过滤单调音。
-                判为哼唱后，再用 QBH 余弦相似度匹配歌曲（match_threshold）。
+                判为哼唱后，用 QBH 余弦相似度全库匹配（match_threshold），并检查最佳与次优的分差（min_margin）。
             </div>
         </div>`;
     },
@@ -188,18 +188,14 @@ Object.assign(Config, {
         return this._section('即兴哼唱（触发型工具）') +
             this._check('启用即兴哼唱', 'meowsongs.enabled', true,
                 'AI 根据用户消息判断是否即兴哼唱已学歌曲片段（不带伴奏，只播放翻唱人声）') +
-            this._num('播放长度上限（秒）', 'meowsongs.max_duration', 180, 1, 600, 1,
-                '单次即兴哼唱的最长播放秒数，默认 180（整首歌）') +
             this._section('听歌识曲接龙') +
             this._humDetectFormula() +
             this._check('启用听歌识曲接龙', 'meowsongs.pass_the_baton.enabled', false,
                 '用户哼唱一段后，AI 识别歌曲并接着往下唱（依赖哼唱检测与本地曲库）') +
             this._num('往后唱几句', 'meowsongs.pass_the_baton.hum_lines', 2, 1, 10, 1,
                 '识别命中后接着唱的歌词句数，默认 2') +
-            this._num('哼唱能量阈值', 'meowsongs.pass_the_baton.energy_threshold', 300, 0, 2000, 10,
-                '判定哼唱的最小 RMS 能量，默认 300') +
-            this._num('音高发声占比', 'meowsongs.pass_the_baton.f0_voiced_ratio', 0.6, 0.1, 1, 0.05,
-                'pyin 有声帧占比阈值，越高要求哼唱越稳定') +
+            this._num('音高发声占比', 'meowsongs.pass_the_baton.f0_voiced_ratio', 0.55, 0.1, 1, 0.01,
+                'pyin 有声帧占比阈值，越高要求哼唱越连续') +
             this._num('稳定帧占比', 'meowsongs.pass_the_baton.f0_stable_ratio', 0.6, 0.1, 1, 0.05,
                 '相邻帧音高差小于稳定半音阈值的帧占比，越高要求哼唱越稳定') +
             this._num('稳定帧半音差', 'meowsongs.pass_the_baton.f0_stable_half_step', 0.5, 0.1, 3, 0.05,
@@ -210,10 +206,8 @@ Object.assign(Config, {
                 '哼唱至少出现的不同半音数量（过滤单调拖长音）') +
             this._num('匹配得分阈值', 'meowsongs.pass_the_baton.match_threshold', 0.55, 0.1, 1, 0.05,
                 'QBH 匹配最低得分，默认 0.55') +
-            this._num('缓存时长（秒）', 'meowsongs.pass_the_baton.cache_seconds', 30, 5, 120, 1,
-                '哼唱检测环形缓冲时长，默认 30') +
-            this._area('匹配失败询问引导词', 'meowsongs.pass_the_baton.ask_prompt', '',
-                '哼唱匹配不到歌曲时，用于让 AI 问用户是不是在唱歌的引导词') +
+            this._num('歧义分差下限', 'meowsongs.pass_the_baton.min_margin', 0.04, 0, 0.5, 0.01,
+                '最佳与次优候选的分差低于该值时视为歧义，交给角色确认是否在唱') +
             this._area('接龙感想引导词', 'meowsongs.pass_the_baton.feeling_prompt', '',
                 '接龙命中后发表感想的引导词，{title}=歌名、{lyric}=歌词');
     },

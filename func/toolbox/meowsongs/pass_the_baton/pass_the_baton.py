@@ -87,26 +87,29 @@ class TBPassTheBaton:
         return self._run_sing(bridge, hum_path, meowid)
 
     def _run_lock(self, hum_path, meowid):
-        """7 秒定歌：匹配 + 锁定，不接唱"""
+        """7 秒定歌：余弦粗筛 + 分差判定，锁定后不接唱"""
         if not hum_path or not os.path.exists(hum_path):
             # 拿不到音频也要清锁定，避免残留到下一次
             self._locked_title = None
             self._locked_offset = 0.0
             return "没有检测到哼唱音频"
 
-        title, offset, score = self.match.match(hum_path)
+        title, offset, score, second, margin = self.match.match(hum_path)
         try:
             os.remove(hum_path)
         except Exception:
             pass
 
-        if not title:
+        if (not title or score < self.config.match_threshold
+                or margin < self.config.min_margin):
             self.log.info(
-                f"[PassTheBaton] 7秒定歌未达阈值：最高分 {score:.3f}（阈值 {self.config.match_threshold}）"
+                f"[PassTheBaton] 7秒定歌未锁定：最高分 {score:.3f}"
+                f"（阈值 {self.config.match_threshold}）"
+                f"次高 {second:.3f} 分差 {margin:.3f}（下限 {self.config.min_margin}）"
             )
             self._locked_title = None
             self._locked_offset = 0.0
-            return "没有识别出这首歌"
+            return "没有锁定这首歌"
 
         self.log.info(f"[PassTheBaton] 7秒定歌：《{title}》 score={score:.3f} offset={offset:.1f}s")
         self._locked_title = title
@@ -114,23 +117,33 @@ class TBPassTheBaton:
         return f"识别到《{title}》，等你唱完"
 
     def _run_sing(self, bridge, hum_path, meowid):
-        """段结束接唱：用锁定结果 + 完整时长定位接唱；未锁定则兜底匹配"""
+        """段结束接唱：余弦匹配定位；未达阈值则交给角色用自己的话确认"""
         hum_duration = bridge.get_hum_duration()
         if hum_duration <= 0:
             hum_duration = 7.0
 
         # 取出并立即重置锁定结果（本次用完即清，避免残留到下一次）
-        title = self._locked_title
-        offset = self._locked_offset
+        locked_title = self._locked_title
+        locked_offset = self._locked_offset
         self._locked_title = None
         self._locked_offset = 0.0
 
-        # 未锁定则用完整音频兜底匹配
-        if not title and hum_path and os.path.exists(hum_path):
-            title, offset, score = self.match.match(hum_path)
+        title, offset = None, 0.0
+        candidate = None
+        if hum_path and os.path.exists(hum_path):
+            m_title, m_offset, m_score, second, margin = self.match.match(hum_path)
+            candidate = m_title
             self.log.info(
-                f"[PassTheBaton] 段结束兜底匹配：《{title}》 score={score:.3f} offset={offset:.1f}s"
+                f"[PassTheBaton] 段结束匹配：《{m_title}》 score={m_score:.3f}"
+                f" 次高 {second:.3f} 分差 {margin:.3f} offset={m_offset:.1f}s"
             )
+            if (m_title and m_score >= self.config.match_threshold
+                    and margin >= self.config.min_margin):
+                title, offset = m_title, m_offset
+
+        # 段结束没匹配上时沿用 7 秒已锁定的结果
+        if not title and locked_title:
+            title, offset = locked_title, locked_offset
 
         # 清理临时音频（无论是否用到，用完即删）
         if hum_path and os.path.exists(hum_path):
@@ -140,12 +153,12 @@ class TBPassTheBaton:
                 pass
 
         if not title:
-            self._ask_hum(meowid)
+            self._ask_hum(meowid, candidate)
             return "没有识别出这首歌"
 
         user_lyric, start_sec, end_sec, next_lines = self.next_line.locate(title, offset, hum_duration)
         if start_sec is None:
-            self._ask_hum(meowid)
+            self._ask_hum(meowid, title)
             return f"识别到《{title}》，但没有可接的歌词"
 
         # 匹配成功 → 进入唱歌状态（唱歌状态只覆盖接唱，感想播报不拦截用户语音）
@@ -197,19 +210,27 @@ class TBPassTheBaton:
         except Exception:
             self.log.exception("[PassTheBaton] 接唱播放异常")
 
-    def _ask_hum(self, meowid):
-        """匹配失败：LLM 以角色身份询问用户是否在唱歌"""
+    def _ask_hum(self, meowid, candidate=None):
+        """未锁定或有歧义：让角色用自己的话确认是否在唱，可选点名候选歌曲"""
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            from func.toolbox.config import TBoxConfig
             from func.pipeline.toolbox_tts import ToolboxTtsBridge
             llm = self._llm()
             if not llm or not llm.client:
                 return
             system_prompt = TBoxGetPrompt().get_system_prompt(meowid, "") or ""
-            guide = self.config.ask_prompt
-            if not guide:
-                return
+            if candidate:
+                guide = (
+                    f"[System] 用户刚才在哼唱，最接近的一首是《{candidate}》，但把握不足，"
+                    "这一轮先不要接唱。请以角色自己的口吻，用一两句话自然地确认："
+                    "是不是在唱这首歌？不要复述这条说明，也不要提分数、置信度或算法。"
+                )
+            else:
+                guide = (
+                    "[System] 用户刚才在哼唱，但没有认出是哪首歌，这一轮先不要接唱。"
+                    "请以角色自己的口吻，用一两句话自然地确认：你刚刚是不是在唱歌？"
+                    "不要复述这条说明。"
+                )
             resp = llm.chat([
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": guide},
@@ -221,7 +242,7 @@ class TBPassTheBaton:
                 ToolboxTtsBridge().send_stream(content, source="meowsongs")
                 self._record_llm_reply(meowid, content)
         except Exception:
-            self.log.exception("[PassTheBaton] 匹配失败询问异常")
+            self.log.exception("[PassTheBaton] 询问是否在唱歌异常")
 
     def _send_feeling(self, title, lines, meowid):
         """通过 toolbox LLM 生成感想并播报（LLM 回复单独保存）"""

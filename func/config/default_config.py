@@ -38,3 +38,8 @@ class defaultConfig:
 
     def get_config(self):
         return self.config
+
+    def reload(self):
+        """重读 config.yml（热重载用：不再做缺失兜底，避免运行中意外生成文件）"""
+        self.config = ConfigBase(CONFIG_FILE, "utf-8").get_config()
+        return self

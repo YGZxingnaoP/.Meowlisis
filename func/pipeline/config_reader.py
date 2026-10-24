@@ -11,7 +11,7 @@ class ConfigReader:
     """配置读取总线：统一持有完整配置字典，供各模块按节点请求"""
 
     def __init__(self):
-        # 启动时读取一次完整配置（不热重载）
+        # 启动时读取一次完整配置；后续热重载走 reload()
         self._root = defaultConfig().get_config()
 
     def get(self, node: str = None, default=None):
@@ -22,4 +22,9 @@ class ConfigReader:
 
     def get_all(self) -> dict:
         """获取完整配置字典"""
+        return self._root
+
+    def reload(self) -> dict:
+        """重新从磁盘读取整份配置（热重载入口）：换掉 _root，各配置单例随后重跑 __init__"""
+        self._root = defaultConfig().reload().get_config()
         return self._root

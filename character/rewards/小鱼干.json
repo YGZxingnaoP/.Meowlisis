@@ -3,51 +3,9 @@
   "unit": "条",
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
-  "total_acquired": 14.6,
-  "balance": 0.4,
+  "total_acquired": 16.6,
+  "balance": 2.0,
   "history": [
-    {
-      "ts": 1790080515,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "小胆123"
-    },
-    {
-      "ts": 1790081308,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "小胆123"
-    },
-    {
-      "ts": 1790081340,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "薯条x1",
-      "user": "小胆123"
-    },
-    {
-      "ts": 1790084920,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084921,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084922,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
     {
       "ts": 1790084922,
       "type": "gift",
@@ -618,6 +576,42 @@
       "type": "startup",
       "delta": -0.1,
       "note": "启动消耗"
+    },
+    {
+      "ts": 1792675318,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792735212,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792756560,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792756632,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1792756633,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1792756634,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
     }
   ]
 }

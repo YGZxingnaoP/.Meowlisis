@@ -4,7 +4,7 @@ hum_detect_sim.py —— 独立哼唱检测 + 歌曲匹配模拟脚本（与项�
 
 流程（与最终方案一致）：
     1. VAD 分段：能量阈值 + 连续静音分段（与 hum_detect 一致）；
-    2. 满 HUM_COLLECT_SEC 秒判定（yin frame_length=1024，与 hum_detect 一致）；
+    2. 满 HUM_COLLECT_SEC 秒判定（pyin，与 hum_detect 一致）；
     3. 判定通过后【只用这 7 秒匹配一次，锁定歌名 + 起始点 offset】，不接唱、不重匹配；
     4. 继续累积，停唱后静音 SILENCE_THRESHOLD 秒段结束；
     5. 段结束用 offset + 实际哼唱时长 T 推算接唱点，在 *.lrc 里找最近的歌词句首；
@@ -37,19 +37,21 @@ SILENCE_THRESHOLD = 2.0        # 段结束静音阈值（秒）。连续静音�
 
 HUM_COLLECT_SEC = 7.0          # 哼唱最少累积时长（秒）。满此值立即判定并定歌
 
-F0_MIN = 80                    # yin 最低基频（Hz）
-F0_MAX = 800                   # yin 最高基频（Hz）
-JUDGE_FRAME_LENGTH = 1024      # 判定用 yin 帧长（与项目 hum_detect 一致）
+F0_MIN = 65                    # pyin 最低基频（Hz）
+F0_MAX = 800                   # pyin 最高基频（Hz）
+JUDGE_FRAME_LENGTH = 1024      # 判定用 pyin 帧长（与项目 hum_detect 一致）
+JUDGE_HOP = 1024               # 判定用 pyin 帧移（与项目 hum_detect 一致）
 MATCH_FRAME_LENGTH = 2048      # 匹配用 yin 帧长（与项目 hum_match 一致）
-HOP = 256                      # yin 帧移（与项目一致）
+HOP = 256                      # 匹配用 yin 帧移（与项目一致）
 
-F0_VOICED_RATIO = 0.6          # 有声音高帧占比阈值（越高要求哼唱越连续）
-F0_STABLE_RATIO = 0.6          # 稳定帧占比阈值（越高要求音高越稳）
+F0_VOICED_RATIO = 0.55         # 有声帧占比阈值（镜像 config.yml 的 meowsongs.pass_the_baton）
+F0_STABLE_RATIO = 0.6          # 稳定帧占比阈值（镜像 config.yml）
 F0_STABLE_HALF_STEP = 0.5      # 相邻帧音高差 < 此半音数视为稳定帧（越小越严）
 F0_UNIQUE_NOTES = 3            # 唯一音符数阈值（越高要求旋律变化越多）
 
 MEOW_DIR = os.path.join("character", "songs", "meow_list")  # 曲库目录
-MATCH_THRESHOLD = 0.45         # 定歌余弦阈值（哼唱 vs vocal 正常区间约 0.4~0.6）
+MATCH_THRESHOLD = 0.35         # 定歌余弦阈值（哼唱 vs vocal 正常区间约 0.4~0.9）
+MIN_MARGIN = 0.04              # 最佳与次优候选的分差下限（低于则视为歧义）
 
 VERBOSE_FRAME = False          # True 时打印每帧能量（很刷屏，调试用）
 # ============================================================
@@ -59,21 +61,22 @@ def _ts():
     return time.strftime("%H:%M:%S")
 
 
-def _judge_metrics(f0):
-    """根据 yin 输出的 f0（含 NaN）计算判定指标，返回 (ok, metrics)"""
-    valid = f0[~np.isnan(f0)]
+def _judge_metrics(f0, voiced_flag, voiced_prob):
+    """根据 pyin 输出的 f0 与有声判定计算指标，返回 (ok, metrics)"""
+    weight = np.clip((voiced_prob - 0.30) / 0.50, 0.0, 1.0)
+    voiced = voiced_flag & (weight > 0.05)
     metrics = {
-        "voiced_frames": int(valid.size),
+        "voiced_frames": int(voiced.sum()),
         "total_frames": int(f0.size),
         "ratio": 0.0,
         "stable_ratio": 0.0,
         "unique_notes": 0,
     }
-    if valid.size < 3:
+    if int(voiced.sum()) < 3:
         return False, metrics
 
-    ratio = valid.size / float(f0.size)
-    midi = 12.0 * np.log2(valid / 440.0) + 69.0
+    ratio = float(voiced.mean())
+    midi = 12.0 * np.log2(f0[voiced] / 440.0) + 69.0
     abs_diff = np.abs(np.diff(midi))
     stable_ratio = float(np.mean(abs_diff < F0_STABLE_HALF_STEP))
     unique_notes = len(np.unique(np.round(midi).astype(int)))
@@ -92,14 +95,14 @@ def _judge_metrics(f0):
 
 
 def judge(audio: np.ndarray):
-    """判定：yin frame_length=1024（与项目 hum_detect 一致），返回 (ok, metrics)"""
+    """判定：pyin 取有声帧（与项目 hum_detect 一致），返回 (ok, metrics)"""
     import librosa
-    f0 = librosa.yin(
+    f0, flag, prob = librosa.pyin(
         audio.astype(np.float32) / 32768.0,
         fmin=F0_MIN, fmax=F0_MAX,
-        sr=SAMPLE_RATE, frame_length=JUDGE_FRAME_LENGTH, hop_length=HOP,
+        sr=SAMPLE_RATE, frame_length=JUDGE_FRAME_LENGTH, hop_length=JUDGE_HOP,
     )
-    return _judge_metrics(f0)
+    return _judge_metrics(f0, flag, prob)
 
 
 def extract_match_midi(audio: np.ndarray):
@@ -180,12 +183,12 @@ def find_lyric_start(title, sec):
 
 
 def match_song(refs, query):
-    """QBH 滑动窗口余弦相似度，返回 (最高分歌名, 最高分, 偏移秒)。无候选返回 (None, 分, 偏移)"""
+    """滑窗余弦相似度，返回 (最高分歌名, 最高分, 偏移秒, 分差)。无候选返回 (None, 0, 0, 0)"""
     if not refs or query is None or query.size < 3:
-        return None, 0.0, 0.0
+        return None, 0.0, 0.0, 0.0
 
     q_norm = np.linalg.norm(query) + 1e-8
-    best_title, best_score, best_offset = None, -1.0, 0.0
+    scored = []
     for title, ref in refs.items():
         if ref.size < query.size:
             continue
@@ -195,9 +198,12 @@ def match_song(refs, query):
         denom = np.sqrt(np.maximum(window_sq, 0.0)) * q_norm + 1e-8
         scores = num / denom
         i = int(np.argmax(scores))
-        if scores[i] > best_score:
-            best_title, best_score, best_offset = title, float(scores[i]), i * HOP / SAMPLE_RATE
-    return best_title, best_score, best_offset
+        scored.append((float(scores[i]), title, i * HOP / SAMPLE_RATE))
+    if not scored:
+        return None, 0.0, 0.0, 0.0
+    scored.sort(key=lambda item: -item[0])
+    second = scored[1][0] if len(scored) > 1 else 0.0
+    return scored[0][1], scored[0][0], scored[0][2], scored[0][0] - second
 
 
 class HumDetector:
@@ -266,15 +272,16 @@ class HumDetector:
 
         self.segment_triggered = True
         midi = extract_match_midi(audio)
-        title, score, offset = match_song(self.refs, midi)
-        if title and score >= MATCH_THRESHOLD:
+        title, score, offset, margin = match_song(self.refs, midi)
+        if title and score >= MATCH_THRESHOLD and margin >= MIN_MARGIN:
             self.locked_title = title
             self.locked_offset = offset
             self.locked_score = score
-            print(f"        🎯 定歌：《{title}》 score={score:.3f} offset={offset:.1f}s ✅")
+            print(f"        🎯 定歌：《{title}》 score={score:.3f} 分差={margin:.3f} offset={offset:.1f}s ✅")
             print("            （已锁定，继续收集，段结束用 offset+时长 定位接唱点）")
         elif title:
-            print(f"        🎯 候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}，未锁定，段结束兜底）")
+            print(f"        🎯 候选：《{title}》 score={score:.3f} 分差={margin:.3f}"
+                  f"（未达阈值 {MATCH_THRESHOLD}/分差 {MIN_MARGIN}，未锁定，段结束兜底）")
         else:
             print("        🎯 无候选歌曲，段结束兜底")
 
@@ -303,16 +310,17 @@ class HumDetector:
             print("        满 7 秒未定歌，段结束用完整音频兜底匹配")
             audio = np.concatenate(list(self.buffer))
             midi = extract_match_midi(audio)
-            title, score, offset = match_song(self.refs, midi)
-            if title and score >= MATCH_THRESHOLD:
+            title, score, offset, margin = match_song(self.refs, midi)
+            if title and score >= MATCH_THRESHOLD and margin >= MIN_MARGIN:
                 P = offset + T
                 lyric = find_lyric_start(title, P)
-                print(f"        🎯 兜底：《{title}》 score={score:.3f} offset={offset:.1f}s")
+                print(f"        🎯 兜底：《{title}》 score={score:.3f} 分差={margin:.3f} offset={offset:.1f}s")
                 if lyric:
                     t, text = lyric
                     print(f"        → 从《{title}》 [{self._fmt(t)}] \"{text}\" 接唱")
             elif title:
-                print(f"        🎯 兜底候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}）")
+                print(f"        🎯 兜底候选：《{title}》 score={score:.3f} 分差={margin:.3f}"
+                      f"（未达阈值 {MATCH_THRESHOLD}/分差 {MIN_MARGIN}）")
             else:
                 print("        🎯 兜底无候选")
             return
@@ -326,16 +334,17 @@ class HumDetector:
             print("        判定：❌ 非哼唱")
             return
         midi = extract_match_midi(audio)
-        title, score, offset = match_song(self.refs, midi)
-        if title and score >= MATCH_THRESHOLD:
+        title, score, offset, margin = match_song(self.refs, midi)
+        if title and score >= MATCH_THRESHOLD and margin >= MIN_MARGIN:
             P = offset + T
             lyric = find_lyric_start(title, P)
-            print(f"        🎯 兜底：《{title}》 score={score:.3f} offset={offset:.1f}s")
+            print(f"        🎯 兜底：《{title}》 score={score:.3f} 分差={margin:.3f} offset={offset:.1f}s")
             if lyric:
                 t, text = lyric
                 print(f"        → 从《{title}》 [{self._fmt(t)}] \"{text}\" 接唱")
         elif title:
-            print(f"        🎯 兜底候选：《{title}》 score={score:.3f}（< 阈值 {MATCH_THRESHOLD}）")
+            print(f"        🎯 兜底候选：《{title}》 score={score:.3f} 分差={margin:.3f}"
+                  f"（未达阈值 {MATCH_THRESHOLD}/分差 {MIN_MARGIN}）")
         else:
             print("        🎯 兜底无候选")
 
@@ -360,12 +369,12 @@ def main():
     print(f"VAD 能量阈值      : {ENERGY_THRESHOLD}")
     print(f"段结束静音阈值    : {SILENCE_THRESHOLD}s")
     print(f"哼唱最少时长      : {HUM_COLLECT_SEC}s（满此值定歌，不接唱）")
-    print(f"判定 yin          : fl={JUDGE_FRAME_LENGTH}, hop={HOP}")
+    print(f"判定 pyin         : fl={JUDGE_FRAME_LENGTH}, hop={JUDGE_HOP}")
     print(f"匹配 yin          : fl={MATCH_FRAME_LENGTH}, hop={HOP}")
     print(f"voiced_ratio 阈值 : {F0_VOICED_RATIO}")
     print(f"stable_ratio 阈值 : {F0_STABLE_RATIO} (half_step={F0_STABLE_HALF_STEP})")
     print(f"unique_notes 阈值 : {F0_UNIQUE_NOTES}")
-    print(f"定歌余弦阈值      : {MATCH_THRESHOLD}")
+    print(f"定歌余弦阈值      : {MATCH_THRESHOLD} 分差下限 {MIN_MARGIN}")
     print("=" * 64)
 
     refs = load_refs()

@@ -192,7 +192,7 @@ def http_mic():
         enabled = bool(data["enabled"])
     else:
         enabled = not asr_core.hub.is_enabled(sid)
-    asr_core.hub.set_enabled(sid, enabled)
+    asr_core.set_source_enabled(sid, enabled)
     return jsonify({"status": "ok", "source": sid, "enabled": enabled})
 
 
@@ -206,7 +206,7 @@ def http_audio_apply():
     if isinstance(sources, dict):
         for sid, scfg in sources.items():
             if isinstance(scfg, dict) and "enabled" in scfg:
-                asr_core.hub.set_enabled(sid, bool(scfg["enabled"]))
+                asr_core.set_source_enabled(sid, bool(scfg["enabled"]))
     return jsonify({"status": "ok"})
 
 
@@ -242,6 +242,17 @@ def http_emote():
     emote_thread1 = Thread(target=vtsOper.emote_ws, args=(1, 0.2, text))
     emote_thread1.start()
     return jsonify({"status": "成功"})
+
+
+# http配置热重载【配置管理器保存后调用】
+@app.route("/api/config/reload", methods=["POST"])
+def config_reload():
+    if request.remote_addr not in ("127.0.0.1", "::1", "localhost"):
+        return jsonify({"status": "error", "message": "仅允许本机调用"}), 403
+    from func.config.hot_reload import reload_all
+    report = reload_all(trigger="gui")
+    failed = report.get("failed") or {}
+    return jsonify({"status": "error" if failed else "ok", "report": report})
 
 
 # http启动 NapCat（GUI 启动球调用）
@@ -403,88 +414,92 @@ def chat():
     return jsonStr
 
 
+def sensevoice_callback(text, meowid, source="voice"):
+    """语音识别结果回调（模块级：SenseVoice 核心常驻，需在启动时可传入）"""
+    # msg 通道（voice）：入参就是 meowid；拿不到合法 meowid 就丢弃这条
+    try:
+        from func.pipeline.id_signup import IdSignupBridge
+        meowid = IdSignupBridge().meowid_of_msg(meowid, "voice")
+    except Exception:
+        meowid = ""
+    if not meowid:
+        return
+    # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
+    try:
+        from func.pipeline.toolbox_audio import ToolboxAudioBridge
+        if ToolboxAudioBridge().should_discard_next_asr():
+            return
+    except Exception:
+        pass
+    # excuse 询问链路优先：正在等待用户补充需求时，拦截并阻塞 sensevoice_llm
+    try:
+        from func.toolbox.excuse import TBExcuse
+        if TBExcuse().route_text(text, meowid):
+            return
+    except Exception:
+        pass
+    # meowsinger 点歌/翻唱/唱歌中拦截
+    try:
+        from func.pipeline.msg_singer import MsgSingerBridge
+        if MsgSingerBridge().send_to_singer(text, meowid, "sensevoice"):
+            return
+    except Exception:
+        pass
+    # 海龟汤游戏拦截
+    turtle_route = None
+    try:
+        from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
+        turtle_route = TBTurtleSoupCore().route_text(text, meowid)
+    except Exception:
+        pass
+    if turtle_route == "consumed":
+        return
+    # 双通道：主 LLM 快速回复 + toolbox 工具分析
+    from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
+    SenseVoiceLLMBridge().send_to_llm(text, meowid, source)
+    if turtle_route != "pass":
+        try:
+            from func.pipeline.llm_toolbox import LLMToolboxBridge
+            if not LLMToolboxBridge().merge_enabled():
+                from func.pipeline.msg_toolbox import MsgToolboxBridge
+                MsgToolboxBridge().send_to_toolbox(text, meowid)
+        except Exception:
+            pass
+        # 数据库关键词匹配
+        try:
+            from func.pipeline.msg_database import MsgDatabaseBridge
+            MsgDatabaseBridge().send_to_database(text, meowid)
+        except Exception:
+            pass
+
+
 def main():
     # 初始化衣服
     vtsOper.emote_ws(1, 0.2, "初始化")  # 解除当前衣服
     vtsOper.emote_ws(1, 0.2, "便衣")  # 穿上新衣服
     vtsState.now_clothes = "便衣"
 
-    # 获取全局配置
-    config = ConfigReader().get()
-
-    sensevoice_config = config.get('sensevoice', {})
-
-    # 优先使用 SenseVoice（如果启用）
-    if sensevoice_config.get('enabled', False):
-        from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
-        sensevoice_bridge = SenseVoiceLLMBridge()
-
-        def sensevoice_callback(text, meowid, source="voice"):
-            # msg 通道（voice）：入参就是 meowid；拿不到合法 meowid 就丢弃这条
-            try:
-                from func.pipeline.id_signup import IdSignupBridge
-                meowid = IdSignupBridge().meowid_of_msg(meowid, "voice")
-            except Exception:
-                meowid = ""
-            if not meowid:
-                return
-            # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
-            try:
-                from func.pipeline.toolbox_audio import ToolboxAudioBridge
-                if ToolboxAudioBridge().should_discard_next_asr():
-                    return
-            except Exception:
-                pass
-            # excuse 询问链路优先：正在等待用户补充需求时，拦截并阻塞 sensevoice_llm
-            try:
-                from func.toolbox.excuse import TBExcuse
-                if TBExcuse().route_text(text, meowid):
-                    return
-            except Exception:
-                pass
-            # meowsinger 点歌/翻唱/唱歌中拦截
-            try:
-                from func.pipeline.msg_singer import MsgSingerBridge
-                if MsgSingerBridge().send_to_singer(text, meowid, "sensevoice"):
-                    return
-            except Exception:
-                pass
-            # 海龟汤游戏拦截
-            turtle_route = None
-            try:
-                from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-                turtle_route = TBTurtleSoupCore().route_text(text, meowid)
-            except Exception:
-                pass
-            if turtle_route == "consumed":
-                return
-            # 双通道：主 LLM 快速回复 + toolbox 工具分析
-            sensevoice_bridge.send_to_llm(text, meowid, source)
-            if turtle_route != "pass":
-                try:
-                    from func.pipeline.llm_toolbox import LLMToolboxBridge
-                    if not LLMToolboxBridge().merge_enabled():
-                        from func.pipeline.msg_toolbox import MsgToolboxBridge
-                        MsgToolboxBridge().send_to_toolbox(text, meowid)
-                except Exception:
-                    pass
-                # 数据库关键词匹配
-                try:
-                    from func.pipeline.msg_database import MsgDatabaseBridge
-                    MsgDatabaseBridge().send_to_database(text, meowid)
-                except Exception:
-                    pass
-
-        global asr_core
-        asr_core = SenseVoiceCore(callback=sensevoice_callback)
-        asr_core.start()
-        log.info("已启用 SenseVoice 语音识别后台线程（高精度流式+声纹）")
-
+    # 语音识别：核心常驻，开关由 sensevoice.enabled 决定（支持运行中热切换）
+    from func.sensevoice.host import SenseVoiceHost
+    global asr_core
+    asr_core = SenseVoiceHost().boot(sensevoice_callback)
     # Minecraft 日志读取
     mc_reader = MinecraftLogReader()
     mc_reader.load_config()
     mc_reader.start()
     log.info("已启用 Minecraft 日志读取")
+    # 配置热重载钩子：Minecraft 日志读取器是局部对象，注册后才能刷新路径/编码/过滤
+    # 注意：只处理「关闭」与「首次启动」；已停止后再启用仍需重启主程序（stop 的 join 可能超时，
+    # 立即 start 会起出两条读同一个文件的线程）
+    def _apply_minecraft():
+        mc_reader.load_config()
+        if not mc_reader.enabled and mc_reader.running:
+            mc_reader.stop()
+        elif mc_reader.enabled and not mc_reader.running and mc_reader.thread is None:
+            mc_reader.start()
+
+    from func.config.hot_reload import register as register_hot_reload
+    register_hot_reload("minecraft", _apply_minecraft)
 
     # NapCat 客户端（正向 WS 连接 QQ）
     from func.toolbox.napcat.napcat_core import TBNapCatCore
@@ -525,6 +540,14 @@ def main():
                      f"({rec['before']} → {rec['after']})")
     except Exception as e:
         log.warning(f"[奖励] 启动消耗失败: {e}")
+
+    # 配置热重载：监听 config.yml，改动即生效（无需重启主程序）
+    try:
+        from func.config.hot_reload import start_watcher
+        start_watcher()
+        log.info("配置热重载已启用（监听 config.yml）")
+    except Exception:
+        log.exception("启动配置热重载监听失败")
 
     # 主线程兜底
     while True:

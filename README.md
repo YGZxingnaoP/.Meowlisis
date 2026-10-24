@@ -57,13 +57,13 @@ func/pipeline/toolbox_audio.py
 
 思路：用户在角色唱歌时跟着哼一段，角色识别出是哪首歌、哼到哪了，然后**接着往下唱几句**（传花接龙），并播报感想、写入记忆。
 
-1. **哼唱检测**：逐帧 RMS 能量，`rms ≥ energy_threshold` 视为有声并累积，静音 `≥ silence_threshold` 判定段结束；累积 `≥ hum_collect_sec(7s)` 立即判定。yin 提 F0（80–800Hz）→ MIDI 音高，判据：
-   - 有调帧占比：`|valid|/|f0| ≥ f0_voiced_ratio`
+1. **哼唱检测**：逐帧 RMS 能量，`rms ≥ vad_energy_threshold`（SenseVoice 配置）视为有声并累积，静音 `≥ silence_threshold` 判定段结束；累积 `≥ hum_collect_sec(7s)` 立即判定。pyin 提 F0（65–800Hz）→ MIDI 音高，只统计有声帧，判据：
+   - 有声帧占比：`|voiced|/|f0| ≥ f0_voiced_ratio`
    - 稳定帧占比：`mean(|Δmidi| < f0_stable_half_step) ≥ f0_stable_ratio`
    - 唯一音符数：`len(unique(round(midi))) ≥ f0_unique_notes`
-2. **7 秒定歌（lock）**：哼唱与每首歌 vocal 音高缓存（npy）均去均值 `midi' = midi − mean(midi)`，滑动窗口余弦相似度 `score = max_i dot(w_i,q)/(‖w_i‖·‖q‖)`；`score ≥ match_threshold` 锁定 `{title, offset = best_idx×HOP/SR}`。
-3. **段结束接唱（sing）**：LRC 时间轴定位，`user_lyric` = `[offset, offset+hum_duration]` 内歌词；从 `offset+hum_duration` 后第一句起取 `hum_lines` 句；播放 `vocal[start_sec : end_sec]`（end=下一句起始，无则至结尾）。
-4. **记忆与感想**：用户哼的歌词与 AI 接唱的歌词写入短期/长期/用户记忆（type=hum_song）；接唱播完后由 toolbox LLM 按模板生成感想（含歌名与接唱歌词）播报；若没识别出来，LLM 会以角色身份自然地问一句"你刚刚是不是在唱歌"。
+2. **7 秒定歌（lock）**：yin 提 F0（80–800Hz）得哼唱音高序列，与每首歌 vocal 音高缓存（npy）均去均值 `midi' = midi − mean(midi)`，向量化滑窗余弦 `score = max_i dot(w_i,q)/(‖w_i‖·‖q‖)`；`score ≥ match_threshold` 且与次优分差 `≥ min_margin` 才锁定 `{title, offset = best_idx×HOP/SR}`。
+3. **段结束接唱（sing）**：用整段哼唱重跑一次余弦匹配，对齐位置即 offset。LRC 时间轴定位，`user_lyric` = `[offset, offset+hum_duration]` 内歌词；从 `offset+hum_duration` 后第一句起取 `hum_lines` 句；播放 `vocal[start_sec : end_sec]`（end=下一句起始，无则至结尾）。
+4. **记忆与感想**：用户哼的歌词与 AI 接唱的歌词写入短期/长期/用户记忆（type=hum_song）；接唱播完后由 toolbox LLM 按模板生成感想（含歌名与接唱歌词）播报；若没锁定或分差不足，带 `[System]` 前缀直接告知 LLM 候选歌曲与"先别接唱"，由角色用自己的话确认是否在唱。
 
 相关配置：`config.yml → meowsongs.pass_the_baton`。
 

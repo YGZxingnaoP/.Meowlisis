@@ -168,6 +168,17 @@ class TTsCore:
         self.subtitle.start()
         self.interrupt.start()
 
+    def rebuild(self):
+        """配置热重载：刷新 GPT-SoVITS 地址与打断设置（模型权重在 .vendor 侧，需重启引擎）"""
+        try:
+            self.sovits.rebuild()
+        except Exception:
+            self.log.exception("[热重载] 刷新 TTS 引擎地址失败")
+        try:
+            self.interrupt.restart()
+        except Exception:
+            self.log.exception("[热重载] 刷新 TTS 打断设置失败")
+
     @staticmethod
     def _priority_of(source) -> int:
         """按 source 映射语音优先级：weather/news/礼物感谢(3) > 其它 toolbox(2) > llm/other(1)

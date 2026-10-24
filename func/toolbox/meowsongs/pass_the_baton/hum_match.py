@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # func/toolbox/meowsongs/pass_the_baton/hum_match.py
-# 哼唱匹配：音高序列（QBH）滑动窗口余弦相似度，vocal 音高缓存为 npy 复用
+# 哼唱匹配：yin 音高序列（全曲去均值）→ 全库向量化滑窗余弦 → 取最佳位置作为 offset
 import os
 import threading
 
@@ -13,6 +13,9 @@ from func.toolbox.meowsongs.config import TBMeowSongsConfig
 MEOW_DIR = os.path.join("character", "songs", "meow_list")
 HOP = 256
 SR = 16000
+FRAME_LENGTH = 2048
+F0_MIN = 80.0
+F0_MAX = 800.0
 
 
 @singleton
@@ -26,6 +29,7 @@ class TBHumMatch:
         self._refs = {}
         self._loaded = False
 
+    # ==================== 音高缓存 ====================
     def build_pitch_cache(self, title, vocal_path=None):
         """为一首歌生成音高缓存 npy（学歌时调用），返回是否成功"""
         try:
@@ -37,8 +41,7 @@ class TBHumMatch:
             seq = self._extract_midi(vocal_path)
             if seq is None or seq.size == 0:
                 return False
-            npy_path = self._pitch_path(title)
-            np.save(npy_path, seq)
+            np.save(self._pitch_path(title), seq)
             # 同步刷新内存缓存
             with self._lock:
                 self._refs[title] = seq
@@ -48,14 +51,18 @@ class TBHumMatch:
             return False
 
     def _load_refs(self):
+        """载入曲库音高缓存；构建过程不持锁，避免阻塞并发的匹配与学歌"""
         with self._lock:
             if self._loaded:
                 return
-            for title in self._list_titles():
-                seq = self._load_or_build(title)
-                if seq is not None and seq.size > 0:
-                    self._refs[title] = seq
             self._loaded = True
+        refs = {}
+        for title in self._list_titles():
+            seq = self._load_or_build(title)
+            if seq is not None and seq.size > 0:
+                refs[title] = seq
+        with self._lock:
+            self._refs.update(refs)
 
     def _load_or_build(self, title):
         """优先读 npy，缺失则补生成"""
@@ -65,7 +72,6 @@ class TBHumMatch:
                 return np.load(npy_path)
             except Exception:
                 self.log.exception(f"[HumMatch] 读取音高缓存失败: {title}")
-        # 补生成
         vocal = os.path.join(MEOW_DIR, title, f"{title}_vocal.wav")
         seq = self._extract_midi(vocal)
         if seq is not None and seq.size > 0:
@@ -75,48 +81,30 @@ class TBHumMatch:
                 self.log.exception(f"[HumMatch] 保存音高缓存失败: {title}")
         return seq
 
-    def match(self, hum_wav):
-        """返回 (song_title, offset_sec, score)。未达阈值时 song_title 为 None，score 仍为最高分"""
-        self._load_refs()
-        if not self._refs:
-            return None, 0.0, 0.0
-        hum_seq = self._extract_midi(hum_wav)
-        if hum_seq is None or hum_seq.size < 3:
-            return None, 0.0, 0.0
+    def _list_titles(self):
+        if not os.path.isdir(MEOW_DIR):
+            return []
+        return [d for d in os.listdir(MEOW_DIR)
+                if os.path.isdir(os.path.join(MEOW_DIR, d))
+                and os.path.exists(os.path.join(MEOW_DIR, d, f"{d}_vocal.wav"))]
 
-        best_title, best_offset, best_score = None, 0.0, 0.0
-        for title, ref in self._refs.items():
-            if ref.size < hum_seq.size:
-                continue
-            score, offset = self._slide_cosine(ref, hum_seq)
-            if score > best_score:
-                best_title, best_score, best_offset = title, score, offset
-        if best_title is None or best_score < self.config.match_threshold:
-            return None, best_offset, best_score
-        return best_title, best_offset, best_score
+    def _pitch_path(self, title):
+        return os.path.join(MEOW_DIR, title, f"{title}_pitch.npy")
 
-    def _slide_cosine(self, ref, query):
-        """滑动窗口余弦相似度，返回 (最高分, 偏移秒)"""
-        q = query
-        q_norm = np.linalg.norm(q) + 1e-8
-        best, best_idx = -1.0, 0
-        for i in range(0, ref.size - q.size + 1):
-            window = ref[i:i + q.size]
-            w_norm = np.linalg.norm(window) + 1e-8
-            score = float(np.dot(window, q) / (w_norm * q_norm))
-            if score > best:
-                best, best_idx = score, i
-        offset = best_idx * HOP / SR
-        return best, offset
+    @staticmethod
+    def _safe_name(name):
+        import re
+        return re.sub(r'[\\/:*?"<>|]', "_", str(name or "")).strip() or "未命名"
 
+    # ==================== 音高提取 ====================
     def _extract_midi(self, path):
         """提取音频 F0 序列并转为去均值半音（yin，无 Viterbi 平滑，速度快）"""
         try:
             import librosa
-            audio, sr = librosa.load(path, sr=SR, mono=True)
+            audio, _ = librosa.load(path, sr=SR, mono=True)
             f0 = librosa.yin(
-                audio, fmin=80, fmax=800,
-                sr=SR, frame_length=2048, hop_length=HOP,
+                audio, fmin=F0_MIN, fmax=F0_MAX,
+                sr=SR, frame_length=FRAME_LENGTH, hop_length=HOP,
             )
             valid = f0[~np.isnan(f0)]
             if valid.size < 3:
@@ -128,18 +116,41 @@ class TBHumMatch:
             self.log.exception(f"[HumMatch] 提取音高失败: {path}")
             return None
 
-    def _list_titles(self):
-        if not os.path.isdir(MEOW_DIR):
-            return []
-        return [d for d in os.listdir(MEOW_DIR)
-                if os.path.isdir(os.path.join(MEOW_DIR, d))
-                and os.path.exists(os.path.join(MEOW_DIR, d, f"{d}_vocal.wav"))]
-
+    # ==================== 相似度 ====================
     @staticmethod
-    def _pitch_path(title):
-        return os.path.join(MEOW_DIR, title, f"{title}_pitch.npy")
+    def _coarse(ref, q):
+        """向量化滑窗余弦：返回 (最高分, 起始帧号)"""
+        r = ref.astype(np.float64)
+        qq = q.astype(np.float64)
+        q_norm = float(np.linalg.norm(qq)) + 1e-8
+        num = np.correlate(r, qq, mode="valid")
+        cum = np.concatenate(([0.0], np.cumsum(r ** 2)))
+        denom = np.sqrt(np.maximum(cum[q.size:] - cum[:-q.size], 0.0)) * q_norm + 1e-8
+        scores = num / denom
+        best = int(np.argmax(scores))
+        return float(scores[best]), best
 
-    @staticmethod
-    def _safe_name(name):
-        import re
-        return re.sub(r'[\\/:*?"<>|]', "_", str(name or "")).strip() or "未命名"
+    def match(self, hum_wav):
+        """返回 (song_title, offset_sec, score, second_score, margin)"""
+        self._load_refs()
+        with self._lock:
+            refs = dict(self._refs)
+        if not refs:
+            return None, 0.0, 0.0, 0.0, 0.0
+        q = self._extract_midi(hum_wav) if hum_wav else None
+        if q is None or q.size < 3:
+            return None, 0.0, 0.0, 0.0, 0.0
+
+        cands = []
+        for title, ref in refs.items():
+            if ref.size < q.size:
+                continue
+            score, idx = self._coarse(ref, q)
+            cands.append((score, title, idx))
+        if not cands:
+            return None, 0.0, 0.0, 0.0, 0.0
+        cands.sort(key=lambda item: -item[0])
+
+        best_score, best_title, best_idx = cands[0]
+        second_score = cands[1][0] if len(cands) > 1 else 0.0
+        return best_title, best_idx * HOP / SR, best_score, second_score, best_score - second_score

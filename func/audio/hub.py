@@ -77,6 +77,12 @@ class AudioHub:
         else:
             self._stop_source(sid)
 
+    def remember_enabled(self, sid, enabled):
+        """只记录源开关，不打开设备（上层总开关关闭时用，等热启用时由 apply_config 生效）"""
+        with self._lock:
+            if sid in self._sources:
+                self._enabled[sid] = bool(enabled)
+
     # ---------- 注入接口 ----------
     def inject(self, sid, data: bytes):
         """向指定源灌入外部音频（仅 inject 源支持）"""
@@ -144,6 +150,26 @@ class AudioHub:
     def close(self):
         for sid in list(self._sources.keys()):
             self._stop_source(sid)
+
+    def apply_config(self):
+        """按最新配置刷新分块时长与各源开关（热重载用）。
+
+        - 设备采样率/分块大小在 source.open() 里现读 config，所以重开即生效；
+        - 各源 enabled 变化按 set_enabled 起停采集线程（麦克风随之释放/占用）。
+        """
+        try:
+            self.frame_duration = self.config.chunk_size_ms / 1000.0
+        except Exception:
+            pass
+        for sid in list(self._sources.keys()):
+            try:
+                want = bool(self.config.source_config(sid).get('enabled', False))
+            except Exception:
+                continue
+            if want != self._enabled.get(sid, False):
+                self.set_enabled(sid, want)
+            elif want and not self._running.get(sid, False):
+                self._start_source(sid)
 
     # ---------- 分源输出 ----------
     def next_frame(self, sid):

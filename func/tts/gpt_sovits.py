@@ -15,10 +15,18 @@ class GptSovits:
     def __init__(self):
         # 从集中配置读取引擎参数
         self.config = TTSConfig()
+        self._apply_endpoint()
+
+    def _apply_endpoint(self):
+        """按 config 里的 GPT-SoVITS 地址重算端点（热重载复用）"""
         self.api_base_url = self.config.gpt_sovits_url
         if not self.api_base_url.endswith('/'):
             self.api_base_url += '/'
         self.tts_endpoint = self.api_base_url + "tts"
+
+    def rebuild(self):
+        """配置热重载：刷新引擎地址（模型权重在 .vendor 侧，不在本进程）"""
+        self._apply_endpoint()
 
     def _resolve_text_lang(self, text: str) -> str:
         """按配置决定合成语言：启用整段语言判定时，仅整段 en/ja 覆盖默认，否则用配置默认。"""

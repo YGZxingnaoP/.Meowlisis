@@ -55,6 +55,24 @@ class AutoActiveCore:
         from func.llm_active.port.deepseek import AutoDeepSeekLLM
         return AutoDeepSeekLLM()
 
+    def rebuild(self):
+        """配置热重载：换掉主动回复的 LLM 客户端，刷新冷时间计时。
+
+        只换引用，不重建 inherit/origin：
+        - 它们只持有 self.llm 与若干无状态辅助对象，换个引用就够；
+        - LLMTimerBridge 注册的是 AutoActiveCore 的绑定方法，重建子对象反而没意义。
+        正在触发中也照换：赋值是原子的，在途调用握着自己的端口引用，旧 client 由
+        close_port_later 延迟关闭，不会掐断。
+        """
+        from func.llm.port import close_port_later
+        old = getattr(self, "llm", None)
+        self.llm = self._create_llm()
+        if old is not None and old is not self.llm:
+            close_port_later(old)
+        self.inherit.llm = self.llm
+        self.origin.llm = self.llm
+        self.timer.cold_time = self.config.cold_time
+
     def _on_user_message(self):
         """llm 收到用户消息：重置计时并清零连续触发次数"""
         self.timer.reset()

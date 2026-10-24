@@ -60,6 +60,28 @@ class LLmCore:
                 self.log.warning(f"未知 LLM 类型 {self.config.local_llm_type}，默认使用 deepseek")
             return DeepSeekLLM(self.config)
 
+    def rebuild_llm(self):
+        """配置热重载：按最新 llm 配置重建流式客户端与派生对象。
+
+        - 端口对象在 __init__ 里把 api_key / model / 温度等拷成了属性，必须重建；
+        - 旧 client 延迟关闭：正在跑的流式回复还握着它，立即 close 会掐断；
+        - pipeline 桥接层（llm_timer / llm_tts / prompt 等）不持有 llm 引用，无需通知。
+        """
+        from func.llm.port import close_port_later
+        old = getattr(self, "llm", None)
+        self.local_llm_type = self.config.local_llm_type
+        self.llm = self._create_llm()
+        if old is not None and old is not self.llm:
+            close_port_later(old)
+        try:
+            self.message_get.set_rules(self.config.message_replace_rules)
+        except Exception:
+            pass
+        try:
+            self.message_builder.set_max_rounds(self.config.short_term_rounds)
+        except Exception:
+            pass
+
     def msg_deal(self, traceid: str, text: str, uid: str, source: str = "llm",
                  preamble_text: str = "", multi_user: bool = False,
                  memory_config: dict = None):

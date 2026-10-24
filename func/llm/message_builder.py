@@ -37,6 +37,11 @@ class MessageBuilder:
         # 最新轮次内存缓存（内部多存 speaker/time，仅用于格式化，不发送）
         self.history: List[Dict[str, str]] = []
 
+    def set_max_rounds(self, max_rounds: int):
+        """配置热重载：更新短期记忆总轮数，并联动 json 归档上限"""
+        self.max_rounds = int(max_rounds)
+        self.json_max_rounds = max(0, self.max_rounds - self.HISTORY_ROUNDS)
+
     @staticmethod
     def _now() -> str:
         """返回当前日期时间（如 2026-10-14 14:23）"""
