@@ -1,0 +1,7 @@
+# 运行环境与主项目共用：<项目根>/runtime/311/python.exe（start.bat 已指向它）
+# 主项目 runtime 已带：requests / Pillow / numpy / websockets
+# 以下按需安装（仅 OCR 用到）：
+paddlepaddle
+paddleocr
+# 需要 cv2 时先重装（主项目 runtime 自带的 cv2 与 numpy>=2 不兼容）：
+# opencv-python

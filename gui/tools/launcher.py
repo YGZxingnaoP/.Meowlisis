@@ -91,9 +91,14 @@ SERVICES = {
         'log': 'logs/svc_phone_{date}.log', 'cmdline': ['.cam'], 'desc': '手机端接口服务',
         'launch': {'kind': 'python', 'script': '.vendor/.cam/serve.py', 'cwd': '.vendor/.cam'},
     },
+    'catpaw': {
+        'name': 'CatPaws(iOS)', 'endpoint': 'start_catpaw',
+        'log': 'logs/svc_catpaw_{date}.log', 'cmdline': ['.CatPaws'], 'desc': 'iPhone 控制（WDA 手势/截图）',
+        'launch': {'kind': 'python', 'script': '.vendor/.CatPaws/src/server.py', 'cwd': '.vendor/.CatPaws'},
+    },
 }
 
-ORDER = ['main', 'painting', 'sovits', 'sensevoice', 'napcat', 'netease', 'rvc', 'desktopet', 'phone']
+ORDER = ['main', 'painting', 'sovits', 'sensevoice', 'napcat', 'netease', 'rvc', 'desktopet', 'phone', 'catpaw']
 
 
 # ============================================================================
