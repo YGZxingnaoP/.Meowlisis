@@ -725,12 +725,12 @@ def start_phone():
 
 @app.route('/api/start_catpaw', methods=['POST'])
 def start_catpaw():
-    """启动 CatPaws iPhone 控制服务（.vendor/.CatPaws/src/server.py，与主项目共用 runtime）"""
+    """启动 CatPaws iPhone 控制服务（.vendor/.CatPaws/src/cw/server.py，与主项目共用 runtime）"""
     try:
         catpaw_dir = BASE_DIR / ".vendor/.CatPaws"
-        server_path = catpaw_dir / "src" / "server.py"
+        server_path = catpaw_dir / "src" / "cw" / "server.py"
         if not server_path.exists():
-            return jsonify({'status': 'error', 'message': 'src/server.py not found'}), 400
+            return jsonify({'status': 'error', 'message': 'src/cw/server.py not found'}), 400
         runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
         python = str(runtime_python) if runtime_python.exists() else sys.executable
         if sys.platform == "win32":

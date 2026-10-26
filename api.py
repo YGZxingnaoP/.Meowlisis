@@ -300,6 +300,12 @@ def input_msg():
             return jsonify({"status": "成功", "singer": True})
     except Exception:
         pass
+    try:
+        from func.pipeline.msg_catpaws import MsgCatPawsBridge
+        if MsgCatPawsBridge().send_to_catpaws(query, meowid, "msg"):
+            return jsonify({"status": "成功", "catpaws": True})
+    except Exception:
+        pass
     # 海龟汤游戏拦截
     turtle_route = None
     try:
@@ -382,6 +388,12 @@ def chat():
             return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
     except Exception:
         pass
+    try:
+        from func.pipeline.msg_catpaws import MsgCatPawsBridge
+        if MsgCatPawsBridge().send_to_catpaws(text, meowid, "chat"):
+            return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
+    except Exception:
+        pass
     # 海龟汤游戏拦截
     turtle_route = None
     try:
@@ -442,6 +454,12 @@ def sensevoice_callback(text, meowid, source="voice"):
     try:
         from func.pipeline.msg_singer import MsgSingerBridge
         if MsgSingerBridge().send_to_singer(text, meowid, "sensevoice"):
+            return
+    except Exception:
+        pass
+    try:
+        from func.pipeline.msg_catpaws import MsgCatPawsBridge
+        if MsgCatPawsBridge().send_to_catpaws(text, meowid, "sensevoice"):
             return
     except Exception:
         pass

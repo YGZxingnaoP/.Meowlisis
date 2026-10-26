@@ -1,377 +1,137 @@
 # 🐾 CatPaws
 
-基于 WDA（WebDriverAgent）的 iOS 设备远程控制框架。电脑通过 WDA 原生 HTTP 接口直接向手机发送手势指令，无需手机端自定义代码。
+让主项目"用眼睛看手机屏幕、用手操作手机"的 iPhone 控制服务。
 
-## 架构
+PC 侧是一个 Python 服务（内置轻量 agent：观察 → 决策 → 操作 → 复盘），手机侧是改自 WDA 的双 target App。
+协议、坐标、推流、验收标准见 [docs/CW_IOS_SPEC.md](docs/CW_IOS_SPEC.md)，整体方案见 [docs/CW_PLAN.md](docs/CW_PLAN.md)。
+
+## 形态
 
 ```
-┌─────────────────────────────────────┐
-│           电脑端 (Python)             │
-│                                      │
-│  ┌──────────────────────────────┐ │
-│  │      wda_native_client        │ │
-│  │    WDA 原生 W3C Actions API  │ │
-│  └─────────────┬────────────────┘ │
-│                │                     │
-│       action_manager              │
-│    (加载并执行动作脚本)              │
-└─────────────────┬───────────────────┘
-                  │ HTTP
-                  ▼
-         ┌──────────────────┐
-         │  手机 (WDA)       │
-         │  HTTP Server      │
-         │  (端口 8100)       │
-         └──────────────────┘
+iPhone
+├── CatPawRunner   :8100  /cw/v1/*   触摸/截图/OCR/元素树（改自 WebDriverAgent）
+└── CatPaw app                       界面 + 相机 + 音频 + ReplayKit 屏幕推流
+
+Windows
+├── go-ios tunnel/forward            127.0.0.1:8100 → 手机（iOS 17 必需）
+├── CatPaws 服务   :18110            控制台 + 控制 API + agent + action + 操作日志
+└── CatPaws 中继   :18111            WS 视频中继（.cam 同款二进制帧格式）
 ```
 
-手机端只需运行标准 WDA 服务，无需任何自定义代码。
+AI 的观察通道只有截图与 OCR，视频流只给人看，永远不进模型。
 
-## 项目结构
+## 目录
 
 ```
 CatPaws/
-├── src/
-│   ├── server.py                # 启动入口
-│   ├── server/
-│   │   ├── config.py            # 端口与 IP 配置
-│   │   ├── wda_native_client.py # WDA 原生客户端（W3C Actions API）
-│   │   ├── http_server.py       # HTTP 服务（控制面板 / API）
-│   │   ├── action_manager.py    # 动作脚本加载与执行
-│   │   ├── protocol.py          # 消息协议定义
-│   │   └── static/index.html    # 控制面板前端
-│   └── screen/
-│       ├── screen_receiver.py   # 截图接收与缓存
-│       ├── coordinate_system.py # 坐标系管理（像素↔逻辑点转换）
-│       ├── coordinate_grid.py   # 屏幕坐标布点页面
-│       └── ocr.py               # PaddleOCR 文字识别
-├── actions/                     # 可执行动作脚本（放入 .py 即可）
-│   ├── example.py               # 示例：点击、滑动、长按
-│   ├── jump_jump.py             # 微信跳一跳自动化（纯 CV 算法）
-│   └── jump_jump_tf.py          # 跳一跳 TensorFlow 版本（需独立 Python 环境）
-├── env/models/                  # OCR 模型（运行环境与主项目共用 runtime/311）
-├── requirements.txt
-├── start.bat                    # Windows 一键启动
-└── check_env.py                 # 环境检测脚本
+├── src/cw/                 PC 服务：协议/驱动/操作/agent/action/中继/前端服务
+├── src/cw_script.py        注入给 action 脚本的 cw_script 模块
+├── actions/<action_id>/    每个 action 一个文件夹（manifest.json + *.py）
+│   └── jump_jump/          跳一跳示例（用户脚本，unverified）
+├── web/                    控制台：左边手机画面，右边操作过程
+├── docs/                   CW_PLAN.md（方案）/ CW_IOS_SPEC.md（iOS 规范）
+├── start.bat               启动（运行环境与主项目共用 runtime/311）
+├── env/models/             OCR 模型（OCR 已改到手机端 Vision，可留可删）
+└── src/server/ src/screen/ 旧版 WDA 直连实现（legacy，入口已换）
 ```
 
-## 文档
+## 运行（PC）
 
-| 文档 | 内容 |
+```bash
+# Windows 双击 start.bat，或：
+runtime\311\python.exe .vendor\.CatPaws\src\cw\server.py
+
+# 没有手机时用 mock 设备跑通全链路：
+runtime\311\python.exe .vendor\.CatPaws\src\cw\server.py --mock
+```
+
+控制台：<http://127.0.0.1:18110>
+
+* 运行环境与主项目共用 `<项目根>/runtime/311/python.exe`，不需要再装 paddle。
+* 配置读主项目 `config.yml` 的 `catpaws:` 段（已预置），LLM 的 `api_key` 填在那里。
+* 设备不可达时服务会自动降级到 mock，并在控制台打印提示。
+
+## 运行（iOS）
+
+按 [docs/CW_IOS_SPEC.md](docs/CW_IOS_SPEC.md) 在 Mac 上建 workspace 并实现两侧 target；Windows 日常用：
+
+```bat
+ios list
+ios runwda --bundleid com.meowlisis.catpawrunner ^
+           --testrunnerbundleid com.meowlisis.catpawrunner.xctrunner ^
+           --xctestconfig CatPawRunnerTests.xctest
+ios forward 8100 8100
+```
+
+## 三类操作
+
+| 类 | 工具 | 说明 |
+|---|---|---|
+| 观察 | `cw_observe` | `mode=ocr` 返回文本 + 像素框；`mode=image` 返回截图给多模态模型 |
+| 单次 | `cw_single` | 点、长按、滑动、捏合、输入、按键、启动应用、等待 |
+| 连续 | `cw_sequence` | 一次下发多步，设备端按 `delay_ms`（默认且最小 90ms）串行执行 |
+| action | `cw_action` | 起子进程跑 `actions/<id>/` 脚本，脚本只能通过 `cw_script` 与执行器通信 |
+
+agent 分三个阶段：
+
+| 阶段 | 可见工具 | 约束 |
+|---|---|---|
+| `running` | observe / single / sequence / action / ask_user / update_action | **禁止新建 action**；只允许对 unverified 或可更新的 action 做小规模修正 |
+| `reflecting` | observe / write_action / update_action / ask_user | 操作结束后的复盘：把固定流程沉淀成 action |
+
+阶段由代码强制（工具表按阶段生成 + 执行时二次校验），不靠提示词。
+
+## action 约定
+
+`actions/<id>/manifest.json`：
+
+```json
+{
+  "id": "wechat_pay",
+  "title": "微信付款",
+  "scene": "在微信收付款页完成一笔小额付款",
+  "status": "unverified",
+  "updatable": false,
+  "author": "ai",
+  "version": 1,
+  "entry": "main.py:run",
+  "params": {"max_amount": 50},
+  "steps": ["进入聊天", "点 + 选转账", "输入金额", "确认"],
+  "last_run": {"ok": false, "at": "", "elapsed_ms": 0}
+}
+```
+
+| 规则 | 行为 |
 |---|---|
-| [docs/CW_PLAN.md](docs/CW_PLAN.md) | 当前方案：三类操作、agent 阶段机、action 存储与审查、保护措施、目录结构、里程碑 |
-| [docs/CW_IOS_SPEC.md](docs/CW_IOS_SPEC.md) | iOS 端实现规范（交付给 Xcode/macOS agent）：双 target 工程、`/cw/v1/*` 接口契约、坐标规则、推流协议、验收清单 |
+| 新建 | 只能在 `reflecting`，新建即 `unverified`，不自动试跑 |
+| 跑通一次 | 自动置 `verified` |
+| `unverified` / `updatable` | AI 可小规模修改（≤60 行、只改已存在文件），改后回到 `unverified` |
+| `verified` 且不可更新 | 失败直接上报，**不许改、不许复制副本** |
+| 静态审查 | `ast` 通过、只允许白名单 import、禁止 `eval/exec/open/os/subprocess/socket` 等 |
 
-## 快速开始
+脚本 API：`emit/tap/long_press/swipe/wait/observe/observe_texts/observe_image/ask/params/log/done/should_stop`。
+脚本没有网络与 token，所有动作都经 PC 侧保护措施。
 
-### 1. 安装依赖
+## 端口
 
-运行环境与主项目共用：`<项目根>/runtime/311/python.exe`（`start.bat` 已直接指向它，不再使用本目录的 `env/python`）。
-`requests` / `Pillow` / `numpy` / `websockets` 主项目已带，无需另装；只有 OCR 需要补装：
+| 端口 | 用途 |
+|---|---|
+| 18110 | 控制台 + 控制 API（仅 127.0.0.1） |
+| 18111 | 视频中继 WS（0.0.0.0 + token） |
+| 8100 | 手机 CatPawRunner（经 go-ios 转发） |
+| 8443 | `.cam` 手机页（已有服务，手机 App 内 WKWebView 载入） |
 
-```bash
-runtime\311\python.exe -m pip install paddlepaddle paddleocr
-```
+## 保护措施
 
-### 2. 环境检测（可选）
+坐标越界整批拒绝、动作间隔 ≥90ms、连续操作 ≤20 步、单链路 ≤200 步、单链路 ≤15 分钟、应用黑白名单、敏感词二次确认、三处停止入口（PC 控制台 / 手机 App / 语音停止词）、全程操作日志 `logs/catpaws_ops/`。
 
-```bash
-# Windows 双击
-start_check_env.bat
+## 与主项目对接
 
-# 或命令行
-python check_env.py
-```
+`func/catpaws/`：`config / client / if_start / state / stop / voice / core`。
+进链路判定用前缀 + 关键词，停止词命中即中止；语音通道只留接口（`voice.py`），等主项目 `msg` + `sensevoice` 接。
 
-### 3. 手机端准备
+## 环境
 
-1. **启动 WDA**：在 iPhone 上运行 WebDriverAgent，确保 HTTP Server 监听 `8100` 端口
-2. 确保手机和电脑处于**同一局域网**
-
-> **注意**：HTTP 模式下无需启动额外的 WebSocket 服务，直接使用 WDA 即可。
-
-### 4. 启动电脑端
-
-**方式一：Windows 双击启动**
-
-```
-start.bat
-```
-
-**方式二：命令行启动**
-
-```bash
-python src/server.py
-```
-
-启动后会自动打开浏览器，进入控制面板页面（`http://本机IP:8080`）。
-
-控制台会输出以下信息：
-```
-🌐 控制面板       http://192.168.x.x:8080
-🖥️  状态页面     http://192.168.x.x:8080/status
-📱 屏幕控制台    http://192.168.x.x:8080/screen
-🐾 CatPaws WDA 模式已启动
-```
-
-### 5. 连接手机
-
-1. 输入手机的 IP 地址（如 `192.168.1.100`）和 WDA 端口（默认 `8100`）
-2. 点击 **🔌 初始化连接** 按钮
-3. 等待状态标签变为绿色的 **✅ WDA 已连接**
-4. 连接成功后，控制台会打印 `✅ WDA 会话已创建: xxx`
-
-> 会自动创建 session、检测 scale、注册截图 provider。
-> 如果显示"WDA 不可达"，请检查手机 IP、端口是否正确，以及防火墙是否放行。
-
-### 5.5 配置 TensorFlow 环境（可选）
-
-如果需要运行 `jump_jump_tf`（基于 TensorFlow Object Detection API），需要额外配置：
-
-1. **准备 Python 3.7 环境**
-   ```bash
-   # 安装 Python 3.7 到 D:\.CatPaws\env_tf_full
-   # 验证: D:\.CatPaws\env_tf_full\python.exe -c "import tensorflow; print(tensorflow.__version__)"
-   ```
-
-2. **编辑配置文件** `src/server/env_config.py`
-   ```python
-   PYTHON_ENVS = {
-       "jump_jump_tf": r"D:\.CatPaws\env_tf_full\python.exe",
-   }
-   ```
-
-3. **准备模型文件**（放在 `actions/` 目录）
-   - `frozen_inference_graph.pb` - 训练好的检测模型
-   - `wechat_jump_label_map.pbtxt` - 标签映射文件
-
-详细步骤请参考 [TF_SETUP.md](TF_SETUP.md)
-
-### 6. 运行脚本
-
-1. 在 **🎮 动作脚本** 区域，从下拉列表选择一个脚本（如 `example`）
-2. 点击 **▶ 开始运行** 按钮
-3. 脚本会通过 WDA W3C Actions API 发送动作指令到手机
-
-> **注意**：HTTP 模式下不支持中途停止脚本，脚本将在所有动作执行完成后自然结束。
-
-### 7. 查看手机屏幕
-
-访问 `http://本机IP:8080/screen` 可查看通过 WDA `/screenshot` 接口获取的最新截图，并支持点击获取坐标。
-
-### 8. 启动应用
-
-可通过 WDA 接口启动手机上的应用：
-
-```python
-client = get_wda_client()
-client.launch_app("com.apple.calculator")  # 启动计算器
-```
-
-### 9. 退出程序
-
-按 `Ctrl+C` 退出整个程序。
-
-## 编写动作脚本
-
-在 `actions/` 目录下新建 `.py` 文件，即可被控制面板识别。支持两种入口函数：
-
-### 方式一：`main(send=...)` 回调风格（推荐）
-
-```python
-import asyncio
-import json
-
-async def main(send=None):
-    """send: 异步回调，传入 JSON 字符串发送动作到手机"""
-    if send is None:
-        return
-
-    # 点击坐标 (200, 300) —— 像素坐标，后端自动转换为逻辑点
-    await send(json.dumps({
-        "type": "action",
-        "action": "tap",
-        "params": {"x": 200, "y": 300}
-    }))
-    await asyncio.sleep(0.5)
-
-    # 从 (100,500) 滑动到 (300,500)
-    await send(json.dumps({
-        "type": "action",
-        "action": "swipe",
-        "params": {"from_x": 100, "from_y": 500, "to_x": 300, "to_y": 500, "duration": 0.3}
-    }))
-```
-
-### 方式二：`run(send=...)` 回调风格
-
-```python
-import asyncio
-import json
-
-async def run(send=None):
-    """send: 异步回调，接收 JSON 字符串"""
-    if send is None:
-        return
-    while True:
-        await send(json.dumps({
-            "type": "action",
-            "action": "tap",
-            "params": {"x": 200, "y": 300}
-        }))
-        await asyncio.sleep(1.0)
-```
-
-### 支持的动作类型
-
-| 动作 | 参数 | 说明 |
-|------|------|------|
-| `tap` | `x`, `y` | 单击 |
-| `long_press` | `x`, `y`, `duration` | 长按（秒） |
-| `swipe` | `from_x`, `from_y`, `to_x`, `to_y`, `duration` | 滑动 |
-| `repeated_tap` | `x`, `y`, `times`, `interval` | 连续点击 |
-| `activate_app` | `bundle_id` | 激活应用（确保在前台） |
-| `launch_app` | `bundle_id` | 启动应用 |
-
-### 使用截图和 OCR
-
-脚本中可以通过 `screen` 模块获取截图和进行文字识别：
-
-```python
-from screen import get_screenshot, ocr_text, coord_system
-
-async def main(send=None):
-    # 获取当前截图（PIL Image）
-    img = get_screenshot()
-    if img is None:
-        print("无法获取截图")
-        return
-
-    # OCR 识别文字
-    results = ocr_text(img)
-    for r in results:
-        print(f"文字: {r.text}, 中心: {r.center}")
-
-    # 坐标转换：像素 → 逻辑点
-    pt_x, pt_y = coord_system.to_point(585, 1266)
-    print(f"逻辑坐标: ({pt_x}, {pt_y})")
-```
-
-### 子进程脚本（特殊依赖隔离）
-
-对于需要特定 Python 版本或依赖的脚本（如 TensorFlow 1.x），可以使用子进程模式：
-
-1. 在 `src/server/action_manager.py` 的 `TF_SCRIPTS` 中注册脚本
-2. 在 `src/server/env_config.py` 中配置对应的 Python 解释器路径
-3. 脚本通过 `print(json.dumps(action))` 输出到 stdout，主进程捕获并转发
-
-示例参考 `actions/jump_jump_tf.py`
-
-## 坐标系标准方案
-
-### 两套坐标系
-
-iOS 设备存在两套坐标系，这是正确处理手势指令的关键：
-
-| 坐标系 | 单位 | 用途 | 示例 (iPhone 14 Pro) |
-|--------|------|------|---------------------|
-| **物理像素** (Screenshot Pixels) | px | 截图的原始分辨率、CV/OCR 分析 | 1170 × 2532 |
-| **逻辑点** (Logical Points) | pt | WDA 手势指令、iOS UIKit | 390 × 844 |
-
-两者关系：
-
-```
-截图像素 = 逻辑点 × scale
-
-例如 iPhone 14 Pro (scale = 3):
-  截图像素 x=585 → 逻辑点 x=195  (585 ÷ 3)
-  截图像素 y=1266 → 逻辑点 y=422  (1266 ÷ 3)
-```
-
-### 自动转换流程
-
-CatPaws 内置了自动坐标转换，流程如下：
-
-```
-脚本 CV 分析 → 像素坐标 (585, 1266)
-       ↓
-发送动作指令 {{"action": "tap", "params": {{"x": 585, "y": 1266}}}}
-       ↓
-WDAExecutor 自动转换: (585, 1266) ÷ scale → (195, 422)
-       ↓
-WDA 执行 tap(195, 422) ✅ 正确点击目标
-```
-
-### scale 自动检测
-
-当创建 WDA 会话时，scale 会自动检测：
-1. 通过 WDA HTTP API 获取设备逻辑尺寸（如 390×844）
-2. 结合截图像素尺寸（如 1170×2532）计算 scale = 1170/390 = 3.0
-3. 注入全局 `coord_system` 单例，后续所有操作自动转换
-
-### 手动设置 scale
-
-如果不使用 WDA，可手动设置：
-
-```python
-from screen import receiver
-receiver.set_scale(3.0)   # iPhone 常见值: 2.0 或 3.0
-```
-
-常见 iOS 设备 scale 值：
-
-| 设备 | scale | 截图尺寸 | 逻辑尺寸 |
-|------|-------|---------|----------|
-| iPhone SE | 2x | 750×1334 | 375×667 |
-| iPhone 12/13/14 | 3x | 1170×2532 | 390×844 |
-| iPhone 14 Pro Max | 3x | 1290×2796 | 430×932 |
-| iPhone 15/16 | 3x | 1179×2556 | 393×852 |
-| iPad Pro 11" | 2x | 1668×2388 | 834×1194 |
-
-### 坐标布点工具
-
-访问 `http://本机IP:8080/screen` 可查看手机截图，点击任意位置会同时显示像素坐标和逻辑点坐标，并自动复制逻辑坐标（可直接用于脚本编写）。
-
-## 控制面板 API
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/` | 控制面板页面 |
-| GET | `/status` | 连接状态页面 |
-| GET | `/screen` | 手机屏幕坐标布点 |
-| GET | `/api/status` | 连接状态 JSON（含 `connected`、`phone_ip`） |
-| GET | `/api/actions` | 可用脚本列表 |
-| POST | `/api/init_sender` | 初始化连接 `{"phone_ip":"x.x.x.x", "port":8100}` |
-| POST | `/api/run_action` | 启动脚本 `{"name":"脚本名"}` |
-| POST | `/api/stop_action` | 停止脚本（不支持） |
-
-## 配置
-
-编辑 `src/server/config.py`：
-
-```python
-HTTP_PORT = 8080                   # 电脑端 HTTP 端口
-DEFAULT_PHONE_IP = "127.0.0.1"    # 默认手机 IP（可在控制面板中修改）
-```
-
-## 常见问题
-
-**Q: WDA 一直不可达？**
-- 确认手机和电脑在同一局域网
-- 确认 WDA 已启动并监听 8100 端口（浏览器访问 `http://手机IP:8100/status` 测试）
-- 检查手机 IP 是否正确（可在手机端查看）
-- 检查防火墙是否放行 8100 端口
-
-**Q: 脚本报 "无法获取截图"？**
-- 确保 WDA 正常运行
-- 访问 `/screen` 页面确认是否能获取截图
-- 检查控制台是否有 HTTP 请求错误
-
-**Q: jump_jump_tf 报错 "Python 解释器不存在"？**
-- 检查 `src/server/env_config.py` 中的路径是否正确
-- 确认 Python 3.7 环境已安装且包含 TensorFlow 1.15
-- 参考 [TF_SETUP.md](TF_SETUP.md) 完整配置指南
-
-**Q: 如何同时控制多台手机？**
-- 在控制面板中切换不同的手机 IP
-- 每次切换前点击"初始化连接"即可
+* 运行环境与主项目共用 `runtime/311`（requests / Pillow / websockets / openai 已就绪）。
+* OCR 在手机端用 iOS Vision，不再依赖本机 PaddleOCR。
+* 旧版 `src/server/`、`src/screen/`、`actions/jump_jump_tf_cv.py` 等是上一代 WDA 直连实现，保留仅供对照，不再是最新入口。

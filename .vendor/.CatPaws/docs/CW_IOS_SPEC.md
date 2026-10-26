@@ -368,13 +368,21 @@ byte 9..    : H.264 Annex-B
 | 方向 | 消息 |
 |---|---|
 | 设备→中继 | `{"t":"hello","role":"device","src":"screen","app":"1.0.0"}` |
+| 设备→中继 | `{"t":"vcfg","codec":"avc1.42E01E","w":1179,"h":2556,"fps":10}`（开始推流后立刻发一次） |
+| 设备→中继 | `{"t":"vstop"}`（停止推流时） |
 | 设备→中继 | `{"t":"stats","fps":10,"kbps":1150,"dropped":3}` |
+| 设备→中继 | `{"t":"stop_request"}`（App 内红色停止按钮） |
 | 中继→设备 | `{"t":"start","fps":10,"max_edge":1280,"bitrate":1500000}` |
 | 中继→设备 | `{"t":"stop"}` |
 | 中继→设备 | `{"t":"reqkey"}` |
 | 中继→设备 | `{"t":"ping","id":17}` / 设备回 `{"t":"pong","id":17}` |
+| 中继→设备 | `{"t":"op","entry":{...}}`（PC 侧操作日志事件，App 用它渲染操作记录） |
 
 连接地址：`ws://<pc>:8081/ws?role=device&src=screen&token=<token>`
+
+* `role` 与 `src` 既可从查询串带，也可在 `hello` 里带（中继两者都认）。
+* token 非空时，查询串里必须带同一个 token，否则中继回 `{"t":"error","code":"E_UNAUTHORIZED"}` 并断开。
+* 中继在收到设备 `vcfg` 后转发给所有观看端；没有 `vcfg` 时前端不解码，所以**开始推流后必须发**。
 
 ### 7.3 编码参数（默认值，可由 `start` 覆盖）
 

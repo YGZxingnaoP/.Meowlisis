@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CatPaws 控制台</title>
+<link rel="stylesheet" href="/js/style.css">
+</head>
+<body>
+<div id="bar">
+  <div class="brand">🐾 CatPaws</div>
+  <div class="pills">
+    <span class="pill" id="pill-device">设备 --</span>
+    <span class="pill" id="pill-session">链路 --</span>
+    <span class="pill" id="pill-stream">视频 --</span>
+  </div>
+  <div class="goal">
+    <input id="goal" placeholder="目标，例如：打开微信，给妈妈发一条到家了">
+    <button id="btn-start" class="primary">开始</button>
+    <button id="btn-stop" class="danger">停止</button>
+  </div>
+  <div class="right">
+    <button id="btn-stream">视频开</button>
+    <button id="btn-shot">截图</button>
+  </div>
+</div>
+<div id="main">
+  <div id="left">
+    <div id="screen">
+      <canvas id="view"></canvas>
+      <div id="idle">等待手机画面…</div>
+    </div>
+    <div id="meta">未连接</div>
+  </div>
+  <div id="right">
+    <div id="ask" class="hidden">
+      <div id="askQ"></div>
+      <div class="ask-row">
+        <input id="askInput" placeholder="回答…">
+        <button id="askSend">回答</button>
+      </div>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+<script src="/js/viewer.js"></script>
+<script src="/js/timeline.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>

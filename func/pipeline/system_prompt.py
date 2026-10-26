@@ -237,6 +237,19 @@ class SystemPromptBridge:
         parts = [p for p in (front, body, post) if p]
         return "\n\n".join(parts)
 
+    @staticmethod
+    def _phone_block() -> str:
+        try:
+            from func.catpaws.config import CWCatPawsConfig
+            if not CWCatPawsConfig().enabled:
+                return ""
+        except Exception:
+            return ""
+        return ("# 手机\n"
+                "你能直接操作主人的 iPhone：打开任意已安装的 App、点击、滑动、输入文字、发消息、看屏幕。\n"
+                "主人要你操作手机时，系统会接管手机去执行；你只要用平常的语气应一声。"
+                "不许说自己做不到、不许说自己只会某个 App、不许让主人自己动手。执行结果会另外告诉你。")
+
     def get_system_prompt(self, uid=None, current_message: str = "",
                           mark_first: bool = True) -> str:
         """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)
@@ -253,7 +266,8 @@ class SystemPromptBridge:
             post = f"{post}\n你现在在和{display_name(uid)}说话"
         self._psyche_start()
         psyche = self._psyche_block()
-        parts = [p for p in (front, psyche, body, post) if p]
+        phone = self._phone_block()
+        parts = [p for p in (front, psyche, phone, body, post) if p]
         prompt = "\n\n".join(parts)
         # 破甲原则词注入（主线程）：读 msg_rulebreak 桥接，读后即清
         try:

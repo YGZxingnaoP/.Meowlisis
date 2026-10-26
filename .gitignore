@@ -142,3 +142,13 @@ config.yml.tmp
 *.bak*
 .vendor/.ComfyNode/engine.pid
 .vendor/.ComfyNode/extra_model_paths.yaml
+.vendor/.CatPaws/ios_apps
+scripts/dist
+
+# ========== CatPaws（App 包 / 模型 / 启动器运行时，均不入库）==========
+.vendor/.CatPaws/ios_apps/
+.vendor/.CatPaws/catpaws-launcher/run/
+.vendor/.CatPaws/actions/*.pb
+*.pb
+*.ipa
+

@@ -1,0 +1,32 @@
+{
+  "id": "jump_jump",
+  "title": "跳一跳",
+  "scene": "微信「跳一跳」小游戏正在运行时使用；按当前棋盘自动跳到下一个方块",
+  "status": "unverified",
+  "updatable": true,
+  "author": "user",
+  "version": 1,
+  "entry": "main.py:run",
+  "params": {
+    "rounds": 20,
+    "press_coeff": 1.15,
+    "max_press_ms": 2500
+  },
+  "steps": [
+    "读取当前屏幕截图",
+    "按 RGB 特征找棋子底部中心",
+    "从顶部向下扫描找下一个方块中心",
+    "按距离换算长按时长并在棋子处按住",
+    "等待落地后重新截图进入下一轮"
+  ],
+  "requires": [
+    "launch_app:com.tencent.xin"
+  ],
+  "last_run": {
+    "ok": false,
+    "at": "",
+    "elapsed_ms": 0
+  },
+  "created_at": "2026-02-06T00:00:00+08:00",
+  "updated_at": "2026-02-06T00:00:00+08:00"
+}

@@ -131,12 +131,12 @@ idle ──start(goal)──► running ──目标完成/被停止/超步数�
 | 阶段 | 可见工具 | 约束 |
 |---|---|---|
 | idle | 无 | 不占用设备 |
-| running | `cw_observe` `cw_single` `cw_sequence` `cw_action` `cw_ask_user` | **禁止写 action**（工具表里根本没有），只允许对 `unverified`/`updatable` 做小规模微调 |
+| running | `cw_observe` `cw_single` `cw_sequence` `cw_action` `cw_ask_user` `cw_update_action` | **禁止新建 action**（工具表里没有 `cw_write_action`）；只允许对 `unverified`/`updatable` 的 action 做小规模微调 |
 | reflecting | `cw_observe`(只读) `cw_write_action` `cw_update_action` `cw_ask_user` | **禁止执行任何操作**（没有操作工具），只做沉淀与更新 |
 
 实现要点：
 
-* 工具表由 `CWAgentTools.for_phase(phase)` 生成，阶段切换时重建；`cw_write_action` / `cw_update_action` 的实现里**再校验一次阶段**（双重保险）。
+* 工具表由 `CWAgentTools.schemas(phase)` 生成，阶段切换时重建；`cw_write_action` / `cw_update_action` 的实现里**再校验一次阶段**（双重保险）。
 * 目标完成后自动进入 reflecting 跑一次轻量反思（配置可关：`catpaws.reflect_enabled`）。
 * 反思输入：本次操作日志摘要（动作序列 + 成败 + 界面 OCR 片段），不重放视频、不重截图。
 
@@ -401,3 +401,34 @@ func/catpaws/
 * 不接 pipeline 桥接与快回截断（后续方案）
 * 不支持安卓（但驱动接口按可分叉设计，`cw_*` 动作名与坐标契约保持不变）
 * 不做横屏操作（本期返回 `E_UNSUPPORTED`）
+
+---
+
+## 14. 实现状态（PC 侧已落地）
+
+| 模块 | 文件 | 状态 |
+|---|---|---|
+| 协议与校验 | `src/cw/protocol.py` | ✅ 动作白名单、参数范围、`delay_ms` 钳制到 90..2000 |
+| 坐标 | `src/cw/geometry.py` | ✅ 像素↔点、越界、竖屏校验 |
+| 配置 | `src/cw/config.py` | ✅ 读主项目 `config.yml` → `catpaws`，日志目录不可写时回落到临时目录 |
+| 设备驱动 | `src/cw/device_client.py` | ✅ `/cw/v1/*` 客户端 + 错误码映射 |
+| mock 驱动 | `src/cw/mock_device.py` | ✅ 合成截图 + OCR 框，无手机也能跑通全链路 |
+| 保护措施 | `src/cw/guard.py` | ✅ 步数/速率/黑名单/敏感词/时长 |
+| 操作日志 | `src/cw/journal.py` | ✅ jsonl + 环形缓存 + 缩略图 |
+| 链路状态 | `src/cw/session.py` | ✅ 阶段机 + 阻塞式提问 |
+| 三类操作 | `src/cw/ops.py` | ✅ single/sequence/action 统一入口 |
+| action 存储 | `src/cw/actions_store.py` | ✅ manifest/状态机/锁定与更新规则 |
+| action 审查 | `src/cw/actions_review.py` | ✅ ast + import 白名单 + 禁用调用 |
+| action 执行 | `src/cw/actions_runner.py` | ✅ 子进程 + JSONL 双向协议 + 超时/取消 |
+| 脚本 API | `src/cw/script_api.py`、`src/cw_script.py` | ✅ emit/observe/ask/params/log/done |
+| LLM | `src/cw/llm_client.py` | ✅ OpenAI 兼容 + 视觉消息 |
+| 工具表 | `src/cw/agent_tools.py` | ✅ 按阶段生成，running 无 `cw_write_action` |
+| agent | `src/cw/agent.py` | ✅ 观察→操作→反思循环 + 提问 + 停止 |
+| 视频中继 | `src/cw/relay.py` | ✅ WS、token、vcfg/reqkey、帧转发、操作事件下发 |
+| 控制台 | `src/cw/web.py` + `web/` | ✅ 左画面右操作过程 + 开始/停止/视频/截图 |
+| 入口 | `src/cw/server.py`、`start.bat` | ✅ 设备不可达自动降级 mock |
+| 主项目模块 | `func/catpaws/` | ✅ config/client/if_start/state/stop/voice/core |
+| 示例 action | `actions/jump_jump/` | ✅ 纯 CV 跳一跳（unverified，真机跑通后自动转 verified） |
+| iOS 端 | `docs/CW_IOS_SPEC.md` | 📄 规范已交付，代码由 macOS agent 实现 |
+
+待接入（按之前约定不做）：pipeline 桥接与快回截断、语音问答双通道、前端配置页、GUI 启动卡按钮。
