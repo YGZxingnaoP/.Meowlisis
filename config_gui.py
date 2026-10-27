@@ -1341,5 +1341,12 @@ try:
 except Exception as _loghub_e:
     print('[loghub] 注册失败:', _loghub_e)
 
+# ===== 手机操作（CatPaws）面板：配置读写在 .vendor/.CatPaws/config.yml =====
+try:
+    from gui.tools import catpaws_hub
+    catpaws_hub.register(app)
+except Exception as _catpaws_e:
+    print('[catpaws_hub] 注册失败:', _catpaws_e)
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=1801, debug=False)

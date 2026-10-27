@@ -1,6 +1,7 @@
 import os
 import sys
 import base64
+import ipaddress
 import socket
 import shutil
 import threading
@@ -300,14 +301,29 @@ def start_obs_http():
     return srv
 
 
+def cert_covers(ip):
+    """现有证书是否包含这个 IP 的 SAN（iOS 只认 SAN，不认 CN）"""
+    try:
+        from cryptography import x509
+        with open(CERT_PEM, 'rb') as handle:
+            cert = x509.load_pem_x509_certificate(handle.read())
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        return ipaddress.ip_address(ip) in san.get_values_for_type(x509.IPAddress)
+    except Exception:
+        return False
+
+
 def ensure_cert():
-    """生成或复用自签名证书"""
+    """生成或复用自签名证书（必须带本机 IP 的 SAN，否则 iOS 直接拒连）"""
+    ip = lan_ip()
     if os.path.exists(CERT_PEM) and os.path.exists(KEY_PEM):
-        return CERT_PEM, KEY_PEM
+        if cert_covers(ip):
+            return CERT_PEM, KEY_PEM
+        print('[phone] 现有证书没有 %s 的 SAN，重新生成' % ip)
     os.makedirs(phone_config.CERT_DIR, exist_ok=True)
     try:
         from cryptography import x509
-        from cryptography.x509.oid import NameOID
+        from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -316,15 +332,22 @@ def ensure_cert():
             x509.NameAttribute(NameOID.COMMON_NAME, u'MeowlisisPhone'),
             x509.NameAttribute(NameOID.ORGANIZATION_NAME, u'Meowlisis'),
         ])
+        names = [x509.DNSName(u'localhost'),
+                 x509.IPAddress(ipaddress.ip_address(u'127.0.0.1'))]
+        if ip:
+            names.append(x509.IPAddress(ipaddress.ip_address(ip)))
+        now = datetime.datetime.utcnow()
         cert = (
             x509.CertificateBuilder()
             .subject_name(subject)
             .issuer_name(issuer)
             .public_key(key.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.utcnow() - datetime.timedelta(days=1))
-            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=3650))
-            .add_extension(x509.SubjectAlternativeName([x509.DNSName(u'localhost')]), critical=False)
+            .not_valid_before(now - datetime.timedelta(days=1))
+            .not_valid_after(now + datetime.timedelta(days=800))
+            .add_extension(x509.SubjectAlternativeName(names), critical=False)
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
             .sign(key, hashes.SHA256())
         )
         with open(KEY_PEM, 'wb') as f:

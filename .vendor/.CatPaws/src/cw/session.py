@@ -4,9 +4,12 @@ import time
 
 
 class CWSession:
+    """CatPaws 链路状态：idle / control（操作中） / recording（反思中） / end（结束）"""
+
     IDLE = "idle"
-    RUNNING = "running"
-    REFLECTING = "reflecting"
+    CONTROL = "control"
+    RECORDING = "recording"
+    END = "end"
 
     def __init__(self, config, journal):
         self.config = config
@@ -33,7 +36,7 @@ class CWSession:
             self.started_at = time.time()
             self.ended_at = 0.0
             self.stop_event.clear()
-            self.phase = self.RUNNING
+            self.phase = self.CONTROL
             self.session_id = self.journal.new_session()
             self._asking = False
             self._question = ""
@@ -41,7 +44,7 @@ class CWSession:
             self._answer_event.clear()
             self._instructions.clear()
             snapshot = self._snapshot_locked()
-        self.journal.record("phase", phase=self.RUNNING, goal=goal, session=self.session_id)
+        self.journal.record("phase", phase=self.CONTROL, goal=goal, session=self.session_id)
         return snapshot
 
     def set_phase(self, phase):
@@ -63,15 +66,23 @@ class CWSession:
     def is_stopping(self):
         return self.stop_event.is_set()
 
-    def finish(self, reason=""):
+    def end(self, reason=""):
         with self._lock:
             if reason:
                 self.finish_reason = reason
             self.ended_at = time.time()
-            self.phase = self.IDLE
+            self.phase = self.END
             self.stop_event.clear()
             self._asking = False
-        self.journal.record("phase", phase=self.IDLE, reason=self.finish_reason)
+        self.journal.record("phase", phase=self.END, reason=self.finish_reason)
+        self.journal.record("end", reason=self.finish_reason)
+
+    def reset(self):
+        with self._lock:
+            self.phase = self.IDLE
+            self.ended_at = time.time()
+            self._asking = False
+            self.stop_event.clear()
 
     def ask(self, question, options=None, timeout=None):
         wait_for = float(timeout if timeout is not None else self.config.ask_timeout_sec)
@@ -82,8 +93,8 @@ class CWSession:
             self._answer = ""
             self._answer_event.clear()
         self.journal.record("ask", question=self._question, options=self._options,
-                            timeout_sec=int(wait_for))
-        ok = self._answer_event.wait(wait_for)
+                            timeout_sec=int(wait_for or 0))
+        ok = self._answer_event.wait(wait_for) if wait_for > 0 else self._answer_event.wait()
         with self._lock:
             self._asking = False
             answer = self._answer
@@ -98,12 +109,16 @@ class CWSession:
             self._answer_event.set()
         return True
 
+    def asking(self):
+        with self._lock:
+            return self._asking
+
     def push_instruction(self, text):
         body = str(text or "").strip()
         if not body:
             return False
         with self._lock:
-            if self.phase == self.IDLE:
+            if self.phase not in (self.CONTROL, self.RECORDING):
                 return False
             self._instructions.append(body)
         self.journal.record("instruction", text=body[:200])
@@ -132,6 +147,7 @@ class CWSession:
             "ended_at": self.ended_at,
             "reason": self.finish_reason,
             "stopping": self.stop_event.is_set(),
+            "asking": self._asking,
             "elapsed_sec": int(time.time() - self.started_at) if self.started_at else 0,
         }
 

@@ -3,82 +3,9 @@
   "unit": "条",
   "battery_per_unit": 10.0,
   "startup_cost": 0.1,
-  "total_acquired": 16.6,
-  "balance": 2.0,
+  "total_acquired": 18.6,
+  "balance": 3.1,
   "history": [
-    {
-      "ts": 1790084922,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084922,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084922,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084923,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084923,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084923,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790084923,
-      "type": "gift",
-      "delta": 0.1,
-      "gift": "人气票x1",
-      "user": "LynxRain"
-    },
-    {
-      "ts": 1790162547,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
-    {
-      "ts": 1790174875,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
-    {
-      "ts": 1790175399,
-      "type": "manual_add",
-      "delta": 1.0,
-      "note": "手动入库"
-    },
-    {
-      "ts": 1790175435,
-      "type": "startup",
-      "delta": -0.1,
-      "note": "启动消耗"
-    },
     {
       "ts": 1790240839,
       "type": "startup",
@@ -612,6 +539,72 @@
       "type": "manual_add",
       "delta": 1.0,
       "note": "手动入库"
+    },
+    {
+      "ts": 1793095514,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793095618,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793106103,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793106433,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793107026,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1793107027,
+      "type": "manual_add",
+      "delta": 1.0,
+      "note": "手动入库"
+    },
+    {
+      "ts": 1793107341,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793107675,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793108583,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793109202,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
+    },
+    {
+      "ts": 1793112405,
+      "type": "startup",
+      "delta": -0.1,
+      "note": "启动消耗"
     }
   ]
 }

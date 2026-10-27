@@ -1,43 +1,36 @@
-"""
-示例动作脚本：依次点击、滑动、长按
-通过 WDA 原生 W3C Actions API 发送手势。
+import time
 
-入口函数：main(send=...) 回调风格
-send: 异步回调，传入 JSON 字符串发送动作到手机
-"""
-import asyncio
-import json
+import cw_script
 
 
-async def main(send=None):
-    if send is None:
-        print("没有执行器连接，无法发送动作")
+def tap_center():
+    """点屏幕正中：最基础的一步，用来确认脚本链路通了"""
+    screen = cw_script.screen()
+    pixel = screen.get("pixel") or [0, 0]
+    cw_script.tap(pixel[0] // 2, pixel[1] // 2)
+
+
+def run():
+    """示例 action：点一下 → 看文字 → 汇报；真正写脚本时按这个骨架改"""
+    options = cw_script.params()
+    text = str(options.get("target_text") or "")
+    if cw_script.should_stop():
+        cw_script.done(False, "还没开始就被叫停了")
         return
+    if text:
+        found = cw_script.ocr_find(text)
+        if not found:
+            cw_script.log("屏幕上没看到「%s」" % text)
+            cw_script.done(False, "没找到目标文字")
+            return
+        cw_script.tap(found[0], found[1])
+    else:
+        tap_center()
+    cw_script.wait(600)
+    cw_script.log("观察到的文字：%s" % " / ".join(
+        str(item.get("text") or "") for item in cw_script.observe_texts()[:8]))
+    cw_script.done(True, "示例跑完了，用时 %d ms" % int(time.time() * 1000 % 100000))
 
-    print("🎬 示例动作序列开始")
 
-    # 点击 (200, 300) —— 像素坐标，后端自动转换为逻辑点
-    await send(json.dumps({
-        "type": "action", "action": "tap",
-        "params": {"x": 200, "y": 300}
-    }))
-    print("  ✅ tap(200, 300)")
-    await asyncio.sleep(0.5)
-
-    # 滑动
-    await send(json.dumps({
-        "type": "action", "action": "swipe",
-        "params": {"from_x": 100, "from_y": 500, "to_x": 300, "to_y": 500, "duration": 0.3}
-    }))
-    print("  ✅ swipe(100,500 → 300,500)")
-    await asyncio.sleep(0.3)
-
-    # 长按 1.5 秒
-    await send(json.dumps({
-        "type": "action", "action": "long_press",
-        "params": {"x": 250, "y": 400, "duration": 1.5}
-    }))
-    print("  ✅ long_press(250, 400, 1.5s)")
-    await asyncio.sleep(0.5)
-
-    print("🎬 示例动作序列执行完成")
+if __name__ == "__main__":
+    run()

@@ -50,8 +50,9 @@
       pill(pillDevice, '设备 ' + (pixel || '就绪') + mockText, 'on');
     }
     const session = status.session || {};
-    if (session.phase === 'running') pill(pillSession, '链路运行中 ' + (session.elapsed_sec || 0) + 's', 'busy');
-    else if (session.phase === 'reflecting') pill(pillSession, '复盘中…', 'busy');
+    if (session.phase === 'control') pill(pillSession, '操作中 ' + (session.elapsed_sec || 0) + 's', 'busy');
+    else if (session.phase === 'recording') pill(pillSession, '反思中…', 'busy');
+    else if (session.phase === 'end') pill(pillSession, '链路已结束', '');
     else pill(pillSession, '链路空闲', '');
     const relay = status.relay || {};
     pill(pillStream, '视频 ' + (relay.device_online ? '已连' : '未连') + ' · ' +
@@ -81,7 +82,12 @@
   btnStart.addEventListener('click', async () => {
     const goal = goalInput.value.trim();
     if (!goal) { goalInput.focus(); return; }
-    const result = await post('/cw/start', { goal });
+    const result = await post('/cw/start', {
+      goal: goal,
+      system_prompt: '你在替主人操作这台 iPhone，用平常的语气说话，不要报告格式。',
+      memory: [],
+      user_message: goal
+    });
     if (!result.ok) alert(result.message || '启动失败');
     refresh();
   });

@@ -85,6 +85,37 @@ class CWScreen:
             return [max(left, min(right, cx + half)), cy], [max(left, min(right, cx - half)), cy]
         return [max(left, min(right, cx - half)), cy], [max(left, min(right, cx + half)), cy]
 
+    def edge_swipe(self, edge, direction, ratio=0.3, margin=0):
+        """从屏幕某条边起手滑（iOS 的左缘右滑＝返回上一级）"""
+        left, upper, right, lower = self.box(margin)
+        width = right - left
+        height = lower - upper
+        span_ratio = min(max(float(ratio or 0.3), 0.05), 0.95)
+        anchor = 4
+        if edge in ("left", "right"):
+            span = max(1, int(width * span_ratio))
+            cy = (upper + lower) // 2
+            if edge == "left":
+                start = [left + anchor, cy]
+                end = [min(right, left + anchor + span), cy]
+            else:
+                start = [right - anchor, cy]
+                end = [max(left, right - anchor - span), cy]
+            if direction == "left":
+                start, end = end, start
+            return start, end
+        span = max(1, int(height * span_ratio))
+        cx = (left + right) // 2
+        if edge == "top":
+            start = [cx, upper + anchor]
+            end = [cx, min(lower, upper + anchor + span)]
+        else:
+            start = [cx, lower - anchor]
+            end = [cx, max(upper, lower - anchor - span)]
+        if direction == "up":
+            start, end = end, start
+        return start, end
+
     @classmethod
     def from_device(cls, data):
         if not isinstance(data, dict):

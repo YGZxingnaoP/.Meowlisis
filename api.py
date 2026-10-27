@@ -356,6 +356,47 @@ def phone_audio():
     return "(" + json.dumps(item, ensure_ascii=False) + ")"
 
 
+# ============= 手机操作（catpaws）：GUI 面板控制入口 =============
+@app.route("/catpaws/start", methods=["POST"])
+def catpaws_start():
+    """GUI 面板手动指定目标，直接启动手机操作链路"""
+    data = request.json or {}
+    goal = str(data.get("goal") or "").strip()
+    meowid = str(data.get("meowid") or "").strip()
+    if not goal:
+        return jsonify({"status": "error", "message": "目标为空"}), 400
+    try:
+        from func.pipeline.id_signup import IdSignupBridge
+        meowid = IdSignupBridge().meowid_of_msg(meowid, "api") or meowid
+    except Exception:
+        pass
+    from func.catpaws.core import CWCatPawsCore
+    core = CWCatPawsCore()
+    ok = core.start_task(goal, meowid, goal, "gui")
+    return jsonify({"status": "ok" if ok else "error", "active": core.is_active(),
+                    "message": "" if ok else "启动失败：服务未起或手机没连上（已用角色口吻说明）"})
+
+
+@app.route("/catpaws/stop", methods=["POST"])
+def catpaws_stop():
+    """GUI 面板停止手机操作链路"""
+    from func.catpaws.core import CWCatPawsCore
+    CWCatPawsCore().stop("gui")
+    return jsonify({"status": "ok"})
+
+
+@app.route("/catpaws/status", methods=["GET"])
+def catpaws_status():
+    """主进程里的 catpaws 链路状态（含服务端状态）"""
+    try:
+        from func.catpaws.core import CWCatPawsCore
+        core = CWCatPawsCore()
+        return jsonify({"status": "ok", "module": core.state.snapshot(),
+                        "remote": core.client.status()})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
+
+
 # 聊天【用户funasr语音对话】
 @app.route("/chat", methods=["POST", "GET"])
 def chat():

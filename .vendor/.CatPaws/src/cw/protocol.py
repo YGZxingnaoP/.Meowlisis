@@ -69,6 +69,7 @@ def _specs():
 SPECS = _specs()
 PRESS_KEYS = ("home", "volume_up", "volume_down", "delete", "return")
 SWIPE_DIRECTIONS = ("up", "down", "left", "right")
+SWIPE_EDGES = ("left", "right", "top", "bottom")
 
 
 def _as_int(value, lower, upper, default, field):
@@ -111,6 +112,12 @@ def _normalize_swipe(step):
                                   "direction 只能是 %s" % "/".join(SWIPE_DIRECTIONS))
         out["direction"] = direction
         out["ratio"] = _as_float(step.get("ratio"), 0.05, 0.95, 0.5, "ratio")
+        edge = step.get("edge")
+        if edge is not None:
+            if edge not in SWIPE_EDGES:
+                raise CWProtocolError(CWErrorCode.BAD_REQUEST,
+                                      "edge 只能是 %s" % "/".join(SWIPE_EDGES))
+            out["edge"] = edge
         return out
     if step.get("from") is None or step.get("to") is None:
         raise CWProtocolError(CWErrorCode.BAD_REQUEST, "swipe 需要 direction+ratio 或 from+to")
@@ -189,6 +196,8 @@ def describe(step):
     if name == "swipe":
         if step.get("from") and step.get("to"):
             return "swipe(%s->%s)" % (step.get("from"), step.get("to"))
+        if step.get("edge"):
+            return "swipe(%s边缘 %s %s)" % (step.get("edge"), step.get("direction"), step.get("ratio"))
         return "swipe(%s %s)" % (step.get("direction"), step.get("ratio"))
     if name in ("type_text", "paste_text"):
         text = str(step.get("text", ""))

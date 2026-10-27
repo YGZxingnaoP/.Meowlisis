@@ -25,7 +25,7 @@ class CWWeb:
     def start(self):
         handler = self._make_handler()
         try:
-            self._server = ThreadingHTTPServer((self.config.host, self.config.port), handler)
+            self._server = ThreadingHTTPServer((self.config.bind_host, self.config.port), handler)
         except OSError as exc:
             raise RuntimeError("Web 端口 %s 启动失败：%s" % (self.config.port, exc))
         self._server.daemon_threads = True
@@ -134,6 +134,19 @@ class CWWeb:
                     limit = int((query.get("limit") or ["200"])[0])
                     self._send_json(handler, {"ok": True, "items": self.journal.tail(limit)})
                     return
+                if path == "/cw/replies":
+                    since = int((query.get("since") or ["0"])[0] or 0)
+                    limit = int((query.get("limit") or ["200"])[0])
+                    items = [item for item in self.journal.tail(limit)
+                             if int(item.get("seq") or 0) > since]
+                    self._send_json(handler, {
+                        "ok": True,
+                        "session": self.session.session_id,
+                        "phase": self.session.phase,
+                        "seq": int(items[-1].get("seq") or since) if items else since,
+                        "items": items,
+                    })
+                    return
                 if path == "/cw/actions":
                     self._send_json(handler, {"ok": True, "items": self.store.list()})
                     return
@@ -153,7 +166,13 @@ class CWWeb:
                     self._send_json(handler, {"ok": False, "code": CWErrorCode.BAD_REQUEST,
                                               "message": "goal 不能为空"})
                     return
-                if not self.agent.start(goal):
+                if not self.agent.start({
+                    "goal": goal,
+                    "system_prompt": str(body.get("system_prompt") or ""),
+                    "memory": body.get("memory") if isinstance(body.get("memory"), list) else [],
+                    "user_message": str(body.get("user_message") or ""),
+                    "meowid": str(body.get("meowid") or ""),
+                }):
                     self._send_json(handler, {"ok": False, "code": CWErrorCode.BUSY,
                                               "message": "已有链路在跑"})
                     return
@@ -201,10 +220,17 @@ class CWWeb:
                                       "message": "%s: %s" % (type(exc).__name__, exc)})
 
     def _status(self):
-        device = {"mock": bool(getattr(self.device, "is_mock", False))}
+        ensure = getattr(self, "ensure_device", None)
+        if callable(ensure):
+            try:
+                ensure()
+            except Exception:
+                pass
+        device = {"mock": bool(getattr(self.device, "is_mock", False)), "online": False}
         info = {}
         try:
             info = self.device.device_info()
+            device["online"] = True
         except Exception as exc:
             device["error"] = str(exc)
         return {
@@ -213,7 +239,8 @@ class CWWeb:
             "agent_busy": self.agent.busy(),
             "pending_question": self.session.pending_question(),
             "relay": self.relay.status(),
-            "device": {"mock": device["mock"], "info": info, "error": device.get("error", "")},
+            "device": {"mock": device["mock"], "online": device.get("online", False),
+                       "info": info, "error": device.get("error", "")},
             "config": self.config.as_public(),
             "final": self.agent.last_final(),
             "final_ok": bool(self.agent.last_concluded()),

@@ -43,6 +43,7 @@ const App = {
 
     // ============ 服务启动球 ============,
     async onLaunchClick(id) {
+        if (id === 'catpaws') { await this.startCatpaws(); return; }
         const map = {
             phone: { fn: () => API.startPhone(), name: '接口' },
             sensevoice: { fn: () => API.startSensevoice(), name: 'SenseVoice' },
@@ -70,6 +71,38 @@ const App = {
         }
     },
 
+    // ============ 手机操作（CatPaws）============,
+    async startCatpaws() {
+        try {
+            const r = await API.startCatpaw();
+            if (r && r.status === 'error') {
+                this.showToast('手机操作服务启动失败: {msg}', true, { msg: r.message || '' });
+                return;
+            }
+        } catch (e) {
+            this.showToast('手机操作服务启动失败: {msg}', true, { msg: e.message });
+            return;
+        }
+        this.showToast('手机操作服务已启动，正在打开日志中心…');
+        window.open('/logs?svc=catpaw', '_blank');
+    },
+
+    async openCatpawsPanel() {
+        try {
+            Config.setCatpawsConfig(await API.getCatpawsConfig());
+        } catch (e) {
+            this.showToast('读取手机操作配置失败: {msg}', true, { msg: e.message });
+            return;
+        }
+        this._openConfigPanel('手机操作（CatPaws）', () => Config.catpaws(), async () => {
+            const patch = Config.collectCatpaws();
+            if (!patch) throw new Error('没有可保存的内容');
+            const r = await API.saveCatpawsConfig(patch);
+            if (r && r.status === 'error') throw new Error(r.message || '保存失败');
+            this.showToast('手机操作配置已保存（立即生效）');
+        });
+    },
+
     // ============ 闭麦切换 ============,
     async toggleMic() {
         try {
@@ -91,6 +124,7 @@ const App = {
 
         // 特殊面板
         if (id === 'character') { await this.openCharacterPanel(); return; }
+        if (id === 'catpaws') { await this.openCatpawsPanel(); return; }
         if (id === 'sensevoice') { await this.openSensevoicePanel(); return; }
         if (id === 'sensevoice_config') { await this.openSensevoicePanel(); return; }
         if (id === 'sensevoice_mic') { await this.openSilencePanel(); return; }

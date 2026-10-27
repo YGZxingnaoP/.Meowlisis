@@ -1,5 +1,10 @@
 # CatPaws 实机联调（主链路：触发 → 操作手机 → 完成 → 自动退出）
 
+> **⚠ 已过时（2026-10 重写）**：本文描述的是旧实现（触发词「操作手机」、`config.yml → catpaws`、
+> 无角色化交流）。现行方案见 [CatPaws手机操作链路_实现说明.md](CatPaws手机操作链路_实现说明.md) 与
+> `.vendor/.CatPaws/CONFIG.md`；回归脚本用 `scripts/catpaws_bridge_test.py`（免手机）与
+> `scripts/catpaws_meituan_test.py`（真机）。
+
 > 面向：Meowlisis 主项目 + `.vendor/.CatPaws`。
 > 状态：代码已落地并通过静态/单元自检；真机只做了只读验证（截图、设备信息），动作链路待你实跑。
 

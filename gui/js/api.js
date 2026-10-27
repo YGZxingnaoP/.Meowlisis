@@ -207,6 +207,41 @@ const API = {
         return res.json();
     },
 
+    async startCatpaw() {
+        const res = await fetch('/api/start_catpaw', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to start CatPaws');
+        return res.json();
+    },
+
+    async getCatpawsConfig() {
+        const res = await fetch('/api/catpaws/config', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load CatPaws config');
+        const data = await res.json();
+        return (data && data.config) || {};
+    },
+
+    async saveCatpawsConfig(config) {
+        const res = await fetch('/api/catpaws/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config })
+        });
+        if (!res.ok) throw new Error('Failed to save CatPaws config');
+        return res.json();
+    },
+
+    async getCatpawsStatus() {
+        const res = await fetch('/api/catpaws/status', { cache: 'no-store' });
+        if (!res.ok) throw new Error('Failed to load CatPaws status');
+        return res.json();
+    },
+
+    async startCatpawsLauncher() {
+        const res = await fetch('/api/catpaws/launcher', { method: 'POST' });
+        if (!res.ok) throw new Error('Failed to launch catpaws-launcher');
+        return res.json();
+    },
+
     async getCharacterCard(file) {
         const res = await fetch('/api/character_card?file=' + encodeURIComponent(file || 'prompt'));
         if (!res.ok) throw new Error('Failed to load character card');

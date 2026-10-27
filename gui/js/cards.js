@@ -24,6 +24,7 @@ const Cards = {
     META: {
         // ── 启动球 9 ──
         launcher_phone:       { n: '接口',      g: 'service', e: '📱' },
+        launcher_catpaws:     { n: '手机操作',  g: 'service', e: '📲' },
         launcher_main:        { n: '主程序',    g: 'service', e: '🖥️' },
         launcher_sovits:      { n: 'SoVITS',    g: 'voice',   e: '🎙️' },
         launcher_sensevoice:  { n: 'SenseVoice', g: 'voice',  e: '🎧' },
@@ -47,6 +48,7 @@ const Cards = {
         toolbox:              { n: '工具箱',    g: 'core',    e: '🧰' },
         meowsinger:           { n: '歌曲',      g: 'social',  e: '🎵' },
         calendar:             { n: '待办',      g: 'life',    e: '📅' },
+        catpaws:              { n: '手机操作',  g: 'service', e: '🐾' },
 
         // ── 工具箱 10 ──
         minecraft:            { n: 'Minecraft', g: 'life',    e: '⛏️' },

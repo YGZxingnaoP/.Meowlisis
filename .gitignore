@@ -151,4 +151,8 @@ scripts/dist
 .vendor/.CatPaws/actions/*.pb
 *.pb
 *.ipa
+# CatPaws 配置真值（含模型 key，不入库；模板见 .vendor/.CatPaws/CONFIG.md）
+.vendor/.CatPaws/config.yml
+# .cam 自签名证书与私钥：启动时自动生成，不入库
+.vendor/.cam/cert/
 

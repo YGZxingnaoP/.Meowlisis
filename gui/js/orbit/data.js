@@ -163,6 +163,7 @@ const OrbitData = {
     // 只是不能一次保存 —— 需要的话可以用这个标记给它们各生成一张"总设置"子卡。
     launcherPlanets: [
         { id: 'phone', label: '接口', card: 'launcher_phone', tooltip: '启动手机接口服务' },
+        { id: 'catpaws', label: '手机操作', card: 'launcher_catpaws', tooltip: '手机操作（CatPaws）：启动服务 · 设备就绪检测 · launcher' },
         { id: 'main', label: '主程序', card: 'launcher_main', tooltip: '启动主程序' },
         { id: 'sovits', label: 'SoVITS', card: 'launcher_sovits', tooltip: '启动 SoVITS 服务' },
         { id: 'sensevoice', label: 'SenseVoice', card: 'launcher_sensevoice', tooltip: '启动 SenseVoice 服务' },
@@ -247,7 +248,8 @@ const OrbitData = {
                 { id: 'meowsinger_sentiment', label: '感想', card: 'meowsinger_sentiment', tooltip: '感想设置' }
             ]
         },
-        { id: 'calendar', label: '待办', card: 'calendar', tooltip: '待办提醒' }
+        { id: 'calendar', label: '待办', card: 'calendar', tooltip: '待办提醒' },
+        { id: 'catpaws', label: '手机操作', card: 'catpaws', tooltip: '手机操作（CatPaws）配置' }
     ],
 
     toolboxPlanets: [

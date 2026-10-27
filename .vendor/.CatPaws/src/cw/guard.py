@@ -35,17 +35,30 @@ class CWGuard:
             if not self._session_started:
                 return True
             elapsed = time.time() - self._session_started
-        if elapsed > self.config.session_timeout_sec:
-            raise CWGuardError("链路超时（%d 秒）" % self.config.session_timeout_sec)
+        limit = int(self.config.session_timeout_sec or 0)
+        if limit > 0 and elapsed > limit:
+            raise CWGuardError("链路超时（%d 秒）" % limit)
         return True
 
     def check_batch(self, steps):
         with self._lock:
             total = self._session_steps + len(steps)
-        if total > self.config.max_steps_per_session:
-            raise CWGuardError("超出单链路步数上限 %d" % self.config.max_steps_per_session)
+        limit = int(self.config.max_steps_per_session or 0)
+        if limit > 0 and total > limit:
+            raise CWGuardError("超出单链路步数上限 %d" % limit)
         if len(steps) > 1 and len(steps) > self.config.sequence_steps:
             raise CWGuardError("连续操作最多 %d 步" % self.config.sequence_steps)
+        return True
+
+    def check_reflect_safe(self, phase, steps, texts=None):
+        """反思阶段禁止付款/隐私一类的操作"""
+        if phase != "recording":
+            return True
+        body = " ".join(describe(step) for step in (steps or []))
+        body += " " + " ".join(str(item) for item in (texts or []))
+        for word in self.config.reflect_block_words or []:
+            if word and word in body:
+                raise CWGuardError("反思阶段禁止涉及「%s」的操作" % word)
         return True
 
     def check_rate(self, count=1):

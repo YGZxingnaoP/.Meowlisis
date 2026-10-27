@@ -32,6 +32,7 @@ class CWOperator:
         self._last_image = b""
         self._last_step = None
         self._screen = None
+        self._last_activity = time.time()
 
     def set_action_runner(self, runner):
         self.action_runner = runner
@@ -49,6 +50,27 @@ class CWOperator:
 
     def stopping(self):
         return self._stop.is_set() or self.session.is_stopping()
+
+    def idle_seconds(self):
+        """距离上一次真实操作过了多久（防息屏心跳用）"""
+        return max(0.0, time.time() - self._last_activity)
+
+    def touch(self):
+        """标记「刚刚有过操作」，避免链路刚开始就被防息屏心跳点一下"""
+        self._last_activity = time.time()
+
+    def keep_awake(self, point=None):
+        """轻点一下屏幕（默认底部安全区）重置系统息屏计时，不改变界面状态"""
+        screen = self.screen()
+        if point and len(point) >= 2:
+            x, y = int(point[0]), int(point[1])
+        else:
+            _, bottom = screen.safe_px()
+            x = screen.pixel_w // 2
+            y = screen.pixel_h - bottom - 6
+        x, y = screen.clamp(x, y, 2)
+        step = normalize_step({"action": "tap", "x": x, "y": y})
+        return self._execute([step], None, "keep_awake", snapshot=False, confirm=False)
 
     def screen(self, refresh=False):
         if refresh or self._screen is None:
@@ -113,7 +135,10 @@ class CWOperator:
             name = step.get("action")
             if name == "swipe":
                 margin = self.config.swipe_margin_px
-                if step.get("direction"):
+                if step.get("edge") and step.get("direction"):
+                    start, end = screen.edge_swipe(step["edge"], step["direction"],
+                                                   step.get("ratio", 0.3), margin)
+                elif step.get("direction"):
                     start, end = screen.swipe(step["direction"], step.get("ratio", 0.5), margin)
                 else:
                     start = list(screen.clamp(step["from"][0], step["from"][1], margin))
@@ -125,8 +150,8 @@ class CWOperator:
                         "滑动距离 %dpx 低于下限 %dpx：请用 direction+ratio，或加大 from/to 间距"
                         % (span, self.config.swipe_min_px))
                 if not step.get("duration_ms"):
-                    speed = max(0.2, float(self.config.swipe_speed_px_ms))
-                    step["duration_ms"] = int(max(200, min(1600, round(span / speed))))
+                    speed = max(0.5, float(self.config.swipe_speed_px_ms))
+                    step["duration_ms"] = int(max(120, min(700, round(span / speed))))
                 step["from"] = start
                 step["to"] = end
             elif name in ("tap", "long_press", "pinch"):
@@ -158,7 +183,7 @@ class CWOperator:
 
     def _check_session(self):
         self.guard.check_session_window()
-        if self.session.phase == self.session.IDLE:
+        if self.session.phase in (self.session.IDLE, self.session.END):
             raise CWProtocolError(CWErrorCode.UNAVAILABLE, "链路未激活")
         if self.stopping():
             raise CWProtocolError(CWErrorCode.CANCELLED, "已请求停止")
@@ -178,15 +203,19 @@ class CWOperator:
             raise CWGuardError("用户否决了敏感操作（%s）" % word)
         return True
 
-    def _execute(self, steps, delay_ms, kind, action_id=None):
+    def _execute(self, steps, delay_ms, kind, action_id=None, snapshot=True, confirm=True):
         self._check_session()
         self.guard.check_batch(steps)
         self.guard.check_rate()
         self.guard.check_app_steps(steps)
         screen = self.screen(refresh=False)
         self.guard.check_bounds(screen, steps)
-        self._confirm_sensitive(steps)
+        self.guard.check_reflect_safe(self.session.phase, steps)
+        if confirm:
+            self._confirm_sensitive(steps)
         started = time.time()
+        if any(str(step.get("action") or "") != "wait" for step in steps):
+            self._last_activity = started
         try:
             result = self.device.run_steps(steps, delay_ms)
         except CWProtocolError as exc:
@@ -206,18 +235,31 @@ class CWOperator:
                                     delay_ms=delay_ms, ok=True, code=CWErrorCode.OK,
                                     elapsed_ms=elapsed, screen=screen.as_dict(),
                                     action_id=action_id)
-        self._snapshot_thumb(kind)
+        if snapshot:
+            self._snapshot_thumb(kind)
         return {"ok": True, "executed": result.get("executed", len(steps)),
                 "elapsed_ms": elapsed, "entry": entry}
 
     def _snapshot_thumb(self, tag):
+        """异步拍缩略图，不拖慢工具返回"""
         if not self.config.thumb_enabled:
             return
+        try:
+            worker = threading.Thread(target=self._capture_thumb, args=(tag,), daemon=True,
+                                      name="cw-thumb")
+            worker.start()
+        except Exception:
+            pass
+
+    def _capture_thumb(self, tag):
         try:
             png = self.device.screenshot(max_edge=self.config.thumb_long_edge)
         except Exception:
             return
-        rel = self.journal.save_thumb(png, tag=tag)
+        try:
+            rel = self.journal.save_thumb(png, tag=tag)
+        except Exception:
+            return
         if rel:
             self.journal.record("thumb", path=rel)
 

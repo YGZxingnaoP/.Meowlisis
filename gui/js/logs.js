@@ -26,6 +26,7 @@
     var elList = $('svcList'), elLines = $('lines'), elView = $('view');
     var elCurName = $('curName'), elCurState = $('curState'), elCurFile = $('curFile');
     var elFilter = $('filter'), elEmpty = $('empty'), elTabs = $('levelTabs');
+    var elPanel = $('svcPanel');
     var elQrBox = $('qrBox'), elQrImg = $('qrImg'), elQrHint = $('qrHint');
     var elQrWebui = $('qrWebui'), elQrToken = $('qrToken');
     var elStatLines = $('statLines'), elStatSize = $('statSize'), elStatRate = $('statRate');
@@ -330,9 +331,46 @@
         });
     }
 
+    // ---------------- 专用面板（CatPaws 控制台 / 手机摄像头） ----------------
+    var PANEL_KEYS = { catpaw: 'CatPawsPanel', phone: 'CameraPanel' };
+    var mountedPanel = '';
+
+    function toggleLogUi(show) {
+        if (elView) elView.style.display = show ? '' : 'none';
+        if (elTabs) elTabs.style.display = show ? '' : 'none';
+        if (elFilter) elFilter.style.display = show ? '' : 'none';
+        var foot = document.querySelector('.lh-foot');
+        if (foot) foot.style.display = show ? '' : 'none';
+    }
+
+    function unmountPanel() {
+        ['CatPawsPanel', 'CameraPanel'].forEach(function (name) {
+            var p = window[name];
+            if (p && p.unmount) { try { p.unmount(); } catch (e) { /* ignore */ } }
+        });
+        mountedPanel = '';
+        if (elPanel) { elPanel.innerHTML = ''; elPanel.hidden = true; }
+    }
+
+    function mountPanel(key) {
+        var name = PANEL_KEYS[key];
+        var panel = name ? window[name] : null;
+        if (!panel || !elPanel) {
+            unmountPanel();
+            toggleLogUi(true);
+            return;
+        }
+        if (mountedPanel === key) { toggleLogUi(false); return; }
+        unmountPanel();
+        mountedPanel = key;
+        toggleLogUi(false);
+        panel.mount(elPanel);
+    }
+
     function select(key, force) {
         if (key === cur && !force) return;
         cur = key;
+        mountPanel(key);
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
         elCurName.textContent = it ? _t(it.name) : key;
         elCurFile.textContent = it ? it.log : '';
@@ -462,13 +500,17 @@
         });
         $('btnStart').addEventListener('click', function () { act('start', cur); });
         $('btnStop').addEventListener('click', function () { act('stop', cur); });
-        window.addEventListener('beforeunload', function () { alive = false; });
+        window.addEventListener('beforeunload', function () { alive = false; unmountPanel(); });
     }
 
     // ---------------- 启动 ----------------
     bind();
+    window.Logs = { toast: toast, select: select, refreshList: refreshList };
     refreshList().then(function () {
-        select('main', true);
+        var wanted = '';
+        try { wanted = new URLSearchParams(location.search).get('svc') || ''; } catch (e) { wanted = ''; }
+        var known = (lastList || []).some(function (x) { return x.key === wanted; });
+        select(known ? wanted : 'main', true);
         rateTick = Date.now();
         tick();
         setInterval(function () { if (!document.hidden) refreshList(); }, LIST_MS);

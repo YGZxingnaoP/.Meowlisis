@@ -1,59 +1,52 @@
-import base64
-
-from openai import OpenAI
+from cw.port.base import CWPortError
+from cw.port.vision import CWVisionPort
+from cw.port import get_port
 
 
 class CWLLMError(Exception):
-    pass
+    """CatPaws 模型调用异常"""
+
+
+def _has_image(messages):
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "image_url":
+                    return True
+    return False
 
 
 class CWLLMClient:
+    """模型客户端：带图的消息走 vision 端口，其余走主 port；两者都能用工具"""
+
     def __init__(self, config):
         self.config = config
-        self._clients = {}
+        self.port = get_port(config)
+        self.vision = CWVisionPort(config)
 
-    def _client(self, vision=False):
-        base_url = self.config.vision_base_url if vision else self.config.llm_base_url
-        api_key = self.config.vision_api_key if vision else self.config.llm_api_key
-        if vision and not api_key:
-            api_key = self.config.llm_api_key
-        if not api_key:
-            raise CWLLMError("未配置 catpaws.llm.api_key")
-        key = (base_url, api_key)
-        if key not in self._clients:
-            self._clients[key] = OpenAI(base_url=base_url, api_key=api_key, timeout=90, max_retries=1)
-        return self._clients[key]
+    def supports_reasoning(self):
+        """是否需要在消息里回传 reasoning_content（思考模式模型）"""
+        return str(getattr(self.port, "provider", "")) == "deepseek"
 
-    def chat(self, messages, tools=None, vision=False, model=None):
-        client = self._client(vision=vision)
-        name = model or (self.config.vision_model if vision else self.config.llm_model)
-        kwargs = {
-            "model": name,
-            "messages": messages,
-            "temperature": self.config.llm_temperature,
-            "max_tokens": self.config.llm_max_tokens,
-        }
-        if tools:
-            kwargs["tools"] = tools
-            kwargs["tool_choice"] = "auto"
+    def chat(self, messages, tools=None, vision=None, model=None):
+        use_vision = _has_image(messages) if vision is None else bool(vision)
         try:
-            response = client.chat.completions.create(**kwargs)
+            if use_vision:
+                return self.vision.chat(messages, tools=tools)
+            return self.port.chat(messages, tools=tools, model=model)
+        except CWPortError as exc:
+            raise CWLLMError(str(exc))
         except Exception as exc:
             raise CWLLMError("模型调用失败：%s" % exc)
-        if not response.choices:
-            raise CWLLMError("模型没有返回结果")
-        return response.choices[0].message
 
-    def text(self, messages, vision=False, model=None):
-        message = self.chat(messages, tools=None, vision=vision, model=model)
-        return str(message.content or "")
+    def text(self, messages, vision=None, model=None):
+        return str(self.chat(messages, tools=None, vision=vision, model=model).content or "")
 
     @staticmethod
     def image_part(png_bytes, detail="low"):
-        encoded = base64.b64encode(png_bytes).decode("ascii")
-        return {"type": "image_url",
-                "image_url": {"url": "data:image/png;base64," + encoded, "detail": detail}}
+        return CWVisionPort.image_part(png_bytes, detail)
 
     @staticmethod
     def text_part(text):
-        return {"type": "text", "text": str(text)}
+        return CWVisionPort.text_part(text)

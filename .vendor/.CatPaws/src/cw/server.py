@@ -17,6 +17,7 @@ from cw.config import CWConfig
 from cw.device_client import CWDeviceClient
 from cw.guard import CWGuard
 from cw.journal import CWJournal
+from cw.keepawake import CWKeepAwake
 from cw.llm_client import CWLLMClient
 from cw.mock_device import CWMockDevice
 from cw.ops import CWOperator
@@ -52,8 +53,14 @@ class CWServer:
         self.journal.add_listener(self.relay.broadcast_op)
         self.web = CWWeb(self.config, self.session, self.operator, self.agent, self.store,
                          self.relay, self.journal, self.device)
+        self.keepawake = CWKeepAwake(self.config, self.operator, self.journal)
+        self.web.ensure_device = self.ensure_device
+        self._device_checked = 0.0
+        self._device_ok = not isinstance(self.device, CWMockDevice)
+        self._device_error = ""
 
     def _make_device(self, force_mock):
+        """连设备：连不上就保持离线（默认不偷偷换成 mock），只有显式 mock 才用假设备"""
         if force_mock or self.config.mock:
             return CWMockDevice(self.config)
         client = CWDeviceClient(self.config.device_ip, self.config.device_port,
@@ -62,18 +69,50 @@ class CWServer:
             client.ping()
             client.device_info(refresh=True)
             client.ensure_session()
+            self._device_ok = True
             return client
         except CWProtocolError as exc:
-            print("⚠️ 设备不可达（%s），切换到 mock 设备" % exc.message)
             try:
                 client.close()
             except Exception:
                 pass
-            return CWMockDevice(self.config)
+            if getattr(self.config, "mock_fallback", False):
+                print("⚠️ 设备不可达（%s），按配置切换到 mock 设备" % exc.message)
+                return CWMockDevice(self.config)
+            print("⚠️ 设备不可达（%s）：服务继续运行但设备离线，手机就绪后重启服务即可" % exc.message)
+            self._device_error = exc.message
+            return CWDeviceClient(self.config.device_ip, self.config.device_port,
+                                  self.config.token, self.config.device_timeout)
+
+    def ensure_device(self, force=False):
+        """设备离线时隔几秒重试一次（GUI/状态轮询自动调用，不用重启服务）"""
+        if isinstance(self.device, CWMockDevice) or self._device_ok:
+            return self._device_ok
+        now = time.time()
+        if not force and now - self._device_checked < 5.0:
+            return False
+        self._device_checked = now
+        try:
+            self.device.ping()
+            self.device.device_info(refresh=True)
+            self.device.ensure_session()
+        except Exception as exc:
+            self._device_error = str(exc)
+            return False
+        self._device_ok = True
+        self._device_error = ""
+        print("✅ 设备已连上：%s:%d" % (self.config.device_ip, self.config.device_port))
+        return True
+
+    def device_online(self):
+        """设备是否可用（状态接口用）"""
+        return bool(self._device_ok)
 
     def start(self):
         self.relay.start()
         self.web.start()
+        self.keepawake.start()
+        self.ensure_device(force=True)
         info = {}
         try:
             info = self.device.device_info(refresh=True)
@@ -84,13 +123,20 @@ class CWServer:
         print("🌐 控制台      %s" % self.web.url())
         print("📺 视频中继    ws://%s:%d/ws" % (self.config.relay_host, self.config.relay_port))
         print("📱 设备        %s:%d%s" % (self.config.device_ip, self.config.device_port,
-                                          "（mock）" if isinstance(self.device, CWMockDevice) else ""))
+                                          "（mock）" if isinstance(self.device, CWMockDevice)
+                                          else ("" if self._device_ok else "（离线）")))
         if screen:
             print("🖥️  屏幕        %sx%s @ scale %s" % (tuple(screen.get("pixel", [0, 0]))
                                                         + (screen.get("scale"),)))
+        if self.keepawake.enabled():
+            print("🖐️  防息屏      空闲 %s 秒轻点一下屏幕" % self.config.keep_awake_sec)
         print("🛑 停止词      在页面点停止，或 POST /cw/stop")
 
     def stop(self):
+        try:
+            self.keepawake.stop()
+        except Exception:
+            pass
         try:
             self.agent.stop("shutdown")
         except Exception:

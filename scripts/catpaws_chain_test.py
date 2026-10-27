@@ -1,3 +1,12 @@
+"""CatPaws 旧版联调脚本（已过时，仅留档）。
+
+2026-10 重写了 func/catpaws 与 .vendor/.CatPaws（配置真值迁到 .vendor/.CatPaws/config.yml、
+触发词改为「喵呜我要点外卖」+「手机」意图判断、角色回复走自有 port），本脚本里的
+「操作手机：…」前缀与旧流程已不再生效。新的回归与真机脚本：
+
+    scripts\\catpaws_bridge_test.py     # 不需要手机：触发→操作→追问→反思→end 的桥接回归（mock 设备）
+    scripts\\catpaws_meituan_test.py    # 真机：美团点外卖（不经过主项目）
+"""
 import argparse
 import json
 import logging

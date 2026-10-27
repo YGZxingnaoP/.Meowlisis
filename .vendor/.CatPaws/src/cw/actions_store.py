@@ -72,6 +72,14 @@ class CWActionStore:
                 files[name] = ""
         return files
 
+    def _local_modules(self, action_id):
+        """本 action 目录里的模块名：多文件脚本之间可以互相 import"""
+        try:
+            names = self._file_names(action_id)
+        except Exception:
+            return []
+        return [os.path.splitext(name)[0] for name in names if str(name).endswith(".py")]
+
     def _file_names(self, action_id):
         directory = self._dir(action_id)
         if not os.path.isdir(directory):
@@ -118,7 +126,7 @@ class CWActionStore:
         return True, ""
 
     def create(self, payload, phase):
-        if phase != "reflecting":
+        if phase != "recording":
             raise CWProtocolError(CWErrorCode.GUARD, "只有反思阶段可以新建 action")
         self._require_writable()
         action_id = str(payload.get("id") or "").strip()
@@ -128,30 +136,31 @@ class CWActionStore:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "action 已存在：%s" % action_id)
         title = str(payload.get("title") or "").strip()
         scene = str(payload.get("scene") or "").strip()
-        code = str(payload.get("code") or "")
         if not title or not scene:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "title 与 scene 必填")
-        if not code.strip():
-            raise CWProtocolError(CWErrorCode.BAD_REQUEST, "code 不能为空")
-        errors = self.reviewer.review({ENTRY_DEFAULT: code})
+        files = self._collect_files(payload)
+        if not files:
+            raise CWProtocolError(CWErrorCode.BAD_REQUEST, "脚本内容不能为空")
+        errors = self.reviewer.review(files)
         if errors:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "审查未通过：" + "；".join(errors))
         os.makedirs(self._dir(action_id), exist_ok=True)
-        target = os.path.join(self._dir(action_id), ENTRY_DEFAULT)
-        with open(target, "w", encoding="utf-8") as handle:
-            handle.write(code)
+        for name, body in files.items():
+            with open(os.path.join(self._dir(action_id), name), "w", encoding="utf-8") as handle:
+                handle.write(body)
         manifest = {
             "id": action_id,
             "title": title,
             "scene": scene,
             "status": "unverified",
-            "updatable": bool(payload.get("updatable", False)),
+            "updatable": bool(payload.get("updatable", True)),
             "author": str(payload.get("author") or "ai"),
             "version": 1,
             "entry": ENTRY_DEFAULT + ":run",
             "params": payload.get("params") or {},
             "steps": payload.get("steps") or [],
             "requires": payload.get("requires") or [],
+            "files": sorted(files),
             "last_run": {"ok": False, "at": "", "elapsed_ms": 0},
             "created_at": self._now(),
             "updated_at": self._now(),
@@ -159,9 +168,27 @@ class CWActionStore:
         self._save(manifest)
         return self.get(action_id)
 
+    @staticmethod
+    def _collect_files(payload):
+        """把 payload 变成 {文件名: 源码}：files 优先，其次单个 code → main.py"""
+        raw = payload.get("files")
+        if isinstance(raw, dict) and raw:
+            files = {}
+            for name, body in raw.items():
+                key = str(name or "").strip()
+                if not key.endswith(".py") or "/" in key or "\\" in key or key.startswith("."):
+                    raise CWProtocolError(CWErrorCode.BAD_REQUEST,
+                                          "文件名只能是 xxx.py：%s" % name)
+                files[key] = str(body or "")
+            if ENTRY_DEFAULT not in files:
+                raise CWProtocolError(CWErrorCode.BAD_REQUEST, "必须包含 %s" % ENTRY_DEFAULT)
+            return files
+        code = str(payload.get("code") or "")
+        return {ENTRY_DEFAULT: code} if code.strip() else {}
+
     def update(self, action_id, code, reason, phase, target=ENTRY_DEFAULT):
         manifest = self.get(action_id)
-        if phase not in ("running", "reflecting"):
+        if phase not in ("control", "recording"):
             raise CWProtocolError(CWErrorCode.GUARD, "链路未激活，禁止修改 action")
         self._require_writable()
         if self._locked(manifest):
@@ -171,7 +198,8 @@ class CWActionStore:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "只能修改已存在的文件：%s" % target)
         if not target.endswith(".py"):
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "只能修改 .py 文件")
-        errors = self.reviewer.review({target: code})
+        errors = self.reviewer.review({target: code},
+                                      self._local_modules(action_id))
         if errors:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "审查未通过：" + "；".join(errors))
         current = self.read_files(action_id).get(target, "")
@@ -218,7 +246,7 @@ class CWActionStore:
 
 
 def phase_is_running(phase):
-    return phase == "running"
+    return phase == "control"
 
 
 def count_changed_lines(before, after):

@@ -180,6 +180,13 @@ class CWActionRunner:
         if op == "params":
             self._reply(proc, {"ok": True, "params": getattr(self, "_params", {})})
             return None
+        if op == "screen":
+            try:
+                self._reply(proc, {"ok": True, "screen": self.operator.screen().as_dict()})
+            except Exception as exc:
+                self._reply(proc, {"ok": False, "code": CWErrorCode.INTERNAL,
+                                   "message": str(exc)})
+            return None
         if op == "log":
             self.journal.record("script_log", action_id=action_id,
                                 text=str(payload.get("text") or "")[:400])

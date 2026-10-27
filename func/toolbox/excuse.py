@@ -51,23 +51,29 @@ class TBExcuse:
             self.log.info("[Excuse] 未启用阻塞等待，直接返回")
             return None
 
-        # 阻塞等待文本输入（sensevoice_llm 或 api 直接文本，经 route_text 送达）
+        reply = self.wait_text(meowid, timeout)
+
+        if reply:
+            self._save_memory("user", str(reply))
+        return reply
+
+    def wait_text(self, meowid: str = "", timeout: float = None) -> Optional[str]:
+        """只注册等待队列并阻塞取一条文本（不自带提问、TTS 与记忆）"""
+        wait_for = float(timeout if timeout is not None else self.config.excuse_timeout)
         key = meowid or "default"
         q = queue.Queue()
         with self._lock:
             self._queues[key] = q
         try:
-            reply = q.get(timeout=timeout)
+            reply = q.get(timeout=wait_for) if wait_for > 0 else q.get()
         except queue.Empty:
             self.log.warning("[Excuse] 等待用户回复超时")
             reply = None
         finally:
             with self._lock:
                 self._queues.pop(key, None)
-
-        if reply:
-            self._save_memory("user", str(reply))
-        return reply
+        body = str(reply or "").strip()
+        return body or None
 
     # ==================== 文本拦截入口 ====================
     def route_text(self, text: str, meowid: str = "") -> bool:

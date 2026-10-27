@@ -1,6 +1,5 @@
 import math
 import random
-import time
 
 import cw_script
 
@@ -14,14 +13,23 @@ BG_DIFF_THRESHOLD = 10
 MIN_DISTANCE = 50
 MAX_DISTANCE = 2000
 MAX_PRESS_MS = 2500
+BOARD_WIDTH = 80
+SETTLE_MS = 2300
+
+
+def clamp(value, low, high):
+    """把参数夹到安全区间"""
+    return max(low, min(high, value))
 
 
 def is_piece(r, g, b):
+    """棋子底座的 RGB 特征（跳一跳经典配色）"""
     return (PIECE_R[0] <= r <= PIECE_R[1]) and (PIECE_G[0] <= g <= PIECE_G[1]) \
         and (PIECE_B[0] <= b <= PIECE_B[1])
 
 
 def find_piece(image):
+    """找棋子：扫描中段区域，取特征色平均 X 与最下沿 Y"""
     width, height = image.size
     pixels = image.load()
     scan_top = int(height * SCAN_TOP_RATIO)
@@ -43,48 +51,50 @@ def find_piece(image):
     return int(x_sum / count), int(y_max - PIECE_BOTTOM_OFFSET)
 
 
-def find_target(image, piece_x, piece_y):
+def find_target(image, piece):
+    """找目标方块：从上往下找第一行「非背景」像素，再左右扫出方块中心"""
     width, height = image.size
     pixels = image.load()
+    piece_x, piece_y = piece
     scan_top = int(height * SCAN_TOP_RATIO)
-    scan_bottom = piece_y - 50
-    body_width = 80
+    scan_bottom = min(piece_y - 50, height)
     if scan_bottom <= scan_top:
         return None
     top_y = 0
     for y in range(scan_top, scan_bottom):
-        bg = pixels[10, y][:3]
-        non_bg = 0
-        x_count = 0
+        background = pixels[10, y][:3]
+        hits = 0
         for x in range(10, width - 10):
-            if abs(x - piece_x) < body_width:
+            if abs(x - piece_x) < BOARD_WIDTH:
                 continue
             px = pixels[x, y][:3]
-            if abs(px[0] - bg[0]) + abs(px[1] - bg[1]) + abs(px[2] - bg[2]) > BG_DIFF_THRESHOLD:
-                non_bg += 1
-                x_count += 1
-        if non_bg > 20 and x_count >= 15:
+            if abs(px[0] - background[0]) + abs(px[1] - background[1]) \
+                    + abs(px[2] - background[2]) > BG_DIFF_THRESHOLD:
+                hits += 1
+        if hits > 20:
             top_y = y
             break
     if not top_y:
         return None
-    bg = pixels[10, top_y][:3]
+    background = pixels[10, top_y][:3]
     left = None
     right = None
     for x in range(10, width - 10):
-        if abs(x - piece_x) < body_width:
+        if abs(x - piece_x) < BOARD_WIDTH:
             continue
         px = pixels[x, top_y][:3]
-        if abs(px[0] - bg[0]) + abs(px[1] - bg[1]) + abs(px[2] - bg[2]) > BG_DIFF_THRESHOLD:
+        if abs(px[0] - background[0]) + abs(px[1] - background[1]) \
+                + abs(px[2] - background[2]) > BG_DIFF_THRESHOLD:
             left = x
             break
     if left is None:
         return None
     for x in range(width - 11, 9, -1):
-        if abs(x - piece_x) < body_width:
+        if abs(x - piece_x) < BOARD_WIDTH:
             continue
         px = pixels[x, top_y][:3]
-        if abs(px[0] - bg[0]) + abs(px[1] - bg[1]) + abs(px[2] - bg[2]) > BG_DIFF_THRESHOLD:
+        if abs(px[0] - background[0]) + abs(px[1] - background[1]) \
+                + abs(px[2] - background[2]) > BG_DIFF_THRESHOLD:
             right = x
             break
     if right is None:
@@ -103,47 +113,65 @@ def find_target(image, piece_x, piece_y):
     return target_x, target_y
 
 
+def press_duration(distance, coeff, max_press):
+    """把两点距离换算成长按毫秒数"""
+    return int(min(max(distance * coeff, 100), max_press))
+
+
+def jump_once(index, coeff, max_press):
+    """跳一次：截图 → 找棋子与目标 → 长按；成功返回 True"""
+    raw = cw_script.observe_image()
+    if not raw:
+        cw_script.log("第 %d 跳：截图失败" % (index + 1))
+        return False
+    try:
+        image = cw_script.image_from_bytes(raw)
+    except Exception as exc:
+        cw_script.log("第 %d 跳：截图解码失败（%s）" % (index + 1, exc))
+        return False
+    piece = find_piece(image)
+    if piece is None:
+        cw_script.log("第 %d 跳：没找到棋子" % (index + 1))
+        return False
+    target = find_target(image, piece)
+    if target is None:
+        cw_script.log("第 %d 跳：没找到目标方块" % (index + 1))
+        return False
+    distance = math.hypot(piece[0] - target[0], piece[1] - target[1])
+    if distance < MIN_DISTANCE or distance > MAX_DISTANCE:
+        cw_script.log("第 %d 跳：距离异常 %.0fpx" % (index + 1, distance))
+        return False
+    press = press_duration(distance, coeff, max_press)
+    cw_script.log("第 %d 跳：(%d,%d) → (%d,%d) 距离 %.0f 按压 %dms"
+                  % (index + 1, piece[0], piece[1], target[0], target[1], distance, press))
+    cw_script.long_press(piece[0], piece[1], press)
+    cw_script.wait(press + SETTLE_MS + random.randint(0, 200))
+    return True
+
+
 def run():
+    """按参数反复跳：连续三次没找到棋子/目标就收手，随时响应停止"""
     options = cw_script.params()
-    rounds = int(options.get("rounds", 20))
-    coeff = float(options.get("press_coeff", 1.15))
-    max_press = int(options.get("max_press_ms", MAX_PRESS_MS))
+    rounds = int(clamp(int(options.get("rounds", 20)), 1, 500))
+    coeff = clamp(float(options.get("press_coeff", 1.15)), 0.5, 3.0)
+    max_press = int(clamp(int(options.get("max_press_ms", MAX_PRESS_MS)), 100, 5000))
+    jumps = 0
+    misses = 0
     for index in range(rounds):
         if cw_script.should_stop():
-            cw_script.done(False, "用户停止")
+            cw_script.done(False, "主人喊停了，已跳 %d 下" % jumps)
             return
-        raw = cw_script.observe_image()
-        if not raw:
-            cw_script.log("截图失败")
-            time.sleep(0.8)
+        if jump_once(index, coeff, max_press):
+            jumps += 1
+            misses = 0
             continue
-        try:
-            image = cw_script.image_from_bytes(raw)
-        except Exception as exc:
-            cw_script.log("截图解码失败：%s" % exc)
-            time.sleep(0.8)
-            continue
-        piece = find_piece(image)
-        if piece is None:
-            cw_script.log("棋子未找到")
-            time.sleep(0.8)
-            continue
-        target = find_target(image, piece[0], piece[1])
-        if target is None:
-            cw_script.log("目标未找到")
-            time.sleep(0.8)
-            continue
-        distance = math.hypot(piece[0] - target[0], piece[1] - target[1])
-        if distance < MIN_DISTANCE or distance > MAX_DISTANCE:
-            cw_script.log("距离异常：%.0fpx" % distance)
-            time.sleep(0.8)
-            continue
-        press = min(int(distance * coeff), max_press)
-        cw_script.log("第 %d 跳：棋子(%s,%s) → 目标(%s,%s) 距离 %.0f 按压 %dms"
-                      % (index + 1, piece[0], piece[1], target[0], target[1], distance, press))
-        cw_script.long_press(piece[0], piece[1], press)
-        cw_script.wait(int(press + 2300 + random.uniform(0, 200)))
-    cw_script.done(True, "完成 %d 跳" % rounds)
+        misses += 1
+        if misses >= 3:
+            cw_script.done(False, "连续 3 次没找到棋子/目标，先停")
+            return
+        cw_script.wait(500)
+    cw_script.done(True, "跳完了，共 %d 下" % jumps)
 
 
-run()
+if __name__ == "__main__":
+    run()

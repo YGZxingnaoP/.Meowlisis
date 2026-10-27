@@ -1120,6 +1120,9 @@ window.__LOCALES__['en'] = {
 
     // ================= 日志中心页（logs.html / js/logs.js） =================
     "日志中心": "Log Center",
+    "目标，例如：打开美团点一份麦当劳": "Goal, e.g. open Meituan and order a meal",
+    "回答…": "Answer…",
+    "还没有条目，回车添加": "No entries yet — type and press Enter",
     "点服务名看日志 · ▶ 启动 / ■ 停止": "Click a service to view its log · ▶ start / ■ stop",
     "刷新服务列表": "Refresh service list",
     "自动跟随": "Auto-scroll",

@@ -482,6 +482,32 @@ body.modal-open .bg-stars {
     box-shadow: 0 0 0 3px var(--shadow);
 }
 
+/* CatPaws 配置面板：标签编辑器的加号行 / 端口块 */
+.cwp-tag-add-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cw-tag-add {
+    width: 34px;
+    height: 32px;
+    flex: 0 0 34px;
+    border-radius: 10px;
+    border: 1px dashed var(--pink-main);
+    background: #fff;
+    color: var(--pink-deep);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.cw-tag-add:hover {
+    background: var(--pink-light);
+    border-color: var(--pink-deep);
+}
+
 /* B站扫码登录弹窗 */
 .bili-login-overlay {
     position: fixed;
