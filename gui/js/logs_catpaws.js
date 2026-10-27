@@ -274,7 +274,7 @@
         var runner = payload.runner || {};
         if (!server.ok) {
             this._pill('cwDevice', '服务未启动', 'off');
-            this._pill('cwSession', '链路 --');
+            this._pill('cwSession', '链路 已停（任务中断）');
             this._pill('cwStream', '画面 --');
             this._stopShot();
             this._hint('CatPaws 服务没启动：点下面「启动 CatPaws 服务」，或用启动球「手机操作」');
@@ -305,7 +305,7 @@
             ? ('Runner 就绪' + (runner.version ? ' v' + runner.version : ''))
             : 'Runner 未连接', runner.ok ? 'on' : 'off');
         var mod = module.data || {};
-        if (mod.module && mod.module.active && !(data.session || {}).phase) {
+        if (server.ok && mod.module && mod.module.active && !(data.session || {}).phase) {
             this._pill('cwSession', '主程序已接管', 'busy');
         }
     };

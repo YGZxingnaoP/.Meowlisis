@@ -16,6 +16,8 @@ CW_STATE_PATH = os.path.join(".temp", "catpaws_state.json")
 class CWCatPawsState:
     """链路状态管理（单例，线程安全，落盘 .temp/catpaws_state.json）"""
 
+    STALE_SEC = 180.0
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self._lock = threading.RLock()
@@ -88,8 +90,18 @@ class CWCatPawsState:
             return dict(self._data)
 
     def is_active(self):
+        """链路是否在跑；超过 STALE_SEC 没更新的 active 视为已中断（进程被杀/服务挂了）"""
         with self._lock:
-            return bool(self._data.get("active"))
+            if not self._data.get("active"):
+                return False
+            updated = float(self._data.get("updated_at") or 0)
+            if updated and time.time() - updated > self.STALE_SEC:
+                self._data.update({"active": False, "phase": "end", "reason": "stale",
+                                   "updated_at": time.time()})
+                self._save()
+                self.log.warning("[CatPaws] 状态超过 %s 秒没更新，标记为已中断" % self.STALE_SEC)
+                return False
+            return True
 
     def meowid(self):
         with self._lock:

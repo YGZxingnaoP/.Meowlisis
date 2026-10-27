@@ -237,6 +237,7 @@
     function tick() {
         if (!alive) return;
         if (!paused && !document.hidden) loadOnce(false);
+        else if (!document.hidden) refreshState();
         var now = Date.now();
         if (now - rateTick >= 2000) {
             rate = Math.round(rateN / ((now - rateTick) / 1000));
@@ -244,6 +245,21 @@
             elStatRate.textContent = rate ? _t('{n} 行/秒', { n: rate }) : '—';
         }
         setTimeout(tick, TAIL_MS);
+    }
+
+    // 暂停/只读状态栏：只刷运行状态，不动日志内容
+    function refreshState() {
+        api('/api/logs/tail?svc=' + encodeURIComponent(cur) + '&limit=50').then(function (j) {
+            if (j.running) {
+                var extra = (j.pid ? ' pid ' + j.pid : '') +
+                            (j.ports && j.ports.length ? ' · ' + _t('端口 {ports}', { ports: j.ports.join(',') }) : '');
+                elCurState.textContent = _t('● 运行中') + extra;
+            } else {
+                elCurState.textContent = _t('○ 未运行');
+            }
+            elCurState.className = 'lh-state' + (j.running ? ' run' : '');
+            elStatSize.textContent = _t('文件 {size}', { size: fmtSize(j.size) });
+        }).catch(function () { /* 忽略：状态栏刷新失败不打扰 */ });
     }
 
     // ---------------- NapCat 二维码 ----------------
