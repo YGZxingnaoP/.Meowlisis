@@ -134,11 +134,11 @@ class TBoxQQResponse:
             on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("private", user_id, text),
         )
-        # 4. 记录 AI 回复短期记忆
+        # 4. 记录 AI 回复短期记忆（AI 自己说的话不加来源前缀）
         if final_text and self.napcat_config.short_mem_enabled and not is_bot:
             self.short_memory.save({
                 "role": "assistant",
-                "content": f"【来自QQ，{mem_name}的消息】{final_text}",
+                "content": final_text,
                 "type": "qq_response",
             }, self.napcat_config.short_mem_rounds)
         # 5. 记录 AI 回复长期记忆（默认关闭）
@@ -836,13 +836,13 @@ class TBoxQQResponse:
             if at_self:
                 self.short_memory.save({
                     "role": "assistant",
-                    "content": f"【来自QQ，{group_name}的群消息】{final}",
+                    "content": final,
                     "type": "qq_response",
                 }, self.napcat_config.short_mem_rounds)
             else:
                 self.short_memory.save({
                     "role": "assistant",
-                    "content": f"【来自QQ，{group_name}的群消息】{final}",
+                    "content": final,
                     "type": "qq_groupchat",
                 }, self.napcat_config.group_memory_limit)
         # 群性质概括计数
