@@ -334,7 +334,14 @@ MeowSinger 点歌模块，通过关键词或前缀触发，调用网易云音乐
 MeowVision 视觉模块，支持屏幕截图、画面裁剪与变化检测，调用多模态模型理解画面。
 
 ## 手机操控
-施工中，暂无实现。
+让角色自己拿着手机办事：电脑通过 USB 隧道把 WebDriverAgent 跑在 iPhone 上（魔改版见 [CatApps_iOS](https://github.com/YGxingnaoP/CatApps_iOS)），角色看图、点击、输入、翻页，边做边说话。对应 `func/catpaws`（只做意图判断与语音/记忆桥接，不碰 LLM）与 `.vendor/.CatPaws`（独立 LLM、操作链路、action 脚本、屏幕推流），配置真值在 `.vendor/.CatPaws/config.yml`。
+
+- 触发：说「喵呜我要点外卖」直接接链路；只提「手机」等意图词则先让 LLM 判断要不要接管
+- 操作分三类：单次（点一下、滑一下、返回）、连续（一次下发多步，默认 90ms 间隔）、action 脚本（流程固定就沉淀成 `actions/<id>/`，反思阶段写完要主人点两次头）
+- 收尾：办完先问「还有别的事吗」，确认后进反思沉淀脚本；付款、密码、隐私类操作整条链路都禁止
+- 说话与记忆：手机端的回复走角色声线播报，同时写进短期记忆（`phone_control_user` / `phone_control_response`）、长期记忆与用户记忆
+- GUI：手机操作面板里有实时画面、操作流水、配置面板与启动按钮；手机端用浏览器打开 `https://<电脑IP>:8443` 能看到桌宠
+- 单独联调：`scripts\catpaws_device_test.bat` 开「对话 + 流水」两个窗口，可直接跑真机，不用启动主程序
 
 ## 绘画
 施工中，暂无实现。
