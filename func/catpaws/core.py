@@ -63,7 +63,10 @@ class CWCatPawsCore:
 
     def stop(self, reason="user"):
         """外部主动停止（GUI / 停止词）"""
-        return self.stop_port.trigger(reason)
+        try:
+            return self.stop_port.trigger(reason)
+        finally:
+            self._exit_state()
 
     def start_task(self, goal, username, text="", source="gui"):
         """外部主动指定目标启动（GUI 面板用，跳过触发判断）"""
@@ -105,6 +108,23 @@ class CWCatPawsCore:
             self.log.warning("[CatPaws] 补充指令未送达：%s" % result.get("message", ""))
         return True
 
+    def _enter_state(self):
+        """链路开始：占位声明「手机操作中」，主动回复计时随之暂停"""
+        try:
+            from func.pipeline.plugins_state import PluginsStateBridge, CAP_ACTIVE_REPLY
+            PluginsStateBridge().enter("catpaws", caps={CAP_ACTIVE_REPLY: False},
+                                       title="手机操作")
+        except Exception:
+            self.log.exception("[CatPaws] 声明插件状态失败")
+
+    def _exit_state(self):
+        """链路结束：释放占位，主动回复恢复计时"""
+        try:
+            from func.pipeline.plugins_state import PluginsStateBridge
+            PluginsStateBridge().exit("catpaws")
+        except Exception:
+            self.log.exception("[CatPaws] 释放插件状态失败")
+
     def _start(self, goal, username, text, source):
         """启动服务端链路；服务不可用或手机没连上时以角色口吻说明"""
         status = self.client.status()
@@ -136,6 +156,7 @@ class CWCatPawsCore:
             self._thread = threading.Thread(target=self._run, args=(username, run_id),
                                             name="catpaws-sync", daemon=True)
             self._thread.start()
+        self._enter_state()
         self.log.info("[CatPaws] 链路启动（%s）：%s" % (source, goal[:60]))
         return True
 
@@ -143,29 +164,32 @@ class CWCatPawsCore:
         """轮询服务端：把角色回复桥接出去，等 end 之后释放拦截"""
         started = time.time()
         reason = ""
-        while self.state.is_active() and self.state.snapshot().get("run_id") == run_id:
-            status = self.client.status()
-            if not status.get("ok"):
-                reason = "service_down"
-                break
-            self._consume(username)
-            remote = status.get("session") or {}
-            phase = str(remote.get("phase") or "idle")
-            self.state.sync(phase=phase, session=str(remote.get("session") or ""))
-            if phase == "end" or (phase == "idle" and not status.get("agent_busy")):
-                reason = str(remote.get("reason") or "done")
-                break
-            if self.config.max_run_sec > 0 and time.time() - started > self.config.max_run_sec:
-                self.log.warning("[CatPaws] 超过 %s 秒仍无结果，停止链路" % self.config.max_run_sec)
-                self.client.stop("timeout")
-                reason = "timeout"
-                break
-            time.sleep(max(0.2, self.config.poll_sec))
-        snapshot = self.state.snapshot()
-        if snapshot.get("run_id") == run_id and not snapshot.get("reason"):
-            self.state.finish(reason)
+        try:
+            while self.state.is_active() and self.state.snapshot().get("run_id") == run_id:
+                status = self.client.status()
+                if not status.get("ok"):
+                    reason = "service_down"
+                    break
+                self._consume(username)
+                remote = status.get("session") or {}
+                phase = str(remote.get("phase") or "idle")
+                self.state.sync(phase=phase, session=str(remote.get("session") or ""))
+                if phase == "end" or (phase == "idle" and not status.get("agent_busy")):
+                    reason = str(remote.get("reason") or "done")
+                    break
+                if self.config.max_run_sec > 0 and time.time() - started > self.config.max_run_sec:
+                    self.log.warning("[CatPaws] 超过 %s 秒仍无结果，停止链路" % self.config.max_run_sec)
+                    self.client.stop("timeout")
+                    reason = "timeout"
+                    break
+                time.sleep(max(0.2, self.config.poll_sec))
             snapshot = self.state.snapshot()
-        self.log.info("[CatPaws] 链路结束（%s）" % (snapshot.get("reason") or reason))
+            if snapshot.get("run_id") == run_id and not snapshot.get("reason"):
+                self.state.finish(reason)
+                snapshot = self.state.snapshot()
+            self.log.info("[CatPaws] 链路结束（%s）" % (snapshot.get("reason") or reason))
+        finally:
+            self._exit_state()
 
     def _consume(self, username):
         """拉取增量事件：角色说的话写入记忆并播报，服务端提问则按序暂停等回答"""

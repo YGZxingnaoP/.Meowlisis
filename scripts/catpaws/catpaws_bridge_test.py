@@ -20,7 +20,7 @@ import sys
 import time
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SERVER = os.path.join(ROOT, ".vendor", ".CatPaws", "src", "cw", "server.py")
 
 

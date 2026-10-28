@@ -62,5 +62,10 @@ class MeowLLMLtMemBridge:
     def _format_line(uid: str, text: str) -> str:
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         name = str(uid or "unknown").replace("\r", " ").replace("\n", " ")
+        try:
+            from func.pipeline.id_signup import display_name
+            name = display_name(name) or name
+        except Exception:
+            pass
         content = str(text or "").replace("\r", " ").replace("\n", " ")
         return f"[{now}][{name}]: {content}"

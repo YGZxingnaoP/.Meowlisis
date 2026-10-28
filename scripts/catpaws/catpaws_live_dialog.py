@@ -82,7 +82,7 @@ def resolve_meowid(given):
     if given:
         return given
     try:
-        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
         from func.pipeline.id_signup import IdSignupBridge
         for user in IdSignupBridge().list_users():
             meowid = str(user.get("meowid") or "").strip()

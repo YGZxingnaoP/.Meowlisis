@@ -1,6 +1,6 @@
 @echo off
 setlocal
-cd /d "%~dp0.."
+cd /d "%~dp0..\.."
 set "PY=%CD%\runtime\311\python.exe"
 netstat -ano | findstr /R /C:":18110 .*LISTENING" >nul
 if not errorlevel 1 goto chat
@@ -11,5 +11,5 @@ popd
 ping -n 7 127.0.0.1 >nul
 :chat
 echo [2/2] chat mode, type q to quit
-"%PY%" "%CD%\scripts\catpaws_chain_test.py" chat %*
+"%PY%" "%CD%\scripts\catpaws\catpaws_chain_test.py" chat %*
 endlocal

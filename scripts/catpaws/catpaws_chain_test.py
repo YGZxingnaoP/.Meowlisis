@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if os.path.abspath(os.getcwd()) != ROOT:
     os.chdir(ROOT)
 if ROOT not in sys.path:

@@ -2,8 +2,8 @@
 
 > **⚠ 已过时（2026-10 重写）**：本文描述的是旧实现（触发词「操作手机」、`config.yml → catpaws`、
 > 无角色化交流）。现行方案见 [CatPaws手机操作链路_实现说明.md](CatPaws手机操作链路_实现说明.md) 与
-> `.vendor/.CatPaws/CONFIG.md`；回归脚本用 `scripts/catpaws_bridge_test.py`（免手机）与
-> `scripts/catpaws_meituan_test.py`（真机）。
+> `.vendor/.CatPaws/CONFIG.md`；回归脚本用 `scripts/catpaws/catpaws_bridge_test.py`（免手机）与
+> `scripts/catpaws/catpaws_meituan_test.py`（真机）。
 
 > 面向：Meowlisis 主项目 + `.vendor/.CatPaws`。
 > 状态：代码已落地并通过静态/单元自检；真机只做了只读验证（截图、设备信息），动作链路待你实跑。
@@ -18,14 +18,14 @@ runtime\311\python.exe .vendor\.CatPaws\src\cw\server.py
 ::    控制台 http://127.0.0.1:18110
 
 :: 2) 状态 / 截图（只读，不动手机）
-runtime\311\python.exe scripts\catpaws_chain_test.py status
-runtime\311\python.exe scripts\catpaws_chain_test.py device
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py status
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py device
 
 :: 3) 只跑 catpaws 链路（不启 TTS、不走主 LLM）
-runtime\311\python.exe scripts\catpaws_chain_test.py run "操作手机：打开QQ，给我的电脑发一条消息：猫爪联调"
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py run "操作手机：打开QQ，给我的电脑发一条消息：猫爪联调"
 
 :: 4) 文字版角色对话（不启主程序、不启 TTS，能一直打字聊）
-runtime\311\python.exe scripts\catpaws_chain_test.py chat
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py chat
 ```
 
 设备侧前置不变：插线、解锁、`catpaws-launcher\start.cmd`（看到 `/cw/v1/ping` 200）。
@@ -164,7 +164,7 @@ catpaws:
 
 ### B. 不启 TTS，先验链路
 ```bat
-runtime\311\python.exe scripts\catpaws_chain_test.py run "操作手机：打开QQ，给我的电脑发一条消息：猫爪联调"
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py run "操作手机：打开QQ，给我的电脑发一条消息：猫爪联调"
 ```
 脚本会实时打印 `/cw/ops`（observe/tool_call/执行/错误），结束时打印 `ok/reason/final` 并截图到 `%TEMP%\catpaws_test\`。
 - `--service`：服务没起时自动拉起；
@@ -180,7 +180,7 @@ runtime\311\python.exe scripts\catpaws_chain_test.py run "操作手机：打开Q
 ### C2. 不起主程序、不起 TTS 的文字对话（`chat`）
 
 ```bat
-runtime\311\python.exe scripts\catpaws_chain_test.py chat
+runtime\311\python.exe scripts\catpaws\catpaws_chain_test.py chat
 ::   --meowid 000001   身份（默认 000001，主人的内部编号）
 ::   --ltmem           额外写长期/用户档案（默认只写短期记忆）
 ```

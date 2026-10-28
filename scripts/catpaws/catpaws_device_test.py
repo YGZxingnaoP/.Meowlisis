@@ -19,7 +19,7 @@ import time
 import urllib.error
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(ROOT, ".vendor", ".CatPaws", "src")
 VENDOR = os.path.join(ROOT, ".vendor", ".CatPaws")
 PYTHON = os.path.join(ROOT, "runtime", "311", "python.exe")

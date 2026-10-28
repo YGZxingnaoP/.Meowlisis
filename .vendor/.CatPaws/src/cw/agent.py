@@ -1,4 +1,5 @@
 import json
+import os
 import threading
 import time
 
@@ -9,26 +10,25 @@ from cw.toolparse import parse_tool_calls, strip_markup
 
 CW_TOOL_RULES = (
     "操作约束：\n"
-    "1. 操作分三类：cw_single 单次操作（大部分场景：点一下、滑一下、返回、找图标点图标）、"
-    "cw_sequence 连续操作（游戏连招、打字、进入→点击→返回这种已经确定路径的，一次下发做完）、"
-    "cw_action 脚本操作（界面对得上已登记的 action 就直接调用）。\n"
-    "2. 动手前先 cw_observe(mode=ocr) 看一眼屏幕；坐标一律是截图像素，点 OCR 框中心 (x+w/2, y+h/2)。\n"
-    "3. 返回上一级：先点左上角返回按钮；没有按钮就用 cw_single(swipe, edge=left, direction=right, "
-    "ratio=0.3) 走 iOS 左缘返回手势。\n"
-    "4. 滑动用 direction + ratio（0.3~0.6），不要手写起止点；连续操作里 delay_ms 默认 90ms、最小 90ms。\n"
-    "5. 能一步做完就别拆：点文字用 cw_tap_text、返回用 cw_back、开 App 用 cw_open_app、"
-    "已经知道整条路径的用 cw_sequence 一次下发。拆成「观察→点」两轮会慢一倍。\n"
-    "6. 看图像时图上有粉色网格，线上的数字就是原图像素坐标，照线读数直接点，不要自己换算。\n"
-    "7. 输入文字用 cw_type_cn（中文会自动走粘贴→拼音→求助）；只想自己点键盘时用 cw_keys，"
-    "先点输入框让键盘弹出。\n"
-    "8. 能靠点击、滑动、输入、看图做到的，就必须做到：不许说自己做不到，不许让主人自己动手。\n"
-    "9. 不要主动退出当前界面回桌面，任务结束也不需要回桌面。\n"
-    "10. 打开应用一律从桌面/搜索里点图标进去（用 cw_open_app），不要用 launch_app / activate_app 直接拉起。\n"
-    "11. 不确定、缺内容、需要主人拿主意时，用 cw_ask_user 问；主人插进来的补充指令会实时出现，必须照办。\n"
-    "12. 操作过程中要像平常聊天一样自然地说一两句（在做什么、进展如何），不要闷头操作。\n"
-    "13. 全部做完、并且已经确认主人没有别的要求之后，才调用 cw_task_done 收尾。\n"
-    "14. 任何时候都不要自己发起付款、转账、输入密码或验证码、泄露隐私的操作。\n"
-    "15. 拿回 E_DEVICE_LOCKED 说明手机锁屏了：系统会自动喊主人解锁并等你，这期间不要连续硬重点。"
+    "1. 三类操作：cw_single 单次（点一下、滑一下、返回、点图标）、cw_sequence 连续"
+    "（游戏连招、打字、进入→点击→返回这种已确定路径，一次下发）、cw_action 已登记脚本。\n"
+    "2. 动手前先 cw_observe(mode=ocr) 看一眼；坐标一律截图像素，点 OCR 框中心 (x+w/2, y+h/2)。"
+    "看图像时图上有粉色网格，线上的数字就是原图像素，照线读数直接点，不要自己换算。\n"
+    "3. 手势：滑动用 direction + ratio（0.3~0.6），不要手写起止点，连续操作里 delay_ms 默认 90ms；"
+    "返回上一级先点左上角返回按钮，没有就用 cw_back（走左缘右滑）。\n"
+    "4. 能一步做完就别拆：点文字 cw_tap_text、返回 cw_back、开 App cw_open_app、"
+    "已知整条路径 cw_sequence。拆成「观察→点」两轮会慢一倍。\n"
+    "5. 输入文字用 cw_type_cn（中文自动走粘贴→拼音→求助）；只想点键盘时用 cw_keys，先点输入框弹出键盘。\n"
+    "6. 能靠点击、滑动、输入、看图做到的就必须做到：不许说自己做不到，不许让主人自己动手。\n"
+    "7. 别乱跳界面：不要主动回桌面，任务结束也不回桌面；开 App 一律从桌面/搜索里点图标进去，"
+    "不要用 launch_app / activate_app 直接拉起。\n"
+    "8. 不确定、缺内容、要主人拿主意就用 cw_ask_user；主人的插话会实时出现，必须照办。\n"
+    "9. 想说话就说，用你自己的口吻和脾气：可以吐槽这台手机、可以抱怨主人、可以自言自语、"
+    "办成了可以得意，卡住了可以烦。不用憋着，也不用按步骤汇报。\n"
+    "10. 全部做完、确认主人没有别的要求后才 cw_task_done；调用前用你自己的话说一句收尾，"
+    "结尾自然问一句还有没有别的事，不要用固定句式。\n"
+    "11. 任何时候都不自己发起付款、转账、输入密码或验证码、泄露隐私的操作。\n"
+    "12. 拿回 E_DEVICE_LOCKED 说明锁屏了：系统会喊主人解锁并等你，这期间不要连着硬重点。"
 )
 
 CW_REFLECT_RULES = (
@@ -113,6 +113,7 @@ class CWAgent:
         self._done_asks = 0
         self._unlock_asks = 0
         self._bridge_at = 0.0
+        self._last_spoken = ""
         self._role_prompt = ""
         self._request = {}
         self.operator.confirmer = self._confirm
@@ -183,16 +184,17 @@ class CWAgent:
         return self.session.ask(question, options)
 
     def task_done_check(self, summary):
-        """收尾前的用户确认：返回 (是否结束, 主人是否还有别的要求)"""
+        """收尾前的用户确认：用模型自己刚说的那句问，不再套固定模板"""
         text = str(summary or "").strip() or "都办好了"
         self._done_asks += 1
         if self._done_asks >= 2:
             self._done = True
             self.journal.record("task_done_forced", asks=self._done_asks, summary=text)
             return True, ""
-        question = "这边已经办完了：%s。主人还有别的事要我做吗？" % text
+        spoken = str(self._last_spoken or "").strip()
+        question = spoken if len(spoken) >= 4 else text
         answer = self.session.ask(question, ["没有了", "还有"])
-        self.journal.record("task_done", summary=text, answer=answer)
+        self.journal.record("task_done", summary=text, question=question, answer=answer)
         if self.operator.stopping():
             return False, ""
         if not str(answer or "").strip():
@@ -309,6 +311,10 @@ class CWAgent:
             self.operator.clear_stop()
             return
         messages = [{"role": "system", "content": self._system()}]
+        past = self._past_digest()
+        if past:
+            messages[0]["content"] += ("\n\n【系统记录：你以前用这台手机做过的（只给你自己回忆，别复述）】\n"
+                                       + "\n".join(past))
         for item in request.get("memory") or []:
             role = str((item or {}).get("role") or "").strip()
             content = str((item or {}).get("content") or "").strip()
@@ -350,6 +356,64 @@ class CWAgent:
             self.session.end(reason)
             self.operator.clear_stop()
 
+    def _ops_digest(self, limit=18):
+        """把最近的操作压成几行中文给模型看（只进上下文，不写任何外部记忆）"""
+        lines = []
+        for item in self.journal.tail(limit * 4):
+            kind = item.get("kind")
+            if kind == "single":
+                lines.append("动作 %s" % item.get("action"))
+            elif kind == "sequence":
+                lines.append("连做 %s" % " → ".join(item.get("steps") or []))
+            elif kind == "observe":
+                texts = [str(t) for t in (item.get("texts") or [])[:6] if str(t).strip()]
+                if texts:
+                    lines.append("看到 %s" % " / ".join(texts))
+            elif kind == "tool_call":
+                lines.append("调用 %s" % item.get("tool"))
+            elif kind == "ask":
+                lines.append("问主人 %s" % str(item.get("question") or "")[:40])
+            elif kind == "answer":
+                lines.append("主人答 %s" % str(item.get("answer") or "")[:40])
+        return lines[-limit:]
+
+    def _past_digest(self, limit=10):
+        """读本项目自己的操作日志，取上一次运行做过的事（跨轮记忆，不落主项目）"""
+        try:
+            path = self.config.ops_log_path()
+            if not os.path.isfile(path):
+                return []
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                rows = handle.readlines()[-400:]
+        except Exception:
+            return []
+        current = str(getattr(self.session, "session_id", "") or "")
+        lines = []
+        for row in rows:
+            try:
+                item = json.loads(row)
+            except Exception:
+                continue
+            if str(item.get("session") or "") == current:
+                continue
+            kind = item.get("kind")
+            if kind == "single":
+                lines.append("动作 %s" % item.get("action"))
+            elif kind == "sequence":
+                lines.append("连做 %s" % " → ".join(item.get("steps") or []))
+            elif kind == "ask":
+                lines.append("问主人 %s" % str(item.get("question") or "")[:40])
+            elif kind == "error":
+                lines.append("出错 %s" % str(item.get("code") or ""))
+        return lines[-limit:]
+
+    def _progress_block(self):
+        """本步进度摘要（拼在 system 里，每轮刷新；不产生任何新消息、不写文件）"""
+        lines = self._ops_digest()
+        if not lines:
+            return ""
+        return "\n\n【系统记录：你这次已经做过的（给你自己参考，不用复述）】\n" + "\n".join(lines)
+
     def _record_of_ops(self, limit=120):
         lines = []
         for item in self.journal.tail(limit):
@@ -387,6 +451,7 @@ class CWAgent:
     def _loop(self, messages, phase, max_rounds, transcript):
         limit = int(max_rounds)
         index = 0
+        base_system = str(messages[0].get("content") or "") if messages else ""
         while True:
             if limit > 0 and index >= limit:
                 if phase == self.session.CONTROL:
@@ -397,6 +462,8 @@ class CWAgent:
                 return messages
             if self._bridge_gone():
                 return messages
+            if phase == self.session.CONTROL and messages:
+                messages[0]["content"] = base_system + self._progress_block()
             for text in self.session.take_instructions():
                 messages.append({"role": "user", "content": "（主人插话）%s" % text})
                 self.journal.record("instruction_applied", text=text[:200])
@@ -410,6 +477,8 @@ class CWAgent:
                     calls = [CWTextCall(name, args, index)
                              for index, (name, args) in enumerate(recovered)]
             spoken = strip_markup(raw)
+            if spoken:
+                self._last_spoken = spoken
             reasoning = str(getattr(message, "reasoning_content", "") or "")
             assistant = {"role": "assistant", "content": raw}
             if reasoning or self.llm.supports_reasoning():

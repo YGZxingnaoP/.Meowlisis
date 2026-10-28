@@ -8,7 +8,7 @@ import os
 import sys
 import types
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(ROOT, ".vendor", ".CatPaws", "src"))
 
 from cw.geometry import CWScreen
