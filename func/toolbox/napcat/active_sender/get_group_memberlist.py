@@ -3,7 +3,7 @@
 # 获取群成员列表：用于识别群机器人（按昵称/群名片找 QQ 号）
 
 import re
-from typing import List, Dict, Optional
+from typing import List, Optional
 
 from func.log.default_log import DefaultLog
 
@@ -85,26 +85,27 @@ class TBGetGroupMemberList:
             return ret.get("data") or ret.get("members") or []
         return []
 
-    # ==================== AI tool ====================
-    def build_tools(self) -> List[dict]:
+    # ==================== QQ 链路内部子工具 ====================
+    def build_subtools(self) -> List[dict]:
+        """群成员列表子工具 schema（只供 QQ 链路内部循环触发，不注册到父级）"""
         return [{
             "type": "function",
             "function": {
                 "name": "get_group_member_list",
-                "description": "获取指定群的成员列表，用于识别群成员（如群机器人）的 QQ 号",
+                "description": "获取指定群的成员列表，用于按昵称/群名片查群成员的 QQ 号（如要 @ 某人）",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "group_id": {"type": "string", "description": "群号"},
+                        "group_id": {"type": "string", "description": "群号或群名"},
                     },
                     "required": ["group_id"],
                 },
             },
         }]
 
-    def dispatch(self, name: str, arguments: dict) -> str:
+    def dispatch_subtool(self, name: str, arguments: dict) -> str:
         if name == "get_group_member_list":
-            group_id = arguments.get("group_id", "")
+            group_id = (arguments or {}).get("group_id", "")
             gid, err = self._resolve_group(group_id)
             if not gid:
                 return f"获取群成员列表失败：{err}"
@@ -116,4 +117,4 @@ class TBGetGroupMemberList:
                 for m in members
             ]
             return f"群 {gid} 成员列表：\n" + "\n".join(lines)
-        return f"错误：未知工具 {name}"
+        return f"错误：未知子工具 {name}"

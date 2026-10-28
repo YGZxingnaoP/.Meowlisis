@@ -48,9 +48,9 @@ class TBSender:
         """记录本次主动发送时间（用于冷却）"""
         cls._last_active_send = time.time()
 
-    # ==================== tool schema ====================
-    def build_tools(self) -> List[Dict]:
-        """返回主动发送工具 schema（供父级 toolcalls 展开注册）"""
+    # ==================== tool schema（QQ 链路内部子工具） ====================
+    def build_subtools(self) -> List[Dict]:
+        """返回 QQ 链路内部的子工具 schema（只供 napcat_send 内部循环触发，不注册到父级）"""
         target_type = {"type": "string", "enum": ["friend", "group"],
                        "description": "目标类型：friend 好友 / group 群聊"}
         return [

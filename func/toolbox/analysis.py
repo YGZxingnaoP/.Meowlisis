@@ -3,7 +3,7 @@
 # 父级 toolcalls：注册触发型工具，由 AI 决策参数与 start
 
 import json
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from func.log.default_log import DefaultLog
 from func.toolbox.config import TBoxConfig
@@ -22,31 +22,27 @@ class TBoxAnalysis:
         self._register_modules()
 
     def _register_modules(self):
-        """注册父级「模块入口」（只暴露模块级工具，不暴露模块内部子工具）
-        模块内部的底层子工具（send_qq_message / search_file / capture_screen / crop_image 等）
-        只在模块内部完整流程中被调用，不暴露给父级。
+        """注册父级「动作入口」（只暴露模块级入口，不暴露 QQ 链路内部子工具）
+
+        父级决策是单轮链路（只执行第一个工具调用、结果不回灌），因此只允许注册
+        「一次调用即完成」的动作入口；取好友/群/群成员列表这类只读工具属于 QQ 链路
+        内部子工具，只在模块内部触发，一律不注册到父级。
         """
-        # NapCat 主动发送模块
+        # NapCat 主动发送（父级 QQ 入口之一：发消息）
+        # 主动发送关闭时不暴露入口，避免模型调用一个必然失败的模块。
         try:
-            from func.toolbox.napcat.active_sender.module import TBNapcatActiveModule
-            napcat = TBNapcatActiveModule()
-            for tool_schema in napcat.build_tools():
-                name = tool_schema.get("function", {}).get("name")
-                if name:
-                    self.register(name, napcat)
+            from func.toolbox.napcat.config import TBNapCatConfig
+            if TBNapCatConfig().active_send_enabled:
+                from func.toolbox.napcat.active_sender.module import TBNapcatActiveModule
+                napcat = TBNapcatActiveModule()
+                for tool_schema in napcat.build_tools():
+                    name = tool_schema.get("function", {}).get("name")
+                    if name:
+                        self.register(name, napcat)
+            else:
+                self.log.info("主动发送未启用，父级不暴露 napcat_send")
         except Exception:
             self.log.exception("注册 NapCat 主动发送模块失败")
-
-        # NapCat 群成员列表查询（用于 @ 特定成员时按名字反查 QQ 号）
-        try:
-            from func.toolbox.napcat.active_sender.get_group_memberlist import TBGetGroupMemberList
-            member_list = TBGetGroupMemberList()
-            for tool_schema in member_list.build_tools():
-                name = tool_schema.get("function", {}).get("name")
-                if name:
-                    self.register(name, member_list)
-        except Exception:
-            self.log.exception("注册群成员列表查询工具失败")
 
         # 视觉模块触发
         try:
@@ -181,8 +177,19 @@ class TBoxAnalysis:
                 self.llm = TBoxDeepSeekLLM()
         return self.llm
 
+    # QQ 链路内部子工具名：出现即说明有人把子工具注册到了父级，会导致父级出现
+    # 「取列表」与「发消息」同级、串联必然失败，直接拒绝。
+    SUBTOOL_BLOCKLIST = (
+        "get_friend_list", "get_group_list", "get_group_member_list",
+        "get_group_member_info", "search_file", "check_link",
+    )
+
     def register(self, name: str, tool):
-        """注册一个触发型工具到父级 toolcalls 注册表"""
+        """注册一个动作入口到父级 toolcalls 注册表（子工具一律拒绝）"""
+        if name in self.SUBTOOL_BLOCKLIST or str(name).startswith("send_qq_"):
+            self.log.error(f"[父级工具] 拒绝注册子工具 {name}："
+                           f"只读/底层发送只允许在 QQ 链路内部触发")
+            return
         self._tools[name] = tool
 
     def build_tools(self) -> List[Dict]:

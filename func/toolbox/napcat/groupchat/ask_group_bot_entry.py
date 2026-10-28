@@ -8,7 +8,6 @@ from typing import List, Dict, Optional
 from func.log.default_log import DefaultLog
 from func.toolbox.napcat.config import TBNapCatConfig
 from func.toolbox.napcat.groupchat.ask_group_bot import TBAskGroupBot
-from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
 
 
 class TBAskGroupBotEntry:
@@ -73,24 +72,17 @@ class TBAskGroupBotEntry:
         }]
 
     def _resolve_group_id(self, group_name: str) -> Optional[str]:
-        """群名 → 群号：纯数字直接当群号，否则按群名模糊匹配群列表。"""
+        """群名 → 群号：复用 QQ 链路内部子工具的解析器（纯数字直通，群名模糊匹配群列表）"""
         name = str(group_name or "").strip()
         if not name:
             return None
-        if name.isdigit():
-            return name
         try:
-            groups = TBGetGroupList().get()
+            from func.toolbox.napcat.active_sender.subtools import resolve_group
+            gid, _err = resolve_group(name)
+            return gid
         except Exception:
-            self.log.exception("获取群列表失败")
-            groups = []
-        for g in groups:
-            if not isinstance(g, dict):
-                continue
-            gname = str(g.get("group_name", "") or "")
-            if name in gname or gname in name:
-                return str(g.get("group_id", ""))
-        return None
+            self.log.exception("解析群名失败")
+            return None
 
     def dispatch(self, name: str, arguments: Dict) -> str:
         if name != self.TOOL_NAME:

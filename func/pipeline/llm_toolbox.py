@@ -105,6 +105,9 @@ class LLMToolboxBridge:
             fn = c.get("function") or {}
             name = fn.get("name") or c.get("name") or ""
             if name:
-                norm.append({"name": name,
+                # 保留 tool_call_id：QQ 链路内部子工具循环要把结果作为 role=tool
+                # 回灌给模型，缺 id 会被 OpenAI 兼容接口直接拒绝。
+                norm.append({"id": c.get("id") or "",
+                             "name": name,
                              "arguments": fn.get("arguments", c.get("arguments"))})
         return self._analysis().handle_tool_calls(norm, username, text)

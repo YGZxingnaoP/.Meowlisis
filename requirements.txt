@@ -18,6 +18,7 @@ aiohttp
 chardet
 requests
 dashscope
+pypinyin
 
 # 知识库 / 视觉 / 弹幕 / B站 / 文档解析
 chromadb
