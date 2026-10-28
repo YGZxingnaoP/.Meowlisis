@@ -112,6 +112,7 @@ class CWAgent:
         self._done = False
         self._done_asks = 0
         self._unlock_asks = 0
+        self._bridge_at = 0.0
         self._role_prompt = ""
         self._request = {}
         self.operator.confirmer = self._confirm
@@ -135,6 +136,7 @@ class CWAgent:
             self._concluded = False
             self._done = False
             self._done_asks = 0
+            self._bridge_at = time.time()
             self._request = request
             self._role_prompt = str(request.get("system_prompt") or "").strip()
             self.journal.record("prompt", chars=len(self._system()),
@@ -147,6 +149,25 @@ class CWAgent:
     def stop(self, reason="user"):
         self.operator.stop(reason)
         self.journal.record("stop", reason=reason)
+
+    def note_bridge(self):
+        """主程序每取一次回复/状态就续一次租约（桥断开后要自己停）"""
+        self._bridge_at = time.time()
+
+    def _bridge_gone(self):
+        """主程序（桥）消失判定：超时没被取回复就停手，免得无人监管地继续操作手机"""
+        limit = int(getattr(self.config, "bridge_lost_sec", 0) or 0)
+        if limit <= 0 or not self._bridge_at:
+            return False
+        if self.session.pending_question():
+            self._bridge_at = time.time()          # 等服务端提问的回答期间不算失联
+            return False
+        if time.time() - self._bridge_at < limit:
+            return False
+        self.journal.record("error", code="E_BRIDGE_LOST",
+                            message="主程序 %d 秒没有取回复，停止操作" % limit)
+        self.stop("bridge_lost")
+        return True
 
     def last_final(self):
         return self._final
@@ -373,6 +394,8 @@ class CWAgent:
                 return messages
             index += 1
             if self.operator.stopping():
+                return messages
+            if self._bridge_gone():
                 return messages
             for text in self.session.take_instructions():
                 messages.append({"role": "user", "content": "（主人插话）%s" % text})

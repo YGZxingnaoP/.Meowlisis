@@ -181,6 +181,9 @@ class CWCatPawsCore:
             index = int(item.get("seq") or 0)
             if index <= self.state.seq():
                 continue
+            item_session = str(item.get("session") or "")
+            if item_session and remote_session and item_session != remote_session:
+                continue                    # 别的会话的事件，绝不重放（防 TTS 复读）
             if str(item.get("kind") or "") == "ask":
                 self.state.sync(seq=index)
                 self._answer(item, username)

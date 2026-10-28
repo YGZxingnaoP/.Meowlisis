@@ -115,6 +115,7 @@ class CWConfig:
         self.action_timeout_sec = int(_pick(agent, "action_timeout_sec", 120))
         self.ask_timeout_sec = int(_pick(agent, "ask_timeout_sec", 150))
         self.agent_max_rounds = int(_pick(agent, "max_rounds", 0))
+        self.bridge_lost_sec = int(_pick(agent, "bridge_lost_sec", 60))
         self.start_home = bool(_pick(agent, "start_home", True))
         self.exit_to_home = bool(_pick(agent, "exit_to_home", False))
         self.reflect_enabled = bool(_pick(agent, "reflect_enabled", True))

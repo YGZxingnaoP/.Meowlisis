@@ -22,6 +22,7 @@ class CWJournal:
         with self._lock:
             self.session_id = "s_" + datetime.datetime.now().strftime("%m%d%H%M%S")
             self._seq = 0
+            self._ring.clear()
             return self.session_id
 
     def _now(self):

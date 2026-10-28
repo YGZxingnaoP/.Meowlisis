@@ -128,6 +128,7 @@ class CWWeb:
                     self._static(handler, path.split("/")[-1])
                     return
                 if path == "/cw/status":
+                    self.agent.note_bridge()
                     self._send_json(handler, self._status())
                     return
                 if path == "/cw/ops":
@@ -135,13 +136,18 @@ class CWWeb:
                     self._send_json(handler, {"ok": True, "items": self.journal.tail(limit)})
                     return
                 if path == "/cw/replies":
+                    self.agent.note_bridge()
                     since = int((query.get("since") or ["0"])[0] or 0)
                     limit = int((query.get("limit") or ["200"])[0])
+                    current = str(self.session.session_id or "")
+                    # seq 每个会话都从 0 开始，而 tail() 是跨会话的环形缓冲：
+                    # 必须按会话过滤，否则新链路一启动就会把上一轮的事件再放一遍（TTS 复读）
                     items = [item for item in self.journal.tail(limit)
-                             if int(item.get("seq") or 0) > since]
+                             if int(item.get("seq") or 0) > since
+                             and str(item.get("session") or "") == current]
                     self._send_json(handler, {
                         "ok": True,
-                        "session": self.session.session_id,
+                        "session": current,
                         "phase": self.session.phase,
                         "seq": int(items[-1].get("seq") or since) if items else since,
                         "items": items,
@@ -183,6 +189,7 @@ class CWWeb:
                 self._send_json(handler, {"ok": True, "session": self.session.snapshot()})
                 return
             if path == "/cw/answer":
+                self.agent.note_bridge()
                 text = str(body.get("text") or "")
                 accepted = self.session.answer(text)
                 if not accepted:
