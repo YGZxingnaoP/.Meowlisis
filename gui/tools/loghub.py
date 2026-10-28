@@ -270,6 +270,7 @@ def _cmdline_pids(key):
     # 结果就是"查出一堆乱 pid、状态永远显示运行中、停止永远报失败"。
     # （cmd.exe 不能排 —— .bat 启动的服务，根进程就是 cmd）
     ps = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -match '%s' "
+          "-and $_.CommandLine -notmatch ' -c ' "
           "-and $_.Name -notmatch '^(powershell|pwsh|wmic)\\.exe$' } | "
           "ForEach-Object { $_.ProcessId }" % rx.replace("'", "''"))
     code, out = _run(['powershell', '-NoProfile', '-NonInteractive', '-Command', ps], timeout=30)
@@ -320,6 +321,8 @@ def _scan_all_cmdlines():
             cl = ' '.join(p.info.get('cmdline') or [])
             if not cl:
                 continue
+            if ' -c ' in (' ' + cl + ' ') and '.py' not in cl:
+                continue            # python -c "..." 一次性脚本，别当成服务（会误杀/误判）
             for key, keys in pats.items():
                 if keys and any(x in cl for x in keys):
                     found[key].append(pid)
@@ -351,6 +354,31 @@ def _ensure_scan(max_age=25):
 
 def _scan_pids(key):
     return list(_scan['pids'].get(key) or [])
+
+
+def _live_pids(key):
+    """现场扫一次该服务的进程（不吃缓存）—— 启停前判断"是不是已经有实例在外面跑" """
+    try:
+        found = _scan_all_cmdlines()
+        return [x for x in found.get(key, []) if _pid_alive(x)]
+    except Exception:
+        try:
+            return [x for x in _cmdline_pids(key) if _pid_alive(x)]
+        except Exception:
+            return []
+
+
+def _log_tail(key, lines=12):
+    """读服务日志尾部，启动失败时把真实报错甩给用户"""
+    try:
+        path = _log_path(key)
+        if not path.is_file():
+            return ''
+        with open(path, 'r', encoding='utf-8', errors='replace') as handle:
+            body = handle.readlines()[-lines:]
+        return ''.join(body).strip()
+    except Exception:
+        return ''
 
 
 def _running(key):
@@ -629,6 +657,15 @@ def _launch(key):
         return True, {'status': 'ok', 'message': '已在运行', 'pid': pid,
                       'ports': ports, 'running': True}
 
+    # 关键防线：现场再扫一次。_running() 可能依赖过期缓存，而外部（launcher.cmd、
+    # 命令行）起的实例不会进内存句柄；不查就再起一个 → 两个进程抢同一个端口
+    # （Werkzeug 允许端口复用，手机连到哪个进程是随机的，表现为时好时坏）
+    others = _live_pids(key)
+    if others:
+        return False, {'status': 'error', 'running': True, 'pid': others[0],
+                       'message': '已经有实例在跑（pid %s），先点停止再启动；'
+                                  '重复启动会让两个进程抢同一个端口' % others[0]}
+
     ok, msg, proc = launcher.start(key, _base())
     if not ok:
         return False, {'status': 'error', 'message': msg}
@@ -636,6 +673,18 @@ def _launch(key):
     # 直接持有 Popen 句柄：之后判断"在不在跑 / pid 是多少"是 O(1)，
     # 不必再起 powershell 反查进程（这里原来有个 6×0.8s 的后台线程，已删除）。
     if proc is not None:
+        # 进程立刻退出（端口被占、配置错、依赖缺失）要当场报出来，
+        # 不能先显示"已启动"再等下一次刷新
+        deadline = time.time() + 1.2
+        while time.time() < deadline and proc.poll() is None:
+            time.sleep(0.05)
+        if proc.poll() is not None:
+            tail = _log_tail(key)
+            return False, {'status': 'error', 'running': False,
+                           'message': '进程启动后立刻退出（exit=%s）%s'
+                                      % (proc.returncode,
+                                         ('：' + tail.splitlines()[-1][:160]) if tail else ''),
+                           'detail': tail}
         _procs[key] = proc
         try:
             _write_pid(key, proc.pid)
@@ -736,6 +785,15 @@ def stop(key):
         failed.extend(leftover)
     if failed:
         msgs.append('这些杀不掉（权限？）: ' + ','.join(str(x) for x in failed))
+
+    # 复查第二步：现场再扫一遍，确认这个服务真的没有残留进程
+    # （快路径只杀"记录里的 pid"，外部起的实例、或被杀进程拉起的子进程会漏网，
+    #  端口就会一直被占着，表现为"已停止"但下次启动失败/手机连到旧进程）
+    time.sleep(0.15)
+    stale = [x for x in _live_pids(key) if x not in killed]
+    if stale:
+        msgs.append('还有残留进程没结束: ' + ','.join(str(x) for x in stale) + '（可再点一次停止）')
+        leftover = sorted(set(list(leftover) + stale))
     if not pids:
         msgs.append('没找到它的进程：可能本来就已停止，或不是从本界面启动的'
                     '（点 ⟳ 刷新可更新状态）')
