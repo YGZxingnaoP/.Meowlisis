@@ -544,10 +544,10 @@ class TBoxQQResponse:
         except Exception:
             self.log.exception("QQ 群聊破甲审查异常")
 
-        # QQ 导演（简化版）：只有 @ 与续聊才看走向；关键词回复、冒泡都不参与
+        # QQ 导演（简化版）：@ / 关键词 / 续聊都参与；冒泡不参与
         # 放在意图分析之后：工具类消息已被消费、不会走回复，不该在这里起戏。
         director_session = ""
-        director_on = trigger in ("@", "followup")
+        director_on = trigger in ("@", "关键词", "followup")
         if director_on:
             try:
                 from func.toolbox.napcat.director.core import QQDirectorCore

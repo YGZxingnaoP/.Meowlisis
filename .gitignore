@@ -63,6 +63,7 @@ character/userinfo/
 character/paints/
 character/svg_paints/
 character/shared_videos/
+character/director_topic/
 
 #DataBase数据
 .vendor/.DataBase/

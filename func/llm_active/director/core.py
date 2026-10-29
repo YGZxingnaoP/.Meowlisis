@@ -23,7 +23,10 @@ from func.pipeline.short_memory import ShortMemory
 
 @singleton
 class DirectorCore:
-    """导演核心（主链路）：只服务电脑端对话，QQ 不接入"""
+    """导演核心（主链路）：只服务电脑端对话；QQ 有独立的简化版（func/toolbox/napcat/director），本类不接入"""
+
+    # 用户明确拒绝的兜底词（判官只判“无聊”，不判“别烦”；模型漏打 clear 时用这个收）
+    REFUSAL_WORDS = ("别烦", "不想听", "别说了", "打住", "别吵", "闭嘴", "不聊了", "别演了")
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -143,9 +146,20 @@ class DirectorCore:
         return True
 
     def enqueue_user_turn(self, uid, text, source="msg", traceid="") -> bool:
-        """入口桥调用：导演激活时接管用户回合"""
+        """入口桥调用：导演激活时接管用户回合
+
+        用户明确说“别烦/不想听”时直接收尾，本回合交回主链路（不依赖模型打 clear）。
+        """
         if not self.is_active():
             return False
+        try:
+            plain = str(text or "")
+            if any(word in plain for word in self.REFUSAL_WORDS):
+                self.bridge.clear("main", "用户明确拒绝")
+                self.log.info("[导演] 用户明确拒绝，收尾；本回合交回主链路")
+                return False
+        except Exception:
+            self.log.exception("[导演] 拒绝兜底失败，继续按原逻辑接管")
         return self.responder.enqueue(uid, text, source, traceid)
 
     # ==================== 计划推进 ====================

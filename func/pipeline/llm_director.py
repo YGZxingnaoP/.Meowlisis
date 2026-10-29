@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 # func/pipeline/llm_director.py
 # 导演状态桥接：读写「当前对话走向」状态，并在导演进入/退出时通知宿主（主链路）
+# 落盘：.temp/director_topic/main.json（active 中）；clear 后移到 character/director_topic/main/ 归档。
 
 import os
+import re
 import json
 import threading
+import datetime
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
@@ -14,14 +17,17 @@ from func.tools.singleton_mode import singleton
 class LLMDirectorBridge:
     """导演状态 + 事件桥接（只做状态与事件，不含规划/表演逻辑）。
 
-    - 状态按 scope 分（main / qq），落盘 .temp/latest_director.json；
-    - 宿主（主链路）通过 register_host 注入 is_busy / flush_history：
-      导演激活期间主链路把用户回合让出去；进入/退出时把主链路内存里的
-      短期记忆归档，避免「json 旧 + 内存新」倒序；
-    - 导演模块自己订阅进入/退出事件，负责重置失望计数。
+    - 状态按 scope 分（main / qq），主链路用 main；
+    - 缓存文件 .temp/director_topic/main.json；clear 时把最终状态归档到
+      character/director_topic/main/{时间}_{原因}.json，并删除缓存文件（移动备份）；
+    - 旧版 .temp/latest_director.json 在首次启动时自动迁移（只在 PATH 未被改写时）；
+    - 宿主（主链路）通过 register_host 注入 is_busy / flush_history。
     """
 
-    PATH = os.path.join(".temp", "latest_director.json")
+    DEFAULT_PATH = os.path.join(".temp", "director_topic", "main.json")
+    PATH = DEFAULT_PATH
+    LEGACY_PATH = os.path.join(".temp", "latest_director.json")
+    ARCHIVE_DIR = os.path.join("character", "director_topic", "main")
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -30,6 +36,7 @@ class LLMDirectorBridge:
         self._is_busy = None
         self._flush_history = None
         self._subs = []
+        self._migrate()
 
     # ==================== 状态读写 ====================
     def get(self, scope="main"):
@@ -59,21 +66,38 @@ class LLMDirectorBridge:
             self._write_file(data)
 
     def activate(self, scope, state):
-        """激活导演：写状态 → 通知宿主归档 → 通知订阅者"""
-        self.set_state(scope, state)
+        """激活导演：先归档旧计划（重写覆盖）→ 写状态 → 通知宿主归档 → 通知订阅者"""
+        key = str(scope or "main")
+        with self._lock:
+            try:
+                self._archive_current(key, "新计划覆盖")
+            except Exception:
+                self.log.exception("[导演] 归档旧计划失败")
+            self.set_state(key, state)
         self._flush_host()
-        self._notify(str(scope or "main"), entered=True)
+        self._notify(key, entered=True)
         self.log.info(f"[导演] 已激活（scope={scope}）")
 
     def clear(self, scope="main", reason=""):
-        """结束导演：active=False 后通知宿主与订阅者（状态保留备查）"""
+        """结束导演：写 inactive → 归档 → 删除缓存文件 → 通知宿主与订阅者"""
         key = str(scope or "main")
-        state = self.get(key)
-        if not state:
-            return
-        state["active"] = False
-        state["clear_reason"] = str(reason or "")
-        self.set_state(key, state)
+        with self._lock:
+            state = self.get(key)
+            if not state:
+                return
+            state["active"] = False
+            state["clear_reason"] = str(reason or "")
+            state["updated_at"] = self._now()
+            archived = self._archive_state(state, reason, key)
+            self.set_state(key, state)
+            if archived:
+                try:
+                    os.remove(self.PATH)
+                except FileNotFoundError:
+                    pass
+                except Exception:
+                    self.log.exception("[导演] 删除缓存状态失败")
+            self._cache.pop(key, None)
         self._flush_host()
         self._notify(key, entered=False)
         self.log.info(f"[导演] 已结束（scope={key}，原因={reason or '未注明'}）")
@@ -126,13 +150,69 @@ class LLMDirectorBridge:
         except Exception:
             self.log.exception("[导演] 主链路短期记忆归档失败")
 
+    # ==================== 归档 ====================
+    def _archive_current(self, scope, reason):
+        """归档当前状态（不删文件，用于重写覆盖前备份）"""
+        state = self.get(scope)
+        if not state:
+            return None
+        return self._archive_state(state, reason, scope)
+
+    def _archive_state(self, state, reason, channel):
+        """把一份计划写到 character/director_topic/main/；失败返回 None"""
+        if not isinstance(state, dict) or not state:
+            return None
+        try:
+            os.makedirs(self.ARCHIVE_DIR, exist_ok=True)
+            ts = self._now("%Y%m%d-%H%M%S")
+            path = self._unique_path(self.ARCHIVE_DIR, f"{ts}_{self._safe(reason)}")
+            payload = {
+                "archived_at": self._now(),
+                "channel": str(channel or "main"),
+                "session": str(channel or "main"),
+                "reason": str(reason or ""),
+                "plan": state,
+            }
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+            self.log.info(f"[导演] 已归档：{path}")
+            return path
+        except Exception:
+            self.log.exception("[导演] 归档失败，保留缓存状态")
+            return None
+
+    # ==================== 迁移 ====================
+    def _migrate(self):
+        """旧版 .temp/latest_director.json → 新布局（仅当 PATH 仍是默认值）"""
+        if self.PATH != self.DEFAULT_PATH:
+            return
+        if not os.path.exists(self.LEGACY_PATH):
+            return
+        try:
+            old = self._read_json(self.LEGACY_PATH)
+            if not isinstance(old, dict):
+                self.log.warning("[导演] 旧状态格式不对，跳过迁移")
+                return
+            state = old.get("main")
+            if isinstance(state, dict) and state:
+                if state.get("active") and not os.path.exists(self.PATH):
+                    # 旧计划还在演：写进新缓存，交给 DirectorCore 决定 resume/重启收尾
+                    self._write_json(self.PATH, {"main": state})
+                else:
+                    # 已结束，或新缓存已存在：旧计划直接归档
+                    self._archive_state(state, "legacy", "main")
+            self._cache.pop("main", None)
+            os.remove(self.LEGACY_PATH)
+            self.log.info("[导演] 已迁移旧状态到 .temp/director_topic/main.json")
+        except Exception:
+            self.log.exception("[导演] 迁移旧状态失败")
+
     # ==================== 落盘 ====================
     def _read_file(self):
         try:
             if not os.path.exists(self.PATH):
                 return {}
-            with open(self.PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            data = self._read_json(self.PATH)
             return data if isinstance(data, dict) else {}
         except Exception:
             self.log.exception("[导演] 读取状态失败")
@@ -140,10 +220,35 @@ class LLMDirectorBridge:
 
     def _write_file(self, data):
         try:
-            os.makedirs(os.path.dirname(self.PATH), exist_ok=True)
-            tmp = self.PATH + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, self.PATH)
+            self._write_json(self.PATH, data)
         except Exception:
             self.log.exception("[导演] 写入状态失败")
+
+    def _read_json(self, path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _write_json(self, path, data):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+
+    @staticmethod
+    def _now(fmt="%Y-%m-%d %H:%M:%S"):
+        return datetime.datetime.now().strftime(fmt)
+
+    @staticmethod
+    def _safe(text):
+        s = re.sub(r'[\\/:*?"<>|\s]+', "_", str(text or "")).strip("_")
+        return (s or "未注明")[:40]
+
+    @staticmethod
+    def _unique_path(directory, base):
+        path = os.path.join(directory, base + ".json")
+        i = 2
+        while os.path.exists(path):
+            path = os.path.join(directory, f"{base}_{i}.json")
+            i += 1
+        return path
