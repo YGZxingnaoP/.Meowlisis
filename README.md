@@ -22,6 +22,35 @@
 - WDA：完成了苹果手机的 XCTest 连接使用，伟大无需多言：[@appium/WebDriverAgent](https://github.com/appium/WebDriverAgent)
 
 ## 功能说明
+
+<figure align="center" style="margin: 2rem 0;">
+  <a href="工作流程解析/【待完善】meowlisis工作流程.webp">
+    <img 
+      src="工作流程解析/【待完善】meowlisis工作流程.webp" 
+      alt="Meowlisis 核心功能流程图（待完善）" 
+      width="600" 
+      style="
+        width: 80%; 
+        max-width: 600px; 
+        height: auto; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+        border: 1px solid #e1e4e8;
+        display: block;
+        margin: 0 auto;
+      "
+    />
+  </a>
+  <figcaption style="
+    margin-top: 12px; 
+    font-size: 0.9em; 
+    color: #586069; 
+    text-align: center;
+  ">
+    ⚠️ 核心功能流程图（<strong>待完善</strong>，点击图片查看大图）
+  </figcaption>
+</figure>
+
 完整的功能、模块、配置与运行说明见 [项目各个模块详细说明](说明书.md)。
 
 - 运行环境：Windows 10/11，Python 3.11（项目内置 runtime），依赖见 requirements.txt
@@ -74,18 +103,11 @@ func/pipeline/toolbox_audio.py
 
 相关配置：`config.yml → meowsongs.pass_the_baton`。
 
-## 功能说明
-完整的功能、模块、配置与运行说明见 [说明书](说明书.md)。
-
-- 运行环境：Windows 10/11，Python 3.11（项目内置 runtime），依赖见 requirements.txt
-- 快速开始：见说明书的「运行环境」
-
 ## To do list
 1、给不同的提示词配置对应的参考音频
 2、补全施工内容
 
 ## 相关文档
 - 插件系统：[plugins/plugins.md](plugins/plugins.md)
-- CatPaws 服务：[.vendor/.CatPaws/README.md](.vendor/.CatPaws/README.md)；联调脚本：[scripts/catpaws/README.md](scripts/catpaws/README.md)；手机界面：[.vendor/.cam/README.md](.vendor/.cam/README.md)
-- NapCat 诊断：[scripts/napcat_diagnose/README.md](scripts/napcat_diagnose/README.md)
-- 记忆召回实验：[scripts/memory_recall_lab/README.md](scripts/memory_recall_lab/README.md)
+- CatPaws 服务：[.vendor/.CatPaws/README.md](.vendor/.CatPaws/README.md)
+- 手机界面：[.vendor/.cam/README.md](.vendor/.cam/README.md)
