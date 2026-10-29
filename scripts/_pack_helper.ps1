@@ -69,7 +69,7 @@ switch ($Verb) {
                 @{ p = '(^|/)\.git/';      why = '.git leaked in' }
             )
         } else {
-            $required = @('api.py', '.vendor/.MeowLLM/config.yml')
+            $required = @('api.py', 'runtime/311/python.exe')
             $forbidden = @(
                 @{ p = '^config\.yml$';                    why = 'root config.yml NOT excluded (secret leak)' },
                 @{ p = '^config\.example\.yml$';           why = 'config.example.yml must not ship (personal data)' },
@@ -78,6 +78,10 @@ switch ($Verb) {
                 @{ p = '(^|/)\.vendor/\.DataBase/';        why = 'knowledge base leaked in' },
                 @{ p = '(^|/)\.vendor/\.NapCat/';          why = 'NapCat data leaked in' },
                 @{ p = '(^|/)\.vendor/\.cam/cert/';        why = 'self-signed key leaked in' },
+                @{ p = '(^|/)\.vendor/\.CatPaws/config\.yml$'; why = 'CatPaws config.yml NOT excluded (sk- key + device ip)' },
+                @{ p = '(^|/)\.vendor/\.CatPaws/catpaws-launcher/run/'; why = 'CatPaws device identity or logs leaked in' },
+                @{ p = '(^|/)character/userinfo/';         why = 'character/userinfo (personal profiles) leaked in' },
+                @{ p = '(^|/)character/plugin_data/';      why = 'character/plugin_data (plugin user data) leaked in' },
                 @{ p = '(^|/)plugins/[^/]+/config\.yml$';  why = 'plugin config.yml NOT excluded (sk- key leak)' },
                 @{ p = '(^|/)__pycache__/';                why = '__pycache__ leaked in' },
                 @{ p = '\.pyc$';                           why = '.pyc leaked in' }

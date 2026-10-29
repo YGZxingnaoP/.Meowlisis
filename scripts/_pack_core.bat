@@ -94,6 +94,7 @@ set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.DataBase\*" -x".vendor\.NapCat\*" -x".vendor\.NeteaseMusic\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.cam\cert\*" -x".vendor\.cam\mode.txt""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.desktopet\config.json" -x".vendor\.desktopet\.run.log""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.CatPaws\config.yml" -x".vendor\.CatPaws\catpaws-launcher\run\*""
   rem plugin config.yml files hold sk- keys (plugins fall back to built-in defaults)
   set "EXCLUSIVE=!EXCLUSIVE! -x"plugins\*\config.yml""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\memory\*" -x"character\abstract_memory\*""
@@ -103,6 +104,7 @@ set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\audio\*" -x"character\songs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\paints\*" -x"character\svg_paints\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\books\*" -x"character\catfiles\*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x"character\userinfo\*" -x"character\plugin_data\*""
 )
 set "EXCLUDES=%EXCOMMON% %EXCLUSIVE%"
 
