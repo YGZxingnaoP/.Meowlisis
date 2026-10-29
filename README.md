@@ -1,5 +1,7 @@
 # Meowlisis!
 
+> [English](README.en.md) | 中文
+
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 > 本项目采用 [MIT 许可证](LICENSE) 开源。

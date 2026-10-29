@@ -1,5 +1,7 @@
 # 🐾 CatPaws
 
+> [English](README.en.md) | 中文
+
 让主项目"用眼睛看手机屏幕、用手操作手机"的 iPhone 控制服务。
 
 PC 侧是一个 Python 服务（内置轻量 agent：观察 → 决策 → 操作 → 复盘），手机侧是改自 WDA 的双 target App。

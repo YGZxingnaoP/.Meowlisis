@@ -1,5 +1,7 @@
 # scripts/catpaws —— 手机操作（CatPaws）联调脚本
 
+> [English](README.en.md) | 中文
+
 全部脚本都以**项目根目录**为基准；`.bat` 双击即可，`.py` 用 `runtime\311\python.exe` 跑。
 
 | 文件 | 干什么 | 需要什么 |
