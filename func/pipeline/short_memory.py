@@ -230,3 +230,21 @@ class ShortMemory:
             if "role" in m and "content" in m:
                 result.append({"role": m["role"], "content": m["content"]})
         return result
+
+    def load_by_type(self, mem_types) -> list:
+        """按来源类型加载短期记忆（保留 type，只取 user/assistant 且内容非空）
+
+        导演判官只看主链路对话，不能被 QQ / 弹幕的行污染，因此必须按 type 过滤。
+        """
+        types = tuple(mem_types) if isinstance(mem_types, (list, tuple, set)) else (mem_types,)
+        result = []
+        for m in self._read():
+            if m.get("type") not in types:
+                continue
+            if m.get("role") not in ("user", "assistant"):
+                continue
+            content = str(m.get("content") or "")
+            if not content.strip():
+                continue
+            result.append({"role": m["role"], "content": content, "type": m.get("type")})
+        return result

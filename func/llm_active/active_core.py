@@ -28,6 +28,14 @@ class AutoActiveCore:
         self._n = 0
         self._running = False
 
+        # 导演模块：每轮回复后的无聊判官 / 触发时接管表演（失败不影响原主动回复）
+        self.director = None
+        try:
+            from func.llm_active.director.core import DirectorCore
+            self.director = DirectorCore()
+        except Exception:
+            self.log.exception("初始化导演模块失败，主动回复按原逻辑运行")
+
         # 注册到 llm_timer 桥接：llm 活动时重置计时
         LLMTimerBridge().register(
             on_user_message=self._on_user_message,
@@ -72,13 +80,19 @@ class AutoActiveCore:
         self.inherit.llm = self.llm
         self.origin.llm = self.llm
         self.timer.cold_time = self.config.cold_time
+        # 导演模块的端口也要跟着换（配置项由各自的 config 单例刷新）
+        if self.director is not None:
+            try:
+                self.director.rebuild()
+            except Exception:
+                self.log.exception("导演模块热重载失败")
 
     def _on_user_message(self):
         """llm 收到用户消息：重置计时并清零连续触发次数"""
         self.timer.reset()
         self._n = 0
 
-    def _on_ai_reply(self):
+    def _on_ai_reply(self, source="llm"):
         """llm 完成回复：重置计时"""
         self.timer.reset()
 
@@ -99,6 +113,16 @@ class AutoActiveCore:
         self._running = True
         Thread(target=self._trigger_safe).start()
 
+    def trigger_now(self, reason="bored"):
+        """跳过 cold_time 立即触发一次主动回复（导演判官用）"""
+        if not self._allow_active_reply():
+            return False
+        if self._running:
+            return False
+        self._running = True
+        Thread(target=self._trigger_safe, kwargs={"reason": reason}).start()
+        return True
+
     @staticmethod
     def _allow_active_reply():
         """插件状态总线：有插件声明「暂停主动回复」时让位"""
@@ -108,17 +132,24 @@ class AutoActiveCore:
         except Exception:
             return True
 
-    def _trigger_safe(self):
+    def _trigger_safe(self, reason=None):
         try:
-            self._trigger()
+            self._trigger(reason)
         except Exception:
             self.log.exception("主动回复异常")
         finally:
             self._running = False
 
-    def _trigger(self):
-        """触发主动回复：连续次数 +1 并按阈值分流策略"""
+    def _trigger(self, reason=None):
+        """触发主动回复：导演优先接管；否则按连续次数在 inherit/origin 间分流"""
         self._n += 1
+        if self.director is not None:
+            try:
+                if self.director.on_idle_trigger(forced=bool(reason), reason=str(reason or "")):
+                    self.timer.reset()
+                    return
+            except Exception:
+                self.log.exception("导演模块接管失败，回落原主动回复")
         if self._n <= self.config.strategy_threshold:
             continued = self.inherit.run()
             if not continued:

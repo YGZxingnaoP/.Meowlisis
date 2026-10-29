@@ -38,6 +38,29 @@ class MeowLLMLtMemBridge:
         self.save_memory.save_line(line)
         self.get_memory.cache_message(line)
 
+    # ==================== δ-mem 请求上下文（供 llm_active 导演副本） ====================
+    def memory_options(self, uid=None):
+        """返回本请求该带的 δ-mem options；非正式 uid 返回空 dict。
+
+        内部同时标记线程当前 uid（与主链路 set_current_uid 同规则），
+        让同一线程内的嵌套本地模型调用也带上该用户记忆。
+        """
+        try:
+            from func.catbrain.UserMemory.identity import dmem_owner
+            dmem_owner.set_current_uid(uid)
+            return dmem_owner.as_options(uid) or {}
+        except Exception:
+            self.log.exception("构建 δ-mem 请求上下文失败")
+            return {}
+
+    def clear_memory_context(self):
+        """清掉线程当前 uid（处理完一条消息后调用，避免串人）"""
+        try:
+            from func.catbrain.UserMemory.identity import dmem_owner
+            dmem_owner.clear_current_uid()
+        except Exception:
+            self.log.exception("清理 δ-mem 请求上下文失败")
+
     def record_image_message(self, text: str):
         line = self.save_memory.save_image_line(text)
         self.get_memory.cache_message(line)

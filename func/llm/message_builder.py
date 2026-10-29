@@ -42,6 +42,16 @@ class MessageBuilder:
         self.max_rounds = int(max_rounds)
         self.json_max_rounds = max(0, self.max_rounds - self.HISTORY_ROUNDS)
 
+    def flush_all(self):
+        """把内存里的全部轮次归档到 json 并清空内存缓存。
+
+        导演模块进入/退出时会切换回复引擎：不清空的话，「json（旧）+ 内存（新）」
+        在下次组装消息时会倒序，提示词里的时间线就乱了。
+        """
+        while self.history:
+            self._archive_item(self.history.pop(0))
+        self.history = []
+
     @staticmethod
     def _now() -> str:
         """返回当前日期时间（如 2026-10-14 14:23）"""

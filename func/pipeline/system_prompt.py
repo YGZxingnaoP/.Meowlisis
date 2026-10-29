@@ -143,25 +143,33 @@ class SystemPromptBridge:
             pass
 
     @staticmethod
-    def _psyche_block(scope: str = "main") -> str:
-        """构建心理 markdown 块，读取失败或无内容时返回空串"""
+    def _psyche_block(scope: str = "main", with_director: bool = False) -> str:
+        """构建心理 markdown 块；心理为空时仍可只输出导演块（with_director）"""
+        data = {}
         try:
             from func.pipeline.llm_psyche import LLMPsycheBridge
-            data = LLMPsycheBridge().get_psyche(scope)
+            data = LLMPsycheBridge().get_psyche(scope) or {}
         except Exception:
-            return ""
-        if not data:
-            return ""
+            data = {}
+        blocks = []
         theme = str(data.get("theme", "") or "").strip()
         content = [str(c).strip() for c in (data.get("content") or []) if str(c).strip()]
-        if not (theme or content):
-            return ""
-        lines = ["# 我心里装着的"]
-        lines.append("（以下是内部状态，不可直说：只影响你说话的语气和取舍；不许念出来、不许改写成台词，只输出说出口的话）")
-        if theme:
-            lines.append(theme)
-        lines.extend(content)
-        return "\n".join(lines)
+        if theme or content:
+            lines = ["# 我心里装着的"]
+            lines.append("（以下是内部状态，不可直说：只影响你说话的语气和取舍；不许念出来、不许改写成台词，只输出说出口的话）")
+            if theme:
+                lines.append(theme)
+            lines.extend(content)
+            blocks.append("\n".join(lines))
+        if with_director:
+            try:
+                from func.psyche.director_block import render_director_block
+                block = render_director_block(scope)
+                if block:
+                    blocks.append(block)
+            except Exception:
+                pass
+        return "\n\n".join(blocks)
 
     # ==================== 前置词（行为约束，放最前） ====================
     def get_front_prompt(self) -> str:
@@ -265,7 +273,7 @@ class SystemPromptBridge:
         if post:
             post = f"{post}\n你现在在和{display_name(uid)}说话"
         self._psyche_start()
-        psyche = self._psyche_block()
+        psyche = self._psyche_block(with_director=True)
         phone = self._phone_block()
         parts = [p for p in (front, psyche, phone, body, post) if p]
         prompt = "\n\n".join(parts)
@@ -485,7 +493,7 @@ class SystemPromptBridge:
             post = (f"{post}\n已经{cold_time}秒没人跟你说话了（这只是背景，说明当下没人在说话，绝对禁止强调）。\n"
                 "现在说什么、用什么方式，都由你自己决定，你可以选择撒娇，说任何话。")
         self._psyche_start()
-        psyche = self._psyche_block()
+        psyche = self._psyche_block(with_director=True)
         parts = [p for p in (front, psyche, body, post) if p]
         return "\n\n".join(parts)
 

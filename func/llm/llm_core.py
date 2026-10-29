@@ -45,6 +45,16 @@ class LLmCore:
         # 长期记忆桥接（记录用户消息与 AI 回复）
         self.ltmem = MeowLLMLtMemBridge()
 
+        # 导演模块宿主接线：主链路是否忙 / 导演进入退出时归档内存短期记忆
+        try:
+            from func.pipeline.llm_director import LLMDirectorBridge
+            LLMDirectorBridge().register_host(
+                is_busy=self._main_busy,
+                flush_history=self.message_builder.flush_all,
+            )
+        except Exception:
+            self.log.exception("注册导演宿主回调失败")
+
     def _create_llm(self):
         """根据配置创建流式 LLM 客户端"""
         if self.config.local_llm_type == "meowllm":
@@ -81,6 +91,13 @@ class LLmCore:
             self.message_builder.set_max_rounds(self.config.short_term_rounds)
         except Exception:
             pass
+
+    def _main_busy(self) -> bool:
+        """主链路是否正在处理消息（供导演模块判断能否接管用户回合）"""
+        try:
+            return (not self.llmData.is_ai_ready) or (not self.llmData.QuestionList.empty())
+        except Exception:
+            return True
 
     def msg_deal(self, traceid: str, text: str, uid: str, source: str = "llm",
                  preamble_text: str = "", multi_user: bool = False,
@@ -225,7 +242,7 @@ class LLmCore:
                     self.message_builder.add_user_message(uid, prompt)
                 self.llmData.is_ai_ready = True
                 from func.pipeline.llm_timer import LLMTimerBridge
-                LLMTimerBridge().notify_ai_reply()
+                LLMTimerBridge().notify_ai_reply(source=source)
                 return
 
         # 获取系统提示词（弹幕来源走弹幕专用提示词，否则走主链路提示词）
@@ -373,9 +390,9 @@ class LLmCore:
 
         self.log.info(f"[{traceid}][AI回复]{final_text}")
         self.llmData.is_ai_ready = True
-        # 通知主动回复模块：llm 完成回复
+        # 通知主动回复模块：llm 完成回复（source 供导演判官过滤弹幕）
         from func.pipeline.llm_timer import LLMTimerBridge
-        LLMTimerBridge().notify_ai_reply()
+        LLMTimerBridge().notify_ai_reply(source=source)
 
     def _update_emotion_async(self, prompt: str, reply_text: str):
         """后置情绪/性格更新：正文生成后单独调用工具，更新 latest_emotion.json"""

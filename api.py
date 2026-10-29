@@ -316,6 +316,18 @@ def input_msg():
     if turtle_route == "consumed":
         return jsonify({"status": "成功", "turtle_soup": True})
     traceid = str(uuid.uuid4())
+    # 导演接管：导演激活时由 llm_active 的表演引擎回复，本轮跳过主链路
+    try:
+        from func.pipeline.msg_director import MsgDirectorBridge
+        if MsgDirectorBridge().send_to_director(query, meowid, msg_from, traceid):
+            try:
+                from func.pipeline.msg_database import MsgDatabaseBridge
+                MsgDatabaseBridge().send_to_database(query, meowid)
+            except Exception:
+                pass
+            return jsonify({"status": "成功", "director": True})
+    except Exception:
+        log.exception("导演接管处理异常")
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, query, meowid, source=msg_from)
     if turtle_route != "pass":
@@ -444,6 +456,18 @@ def chat():
         pass
     if turtle_route == "consumed":
         return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
+    # 导演接管：导演激活时由 llm_active 的表演引擎回复，本轮跳过主链路
+    try:
+        from func.pipeline.msg_director import MsgDirectorBridge
+        if MsgDirectorBridge().send_to_director(text, meowid, msg_from, traceid):
+            try:
+                from func.pipeline.msg_database import MsgDatabaseBridge
+                MsgDatabaseBridge().send_to_database(text, meowid)
+            except Exception:
+                pass
+            return "({\"traceid\": \"" + traceid + "\",\"status\": \"成功\",\"content\": \"" + text + "\"})"
+    except Exception:
+        log.exception("导演接管处理异常")
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     llmCore.msg_deal(traceid, text, meowid, source=msg_from)
     if turtle_route != "pass":
@@ -513,6 +537,18 @@ def sensevoice_callback(text, meowid, source="voice"):
         pass
     if turtle_route == "consumed":
         return
+    # 导演接管：导演激活时由 llm_active 的表演引擎回复，本轮跳过主链路
+    try:
+        from func.pipeline.msg_director import MsgDirectorBridge
+        if MsgDirectorBridge().send_to_director(text, meowid, source, ""):
+            try:
+                from func.pipeline.msg_database import MsgDatabaseBridge
+                MsgDatabaseBridge().send_to_database(text, meowid)
+            except Exception:
+                pass
+            return
+    except Exception:
+        log.exception("导演接管处理异常")
     # 双通道：主 LLM 快速回复 + toolbox 工具分析
     from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
     SenseVoiceLLMBridge().send_to_llm(text, meowid, source)

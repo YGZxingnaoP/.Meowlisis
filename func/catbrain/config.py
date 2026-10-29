@@ -35,6 +35,7 @@ class MeowCatBrainConfig:
         self.summary_rounds = am.get('summary_rounds', 30)
         # 摘要提示词检索时加载的摘要条数上限
         self.summary_top_limit = am.get('summary_top_limit', 20)
+        self.recall_gate_ratio = am.get('recall_gate_ratio', 0.3)
         # 摘要排序：证据分饱和上限（超过该值按该值计，避免历史虚高分一票通吃）
         self.rank_evidence_saturation = am.get('rank_evidence_saturation', 5.0)
         # 摘要排序：新近度半衰期（天，越小越偏向近期记忆）

@@ -29,3 +29,15 @@ class MsgRuleBreakBridge:
 
     def reset(self):
         self.set_explicit(False)
+
+    def check_message(self, uid, text, short_memory=None):
+        """主链路破甲审查：命中即写入本桥接（供 SystemPromptBridge 读后即清）。
+
+        与 llm_core 里原来那次调用等价，只是把「catbrain 审查」收进桥接层，
+        让 llm_active 导演副本不必直接 import catbrain。
+        """
+        try:
+            from func.catbrain.rules_break.rules_break import TBRulesBreak
+            return bool(TBRulesBreak().check_and_store_msg(uid, text, short_memory or []))
+        except Exception:
+            return False

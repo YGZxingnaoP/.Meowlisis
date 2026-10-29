@@ -188,7 +188,28 @@ Object.assign(Config, {
             this._num('最近说话人数量', 'llm_active.origin_speaker_limit', 3, 1, 3, 1,
                 '创造话题策略时读取最近说话人档案的数量（最多3个）') +
             this._num('主动回复插播记忆上限(条)', 'llm_active.active_mem_limit', 50, 1, 500, 1,
-                '主动回复单条消息在短期记忆中的兜底保留条数（尾部无后续对话时按此裁剪）');
+                '主动回复单条消息在短期记忆中的兜底保留条数（尾部无后续对话时按此裁剪）') +
+            this._section('导演模块 (llm_active.director)') +
+            this._check('启用导演模块', 'llm_active.director.enabled', true,
+                '主动回复时由角色自己规划一场表演（逐步引导、不一次说完），并在心理块下方显示「当前对话走向」') +
+            this._check('每轮判断主人是否无聊', 'llm_active.director.judge_enabled', true,
+                '每轮主链路回复后由角色自己判断；判为无聊就跳过冷却立即主动开口。关掉后只在空闲计时到期时判断要不要开始导演') +
+            this._num('判官参考对话轮数', 'llm_active.director.judge_history_rounds', 8, 1, 40, 1,
+                '判官只看主链路对话（不含 QQ / 弹幕），按轮取最近多少轮') +
+            this._num('判官输出 tokens', 'llm_active.director.judge_max_tokens', 320, 64, 1024, 32,
+                '判官只调一个工具，输出很短；模型不稳定时可适当调大') +
+            this._num('连续无响应几轮后重写', 'llm_active.director.silent_rounds', 3, 1, 20, 1,
+                '整段空闲冷却时间内一条用户消息都没有算一次；连续这么多次就重写计划') +
+            this._num('clear 后冷却(秒)', 'llm_active.director.cooldown_after_clear', 600, 0, 86400, 10,
+                '导演结束或启动后这段时间内，判官不再触发，避免刚收尾又开一场') +
+            this._num('规划工具循环上限', 'llm_active.director.planner_max_tool_rounds', 12, 1, 50, 1,
+                '规划时允许模型边翻记忆边规划的最多轮数') +
+            this._num('规划输出 tokens', 'llm_active.director.planner_max_tokens', 1600, 256, 4096, 64,
+                '规划清单的输出上限；步数本身不设限制') +
+            this._num('连续几轮没打标补判', 'llm_active.director.stall_turns', 2, 0, 10, 1,
+                '模型连续几轮没调用 director_step 就补一次小监工（0=关闭）') +
+            this._check('重启后恢复导演', 'llm_active.director.resume_on_start', false,
+                '默认不恢复：避免几小时前的旧计划在重启后复活');
     },
 
     // ============ B站浏览配置（视觉模型 + 内容收集） ============,

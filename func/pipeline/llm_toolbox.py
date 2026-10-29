@@ -4,6 +4,16 @@
 from func.log.default_log import DefaultLog
 
 _SCHEMAS = None
+_MEMORY_ANALYSIS = None
+
+
+def _memory_analysis():
+    """懒加载记忆文本阅读工具集合（txt_reader，已实现，不重复造）"""
+    global _MEMORY_ANALYSIS
+    if _MEMORY_ANALYSIS is None:
+        from func.catbrain.txt_reader.file_analysis import MeowFileAnalysis
+        _MEMORY_ANALYSIS = MeowFileAnalysis()
+    return _MEMORY_ANALYSIS
 
 
 class ToolCallAccumulator:
@@ -77,6 +87,23 @@ class LLMToolboxBridge:
         except Exception:
             self.log.exception("获取工具决策前置词失败")
             return ""
+
+    # ==================== 记忆文本阅读工具（导演规划用） ====================
+    def get_memory_schemas(self):
+        """记忆文本阅读工具的 schema（list_files / read_file / slice_file / keyword_locate / jieba_segment）"""
+        try:
+            return _memory_analysis().build_tools()
+        except Exception:
+            self.log.exception("获取记忆阅读工具定义失败")
+            return []
+
+    def dispatch_memory_tool(self, name: str, arguments):
+        """执行记忆文本阅读工具，返回文本结果（arguments 为原始 JSON 字符串）"""
+        try:
+            return _memory_analysis().dispatch(name, arguments)
+        except Exception:
+            self.log.exception(f"记忆阅读工具执行失败: {name}")
+            return f"错误：工具执行异常 {name}"
 
     def attach_tool_hint(self, system_prompt: str) -> str:
         hint = self.get_tool_hint()
