@@ -139,6 +139,13 @@ Object.assign(Config, {
                 '群机器人（如幻梦）的发言不触发续聊判断，避免两个机器人互相接话') +
             this._num('最大回复轮数（0=不限）', 'napcat.group_followup.max_rounds', 0, 0, 100, 1,
                 '0 表示一直监听；配正值则连续回复该轮数后自动结束本次续聊') +
+            this._section('QQ 导演（@/私聊触发·简化版）') +
+            this._check('启用 QQ 导演', 'napcat.director_qq.enabled', true,
+                '只在私聊和群聊 @（含其续聊）时判断要不要起一段走向；群聊主动插话（冒泡）不参与') +
+            this._num('判官输出 tokens', 'napcat.director_qq.judge_max_tokens', 200, 64, 1024, 64,
+                '判官只产出一个工具调用，不需要长文本') +
+            this._num('每次最多几步', 'napcat.director_qq.max_steps', 3, 1, 5, 1,
+                '起戏时一次给出的小步数；每说一句推进一个，走完自动收') +
             this._section('群聊主动插话（按消息数判断）') +
             this._check('启用群聊主动插话', 'napcat.group_active_enabled', true) +
             this._num('触发基数（更新 N 次后判断）', 'napcat.group_reply_base', 6, 1, 100, 1,

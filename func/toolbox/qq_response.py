@@ -127,6 +127,17 @@ class TBoxQQResponse:
         # 2. 记录用户消息长期记忆（默认关闭）
         if not is_bot:
             self.napcat_ltmem.record_user(meowid, text, name=ext_name)
+        # 2.5 QQ 导演（私聊）：只判断要不要起一段戏 / 要不要收，不碰回复链
+        director_session = ""
+        if not is_bot:
+            try:
+                from func.toolbox.napcat.director.core import QQDirectorCore
+                director_session = QQDirectorCore.session_private(user_id)
+                QQDirectorCore().before_turn(
+                    director_session, "private",
+                    short_memory=short_memory, current_text=text)
+            except Exception:
+                self.log.exception("QQ 导演私聊判断异常")
         # 3. napcat 独立 LLM 回复（流式短句回传发送）
         _pace = self._make_pacer("private")
         final_text = self.napcat_llm.send_to_llm(
@@ -144,6 +155,13 @@ class TBoxQQResponse:
         # 5. 记录 AI 回复长期记忆（默认关闭）
         if final_text and not is_bot:
             self.napcat_ltmem.record_ai(meowid, final_text, name=ext_name)
+        # 5.5 QQ 导演推进（私聊）：这一句说出去就算走了一步
+        if final_text and director_session:
+            try:
+                from func.toolbox.napcat.director.core import QQDirectorCore
+                QQDirectorCore().advance(director_session)
+            except Exception:
+                self.log.exception("QQ 导演私聊推进异常")
         # 6. 表情触发（概率 = 配置概率 + 好感度）
         if final_text:
             self._maybe_send_emote(meowid, user_id, text, final_text, short_memory)
@@ -418,7 +436,7 @@ class TBoxQQResponse:
             trigger = "@" if any(str(p.get("kind") or "") == "at" for p in participants) else "关键词"
             self._followup_arm(gid, group_name, self_id, anchor, merged_text, trigger)
             final = self._reply_group_directed(gid, group_name, self_id, merged_text,
-                                              participants, at_users)
+                                              participants, at_users, trigger=trigger)
             self._followup_note(gid, final)
         elif mode == "followup":
             self._reply_group_followup(gid, group_name, self_id, merged)
@@ -427,8 +445,12 @@ class TBoxQQResponse:
                                      bool(merged.get("force")))
 
     def _reply_group_directed(self, gid: str, group_name: str, self_id: str, merged_text: str,
-                              participants: list, at_users: list, followup: bool = False) -> str:
-        """@ / 关键词合并回复：改图判定 → 意图分析（工具）→ 破甲 → 流式回复"""
+                              participants: list, at_users: list, followup: bool = False,
+                              trigger: str = "") -> str:
+        """@ / 关键词合并回复：改图判定 → 意图分析（工具）→ 破甲 → 流式回复
+
+        trigger：「@」/「关键词」/「followup」；QQ 导演只在 @ 与续聊时参与。
+        """
         primary = (at_users[0] if at_users else (participants[0] if participants else {})) or {}
         primary_ext_account = str(primary.get("user_id", "") or "")
         primary_ext_name = str(primary.get("username", "") or "")
@@ -522,17 +544,39 @@ class TBoxQQResponse:
         except Exception:
             self.log.exception("QQ 群聊破甲审查异常")
 
+        # QQ 导演（简化版）：只有 @ 与续聊才看走向；关键词回复、冒泡都不参与
+        # 放在意图分析之后：工具类消息已被消费、不会走回复，不该在这里起戏。
+        director_session = ""
+        director_on = trigger in ("@", "followup")
+        if director_on:
+            try:
+                from func.toolbox.napcat.director.core import QQDirectorCore
+                director_session = QQDirectorCore.session_group(gid)
+                QQDirectorCore().before_turn(
+                    director_session, "group", short_memory=short_memory,
+                    current_text=plain_text, group_name=group_name,
+                    maintain_only=(trigger == "followup"))
+            except Exception:
+                self.log.exception("QQ 导演群聊判断异常")
+
         _pace = self._make_pacer("group")
         final = self.napcat_group_llm.reply(
             reply_meowid, gid, group_name, merged_text, short_memory, group_info_text,
             on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("group", gid, merged_text),
+            with_director=director_on,
         )
         if final and final.strip().lower() != "pass":
             parsed = {"group_id": gid, "group_name": group_name, "user_id": primary_ext_account,
                       "username": primary_ext_name, "at_self": not followup}
             self._after_group_reply(parsed, final, not followup)
             self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
+            if director_on and director_session:
+                try:
+                    from func.toolbox.napcat.director.core import QQDirectorCore
+                    QQDirectorCore().advance(director_session)
+                except Exception:
+                    self.log.exception("QQ 导演群聊推进异常")
         return final
 
     def _reply_group_active(self, gid: str, group_name: str, self_id: str, merged_text: str,
@@ -665,7 +709,8 @@ class TBoxQQResponse:
             return
         target = self._followup_target(verdict.get("target"), participants)
         final = self._reply_group_directed(gid, group_name, self_id, merged_text, participants,
-                                           [target] if target else [], followup=True)
+                                           [target] if target else [], followup=True,
+                                           trigger="followup")
         followup.note_reply(gid, final)
         if followup.mark_reply(gid):
             self.log.info(f"[群续聊] 达到最大轮数，会话结束（群 {group_name}）")

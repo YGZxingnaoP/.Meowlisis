@@ -292,13 +292,21 @@ Websocket音频传递：施工中。。。
 
 
 ### 导演模块（llm_active.director）
-主动回复时的表演规划与执行。代码在 func/llm_active/director，心理状态机只负责把它渲染进提示词，QQ 链路不接入（QQ 的主动是消息驱动，不是计时）。
+主动回复时的表演规划与执行。代码在 func/llm_active/director，心理状态机只负责把它渲染进提示词；QQ 链路不接入这一套，QQ 有自己的简化版（见下）。
  - 触发：每轮主链路回复后异步判官（纯 LLM，不用关键词）判断「主人无聊 / 话题断了」→ 跳过 cold_time 立即主动开口；空闲计时到期时由规划器自己判要不要开始
  - 规划：调 director_plan 输出一份只含行为与思路的清单（goal/move/expect/if_not），可先翻 character/memory 找旧事；视频素材沿用原 B站缓存概率池
  - 执行：导演激活期间用户回合由 func/pipeline/msg_director.py 接管，走 llm_active 内复制的主链路回复逻辑（Output/水词清洗/MessageBuilder/情绪），每回合只走一步
  - 监工：每次开口同一次生成里调 director_step 交回「完成 / 下一步 / 要不要 clear」；全部完成或用户明确不要打扰时收尾
  - 循环：原计时不动；整段空闲时间里一条用户消息都没有就记一次失望，连续 silent_rounds（默认 3）次后重写计划
  - 可调：llm_active.director.*（见 config.yml 与配置面板「角色主动回复」）
+
+### QQ 导演（简化版，func/toolbox/napcat/director）
+只服务 QQ 的私聊与群聊 @，和主链路导演完全独立：自己的状态文件、判官、提示词块，不 import 主链路导演/心理状态机，也不参与群聊主动插话（冒泡）。
+ - 触发：私聊消息、群聊 @（含其后的续聊）；关键词回复和冒泡都不参与
+ - 判断：回复前一次小判官调用（走 QQ 现成的 toolbox 端口）判断「是不是没话题 / 当前走向要不要收」
+ - 走向：起戏时给 1~3 步短走向，附在 QQ 提示词末尾的「当前对话走向（QQ·简化版）」块里；由头从 `character/shared_videos` 随机抽一条分享过的视频（只读，不移动）
+ - 推进：@ / 私聊每真的说出去一句就推进一个，走完自动收；判官听到「别烦 / 不想听」或对方接上话题也会收
+ - 可调：napcat.director_qq.*（见配置面板「NapCat 群聊」里的「QQ 导演」）
 
 
 ### 用户ID模块（MeowIdentity）

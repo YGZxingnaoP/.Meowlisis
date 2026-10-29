@@ -58,13 +58,20 @@ class TBNapCatLLM:
         return TBoxDeepSeekLLM(self.cfg), self.cfg.deepseek_max_tokens
 
     def _system_prompt(self, username: str, current_message: str, user_id: str = "") -> str:
-        """获取 napcat 专用系统提示词（前置词 + 你在QQ里回复）"""
+        """获取 napcat 专用系统提示词（前置词 + 你在QQ里回复 + 私聊导演走向块）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            return SystemPromptBridge().get_napcat_prompt(username, current_message, user_id=user_id)
+            prompt = SystemPromptBridge().get_napcat_prompt(username, current_message, user_id=user_id)
         except Exception:
             self.log.exception("获取 napcat 系统提示词失败")
             return ""
+        if prompt and user_id:
+            try:
+                from func.toolbox.napcat.director.block import attach_block
+                prompt = attach_block(prompt, f"qq_private:{user_id}")
+            except Exception:
+                self.log.exception("注入 QQ 导演块失败（私聊）")
+        return prompt
 
     def _generate(self, messages: List[dict]) -> str:
         # 流式生成并累积完整回复，不发送

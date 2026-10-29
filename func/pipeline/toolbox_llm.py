@@ -70,16 +70,18 @@ class NapcatGroupLLMBridge:
     def reply(self, uid: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False, quote: Optional[str] = None) -> str:
+              nsfw: bool = False, quote: Optional[str] = None,
+              with_director: bool = False) -> str:
         """@ 触发/强制回复：流式生成，on_segment 回调短句发送到群
 
         nsfw=True 时切割减小（不按逗号切）。
+        with_director=True 时把 QQ 导演走向块附到系统提示词（只用于 @ / 续聊）。
         """
         from func.toolbox.napcat.llm.napcat_group_llm import TBNapCatGroupLLM
         self.log.info(f"NapCat 群聊 → LLM: {group_name} {text[:30]}...")
         return TBNapCatGroupLLM().reply(
             uid, group_id, group_name, text, short_memory, group_info_text, on_segment,
-            nsfw=nsfw, quote=quote
+            nsfw=nsfw, quote=quote, with_director=with_director
         )
 
     def decide(self, uid: Optional[str], group_id: str, group_name: str, text: str,

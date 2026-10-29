@@ -41,8 +41,12 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         return segs
 
     def _system_prompt(self, username, group_name, group_info_text, current_message,
-                       group_id: str = "", decide: bool = False, with_bot_tool: bool = False) -> str:
-        """获取群聊系统提示词；decide=True 时追加回复决策指令"""
+                       group_id: str = "", decide: bool = False, with_bot_tool: bool = False,
+                       with_director: bool = False) -> str:
+        """获取群聊系统提示词；decide=True 时追加回复决策指令
+
+        with_director=True 时附上 QQ 导演走向块（只在 @ / 续聊回复时传，冒泡 decide 永远不传）。
+        """
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
             prompt = SystemPromptBridge().get_napcat_group_prompt(
@@ -66,15 +70,22 @@ class TBNapCatGroupLLM(TBNapCatLLM):
                         f"如果你觉得不需要回复，只输出一个词：pass；"
                         f"如果需要回复，请直接输出你要回复的内容。"
                     )
+            if with_director and not decide and group_id:
+                try:
+                    from func.toolbox.napcat.director.block import attach_block
+                    prompt = attach_block(prompt, f"qq_group:{group_id}")
+                except Exception:
+                    self.log.exception("注入 QQ 导演块失败（群聊）")
             return prompt
         except Exception:
             self.log.exception("获取 napcat 群聊系统提示词失败")
             return ""
 
     def _messages(self, username, group_name, group_info_text, text, short_memory, decide,
-                  group_id: str = "", with_bot_tool: bool = False, quote: Optional[str] = None):
+                  group_id: str = "", with_bot_tool: bool = False, quote: Optional[str] = None,
+                  with_director: bool = False):
         system_prompt = self._system_prompt(username, group_name, group_info_text, text,
-                                           group_id, decide, with_bot_tool)
+                                           group_id, decide, with_bot_tool, with_director)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -132,16 +143,19 @@ class TBNapCatGroupLLM(TBNapCatLLM):
     def reply(self, username: Optional[str], group_id: str, group_name: str, text: str,
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False, quote: Optional[str] = None) -> str:
+              nsfw: bool = False, quote: Optional[str] = None,
+              with_director: bool = False) -> str:
         """@ 触发或强制回复：生成并回传短句，返回完整回复
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
+        with_director=True 时把 QQ 导演走向块附到 system 提示词（只用于 @ / 续聊）。
         """
         self._nsfw_split = bool(nsfw)
         try:
             tools = self._at_tools()
             messages = self._messages(username, group_name, group_info_text, text, short_memory,
-                                      decide=False, group_id=group_id, quote=quote)
+                                      decide=False, group_id=group_id, quote=quote,
+                                      with_director=with_director)
             if tools and messages and messages[0].get("role") == "system":
                 messages[0]["content"] += (
                     "\ngroup_at 是可选的：默认不要 @ 人，大多数回复直接说就行；"
