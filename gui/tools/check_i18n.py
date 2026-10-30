@@ -23,9 +23,10 @@ GUI = Path(__file__).resolve().parent.parent          # gui/
 LOCALES = GUI / 'locales' / 'en.js'
 CJK = re.compile(r'[\u4e00-\u9fff]')
 
-# 取 _t('...') / I18n.text("...") 这类调用里的字面量
+# 取 _t('...') / I18n.text("...") / obj.t('...') 这类调用里的字面量
+# （obj.t 是 identity_page 等"自带 t() 包装"的写法，漏了它会把整页的中文当英文已覆盖）
 CALL_PAT = re.compile(
-    r'(?:_t|I18n\.text)\(\s*([\'"])((?:[^\\]|\\.)*?)\1', re.S)
+    r'(?:_t|I18n\.text|\.t)\(\s*([\'"])((?:[^\\]|\\.)*?)\1', re.S)
 # 取 HTML 属性里的字面量
 ATTR_PAT = re.compile(
     r'data-i18n(?:-title|-alt)?\s*=\s*"([^"]*)"'
@@ -64,8 +65,8 @@ def collect_used():
                 used.setdefault(s, []).append(rel)
         for m in ATTR_PAT.finditer(text):
             s = (m.group(1) or m.group(2) or '').strip()
-            # 属性值里是模板/表达式（${...} / _t(...)）时跳过，由 CALL_PAT 负责
-            if not s or '$' in s or '_t(' in s or 'I18n.text(' in s:
+            # 属性值里是模板/表达式（${...} / _t(...) / obj.t(...)）时跳过，由 CALL_PAT 负责
+            if not s or '$' in s or '_t(' in s or 'I18n.text(' in s or '.t(' in s:
                 continue
             if CJK.search(s):
                 used.setdefault(s, []).append(rel)

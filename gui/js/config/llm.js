@@ -168,97 +168,181 @@ Object.assign(Config, {
     },
 
     // ============ CatBrain 子模块（四球分别打开） ============
-    // 长期记忆,
-    catbrain_ltmem() {
-        return this._section('长期记忆 (long_term_mem)') +
-            this._num('长期记忆回溯天数', 'catbrain.long_term_mem.memory_days', 300, 1, 3650, 1) +
-            this._check('注入最近原文', 'catbrain.long_term_mem.inject_recent', false) +
-            this._num('注入原文条数', 'catbrain.long_term_mem.inject_recent_lines', 20, 1, 200, 1);
+    // 记忆摘要,
+    _abstractFormula() {
+        return `<div class="formula-box">
+            <div class="formula-box-title">${this._t('记忆摘要流程')}</div>
+            <div class="formula-block">
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('触发')}</span>
+                    <span class="formula-expr">${this._t('每 summary_rounds 条消息 → 摘要模型读取最近 scope_reply_limit 条回复')}</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('写入')}</span>
+                    <span class="formula-expr">${this._t('单次最多 max_events 个事件；每个事件最多 tags_limit 个标签')}</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('排序')}</span>
+                    <span class="formula-expr">Final = Fused × (1 + w<sub>ev</sub>·(E−0.5)) × (1 + w<sub>rec</sub>·(R−0.5)) × (1 + w<sub>acc</sub>·(A−0.5))</span>
+                    <span class="formula-cond">${this._t('启用证据排序时生效：E=证据归一化，R=新近度，A=准确度')}</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('证据')}</span>
+                    <span class="formula-expr">E = rein·0.5<sup>Δt/rein_half</sup> − disp·0.5<sup>Δt/disp_half</sup></span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('归档')}</span>
+                    <span class="formula-expr">${this._t('E ≤ archive_threshold 且负分持续 archive_days 天 → 归档候选')}</span>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('召回')}</span>
+                    <span class="formula-expr">${this._t('相关度 ≥ 本次最高相关度 × recall_gate_ratio → 进入提示词；最多 summary_top_limit 条')}</span>
+                </div>
+            </div>
+            <div class="formula-params">${this._t('summary_rounds 按消息行数计（user/assistant 各一条）；标签通道和 RRF 融合决定“先找什么”，证据/新近/准确度只在启用证据排序后作为乘数微调；证据分会随半衰期自然衰减，避免旧记忆永远压新记忆。')}</div>
+        </div>`;
     },
 
-    // 记忆摘要,
     catbrain_abstract() {
         const ab = this._val('catbrain.abstract_mem.llm_type', 'deepseek');
-        const abOn = (k) => ab === k ? ' active' : '';
-        let h = this._section('记忆摘要 (abstract_mem)');
-        h += this._num('摘要触发条数', 'catbrain.abstract_mem.summary_rounds', 30, 1, 500, 1,
-            '这里指单条消息数（user/assistant 各算一条），与短期记忆的"轮数"不同：短期记忆一轮 = 用户 + AI 两条') +
-            this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 30, 1, 200, 1) +
-            this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);
-        h += this._fold('写入过滤 (write)',
-            this._num('单次最多事件数', 'catbrain.abstract_mem.max_events', 10, 1, 100, 1) +
-            this._num('附带近期记忆条数', 'catbrain.abstract_mem.recent_memory_lines', 12, 0, 100, 1)
-        );
-        h += this._fold('检索排序 (rank)',
-            this._num('证据分饱和上限', 'catbrain.abstract_mem.rank_evidence_saturation', 5.0, 0.1, 100, 0.1) +
-            this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1) +
-            this._num('召回门槛比例', 'catbrain.abstract_mem.recall_gate_ratio', 0.1, 0, 1, 0.05) +
-            this._check('启用证据排序', 'catbrain.abstract_mem.rank_use_evidence', false) +
-            this._num('证据权重', 'catbrain.abstract_mem.rank_w_evidence', 0.1, 0, 1, 0.05) +
-            this._num('新近权重', 'catbrain.abstract_mem.rank_w_recency', 0.0, 0, 1, 0.05) +
-            this._num('准确度权重', 'catbrain.abstract_mem.rank_w_accuracy', 0.1, 0, 1, 0.05) +
-            this._num('RRF K', 'catbrain.abstract_mem.rank_rrf_k', 20, 1, 200, 1) +
-            this._num('标签通道权重', 'catbrain.abstract_mem.rank_w_tag', 2.0, 0, 10, 0.5)
-        );
-        h += this._fold('证据分数 (evidence)',
-            this._num('强化值半衰期(天)', 'catbrain.abstract_mem.evidence.rein_half_life_days', 30, 1, 3650, 1) +
-            this._num('质疑值半衰期(天)', 'catbrain.abstract_mem.evidence.disp_half_life_days', 180, 1, 3650, 1) +
-            this._num('归档候选阈值', 'catbrain.abstract_mem.evidence.archive_threshold', -2.0, -10, 10, 0.1) +
-            this._num('负分持续天数后归档', 'catbrain.abstract_mem.evidence.archive_days', 14, 1, 365, 1) +
-            this._num('same 强化增量', 'catbrain.abstract_mem.evidence.same_delta', 0.5, 0, 10, 0.1) +
-            this._num('opposite 质疑增量', 'catbrain.abstract_mem.evidence.opposite_delta', 1.0, 0, 10, 0.1) +
-            this._num('复述强化增量', 'catbrain.abstract_mem.evidence.same_recite_delta', 0.1, 0, 10, 0.1)
-        );
-        h += this._fold('临时约定 (temp_promise)',
-            this._check('开启临时约定清理', 'catbrain.abstract_mem.temp_promise.enabled', true) +
-            this._num('每次最多判定条数', 'catbrain.abstract_mem.temp_promise.max_items', 30, 1, 200, 1)
-        );
-        h += this._fold('共处强化 (cooccur)',
-            this._check('开启共处强化', 'catbrain.abstract_mem.cooccur.enabled', true) +
-            this._num('共处强化增量', 'catbrain.abstract_mem.cooccur.delta', 0.1, 0, 10, 0.1) +
-            this._num('每次最多强化条数', 'catbrain.abstract_mem.cooccur.max_boost', 5, 0, 100, 1)
-        );
-        h += this._fold('记忆审查 (review)',
-            this._check('开启记忆审查', 'catbrain.abstract_mem.review.enabled', true) +
+        const helpApi = this._t('API Key / Base URL 在「基本设置 → API 平台」的「记忆摘要」/「记忆审查」节点配置；这里只配模型参数，避免两处输入框打架');
+        let h = this._abstractFormula();
+        h += `<div class="modal-tabs">
+            <button type="button" class="modal-tab active" data-tab="ab_basic">${this._t('基础')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_write">${this._t('写入')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_rank">${this._t('检索排序')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_evidence">${this._t('证据')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_behavior">${this._t('清理 / 共处')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_review">${this._t('审查')}</button>
+            <button type="button" class="modal-tab" data-tab="ab_model">${this._t('模型')}</button>
+        </div>`;
+
+        h += `<div class="tab-content active" data-tab-content="ab_basic">` +
+            this._section('触发与召回') +
+            this._num('摘要触发条数', 'catbrain.abstract_mem.summary_rounds', 30, 1, 500, 1,
+                '每累计多少条消息触发一次摘要。这里按消息行数算：user 一条、assistant 一条，一轮=2 条；不是“对话轮数”。') +
+            this._num('摘要注入上限', 'catbrain.abstract_mem.summary_top_limit', 30, 1, 200, 1,
+                '每次构造角色提示词时，最多注入多少条摘要。0 表示不限制，容易把上下文塞爆，不建议。') +
+            this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1,
+                '后台重新判断“当前话题”的间隔。越小话题切换越跟手，但会增加模型调用。') +
+            this._num('召回门槛比例', 'catbrain.abstract_mem.recall_gate_ratio', 0.1, 0, 1, 0.05,
+                '召回相关度必须 ≥ 本次最高相关度 × 该比例。调大更严格（只留最相关的），调小更宽松。') +
+            this._check('启用摘要召回', 'catbrain.abstract_mem.recall_enabled', true,
+                '关闭后只继续写入摘要，不再把摘要召回进角色提示词；适合只做记忆归档、不参与聊天的场景。') +
+            this._num('单次召回月数上限', 'catbrain.abstract_mem.recall_months_limit', 3, 0, 24, 1,
+                '召回判定模型一次最多返回几个月。0=不限制月数；它只限制一次回忆的月份数量，不是记忆库的保留期限。') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="ab_write">` +
+            this._section('摘要写入') +
+            this._num('单次最多事件数', 'catbrain.abstract_mem.max_events', 10, 1, 100, 1,
+                '一次摘要最多写入多少个事件。防止一段长对话一次刷出几十条记忆，把库撑爆。') +
+            this._num('附带近期记忆条数', 'catbrain.abstract_mem.recent_memory_lines', 12, 0, 100, 1,
+                '摘要提示词里附带多少条“已记忆要点”，让模型知道哪些已经记过、避免重复写入。0=不附带。') +
+            this._num('单事件标签上限', 'catbrain.abstract_mem.tags_limit', 3, 1, 20, 1,
+                '每个事件最多生成几个标签。标签用于召回和共处强化，太多会稀释匹配。') +
+            this._num('检索词条上限', 'catbrain.abstract_mem.grep_limit', 10, 1, 100, 1,
+                '摘要工具单次 grep 最多返回多少条历史原文。') +
+            this._num('工具调用最大轮数', 'catbrain.abstract_mem.tool_rounds', 80, 1, 500, 1,
+                '摘要模型最多进行多少轮工具调用（grep/召回/判断/写入）。太小可能写不完，太大可能空转。') +
+            this._num('单次范围回复上限', 'catbrain.abstract_mem.scope_reply_limit', 80, 1, 500, 1,
+                '每次摘要最多读取多少条历史回复作为上下文。') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="ab_rank">` +
+            this._section('检索与排序') +
+            this._check('启用证据排序', 'catbrain.abstract_mem.rank_use_evidence', false,
+                '开启后，在相关度排序之后再乘上证据/新近度/准确度权重；关闭则只按相关度（RRF）排序。') +
+            this._num('证据分饱和上限', 'catbrain.abstract_mem.rank_evidence_saturation', 5.0, 0.1, 100, 0.1,
+                '证据分归一化上限：达到该值就按满分算，避免老记忆因历史累计分过高而一票通吃。') +
+            this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1,
+                '新近度每过这么多天衰减一半。越小越偏向近期记忆，越大越看重旧记忆。') +
+            this._num('证据权重', 'catbrain.abstract_mem.rank_w_evidence', 0.1, 0, 1, 0.05,
+                'Final 乘数里证据分的权重；0=不参与。') +
+            this._num('新近权重', 'catbrain.abstract_mem.rank_w_recency', 0.0, 0, 1, 0.05,
+                '新近度的权重；0=不参与。') +
+            this._num('准确度权重', 'catbrain.abstract_mem.rank_w_accuracy', 0.1, 0, 1, 0.05,
+                '准确度的权重；0=不参与。') +
+            this._num('RRF K', 'catbrain.abstract_mem.rank_rrf_k', 20, 1, 200, 1,
+                'RRF 融合常数。越大各通道排名越平均，越小越偏向某个通道的头部结果。') +
+            this._num('标签通道权重', 'catbrain.abstract_mem.rank_w_tag', 2.0, 0, 10, 0.5,
+                '标签命中通道在 RRF 里的权重。越大越优先标签完全匹配的记忆。') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="ab_evidence">` +
+            this._section('证据衰减') +
+            this._num('强化值半衰期(天)', 'catbrain.abstract_mem.evidence.rein_half_life_days', 30, 1, 3650, 1,
+                '强化值每过这么多天衰减一半；越大，正面记忆越持久。') +
+            this._num('质疑值半衰期(天)', 'catbrain.abstract_mem.evidence.disp_half_life_days', 180, 1, 3650, 1,
+                '质疑值每过这么多天衰减一半；越大，负面/矛盾印象越难消退。') +
+            this._num('归档候选阈值', 'catbrain.abstract_mem.evidence.archive_threshold', -2.0, -10, 10, 0.1,
+                '净证据分 ≤ 该值时进入归档候选。负数越大越容易归档，正数则几乎不归档。') +
+            this._num('负分持续天数后归档', 'catbrain.abstract_mem.evidence.archive_days', 14, 1, 365, 1,
+                '连续低于阈值多少天后真正归档；避免一次误判就把记忆删掉。') +
+            this._section('信号增量') +
+            this._num('same 强化增量', 'catbrain.abstract_mem.evidence.same_delta', 0.5, 0, 10, 0.1,
+                '判定为同一件事时，强化值增加多少。') +
+            this._num('opposite 质疑增量', 'catbrain.abstract_mem.evidence.opposite_delta', 1.0, 0, 10, 0.1,
+                '判定为矛盾/否定时，质疑值增加多少。') +
+            this._num('复述强化增量', 'catbrain.abstract_mem.evidence.same_recite_delta', 0.1, 0, 10, 0.1,
+                '用户复述已有记忆时额外增加的强化值；通常很小，用来区分“强调”和“第一次说”。') +
+            this._section('准确度（1/3/5 档）') +
+            this._num('same 准确度增量', 'catbrain.abstract_mem.accuracy.same_increment', 1, 0, 5, 1,
+                '同一件事判定正确时，accuracy 增加多少；上限 5。') +
+            this._num('opposite 准确度减量', 'catbrain.abstract_mem.accuracy.opposite_decrement', 2, 0, 5, 1,
+                '矛盾判定时，accuracy 减少多少；下限 1。') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="ab_behavior">` +
+            this._section('临时约定清理') +
+            this._check('开启临时约定清理', 'catbrain.abstract_mem.temp_promise.enabled', true,
+                '摘要时顺带检查带 temp_promise 标签的约定是否已完成/过期，完成后不再反复提醒。') +
+            this._num('每次最多判定条数', 'catbrain.abstract_mem.temp_promise.max_items', 30, 1, 200, 1,
+                '每次清理最多检查多少条临时约定。') +
+            this._section('共处强化') +
+            this._check('开启共处强化', 'catbrain.abstract_mem.cooccur.enabled', true,
+                '本次新事件与旧记忆共享标签时，给旧记忆小幅加强，模拟“一起出现过”。') +
+            this._num('共处强化增量', 'catbrain.abstract_mem.cooccur.delta', 0.1, 0, 10, 0.1,
+                '每条共享标签的旧记忆增加多少强化值。') +
+            this._num('每次最多强化条数', 'catbrain.abstract_mem.cooccur.max_boost', 5, 0, 100, 1,
+                '一次摘要最多强化多少条旧记忆，防止一篇长文把整库都加强。') +
+            `</div>`;
+
+        h += `<div class="tab-content" data-tab-content="ab_review">` +
+            this._section('记忆审查') +
+            this._check('开启记忆审查', 'catbrain.abstract_mem.review.enabled', true,
+                '摘要写入前，用审查模型检查事件内容/准确度；关闭则摘要模型直接写入。') +
             this._select('记忆审查 LLM 类型', 'catbrain.abstract_mem.review.llm_type', [
                 { value: '', label: '跟随摘要后端' },
                 { value: 'deepseek', label: 'DeepSeek' },
                 { value: 'aliyun', label: '阿里云' },
                 { value: 'gemini', label: 'Gemini' },
                 { value: 'meowllm', label: 'MeowLLM' }
-            ], '') +
-            this._password('API Key（留空复用摘要后端）', 'catbrain.abstract_mem.review.api_key', '') +
-            this._text('Base URL（留空复用）', 'catbrain.abstract_mem.review.base_url', '') +
-            this._text('模型（留空复用）', 'catbrain.abstract_mem.review.model', '') +
-            this._num('max_tokens', 'catbrain.abstract_mem.review.max_tokens', 2048, 1, 32768, 16) +
-            this._num('工具调用最大次数', 'catbrain.abstract_mem.review.max_rounds', 3, 1, 20, 1)
-        );
-        h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
-        h += `<div class="modal-tabs">
-            <button class="modal-tab${abOn('deepseek')}" data-tab="abstract_ds">DeepSeek</button>
-            <button class="modal-tab${abOn('aliyun')}" data-tab="abstract_aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab${abOn('gemini')}" data-tab="abstract_gemini">Gemini</button>
-        </div>`;
-        h += `<div class="tab-content${abOn('deepseek')}" data-tab-content="abstract_ds">` +
-            this._password('API Key', 'catbrain.abstract_mem.deepseek.api_key', '') +
-            this._text('Base URL', 'catbrain.abstract_mem.deepseek.base_url', 'https://api.deepseek.com/v1') +
-            this._text('模型', 'catbrain.abstract_mem.deepseek.model', 'deepseek-chat') +
-            this._num('温度', 'catbrain.abstract_mem.deepseek.temperature', 0.7, 0, 2, 0.1) +
-            this._num('max_tokens', 'catbrain.abstract_mem.deepseek.max_tokens', 2048, 1, 32768, 16) +
+            ], '', '留空=跟随摘要后端；也可以指定独立后端做二次审查。') +
+            this._text('审查模型', 'catbrain.abstract_mem.review.model', '',
+                '留空则复用摘要后端对应模型；只在审查使用独立后端时需要填。') +
+            this._num('审查 max_tokens', 'catbrain.abstract_mem.review.max_tokens', 2048, 1, 32768, 16) +
+            this._num('工具调用最大次数', 'catbrain.abstract_mem.review.max_rounds', 3, 1, 20, 1,
+                '审查模型最多调用多少次审查工具；太大可能拖慢摘要。') +
+            '<div class="help-text">' + helpApi + '</div>' +
             `</div>`;
-        h += `<div class="tab-content${abOn('aliyun')}" data-tab-content="abstract_aliyun">` +
-            this._password('API Key', 'catbrain.abstract_mem.aliyun.api_key', '') +
-            this._text('Base URL', 'catbrain.abstract_mem.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
-            this._text('模型', 'catbrain.abstract_mem.aliyun.model', 'qwen-plus') +
-            this._num('温度', 'catbrain.abstract_mem.aliyun.temperature', 0.7, 0, 2, 0.1) +
-            this._num('max_tokens', 'catbrain.abstract_mem.aliyun.max_tokens', 2048, 1, 32768, 16) +
-            `</div>`;
-        h += `<div class="tab-content${abOn('gemini')}" data-tab-content="abstract_gemini">` +
-            this._password('API Key', 'catbrain.abstract_mem.gemini.api_key', '') +
-            this._text('Base URL', 'catbrain.abstract_mem.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
-            this._text('模型', 'catbrain.abstract_mem.gemini.model', 'gemini-3.6-flash') +
-            this._num('温度', 'catbrain.abstract_mem.gemini.temperature', 0.7, 0, 2, 0.1) +
-            this._num('max_tokens', 'catbrain.abstract_mem.gemini.max_tokens', 2048, 1, 32768, 16) +
+
+        h += `<div class="tab-content" data-tab-content="ab_model">` +
+            this._section('摘要模型') +
+            this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab) +
+            '<div class="help-text">' + helpApi + '</div>' +
+            this._fold('DeepSeek',
+                this._text('模型', 'catbrain.abstract_mem.deepseek.model', 'deepseek-chat') +
+                this._num('温度', 'catbrain.abstract_mem.deepseek.temperature', 0.7, 0, 2, 0.1) +
+                this._num('max_tokens', 'catbrain.abstract_mem.deepseek.max_tokens', 2048, 1, 32768, 16)) +
+            this._fold(this._t('阿里云'),
+                this._text('模型', 'catbrain.abstract_mem.aliyun.model', 'qwen-plus') +
+                this._num('温度', 'catbrain.abstract_mem.aliyun.temperature', 0.7, 0, 2, 0.1) +
+                this._num('max_tokens', 'catbrain.abstract_mem.aliyun.max_tokens', 2048, 1, 32768, 16)) +
+            this._fold('Gemini',
+                this._text('模型', 'catbrain.abstract_mem.gemini.model', 'gemini-3.6-flash') +
+                this._num('温度', 'catbrain.abstract_mem.gemini.temperature', 0.7, 0, 2, 0.1) +
+                this._num('max_tokens', 'catbrain.abstract_mem.gemini.max_tokens', 2048, 1, 32768, 16)) +
             `</div>`;
         return h;
     },
@@ -381,9 +465,8 @@ Object.assign(Config, {
         const hint = group.querySelector('.mll-hint');
         if (hint) hint.style.display = sel.value === 'meowllm' ? '' : 'none';
     },
-    llm_meowllmPane(active) {
-        return `<div class="tab-content${active === 'meowllm' ? ' active' : ''}" data-tab-content="meowllm" id="meowllmPane">
-            ${this._mllStyle()}
+    llm_meowllmContent() {
+        return `${this._mllStyle()}
             <div class="mll-tip">
                 <div style="font-size:13px;color:var(--pink-deep,#FF69B4);margin-bottom:6px;font-weight:600">${this._t('MeowLLM 参数在独立页面里配置')}</div>
                 <div>${this._t('连接、引擎（DualStream）、生成、思考、δ-mem 记忆与落盘等全部参数都收在子服务（.vendor/.MeowLLM/config.yml），这里不再重复一份，避免两处配置打架。配置页左侧有侧边栏，DualStream 引擎和 δ-mem 记忆是分开的两块。')}</div>
@@ -392,7 +475,11 @@ Object.assign(Config, {
                         <span>🐾</span><span>${this._t('打开 MeowLLM 配置页')}</span>
                     </button>
                 </div>
-            </div>
+            </div>`;
+    },
+    llm_meowllmPane(active) {
+        return `<div class="tab-content${active === 'meowllm' ? ' active' : ''}" data-tab-content="meowllm" id="meowllmPane">
+            ${this.llm_meowllmContent()}
         </div>`;
     },
     catbrain_rulesbreak(armor) {

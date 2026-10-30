@@ -53,7 +53,7 @@
  * ============================================================================
  * 二、对外契约（改了会连带打断交互，禁止随手改签名）
  * ============================================================================
- *   _place(el, baseAngle, rotDeg, RX, RY, tiltDeg)
+ *   _place(el, baseAngle, rotDeg, RX, RY)
  *       ← deck.js 的 deck.restore()、drag.js 的 place() 都按这个签名调用，
  *         且半径是从 deck 捕获的 [RX, RY] 数组里取的。签名必须保持稳定。
  *   _applyLaunch(el, index, total, open, fly)  ← toggleLauncher(fly=true) / _syncLauncher(fly 省略=false)
@@ -237,10 +237,9 @@ Object.assign(Orbit, {
         return (zBase || 0) + Math.round((depth + 1) * 50 + 5);
     },
 
-    _placeAt(el, x, y, depth, sc, tiltDeg, zBase) {
-        let tf = 'translate3d(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px, 0) ' +
-                 'scale(' + sc.toFixed(3) + ')';
-        if (tiltDeg) tf += ' rotate(' + tiltDeg.toFixed(2) + 'deg)';
+    _placeAt(el, x, y, depth, sc, zBase) {
+        const tf = 'translate3d(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px, 0) ' +
+                   'scale(' + sc.toFixed(3) + ')';
         el.style.transform = tf;
         el.style.zIndex = String(this._depthZ(depth, zBase));        // 越近越靠前
         el.style.setProperty('--inv', (1 / sc).toFixed(3));
@@ -260,10 +259,10 @@ Object.assign(Orbit, {
     /**
      * 【交互契约，签名不许改】把一张卡摆到轨道上。
      *   RX / RY : 横向 / 纵向半轴（= GEO.R 与 GEO.RY）
-     *   tiltDeg : 惯性倾角，现在恒传 0（保留形参只是为了不改调用方）
      * deck.js 的 restore 与 drag.js 的 place 都是 (el, _, rot, radius[0], radius[1]) 这个形状。
+     * （原来的第 6 个形参 tiltDeg 已删：倾角弹簧从没接上轨道，所有调用方都不传它。）
      */
-    _place(el, baseAngle, rotDeg, RX, RY, tiltDeg) {
+    _place(el, baseAngle, rotDeg, RX, RY) {
         // ---------- 护栏（排查"卡片全堆到中间"，不要删）----------
         // 半径/角度只要有一个非法，写出来的就是 translate3d(NaNpx,…)（整条声明被浏览器丢弃）
         // 或 translate3d(0px,0px,0)（卡片精确堆到容器正中，因为 .slot 是 top/left:50%）。
@@ -286,7 +285,7 @@ Object.assign(Orbit, {
         const p = this._orbitPoint(baseAngle, rotDeg, RX, flat);
         const sc = this._depthScale(p.depth, this.CFG.CONFIG_SCALE || 1,
                                     this.CFG.SCALE_MIN, this.CFG.SCALE_SPAN);
-        this._placeAt(el, p.x, p.y, p.depth, sc, tiltDeg, 0);   // 配置轨/工具箱：z 带基准 0
+        this._placeAt(el, p.x, p.y, p.depth, sc, 0);   // 配置轨/工具箱：z 带基准 0
     },
 
     /**
@@ -437,7 +436,7 @@ Object.assign(Orbit, {
         const sc = this._depthScale(p.depth, this.CFG.LAUNCH_SCALE || 1,
                                     this.CFG.L_SCALE_MIN, this.CFG.L_SCALE_SPAN);
         // z 带基准抬到 LAUNCH_Z_BASE：启动卡整层压在配置卡之上
-        this._placeAt(el, p.x, p.y, p.depth, sc, 0, this.CFG.LAUNCH_Z_BASE || 200);
+        this._placeAt(el, p.x, p.y, p.depth, sc, this.CFG.LAUNCH_Z_BASE || 200);
         el.style.opacity = '1';
         el.style.pointerEvents = 'auto';
     },

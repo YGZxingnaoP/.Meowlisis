@@ -29,8 +29,8 @@
    性能要点（否则打开面板必掉帧）：
    ① 只过渡 opacity，filter 不参与过渡 —— filter 一旦参与过渡，
       浏览器会在过渡期间每帧重算整块模糊（1500×1500 的大层）。
-   ② 模糊层里不许有动画：.card-glow 的呼吸、.bg-stars 的闪烁全部暂停。
-      只要层内像素在变，模糊结果就必须每帧重算，这是掉帧的真正来源。
+   ② 模糊层里不许有动画：.card-glow 的呼吸、.launcher-glow 的脉冲、.bg-stars 的闪烁全部暂停。
+      漏一个就白费：只要层内像素在变，模糊结果就必须每帧重算，这是掉帧的真正来源。
    ③ .bg-stars 不参与模糊（全屏元素 + 动画 = 最贵的一项），只压暗。 */
 body.modal-open .container {
     filter: blur(3.5px) saturate(0.92);
@@ -42,6 +42,7 @@ body.modal-open .bg-stars {
     transition: opacity 0.22s ease;
 }
 body.modal-open .card-glow,
+body.modal-open .launcher-glow,
 body.modal-open .bg-stars {
     animation-play-state: paused;
 }
@@ -508,7 +509,7 @@ body.modal-open .bg-stars {
     border-color: var(--pink-deep);
 }
 
-/* B站扫码登录弹窗 */
+/* B站扫码登录弹窗（挂到 body 上，所以必须比配置面板 5000 高，否则二维码被面板盖住点不到） */
 .bili-login-overlay {
     position: fixed;
     inset: 0;
@@ -517,7 +518,7 @@ body.modal-open .bg-stars {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1900;
+    z-index: 5600;
 }
 
 .bili-login-box {

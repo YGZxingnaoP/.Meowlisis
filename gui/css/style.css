@@ -41,11 +41,15 @@ body {
     z-index: 0;
     pointer-events: none;
     background: url('../resource/bg/main.jpg') center center / cover no-repeat;
-    filter: blur(5px) saturate(1.05) brightness(1.02);
+    /* 新壁纸是"高明度低对比的柔雾粉"，比旧版（满屏樱花）干净，所以模糊可以少一点、
+       不透明度可以多一点 —— 人物躺着的那抹暖色才透得出来，又不会和卡片抢戏。 */
+    filter: blur(4px) saturate(1.05) brightness(1.02);
     transform: scale(1.03);            /* 放大一点，盖掉模糊后边缘的半透明 */
-    /* 60% 透明度：让 body 的淡粉渐变透上来，整体就是"淡粉底 + 一点图"，
+    /* 66% 透明度：让 body 的淡粉渐变透上来，整体就是"淡粉底 + 一点图"，
        不透明的话图会盖满整个屏幕、显得很杂。想更淡就往下调。 */
-    opacity: 0.6;
+    opacity: 0.66;
+    /* 只给 opacity 挂过渡："看壁纸"时要把这层提亮，filter 一起过渡会每帧重算模糊 */
+    transition: opacity 0.5s ease;
 }
 
 .bg-stars {
@@ -151,6 +155,96 @@ body {
     color: var(--pink-deep);
     z-index: 2;
     text-shadow: 0 0 4px var(--white);
+}
+
+/* ---------- 右上角"看壁纸"按钮 + 卡片下沉 ----------
+   开销几乎为零：只切 body.peek-wall 一个类。
+   ① 过渡只动 transform / opacity（合成层友好，不重排）；
+   ② 淡出后 visibility:hidden → 整棵子树跳过绘制；
+   ③ 顺手暂停卡片呼吸光晕（隐藏着还跑动画是白耗）。
+   ⚠️ 下沉用 CSS 类，不写内联 transform —— 轨道容器上任何内联 transform 都会被
+      orbit/rotation.js 的半径锁抹掉，而这里压根不动半径，只挪绘制位置。 */
+.peek-btn {
+    position: fixed;
+    top: 84px;
+    right: 14px;
+    z-index: 3000;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.86);
+    color: var(--pink-deep);
+    box-shadow: 0 2px 10px rgba(214, 58, 143, 0.26);
+    cursor: pointer;
+    opacity: 0.55;
+    transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.2s ease;
+}
+
+.peek-btn:hover {
+    opacity: 1;
+    box-shadow: 0 3px 14px rgba(214, 58, 143, 0.42);
+}
+
+.peek-btn:focus-visible {
+    outline: 2px solid var(--pink-deep);
+    outline-offset: 2px;
+}
+
+.peek-btn svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* 已经在"看壁纸"：箭头翻上来，提示再点一次就恢复 */
+body.peek-wall .peek-btn {
+    opacity: 0.9;
+    transform: rotate(180deg);
+}
+
+/* 卡片整体下沉 + 淡出（不碰布局、不碰半径） */
+.orbit-system {
+    transition: transform 0.55s cubic-bezier(0.22, 0.9, 0.28, 1), opacity 0.45s ease;
+}
+
+body.peek-wall .orbit-system {
+    transform: translateY(13vh);
+    opacity: 0;
+    pointer-events: none;
+    visibility: hidden;
+    transition: transform 0.55s cubic-bezier(0.22, 0.9, 0.28, 1), opacity 0.45s ease,
+                visibility 0s linear 0.55s;
+}
+
+/* 命中的坑：.slot / .sub / .orbit-outer 都是 pointer-events:auto，
+   只给父级写 none 挡不住它们（.toolbox-overlay 那段注释踩过同一个坑）。
+   淡出的 0.55s 里也要保证点不到卡片，所以逐个压掉。 */
+body.peek-wall .orbit-outer,
+body.peek-wall .slot,
+body.peek-wall .sub {
+    pointer-events: none;
+}
+
+body.peek-wall .card-glow,
+body.peek-wall .launcher-glow {
+    animation-play-state: paused;
+}
+
+/* 这时壁纸才是主角：提亮、淡掉模糊。
+   filter 故意不进 transition —— 大图层过渡 filter 会每帧重算，这里让它一次性切换。 */
+body.peek-wall .bg-main {
+    filter: blur(1.2px) saturate(1.04) brightness(1.03);
+    opacity: 0.96;
 }
 
 /* Buttons */

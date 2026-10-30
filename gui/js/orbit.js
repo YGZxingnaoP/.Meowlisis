@@ -30,30 +30,61 @@ const Orbit = {
     // 本文件不再保留第二份实现，避免"两个半径"这种老坑。
     // （_applyZoom 已删除：它按视口给容器写 scale，是"半径会缩放"的唯一来源。）
 
-    /** 取某个 deck 用的扇形参数（'tool' 用更小一号的那套） */
+    /**
+     * 取某个 deck 用的扇形参数（'tool' 用更小一号的那套）。
+     * 主轨道直接用 CFG 顶层，不再逐字段拷一份 —— 拷贝会让"改了 data.js 忘了同步拷贝"
+     * 变成第二份真值，调参时永远有一个坑在等着。
+     */
     _kidCfg(name) {
-        if (name === 'tool') return this.CFG.TOOL;
-        return {
-            FOCUS_SCALE: this.CFG.FOCUS_SCALE, PARENT_DY: this.CFG.PARENT_DY,
-            KID_SPACING: this.CFG.KID_SPACING, KID_DY0: this.CFG.KID_DY0,
-            KID_DY_SPAN: this.CFG.KID_DY_SPAN, KID_ROT: this.CFG.KID_ROT,
-            KID_HALF: this.CFG.KID_HALF
-        };
+        return name === 'tool' ? this.CFG.TOOL : this.CFG;
     },
 
     /**
-     * 子卡扇形的"弧差"按可用纵向空间自适应。
-     * 子卡很大（198×270），最外侧那张因为倾斜，包围盒半高会涨到 ~155。
+     * 子卡扇形排布：所有子卡落在【同一段圆弧】上，倾角 = 它在弧上的极角。
+     *   弦长 = KID_SPACING，圆心角 = KID_ROT  →  弧半径 Rf = KID_SPACING / (2·sin(KID_ROT/2))
+     *   dx = Rf·sin(θ)      dy = base + Rf·(1 − cos θ)      rot = θ      θ = off·KID_ROT
      *
-     * 父卡摊开后停在屏幕正中（PARENT_DY 再上移一点），子卡从它下面铺开，
-     * 所以约束的是"最外侧那张的下边缘不能跑出容器底部"。
-     * 主界面按浏览器视口算，工具箱按面板的固定可见半高算。
+     * 位置和倾角是同一条几何推出来的：缝隙处处相等，弧也永远"圆"。
+     * 旧实现是两套账 —— 位置用「KID_DY0 + |off|×固定弧差」，倾角用 off×KID_ROT：
+     *   弧的曲率由 18px/档决定，倾角由 7°/档决定，两者不成比例，偏差随 |off| 变大
+     *   （两档时约偏 18px），越往两侧越不对。
+     *   而且父卡底边和扇形上沿没对齐：中间那张压进父卡下沿约 3px，最外侧反而低 13px。
+     *   它为了适配小窗口还会压"弧差"，一压弧和倾角就更对不上。
+     * 现在：基准下移由父卡尺寸 + KID_GAP 算出来，纵向放不下时【整块上移】（lift），
+     * 弧的形状一点不变。
+     *
+     * parentHalf / kidW / kidH 由调用方量真实尺寸传进来：父卡用 offsetHeight（布局值，
+     * 不受 transform 影响，读不到过渡中间态），子卡用 offsetWidth/Height（工具箱那套更小）。
      */
-    _fanSpan(name) {
+    _fanLayout(name, total, parentHalf, kidW, kidH) {
         const kc = this._kidCfg(name);
-        const half = (name === 'tool') ? 330 : (window.innerHeight || 900) / 2;
-        const room = half - 8 - kc.KID_HALF - kc.KID_DY0;
-        return Math.max(0, Math.min(kc.KID_DY_SPAN, Math.floor(room / 2)));
+        const rotDeg = kc.KID_ROT || 0;
+        const step = rotDeg * Math.PI / 180;
+        // 角度为 0 时退化成"一条横排"，不会 NaN
+        const Rf = step > 1e-4 ? (kc.KID_SPACING / (2 * Math.sin(step / 2))) : 0;
+        const mid = (total - 1) / 2;
+        const base = kc.PARENT_DY + parentHalf + (kc.KID_GAP || 0) + kidH / 2;
+        const thMax = Math.abs(mid) * step;
+        // 最外侧那张倾斜后的包围盒下沿
+        const bottom = base + Rf * (1 - Math.cos(thMax)) +
+                       (kidH / 2) * Math.cos(thMax) + (kidW / 2) * Math.sin(thMax);
+        // 可用纵向空间：主界面按视口，工具箱按面板固定可见半高（.toolbox-system 690 的一半）
+        const half = (name === 'tool') ? 345 : (window.innerHeight || 900) / 2;
+        const margin = 10;
+        // 上移上限：父卡上沿顶到边界为止（再往上就切父卡了，宁可让扇形出界一点）
+        const maxLift = Math.max(0, kc.PARENT_DY - parentHalf + half - margin);
+        const lift = Math.min(Math.max(0, bottom - (half - margin)), maxLift);
+        const items = [];
+        for (let i = 0; i < total; i++) {
+            const off = i - mid;
+            const th = off * step;
+            items.push({
+                dx: Rf * Math.sin(th),
+                dy: base + Rf * (1 - Math.cos(th)) - lift,
+                rot: off * rotDeg
+            });
+        }
+        return { items: items, parentDy: kc.PARENT_DY - lift };
     },
 
     init() {
@@ -107,7 +138,14 @@ const Orbit = {
                 e.stopPropagation();
                 if (this.suppressClick) return;
                 this.closeAll();   // 启动卡与"摊开子卡"互斥
-                this._flipThen(el, () => this._toPanel(p.id, el, window.App && App.onLaunchClick));
+                this._flipThen(el, () => {
+                    // 启动卡不开配置面板，所以不能走 _toPanel：那条路会把 Modal.source
+                    // 指到这张卡上，之后随便哪个面板都会"从启动卡长出来"。
+                    // 翻转只作"已收到点击"的反馈，请求回来就翻回正面（失败/成功都一样）。
+                    const done = (window.App && App.onLaunchClick) ? App.onLaunchClick(p.id, el) : null;
+                    if (done && typeof done.then === 'function') done.then(() => this._unflip(el));
+                    else this._unflip(el);
+                });
             });
             cluster.appendChild(el);
             return el;
@@ -141,15 +179,19 @@ const Orbit = {
 
     // ==================== 建卡 / 定位 ====================
     /**
-     * 一张卡 = .slot > [.card-glow + .card-ripple] + .card > (.face.front 卡面 + .face.back 卡背)
+     * 一张卡 = .slot > [.card-glow + .card-ripple] + .card > .card-press > (.face.front + .face.back)
      * 点击时 .card 加 .flipped 做 3D 翻牌，翻完再摊开子卡 / 打开配置。
+     * .card-press 是压感层（下沉 + 微倾斜，见 css/cards.css / js/press.js）：
+     * 翻牌和压感各占一层 transform，互不抢过渡时序。
      * fx=true 时插入呼吸/涟漪两层（只有主界面卡片要）
      */
     _buildCard(node, total, index, cardId, extraClass, fx) {
         const id = cardId || node.card || node.id;
         const th = Cards.theme(id);
         const label = I18n.text(Cards.name(id, node.label));
-        const desc = I18n.text(node.tooltip || node.label);
+        let desc = I18n.text(node.tooltip || node.label);
+        // 有"自己的总设置"（self）的父卡：提示可以长按打开（deck.js 的 _bindSelfPanel）
+        if (node.self) desc += ' · ' + I18n.text('长按打开总设置');
         const el = document.createElement('div');
         el.className = 'slot' + (extraClass ? ' ' + extraClass : '');
         el.dataset.id = node.id;
@@ -162,17 +204,22 @@ const Orbit = {
         el.innerHTML =
             (fx ? '<span class="card-glow"></span><span class="card-ripple"></span>' : '') +
             '<div class="card" style="--a:' + th.a + ';--b:' + th.b + '">' +
-                '<div class="face front">' +
-                    (badge ? '<span class="card-badge">' + badge + '</span>' : '') +
-                    '<div class="card-art">' +
-                        '<img class="card-img" alt="" draggable="false" src="' + Cards.img(id) + '">' +
-                        '<span class="card-emoji">' + Cards.emoji(id) + '</span>' +
+                '<div class="card-press">' +
+                    '<div class="face front">' +
+                        (badge ? '<span class="card-badge">' + badge + '</span>' : '') +
+                        '<div class="card-art">' +
+                            '<img class="card-img" alt="" draggable="false" decoding="async" src="' + Cards.img(id) + '">' +
+                            '<span class="card-emoji">' + Cards.emoji(id) + '</span>' +
+                        '</div>' +
+                        '<div class="card-name">' + label + '</div>' +
+                        '<span class="card-glare"></span>' +
+                        '<span class="card-spot"></span>' +
+                        '<span class="card-ring"></span>' +
                     '</div>' +
-                    '<div class="card-name">' + label + '</div>' +
-                '</div>' +
-                '<div class="face back">' +
-                    '<span class="bn">' + label + '</span>' +
-                    '<span class="bd">' + desc + '</span>' +
+                    '<div class="face back">' +
+                        '<span class="bn">' + label + '</span>' +
+                        '<span class="bd">' + desc + '</span>' +
+                    '</div>' +
                 '</div>' +
             '</div>';
         if (fx) {
@@ -180,11 +227,19 @@ const Orbit = {
             el.style.setProperty('--bd', (4.2 + Math.random() * 3.4).toFixed(2) + 's');
             el.style.setProperty('--bdel', (-Math.random() * 7.6).toFixed(2) + 's');
         }
-        const img = el.querySelector('.card-img');        img.addEventListener('error', () => {
+        const img = el.querySelector('.card-img');
+        img.addEventListener('error', () => {
+            // 先退回 PNG（卡面已换成 webp，缺文件时不至于整张变 emoji）
+            const png = Cards.fallbackImg(id);
+            if (png && img.getAttribute('src') !== png) {
+                img.setAttribute('src', png);
+                return;
+            }
             const art = img.parentNode;
             if (art) art.classList.add('no-img');
             img.remove();
-        }, { once: true });
+        });
+        if (window.PressFx) PressFx.bind(el);   // 压感：外环 / 启动 / 工具箱 / 子卡统一
         return el;
     },
 

@@ -5,8 +5,7 @@
 
 Object.assign(Config, {
     tts() {
-        let h = this._section('TTS 语音合成') +
-            this._select('语音合成引擎', 'tts.select', [{value:'gpt-sovits',label:'GPT-SoVITS'}], 'gpt-sovits') +
+        let h = this._select('语音合成引擎', 'tts.select', [{value:'gpt-sovits',label:'GPT-SoVITS'}], 'gpt-sovits') +
             this._text('GPT-SoVITS 服务地址', 'tts.gpt-sovits.gpt_sovits_url', 'http://127.0.0.1:9880') +
             this._text('输出目录', 'tts.output_dir', './output') +
             this._num('音量', 'tts.volume', 1.0, 0, 2, 0.1) +
@@ -27,8 +26,7 @@ Object.assign(Config, {
         const c = data || {};
         const ckpts = (models && models.ckpt) || [];
         const pths = (models && models.pth) || [];
-        let h = this._section('参考音频配置（按角色名绑定）');
-        h += `<div id="refAudioPanel"></div>`;
+        let h = `<div id="refAudioPanel"></div>`;
         h += this.emotionParamsPanel();
         h += this._section('GPT-SoVITS 模型权重 (tts_infer.yaml)');
         h += `<div class="form-group"><label>${this._t('版本')}</label>
@@ -48,19 +46,24 @@ Object.assign(Config, {
     },
 
     // ============ TTS 子球：参数配置（合成参数 + 流式参数 + 播放） ============,
+    ttsModelFields(data) {
+        const d = data || {};
+        return `<div class="form-group"><label>${this._t('语速')}</label>
+            <input type="number" data-tts-model="speed_factor" value="${d.speed_factor != null ? d.speed_factor : 1.0}" step="0.1" min="0.5" max="2"></div>` +
+            `<div class="form-group"><label>${this._t('温度')}</label>
+            <input type="number" data-tts-model="temperature" value="${d.temperature != null ? d.temperature : 1.0}" step="0.1" min="0" max="2"></div>` +
+            `<div class="form-group"><label>Top K</label>
+            <input type="number" data-tts-model="top_k" value="${d.top_k != null ? d.top_k : 15}" step="1" min="1" max="50"></div>` +
+            `<div class="form-group"><label>Top P</label>
+            <input type="number" data-tts-model="top_p" value="${d.top_p != null ? d.top_p : 1.0}" step="0.05" min="0" max="1"></div>` +
+            `<div class="form-group"><label>${this._t('切分方式')}</label>
+            <input type="text" data-tts-model="text_split_method" value="${d.text_split_method || 'cut5'}"></div>`;
+    },
+
     tts_params_panel(data) {
         const d = data || {};
         let h = this._section('合成参数 (tts_infer.yaml)');
-        h += `<div class="form-group"><label>${this._t('语速')}</label>
-            <input type="number" data-tts-model="speed_factor" value="${d.speed_factor != null ? d.speed_factor : 1.0}" step="0.1" min="0.5" max="2"></div>`;
-        h += `<div class="form-group"><label>${this._t('温度')}</label>
-            <input type="number" data-tts-model="temperature" value="${d.temperature != null ? d.temperature : 1.0}" step="0.1" min="0" max="2"></div>`;
-        h += `<div class="form-group"><label>Top K</label>
-            <input type="number" data-tts-model="top_k" value="${d.top_k != null ? d.top_k : 15}" step="1" min="1" max="50"></div>`;
-        h += `<div class="form-group"><label>Top P</label>
-            <input type="number" data-tts-model="top_p" value="${d.top_p != null ? d.top_p : 1.0}" step="0.05" min="0" max="1"></div>`;
-        h += `<div class="form-group"><label>${this._t('切分方式')}</label>
-            <input type="text" data-tts-model="text_split_method" value="${d.text_split_method || 'cut5'}"></div>`;
+        h += this.ttsModelFields(d);
 
         h += this._section('流式参数 (config.yml)');
         h += this._num('语义 token 块长度', 'tts.gpt-sovits.min_chunk_length', 12, 1, 50, 1,

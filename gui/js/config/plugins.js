@@ -46,7 +46,7 @@ Object.assign(Config, {
         const help = f.help || '';
         const type = f.type || 'text';
         // 插件配置是独立文件（plugins/<id>/config.yml），不走「API 平台」去重。
-        // 文本/密码字段直接用 api_platforms.js 提供的"直接拼 HTML"，绕开所有拦截层。
+        // 文本/密码字段直接用 credentials.js 提供的"直接拼 HTML"，绕开凭据隐藏规则。
         if ((type === 'password' || type === 'text') && this._rawField) {
             const v = this._val(path, def);
             return this._rawField(label, path, v == null ? '' : v, type === 'password', help);

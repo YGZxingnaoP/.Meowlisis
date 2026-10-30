@@ -74,6 +74,23 @@ Object.assign(App, {
         });
     },
 
+    // ============ 折叠面板 ============
+    // <details> 原生切换在面板里会被翻牌/遮罩相关的事件链打断，这里用捕获阶段自己切，
+    // 保证 catbrain / TTS / 工具箱里的 .ref-fold 都能点开。
+    bindFolds() {
+        if (App._foldsBound) return;
+        App._foldsBound = true;
+        document.addEventListener('click', (e) => {
+            const summary = e.target && e.target.closest ? e.target.closest('.ref-fold > summary') : null;
+            if (!summary) return;
+            const details = summary.parentElement;
+            if (!details || details.tagName !== 'DETAILS') return;
+            e.preventDefault();
+            e.stopPropagation();
+            details.open = !details.open;
+        }, true);
+    },
+
     // ============ VTS 参数查询 ============,
     bindTabs() {
         if (App._tabsBound) return;
@@ -82,10 +99,11 @@ Object.assign(App, {
             const tab = e.target && e.target.closest ? e.target.closest('.modal-tab') : null;
             if (!tab) return;
             const target = tab.dataset.tab;
-            document.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            const scope = (tab.closest && tab.closest('#modalBody, #advBody, #modalBody_stash')) || document;
+            scope.querySelectorAll('.modal-tab').forEach(t => t.classList.remove('active'));
+            scope.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             tab.classList.add('active');
-            const content = document.querySelector(`.tab-content[data-tab-content="${target}"]`);
+            const content = scope.querySelector(`.tab-content[data-tab-content="${target}"]`);
             if (content) content.classList.add('active');
         });
     },

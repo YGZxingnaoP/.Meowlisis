@@ -94,7 +94,9 @@ class TBNapcatActiveModule:
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
         args = arguments or {}
-        target_type = "group" if str(args.get("target_type") or "") == "group" else "friend"
+        # 规则硬触发只给 request、不带 target_type：留空表示群/好友都查，解析出结果再定
+        raw_type = str(args.get("target_type") or "").strip()
+        target_type = raw_type if raw_type in ("friend", "group") else ""
         target = str(args.get("target") or "").strip()
         mention = str(args.get("mention") or args.get("at_name") or "").strip()
         content_type = str(args.get("content_type") or "")
@@ -146,7 +148,8 @@ class TBNapcatActiveModule:
         if resolved is None:
             self.log.info(f"[napcat_send] 目标未确定，未发送：{why}")
             return f"未发送：{why}"
-        return self._do_send(target_type, resolved, direct)
+        send_type = target_type or ("group" if resolved.get("group_id") else "friend")
+        return self._do_send(send_type, resolved, direct)
 
     # ==================== 链路内部查找 ====================
     def _resolve(self, target_type: str, target: str, mention: str
@@ -161,6 +164,8 @@ class TBNapcatActiveModule:
         mention = str(mention or "").strip()
         if not target:
             return None, "还不知道这条消息要发给谁", "target", []
+        if str(target_type) not in ("friend", "group"):
+            return self._resolve_any(target, mention)
         if str(target_type) == "group":
             gid, why, candidates = subtools.find_group(target)
             if not gid:
@@ -177,6 +182,33 @@ class TBNapcatActiveModule:
         if not uid:
             return None, why, "target", candidates
         return {"user_id": uid}, "", "", candidates
+
+    def _resolve_any(self, target: str, mention: str
+                     ) -> Tuple[Optional[Dict], str, str, list]:
+        """未指定 target_type（规则硬触发）时的目标解析：群/好友两表都查。
+
+        只有一边能确定才直接用；两边都能确定时，名称带「群」按群处理，否则交追问，
+        不猜、不瞎发。
+        """
+        from func.toolbox.napcat.active_sender import subtools
+        gid, g_why, g_cand = subtools.find_group(target)
+        uid, f_why, f_cand = subtools.find_friend(target)
+        candidates = (g_cand + f_cand)[:6]
+        if gid and (not uid or "群" in target):
+            if mention:
+                row = subtools.find_member(gid, mention)
+                if not row:
+                    members = subtools.member_names(gid, query=mention)
+                    tail = f"（群里的人：{members}）" if members else ""
+                    return None, f"群 {gid} 里没找到成员「{mention}」{tail}", "mention", []
+                return {"group_id": gid, "member": row}, "", "", candidates
+            return {"group_id": gid, "member": None}, "", "", candidates
+        if uid and not gid:
+            return {"user_id": uid}, "", "", candidates
+        if uid and gid:
+            return None, f"「{target}」既像好友也像群，我不确定该发哪里", "target", candidates
+        why = g_why if "群" in target else (f_why or g_why)
+        return None, str(why or f"没有能确定是「{target}」的好友或群"), "target", candidates
 
     def _clarify_question(self, why: str, ask: str, target_type: str,
                           candidates: list) -> str:
@@ -219,7 +251,8 @@ class TBNapcatActiveModule:
                 target_desc = f"{target_desc}，要 @ {mention}"
                 extra = f"\n（@{mention} 由系统单独 @ 出去，正文里不要再写 @{mention}）"
         else:
-            target_desc = f"{target_desc}（好友私聊）"
+            if str(target_type) == "friend":
+                target_desc = f"{target_desc}（好友私聊）"
         try:
             resp = llm.chat([
                 {"role": "system",

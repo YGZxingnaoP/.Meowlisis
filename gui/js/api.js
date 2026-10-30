@@ -266,7 +266,9 @@ const API = {
 
     async getRefAudio() {
         const res = await fetch('/api/ref_audio');
-        if (!res.ok) return {};
+        // ⚠️ 读失败绝不能静默返回 {}：面板会渲染成"一条参考音频都没有"，
+        // 用户一按保存就用 {} 覆盖掉 character/ref_audio/config.json（真丢数据）。
+        if (!res.ok) throw new Error('读取参考音频配置失败: ' + res.status);
         return res.json();
     },
 

@@ -217,6 +217,11 @@ class TBoxAnalysis:
                 return hit
         except Exception:
             self.log.exception("插件会话/关键词处理失败")
+        if self._qq_send_rule_hit(text):
+            # 强制走 napcat_send：参数只给原始文本，目标/内容由模块内部解析或追问
+            if "napcat_send" in self._tools:
+                return ("napcat_send", {"request": text})
+            self.log.warning("qq发消息命中，但 napcat_send 未注册（主动发送未启用），改走常规决策")
         if self._vision_rule_hit(text):
             return ("use_vision", {"user_message": text})
         if self._paint_rule_hit(text):
@@ -365,6 +370,17 @@ class TBoxAnalysis:
         if not t:
             return False
         return any(w in t for w in self.PAINT_RULE_WORDS)
+
+    # QQ 发消息规则触发词表：命中即强制走 napcat_send（与视觉/绘画同理，零 LLM）
+    # 只认「qq发消息」「QQ发消息」两种写法（大小写不敏感），不扩词，避免误伤普通闲聊。
+    QQ_SEND_RULE_WORDS = ("qq发消息", "QQ发消息")
+
+    def _qq_send_rule_hit(self, text: str) -> bool:
+        """本地规则硬触发判断：用户文本命中 qq发消息指令即返回 True（零 LLM）"""
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        return any(w.lower() in t for w in self.QQ_SEND_RULE_WORDS)
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

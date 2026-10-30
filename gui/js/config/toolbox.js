@@ -169,20 +169,6 @@ Object.assign(Config, {
                 '两次主动发送的最小间隔');
     },
 
-    // ============ Minecraft ============,
-    minecraft() {
-        return this._section('Minecraft 日志读取') +
-            this._check('启用 Minecraft 日志读取', 'minecraft.enabled', false) +
-            this._text('日志文件路径', 'minecraft.log_path', '') +
-            this._text('编码', 'minecraft.encoding', 'utf-8') +
-            this._num('检查间隔（秒）', 'minecraft.check_interval', 30, 1, 60, 1) +
-            this._check('使用玩家名作为 UID', 'minecraft.use_player_name', false) +
-            this._text('固定用户名', 'minecraft.username_fixed', 'YGZ醒脑片') +
-            this._check('在提示词中包含玩家名', 'minecraft.include_player_name_in_prompt', true) +
-            this._list('玩家白名单（逗号分隔，空=不过滤）', 'minecraft.filter_players', []) +
-            this._check('忽略自己发送的消息', 'minecraft.ignore_self_messages', false);
-    },
-
     // ============ 角色主动回复 (llm_active) ============,
     llm_active() {
         return this._section('角色主动回复 (llm_active)') +
@@ -417,48 +403,6 @@ Object.assign(Config, {
             </div>
             <div id="backlogUserList"></div>
         </div>`;
-    },
-
-    // ============ 天气查询 (weather) ============,
-    weather() {
-        return this._section('天气查询（触发型工具）') +
-            this._check('启用天气查询', 'weather.enabled', true,
-                'AI 根据用户天气询问触发查询并播报，数据来自中国天气网（受 toolcalls 控制）');
-    },
-
-    // ============ 新闻查询 (news) ============,
-    news() {
-        return this._section('新闻查询（触发型工具）') +
-            this._check('启用新闻查询', 'news.enabled', true,
-                'AI 根据用户新闻/热点询问触发爬取并概括，数据来自 Readhub（受 toolcalls 控制）') +
-            this._num('爬取条数', 'news.top_n', 3, 1, 10, 1,
-                '每次爬取并概括的新闻条数（默认 3，最多 10）');
-    },
-
-    // ============ 新建待办提醒 (add_backlog) ============,
-    addBacklog() {
-        return this._section('新建待办（触发型工具）') +
-            this._check('启用新建待办', 'add_backlog.enabled', true,
-                'AI 根据用户「记一下 / 提醒我几点做什么」触发，深度思考后写入 character/backlog（受 toolcalls 控制）') +
-            this._check('QQ 对接', 'add_backlog.qq_enabled', true,
-                '开启后 QQ 私聊 / 群聊@ 也可触发新建待办，且待办 qq 提醒强制开启');
-    },
-
-    // ============ 海龟汤 (turtle_soup) ============,
-    turtle_soup() {
-        return this._section('海龟汤（触发型工具）') +
-            this._check('启用海龟汤', 'turtle_soup.enabled', true,
-                'AI 根据用户「玩海龟汤 / 情境猜谜」触发，生成谜题并主持游戏（受 toolcalls 控制）') +
-            this._check('QQ 对接', 'turtle_soup.qq_enabled', true,
-                '开启后 QQ 私聊 / 群聊@ 也可触发海龟汤，QQ 线仅发文本、不播语音') +
-            this._text('题库归档目录', 'turtle_soup.bank_dir', './character/turtle_soup',
-                '结束的局会归档到这里，供以后复用') +
-            this._text('运行时缓存目录', 'turtle_soup.cache_dir', './.temp/turtle_soup',
-                '进行中的局缓存到这里（含谜底谜面），结束或启动时清理') +
-            this._num('低难度汤面字数', 'turtle_soup.surface_len.easy', 20, 10, 60, 1,
-                '低难度（easy）汤面目标字数') +
-            this._num('高难度汤面字数', 'turtle_soup.surface_len.hard', 40, 20, 100, 1,
-                '高难度（hard）汤面目标字数');
     },
 
     // ============ 歌曲（meowsinger）子球 ============,

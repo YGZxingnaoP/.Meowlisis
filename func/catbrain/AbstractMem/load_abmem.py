@@ -188,11 +188,15 @@ class MeowLoadAbstractMemory:
         llm = self._ensure_llm()
         if llm is None or not llm.client:
             return empty
-        limit = max(1, int(self.config.abmem_recall_months_limit or 3))
+        try:
+            limit = max(0, int(self.config.abmem_recall_months_limit))
+        except (TypeError, ValueError):
+            limit = 3
+        limit_text = f"最多{limit}个" if limit > 0 else "不限数量"
         now = datetime.datetime.now()
         weekday = "星期" + "一二三四五六日"[now.weekday()]
         system_text = ("判断用户这句话是否在要求回忆过去的事。若是，给出对应的时间窗口月份列表"
-                       f"（整年同月，格式 YYYY-MM，最多{limit}个）；看不出时间窗口时 need_recall 必须为 false 且 months 留空。")
+                       f"（整年同月，格式 YYYY-MM，{limit_text}）；看不出时间窗口时 need_recall 必须为 false 且 months 留空。")
         messages = [
             {"role": "system", "content": system_text},
             {"role": "user", "content": f"当前时间：{now.strftime('%Y-%m-%d %H:%M')} {weekday}\n用户消息：{text}"},
@@ -221,7 +225,7 @@ class MeowLoadAbstractMemory:
                 continue
             if m not in result:
                 result.append(m)
-            if len(result) >= limit:
+            if limit > 0 and len(result) >= limit:
                 break
         return result
 

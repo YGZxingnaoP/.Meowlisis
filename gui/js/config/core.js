@@ -7,9 +7,9 @@ const Config = {
     cfg: null,
 
     setConfig(c) { this.cfg = c; },
-    _t(s) {
+    _t(s, vars) {
         try {
-            if (typeof I18n !== 'undefined' && I18n && I18n.text) return I18n.text(s);
+            if (typeof I18n !== 'undefined' && I18n && I18n.text) return I18n.text(s, vars);
         } catch (e) { /* ignore */ }
         return s;
     },
@@ -26,15 +26,16 @@ const Config = {
         return v;
     },
     _text(label, path, def, help) {
+        if (!this._pluginMode && window.Credentials && window.Credentials.isHidden(path)) return '';
         const v = this._val(path, def);
         return `<div class="form-group"><label>${this._t(label)}</label>
-            <input type="text" data-path="${path}" value="${v == null ? '' : v}">
+            <input type="text" data-path="${path}" value="${this._escAttr(v == null ? '' : v)}">
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _num(label, path, def, min, max, step, help) {
         const v = this._val(path, def);
         return `<div class="form-group"><label>${this._t(label)}</label>
-            <input type="number" data-path="${path}" value="${v == null ? '' : v}" min="${min}" max="${max}" step="${step}">
+            <input type="number" data-path="${path}" value="${this._escAttr(v == null ? '' : v)}" min="${min}" max="${max}" step="${step}">
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _check(label, path, def, help) {
@@ -52,16 +53,17 @@ const Config = {
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _password(label, path, def, help) {
+        if (!this._pluginMode && window.Credentials && window.Credentials.isHidden(path)) return '';
         const v = this._val(path, def);
         return `<div class="form-group"><label>${this._t(label)}</label>
-            <input type="password" data-path="${path}" value="${v == null ? '' : v}">
+            <input type="password" data-path="${path}" value="${this._escAttr(v == null ? '' : v)}">
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _list(label, path, def, help) {
         const v = this._val(path, def) || [];
         const text = Array.isArray(v) ? v.join(', ') : v;
         return `<div class="form-group"><label>${this._t(label)}</label>
-            <input type="text" data-path="${path}" data-list="1" value="${text}">
+            <input type="text" data-path="${path}" data-list="1" value="${this._escAttr(text == null ? '' : text)}">
             ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
     },
     _area(label, path, def, help) {
@@ -309,8 +311,8 @@ const Config = {
 };
 
 // 在定义处就把「原始」渲染函数钉死：
-// 之后 api_platforms.js 会把 _text / _password 包成拦截器，
-// 汇总页与插件卡片必须走这两个原始引用，否则会被拦成空字符串。
+// 之后 credentials.js 会把 _rawField / _rawText 暴露给插件卡片，
+// 汇总页与插件卡片必须走这两个原始引用，否则会被凭据隐藏规则拦成空字符串。
 // 放在这里而不是运行时捕获，是为了不受脚本加载次数/顺序影响。
 Config._baseText = Config._text;
 Config._basePassword = Config._password;

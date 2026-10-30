@@ -4,16 +4,6 @@
  */
 
 Object.assign(Config, {
-    basic() {
-        return this._section('基础信息') +
-            this._text('AI名称', 'AiName', '喵呜') +
-            this._num('API 端口', 'app.port', 1800, 1, 65535, 1) +
-            this._text('账号绑定词', 'identity.bind_prefix', 'Meowlisis账号绑定', '用户用这个前缀加子命令来绑定跨平台账号') +
-            this._section('奖励收纳篮（礼物入账）') +
-            '<div id="rewardManage"></div>' +
-            '<div class="help-text">' + this._t('礼物按 1000瓜子=1元=10电池 折算，随机入账到某个奖励项') + '</div>';
-    },
-
     // ============ SenseVoice ============,
     sensevoice() {
         return this._section('SenseVoice 识别服务') +

@@ -75,10 +75,16 @@ img {
                 opacity 0.35s ease, filter 0.35s ease;
 }
 
-/* 摊开子卡时，其它父卡变暗。
-   注意这里保持 pointer-events:none —— 但"点暗父卡"依然能用，
-   因为 Orbit 在 #orbitSystem 捕获阶段按几何仲裁（见 _routeDeckClick）：
-   点击点离"那张暗父卡的中心"更近就判成点它，离"子卡中心"更近就判成点子卡。 */
+/* 收起时父卡从正中滑回轨道位：和 .focus 对称的一次性过渡（_collapse 挂 460ms 后摘掉）。
+   否则摘掉 .focus 的同一帧就写回了轨道坐标，卡片是"瞬移"回去的。 */
+.slot.leave-focus {
+    transition: transform 0.36s cubic-bezier(0.22, 0.9, 0.28, 1.06),
+                opacity 0.35s ease, filter 0.35s ease;
+}
+
+/* 摊开子卡时，其它父卡变暗且不再可点。
+   点它们等同于点空白 → 由 #orbitSystem 的点击处理统一收起。
+   （捕获阶段按几何仲裁的 _routeDeckClick 已经不存在了，别再照这条老注释去找它。） */
 .slot.dim {
     opacity: 0.12;
     filter: saturate(0.45);
@@ -104,6 +110,13 @@ img {
     transform-style: preserve-3d;
     -webkit-transform-style: preserve-3d;
     transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 悬停时才升合成层：翻牌必然先 hover 再点，过渡不会缺层；
+   常挂会让 23 张卡的 .card（连同两个 face）永久各占一层，白吃显存和合成开销。
+   .slot / .sub 身上的 will-change 不能删 —— 轨道每帧写的是它们的 transform。 */
+.slot:hover .card,
+.sub:hover .card {
     will-change: transform;
 }
 
@@ -402,3 +415,121 @@ img {
 }
 
 /* 版本标记样式已移除（.orbit-ver 不再用） */
+
+/* =========================================================
+   压感反馈（js/press.js 只写变量，样式全在这里）
+   .card-press 夹在 .card 与两个 .face 之间，理由：
+     .card 的 transform 被翻牌占用（rotateY 180°，过渡是 0.5s 弹簧），
+     压感要的是 90ms 按下 / 420ms 回弹 —— 两件事各占一层，谁也不抢谁的 transform。
+   ⚠️ 变量只写在这层上，绝不写到 .slot：.slot 的 transform 是轨道每帧重写的。
+   ========================================================= */
+.card-press {
+    position: absolute;
+    inset: 0;
+    transform-style: preserve-3d;
+    -webkit-transform-style: preserve-3d;
+    transform:
+        translateZ(calc(var(--press, 0) * -6px))
+        rotateX(calc(var(--ty, 0) * 1deg))
+        rotateY(calc(var(--tx, 0) * 1deg))
+        scale(calc(1 - var(--press, 0) * 0.03));
+    /* 松手：带回弹的弹簧（过冲约 1.36）—— 手感的一半来源 */
+    transition: transform 0.42s cubic-bezier(0.22, 1.36, 0.36, 1);
+}
+
+/* 只在真的要动的时候才升合成层（常挂 = 23 张卡各占一层，白吃显存） */
+.slot:hover .card-press,
+.sub:hover .card-press,
+.slot.pressing .card-press,
+.sub.pressing .card-press {
+    will-change: transform;
+}
+
+/* 按下：快、不弹（金属弹片被压下去的那一下） */
+.slot.pressing .card-press,
+.sub.pressing .card-press {
+    transition-duration: 0.09s;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+/* 镜面高光：跟着指针走（不用 mix-blend-mode —— 会和 .front/.dim 的 filter 抢合成顺序） */
+.card-glare {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(85% 85% at calc(var(--mx, 50) * 1%) calc(var(--my, 50) * 1%),
+        rgba(255, 255, 255, 0.7),
+        rgba(255, 255, 255, 0.2) 45%,
+        transparent 70%);
+    transition: opacity 0.3s ease;
+}
+
+.slot:hover .card-glare,
+.sub:hover .card-glare {
+    opacity: 0.16;
+}
+
+.slot.pressing .card-glare,
+.sub.pressing .card-glare {
+    opacity: calc(0.2 + var(--press, 0) * 0.45);
+    transition-duration: 0.09s;
+}
+
+/* 触点光斑：从按下的那一点亮起来，亮度 = 按压深度 */
+.card-spot {
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(62% 62% at calc(var(--sx, 50) * 1%) calc(var(--sy, 50) * 1%),
+        rgba(255, 255, 255, 0.9),
+        rgba(255, 182, 193, 0.45) 55%,
+        transparent 75%);
+    transition: opacity 0.3s ease;
+}
+
+.slot.pressing .card-spot,
+.sub.pressing .card-spot {
+    opacity: calc(var(--press, 0) * 0.85);
+    transition-duration: 0.09s;
+}
+
+/* 一次性涟漪：从触点炸开一圈（挂在 .face.front 里，由 .face 的 overflow 裁掉出界部分） */
+.card-ring {
+    position: absolute;
+    z-index: 4;
+    left: calc(var(--sx, 50) * 1%);
+    top: calc(var(--sy, 50) * 1%);
+    width: 10px;
+    height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 18px rgba(255, 182, 193, 0.9);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.card-ring.go {
+    animation: cardPressRing 0.6s cubic-bezier(0.2, 0.7, 0.3, 1) 1;
+}
+
+@keyframes cardPressRing {
+    0%   { opacity: 0.85; transform: scale(1); }
+    100% { opacity: 0; transform: scale(9); }
+}
+
+/* 系统要求减少动态：只留下沉，不要弹簧和涟漪 */
+@media (prefers-reduced-motion: reduce) {
+    .card-press,
+    .slot.pressing .card-press,
+    .sub.pressing .card-press {
+        transition-duration: 0.01ms;
+    }
+    .card-ring.go {
+        animation: none;
+    }
+}

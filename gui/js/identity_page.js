@@ -75,6 +75,9 @@ const IdentityUI = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload || {})
         });
+        // 接口 500 / 404 时 res.json() 会抛，或者返回一个没有 status 的对象，
+        // 上层就会静默什么都不显示。这里统一抛出来，由调用方 try/catch 提示。
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         return await res.json();
     },
     async query() {
@@ -148,21 +151,36 @@ const IdentityUI = {
     async nickname() {
         const nickname = this.val('identityNick');
         if (!nickname) { this.msg(this.t('先填新昵称'), true); return; }
-        const data = await this.post('/api/identity/nickname', { meowid: this.detail.meowid, nickname: nickname });
-        this.msg(data.message || (data.status === 'ok' ? this.t('昵称已更新') : this.t('改昵称失败')), data.status !== 'ok');
-        this.query();
+        if (!this.detail) { this.msg(this.t('请先查询用户'), true); return; }
+        try {
+            const data = await this.post('/api/identity/nickname', { meowid: this.detail.meowid, nickname: nickname });
+            this.msg(data.message || (data.status === 'ok' ? this.t('昵称已更新') : this.t('改昵称失败')), data.status !== 'ok');
+            this.query();
+        } catch (e) {
+            this.msg(this.t('改昵称失败') + ': ' + e.message, true);
+        }
     },
     async bind(platform) {
         const account = this.val('idacct_' + platform);
         if (!account) { this.msg(this.t('先填要绑的账号'), true); return; }
-        const data = await this.post('/api/identity/bind', { meowid: this.detail.meowid, channel: platform, ext_account: account });
-        this.msg(data.message || (data.status === 'ok' ? this.t('绑定成功') : this.t('绑定失败')), data.status !== 'ok');
-        this.query();
+        if (!this.detail) { this.msg(this.t('请先查询用户'), true); return; }
+        try {
+            const data = await this.post('/api/identity/bind', { meowid: this.detail.meowid, channel: platform, ext_account: account });
+            this.msg(data.message || (data.status === 'ok' ? this.t('绑定成功') : this.t('绑定失败')), data.status !== 'ok');
+            this.query();
+        } catch (e) {
+            this.msg(this.t('绑定失败') + ': ' + e.message, true);
+        }
     },
     async unbind(platform) {
-        const data = await this.post('/api/identity/unbind', { meowid: this.detail.meowid, channel: platform });
-        this.msg(data.message || (data.status === 'ok' ? this.t('已解绑') : this.t('解绑失败')), data.status !== 'ok');
-        this.query();
+        if (!this.detail) { this.msg(this.t('请先查询用户'), true); return; }
+        try {
+            const data = await this.post('/api/identity/unbind', { meowid: this.detail.meowid, channel: platform });
+            this.msg(data.message || (data.status === 'ok' ? this.t('已解绑') : this.t('解绑失败')), data.status !== 'ok');
+            this.query();
+        } catch (e) {
+            this.msg(this.t('解绑失败') + ': ' + e.message, true);
+        }
     }
 };
 

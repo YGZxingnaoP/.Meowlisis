@@ -13,6 +13,7 @@ Object.assign(Config, {
         h += `<div class="modal-tabs">
             <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="db_search_ds">DeepSeek</button>
             <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="db_search_aliyun">${this._t('阿里云')}</button>
+            <button class="modal-tab${type === 'gemini' ? ' active' : ''}" data-tab="db_search_gemini">Gemini</button>
         </div>`;
         h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="db_search_ds">` +
             this._password('API Key', 'database.search.deepseek.api_key', '') +
@@ -26,8 +27,16 @@ Object.assign(Config, {
             this._text('模型', 'database.search.aliyun.model', 'qwen-plus') +
             this._num('max_tokens', 'database.search.aliyun.max_tokens', 2048, 1, 32768, 16) +
             `</div>`;
+        // 搜索模块支持 gemini（func/database/search/port/gemini.py 读 database.search.gemini.*），
+        // 以前这里只有 DeepSeek / 阿里云两个页签，选 Gemini 之后整块没有任何字段可填。
+        h += `<div class="tab-content${type === 'gemini' ? ' active' : ''}" data-tab-content="db_search_gemini">` +
+            this._password('API Key', 'database.search.gemini.api_key', '') +
+            this._text('Base URL', 'database.search.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
+            this._text('模型', 'database.search.gemini.model', 'gemini-3.6-flash') +
+            this._num('max_tokens', 'database.search.gemini.max_tokens', 2048, 1, 32768, 16) +
+            `</div>`;
         h += this._section('搜索 Agent') +
-            this._num('工具循环最大轮数', 'database.search.agent.max_rounds', 5, 1, 50, 1,
+            this._num('工具循环最大轮数', 'database.search.agent.max_rounds', 10, 1, 50, 1,
                 '单任务 AI 调用工具的最大轮数，达到后强制结束') +
             this._num('visit_url 正文截断长度', 'database.search.agent.visit_max_chars', 8000, 500, 50000, 500,
                 'visit_url 单次回传给 AI 的正文字符数上限') +

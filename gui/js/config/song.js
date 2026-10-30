@@ -126,22 +126,6 @@ Object.assign(Config, {
                 '消息包含任一触发词即停止唱歌，回车添加、点击 × 删除');
         return h;
     },
-    meowsingerSentiment() {
-        return this._section('唱歌感想') +
-            this._check('启用感想', 'meowsinger.sentiment.enabled', true,
-                '完整唱完一首歌后，AI 结合歌词与歌曲信息发表感想') +
-            this._num('感想 max_tokens', 'meowsinger.sentiment.max_tokens', 2048, 1, 32768, 16,
-                '感想生成的最大 token 数') +
-            this._num('感想字数', 'meowsinger.sentiment.word_count', 300, 50, 2000, 10,
-                '感想引导词中要求的字数（默认 300）') +
-            this._area('感想引导词', 'meowsinger.sentiment.prompt', '',
-                '唱完整首歌后生成感想的引导词，{verb}/{song_title}/{lrc}/{result_text}/{word_count}=占位符') +
-            this._area('汇总回复引导词', 'meowsinger.prompt.summary', '',
-                '唱歌期间收到的观众消息汇总后统一回复的引导词，{lines}=观众消息列表') +
-            this._area('歌曲搜索引导词', 'meowsinger.search.prompt', '',
-                '唱歌开始/结束时搜索歌曲资料的引导词，{song_title}=歌名');
-    },
-
     // ============ 即兴哼唱（meowsongs） ============,
     _humDetectFormula() {
         return `<div class="formula-box">

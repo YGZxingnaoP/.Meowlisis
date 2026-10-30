@@ -175,12 +175,24 @@ class MeowSummaryTool:
         }]
 
     def build_recall_tool(self) -> List[Dict]:
-        """构建记忆回忆判定工具的 tools 定义"""
+        """构建记忆回忆判定工具的 tools 定义（月数上限跟随 recall_months_limit，0=不限）"""
+        try:
+            limit = max(0, int(self.config.abmem_recall_months_limit))
+        except (TypeError, ValueError):
+            limit = 3
+        limit_text = f"最多{limit}个月" if limit > 0 else "不限月数"
+        months_schema = {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": f"时间窗口月份列表，格式 YYYY-MM，{limit_text}；看不出时间窗口时留空",
+        }
+        if limit > 0:
+            months_schema["maxItems"] = limit
         return [{
             "type": "function",
             "function": {
                 "name": self.RECALL_TOOL_NAME,
-                "description": "判断用户消息是否需要加强回忆过往记忆，需要时给出时间窗口（整年同月，最多3个月）",
+                "description": f"判断用户消息是否需要加强回忆过往记忆，需要时给出时间窗口（整年同月，{limit_text}）",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -188,12 +200,7 @@ class MeowSummaryTool:
                             "type": "boolean",
                             "description": "是否需要加强回忆；看不出时间窗口时一律为 false"
                         },
-                        "months": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "时间窗口月份列表，格式 YYYY-MM，最多3个；看不出时间窗口时留空",
-                            "maxItems": 3
-                        },
+                        "months": months_schema,
                         "label": {"type": "string", "description": "时间窗口的中文描述，如 一年前"}
                     },
                     "required": ["need_recall", "months"]

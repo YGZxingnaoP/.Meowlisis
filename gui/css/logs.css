@@ -165,9 +165,11 @@ body {
     font-family: ui-monospace, Consolas, monospace; font-size: 11px;
     padding-top: 1px;
 }
-.lh-line.INFO .lv { color: #63C88B; }
-.lh-line.WARNING .lv, .lh-line.WARN .lv { color: #E0B341; }
-.lh-line.ERROR .lv, .lh-line.CRITICAL .lv { color: #FF6B72; }
+/* 级别配色按 line-<LV> 走 —— 这是 logs.js:153 真正挂在行上的类名。
+   （老写法 .lh-line.ERROR 要求行上有个叫 ERROR 的类，永远不会出现 → 级别颜色全灰。） */
+.lh-line.line-INFO .lv { color: #63C88B; }
+.lh-line.line-WARNING .lv, .lh-line.line-WARN .lv { color: #E0B341; }
+.lh-line.line-ERROR .lv, .lh-line.line-CRITICAL .lv { color: #FF6B72; }
 .lh-line.line-ERROR { color: #FFB3B7; background: rgba(217, 70, 78, 0.10); }
 .lh-line.line-WARNING { color: #EBD9A8; }
 .lh-line .body { flex: 1 1 auto; min-width: 0; }
@@ -287,9 +289,9 @@ body {
 .lh-line { border-bottom: 1px solid var(--log-line); }
 .lh-line:hover { background: rgba(255, 105, 180, 0.07); }
 .lh-line .lv { color: var(--log-dim); }
-.lh-line.INFO .lv { color: #2FA36B; }
-.lh-line.WARN .lv, .lh-line.WARNING .lv { color: #C9871B; }
-.lh-line.ERROR .lv, .lh-line.CRITICAL .lv { color: #D9464E; }
+.lh-line.line-INFO .lv { color: #2FA36B; }
+.lh-line.line-WARN .lv, .lh-line.line-WARNING .lv { color: #C9871B; }
+.lh-line.line-ERROR .lv, .lh-line.line-CRITICAL .lv { color: #D9464E; }
 .lh-line.line-ERROR { color: #A8323A; background: rgba(217, 70, 78, 0.07); }
 .lh-line.line-WARN, .lh-line.line-WARNING { color: #7A5A12; background: rgba(201, 135, 27, 0.07); }
 .lh-line .meta { color: var(--log-dim); }

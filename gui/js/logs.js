@@ -93,16 +93,22 @@
     }
 
     // ---------------- 过滤 ----------------
+    // 过滤正则按"关键词"缓存：refilter 时会逐条问一遍，原来每问一条就 new 一次 RegExp
+    var _fReKw = null, _fRe = null;
     function filterRe() {
         var kw = (elFilter.value || '').trim();
+        if (kw === _fReKw) return _fRe;
+        _fReKw = kw;
+        _fRe = null;
         if (!kw) return null;
         var parts = kw.split('|').map(function (s) { return s.trim(); }).filter(Boolean);
         if (!parts.length) return null;
         try {
-            return new RegExp(parts.map(function (p) {
+            _fRe = new RegExp(parts.map(function (p) {
                 return p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             }).join('|'), 'i');
-        } catch (e) { return null; }
+        } catch (e) { _fRe = null; }
+        return _fRe;
     }
 
     function lineOk(rec) {

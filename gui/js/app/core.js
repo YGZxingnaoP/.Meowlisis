@@ -16,6 +16,7 @@ const App = {
 
     async init() {
         Modal.init();
+        this.bindFolds();
         await this.loadPlugins();
         Orbit.init();
 
@@ -120,128 +121,25 @@ const App = {
 
     // ============ 配置节点 ============,
     async onPlanetClick(id) {
-        console.log('App.onPlanetClick received:', id);
-
-        // 特殊面板
-        if (id === 'character') { await this.openCharacterPanel(); return; }
-        if (id === 'catpaws') { await this.openCatpawsPanel(); return; }
-        if (id === 'sensevoice') { await this.openSensevoicePanel(); return; }
-        if (id === 'sensevoice_config') { await this.openSensevoicePanel(); return; }
-        if (id === 'sensevoice_mic') { await this.openSilencePanel(); return; }
-        if (id === 'sensevoice_audio') { await this.openAudioPanel(); return; }
-        if (id === 'tts') { await this.openTtsPanel(); return; }
-        if (id === 'toolbox') { this.openToolbox(); return; }
-        if (id === 'calendar') { await this.openCalendarPanel(); return; }
-
-        // LLM 子球
-        if (id === 'llm_model') { await this.openLlmModelPanel(); return; }
-        if (id === 'llm_prompt') { await this.openLlmPromptPanel(); return; }
-        if (id === 'llm_algorithm') { await this.openLlmAlgorithmPanel(); return; }
-
-        // TTS 子球
-        if (id === 'tts_model') { await this.openTtsModelPanel(); return; }
-        if (id === 'tts_params') { await this.openTtsParamsPanel(); return; }
-        if (id === 'tts_config') { await this.openTtsConfigPanel(); return; }
-        if (id === 'tts_pause') { await this.openTtsPausePanel(); return; }
-
-        // 主动回复子球（配置/浏览）
-        if (id === 'active_config') { await this.openActiveConfigPanel(); return; }
-        if (id === 'active_browse') { await this.openActiveBrowsePanel(); return; }
-
-        // 歌曲子球（模型/歌曲/翻唱/感想）
-        if (id === 'meowsinger_model') { this._openConfigPanel('歌曲模型设置', () => Config.meowsingerModel()); return; }
-        if (id === 'meowsinger_song') { this._openConfigPanel('点歌设置', () => Config.meowsingerSong()); return; }
-        if (id === 'meowsinger_cover') { await this.openMeowsingerCoverPanel(); return; }
-        if (id === 'meowsinger_sentiment') { this._openConfigPanel('感想设置', () => Config.meowsingerSentiment()); return; }
-
-        // VTS 子球（配置/表情/桌宠/参数）
-        if (id === 'vts_config') { this._openConfigPanel('VTS 配置', () => Config.vts_config()); return; }
-        if (id === 'vts_emotion') { this._openConfigPanel('VTS 表情绑定', () => Config.vts_emotion()); return; }
-        if (id === 'desktopet') { this._openConfigPanel('桌宠配置', () => Config.desktopet_config()); return; }
-        if (id === 'vts_params') { this._openConfigPanel('VTS 模型参数', () => Config.vts_params()); return; }
-
-        // CatBrain 子球（原则词需异步加载独立 json，单独处理）
-        if (id === 'rulesbreak') { await this.openRulesBreakPanel(); return; }
-
-        const catbrainSubMap = {
-            'ltmem': { title: '长期记忆', fn: () => Config.catbrain_ltmem() },
-            'abstract': { title: '记忆摘要', fn: () => Config.catbrain_abstract() },
-            'values': { title: '价值观', fn: () => Config.catbrain_values() },
-            'usermem': { title: '用户记忆', fn: () => Config.catbrain_usermem() }
-        };
-        if (catbrainSubMap[id]) {
-            this._openConfigPanel(catbrainSubMap[id].title, catbrainSubMap[id].fn);
-            return;
-        }
-
-        // 数据库子球
-        if (id === 'db_source') { this.openDatabaseSourcePanel(); return; }
-        if (id === 'db_prefill') { this.openDbPrefillPanel(); return; }
-        const databaseSubMap = {
-            'db_search': { title: '搜索学习', fn: () => Config.db_search() },
-            'db_store': { title: '知识存储与检索', fn: () => Config.db_store() }
-        };
-        if (databaseSubMap[id]) {
-            this._openConfigPanel(databaseSubMap[id].title, databaseSubMap[id].fn);
-            return;
-        }
-
-        const panelMap = {
-            'basic': { title: '基本设置', fn: () => Config.basic(), special: true },
-            // 兜底：万一有卡片/子卡用这个 id，也不会落到 "No panel found" 而什么都不显示
-            'api_platforms': { title: 'API 平台', fn: () => Config.apiPlatforms() },
-            'subtitle': { title: '字幕设置', fn: () => Config.subtitle() },
-            'active': { title: '主动回复设置', fn: () => Config.llm_active() }
-        };
-
-        const panel = panelMap[id];
-        if (!panel) {
-            console.warn('No panel found for id:', id);
-            return;
-        }
-        if (panel.special) { this.openBasicPanel(); return; }
-        this._openConfigPanel(panel.title, panel.fn);
+        const ok = await ConfigPanels.open(id);
+        if (!ok) console.warn('No panel found for id:', id);
     },
 
     // ============ 主动回复子球：配置 ============,
     _esc(s) { return U.esc(s); },
     _escAttr(s) { return U.escAttr(s); },
-    onToolboxPlanetClick(id) {
+    async onToolboxPlanetClick(id) {
         const pluginRef = this.pluginMap && this.pluginMap[id];
         if (pluginRef) {
             this.openPluginPanel(pluginRef.id);
             return;
         }
-        const map = {
-            'center': { title: 'Toolbox 父级模型', fn: () => Config.toolbox() },
-            'minecraft': { title: 'Minecraft 设置', fn: () => Config.minecraft() },
-            'meowvision': { title: 'MeowVision 视觉设置', fn: () => Config.meowvision() },
-            'napcat': { title: 'NapCat 设置', fn: () => Config.napcat() },
-            'napcat_private': { title: 'NapCat 私聊回复', fn: () => Config.napcat_private() },
-            'napcat_group': { title: 'NapCat 群聊回复', fn: () => Config.napcat_group() },
-            'napcat_send': { title: 'NapCat 主动发送', fn: () => Config.napcat_send() },
-            'napcat_account': { title: 'NapCat 角色名', fn: () => Config.napcat_account() },
-            'weather': { title: '天气查询设置', fn: () => Config.weather() },
-            'news': { title: '新闻查询设置', fn: () => Config.news() },
-            'danmaku': { title: '弹幕设置', fn: () => Config.danmaku() },
-            'add_backlog': { title: '提醒设置', fn: () => Config.addBacklog() },
-            'meowsongs': { title: '即兴哼唱设置', fn: () => Config.meowsongs() },
-            'turtle_soup': { title: '海龟汤设置', fn: () => Config.turtle_soup() },
-            'flux_painter_service': { title: 'Flux 绘画 · 服务', fn: () => Config.fluxPainterService() },
-            'flux_painter_model': { title: 'Flux 绘画 · 模型', fn: () => Config.fluxPainterModel() },
-            'flux_painter_prompt': { title: 'Flux 绘画 · 提示词', fn: () => Config.fluxPainterPrompt() },
-            'flux_painter_workflow': { title: 'Flux 绘画 · 工作流', fn: () => Config.fluxPainterWorkflow() },
-            'flux_painter': { title: 'Flux 绘画设置', fn: () => Config.fluxPainter() }
-        };
-        const panel = map[id];
-        if (!panel) {
-            console.warn('No toolbox panel for id:', id);
-            return;
-        }
-        this._openConfigPanel(panel.title, panel.fn);
+        const ok = await ConfigPanels.open(id);
+        if (!ok) console.warn('No toolbox panel for id:', id);
     },
 
     // ============ 插件卡片：一张「插件」父卡，子卡 = 各插件 ============,
+    PLUGIN_KIDS_MAX: 5,
     async loadPlugins() {
         try {
             this.plugins = await API.getPlugins();
@@ -251,6 +149,7 @@ const App = {
         this.pluginMap = {};
         if (typeof Cards !== 'undefined' && Cards.META) {
             Cards.META['plugins'] = { n: '插件', g: 'core', e: '🧩', img: '/api/plugins/card' };
+            Cards.META['plugins_more'] = { n: '更多', g: 'core', e: '⋯', img: Cards.DIR + 'plugins_more.png' };
         }
         const kids = [];
         (this.plugins || []).forEach(p => {
@@ -265,13 +164,82 @@ const App = {
             kids.push({ id: p.id, label: p.title || p.id, card: p.id,
                         tooltip: (p.title || p.id) + ' 插件配置与开关' });
         });
-        if (typeof Orbit !== 'undefined' && Orbit.toolboxPlanets && kids.length) {
-            Orbit.toolboxPlanets.push({
-                id: 'plugins', label: '插件', card: 'plugins',
-                tooltip: '插件配置与开关', kids: kids
+        // 轨道上最多展开 5 张插件卡；更多插件收进「更多」卡的方阵浮层。
+        const shown = kids.slice(0, this.PLUGIN_KIDS_MAX);
+        if (kids.length > this.PLUGIN_KIDS_MAX) {
+            shown.push({
+                id: 'plugins_more', label: '更多', card: 'plugins_more',
+                tooltip: '查看全部插件', more: true
             });
         }
-        console.log('[Plugins] 插件子卡:', kids.map(k => k.id).join(', '));
+        if (typeof Orbit !== 'undefined' && Orbit.toolboxPlanets && shown.length) {
+            Orbit.toolboxPlanets = Orbit.toolboxPlanets.filter(p => p.id !== 'plugins');
+            Orbit.toolboxPlanets.push({
+                id: 'plugins', label: '插件', card: 'plugins',
+                tooltip: '插件配置与开关', kids: shown
+            });
+        }
+        console.log('[Plugins] 插件子卡: ' + shown.map(k => k.id).join(', ') +
+                    '（共 ' + kids.length + ' 个）');
+    },
+
+    openPluginMore() {
+        const list = this.plugins || [];
+        if (!list.length) return;
+        let ov = document.getElementById('pluginMoreOverlay');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'pluginMoreOverlay';
+            ov.className = 'plugin-more-overlay';
+            ov.innerHTML =
+                '<div class="plugin-more-panel">' +
+                    '<div class="plugin-more-head">' +
+                        '<h3>' + this._t('全部插件') + '</h3>' +
+                        '<button type="button" class="plugin-more-close" aria-label="' + this._t('关闭') + '">&times;</button>' +
+                    '</div>' +
+                    '<div class="plugin-more-grid" id="pluginMoreGrid"></div>' +
+                '</div>';
+            document.body.appendChild(ov);
+            ov.addEventListener('click', (e) => {
+                if (e.target === ov || (e.target.closest && e.target.closest('.plugin-more-close'))) {
+                    this.closePluginMore();
+                }
+            });
+            if (!this._pluginMoreEsc) {
+                this._pluginMoreEsc = true;
+                document.addEventListener('keydown', (e) => {
+                    if (e.key === 'Escape') this.closePluginMore();
+                });
+            }
+        }
+        const grid = ov.querySelector('#pluginMoreGrid');
+        grid.innerHTML = list.map(p => {
+            const th = Cards.theme(p.id);
+            return '<button type="button" class="plugin-more-card" data-plugin="' + U.escAttr(p.id) + '"' +
+                ' style="--a:' + th.a + ';--b:' + th.b + '">' +
+                '<span class="pm-art"><span class="pm-emoji">' + U.esc(p.emoji || '🧩') + '</span>' +
+                '<img src="' + U.escAttr(Cards.img(p.id)) + '" alt="" loading="lazy" onerror="this.remove()"></span>' +
+                '<span class="pm-name">' + U.esc(p.title || p.id) + '</span></button>';
+        }).join('');
+        grid.querySelectorAll('.plugin-more-card').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const id = btn.dataset.plugin;
+                this.closePluginMore();
+                this.openPluginPanel(id);
+            });
+        });
+        ov.classList.add('show');
+        ov.style.zIndex = '';
+        document.body.classList.add('plugin-more-open');
+    },
+
+    closePluginMore() {
+        const ov = document.getElementById('pluginMoreOverlay');
+        if (ov) {
+            ov.classList.remove('show');
+            ov.style.zIndex = '4000';   // 淡出时让配置面板（5000）盖在它上面
+        }
+        document.body.classList.remove('plugin-more-open');
     },
 
     async openPluginPanel(id) {
@@ -352,7 +320,7 @@ const App = {
                 (typeof C.apiPlatforms === 'function'
                     ? C.apiPlatforms()
                     : '<div class="help-text" style="color:#c62828;font-weight:600">' +
-                      'DEBUG apiPlatforms 未定义：api_platforms.js 没有加载或版本不匹配</div>') +
+                      'DEBUG apiPlatforms 未定义：credentials.js 没有加载或版本不匹配</div>') +
             '</div>';
 
         const portTab =
@@ -365,15 +333,6 @@ const App = {
         const html = C._section('基础信息') +
             C._text('AI名称', 'AiName', '喵呜') +
             tabs + giftTab + apiTab + portTab;
-        try {
-            const n = (html.match(/data-path=/g) || []).length;
-            const i0 = html.indexOf('data-tab-content="basic_api"');
-            const i1 = html.indexOf('data-tab-content="basic_port"');
-            console.log('[DIAG] basicPanel html=' + html.length +
-                        ' inputs=' + n +
-                        ' apiTabLen=' + ((i0 >= 0 && i1 > i0) ? (i1 - i0) : -1) +
-                        ' apiFn=' + (typeof C.apiPlatforms));
-        } catch (e) { }
         return html;
     },
 
@@ -392,15 +351,6 @@ const App = {
             });
             this.loadRewards();
             setTimeout(() => this.bindTabs(), 10);   // 页签切换：礼物 / API / 端口
-            try {
-                const shown = Modal.overlay && Modal.overlay.classList.contains('show');
-                const inBody = document.querySelectorAll('#modalBody [data-path]').length;
-                const inApi = document.querySelectorAll('[data-tab-content="basic_api"] [data-path]').length;
-                const bodyLen = Modal.body ? Modal.body.innerHTML.length : -1;
-                console.log('[DIAG] modal shown=' + shown + ' bodyInputs=' + inBody +
-                            ' apiInputs=' + inApi + ' bodyLen=' + bodyLen +
-                            ' overlayDisplay=' + (Modal.overlay ? getComputedStyle(Modal.overlay).display : 'n/a'));
-            } catch (e) { }
         } catch (e) {
             console.error('Error rendering basic panel:', e);
             this.showToast('面板渲染失败: {msg}', true, { msg: e.message });
@@ -543,11 +493,14 @@ const App = {
 
     showToast(msg, isError, vars) {
         const toast = document.getElementById('toast');
+        if (!toast) return;
         const txt = (typeof I18n !== 'undefined' && I18n.text) ? I18n.text(msg, vars) : msg;
         toast.textContent = txt;
         toast.style.background = isError ? 'linear-gradient(145deg, #ff6b6b, #ee5a5a)' : 'linear-gradient(145deg, var(--pink-main), var(--pink-deep))';
+        // 定时器要存起来并清掉：连着弹两条时，前一条的 3 秒到了会把后一条一起收走
+        clearTimeout(this._toastTimer);
         toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 3000);
+        this._toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
     },
 };
 

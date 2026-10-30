@@ -360,6 +360,11 @@ Object.assign(App, {
     },
     pollDbPrefillStatus(startBtn, statusEl) {
         const timer = setInterval(async () => {
+            // 面板被换掉/关掉 → 立刻停（否则关面板后每 2s 还在打接口）
+            if (!statusEl || !document.body.contains(statusEl)) {
+                clearInterval(timer);
+                return;
+            }
             try {
                 const s = await API.getDbPrefillStatus();
                 if (s.done) {

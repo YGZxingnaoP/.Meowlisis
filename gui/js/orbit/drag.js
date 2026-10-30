@@ -9,15 +9,8 @@ Object.assign(Orbit, {
         let dragging = false;
         let lastX = 0;
         let velocity = 0;
-        let rafId = null;
-        let spin = 0;        // 当前角速度（度/帧），驱动卡片倾角
-        let tilt = 0;        // 当前倾角（度）
-        let tiltVel = 0;     // 倾角速度（弹簧用）
-        let tickId = null;   // 倾角弹簧的动画句柄
-        const TILT_GAIN = 0.55;
-        const TILT_MAX = 7;
-        const TILT_STIFF = 0.03;    // 弹簧刚度：越小摆动越慢
-        const TILT_DAMP = 0.94;     // 阻尼：越大摇晃越久，越小收敛越快
+        let rafId = null;    // 惯性 / 吸附的逐帧推进句柄
+        let tickId = null;   // 唯一的"逐帧写 transform"循环句柄
 
         const place = () => {
             // 启动轨道展开时，拖空白转的是启动轨道（外环此时是暗的，转了也看不见）
@@ -25,25 +18,18 @@ Object.assign(Orbit, {
             const d = this._deck[deckName];
             if (!d) return;
             const r0 = d.radius[0], r1 = d.radius[1];
-            // ⚠️ 第 6 个参数是 tiltDeg，现在恒传 0：tilt 弹簧算了但没接上轨道。
-            //    想真让它生效就传 tilt，但要先确认它不是"每帧写 transform 却挂着过渡"的那个坑。
             // ⚠️ 摊开子卡时父卡正被 .slot.focus 送往屏幕正中，不能被这里摆回轨道位
-            d.els.forEach(el => { if (el === d.parent) return; this._place(el, el._ang, getRot(), r0, r1, 0); });
+            d.els.forEach(el => { if (el === d.parent) return; this._place(el, el._ang, getRot(), r0, r1); });
         };
 
-        // 倾角走弹簧：目标 = 角速度，松手后带左右摇晃地回到 0
+        // 逐帧重摆：拖动 / 惯性 / 吸附三项都停下后【自己退出】，不再空转 60fps。
+        // .anim（过渡）只在这个循环真正停止写入之后才恢复 —— 否则每帧的新目标会被过渡插值，
+        // 肉眼就是"卡片缩一下再弹回来"。
         const tick = () => {
-            const target = Math.max(-TILT_MAX, Math.min(TILT_MAX, -spin * TILT_GAIN));
-            tiltVel = (tiltVel + (target - tilt) * TILT_STIFF) * TILT_DAMP;
-            tilt += tiltVel;
-            place();
-            const lively = dragging || rafId !== null || Math.abs(tilt) > 0.05 || Math.abs(tiltVel) > 0.05;
-            if (lively) { tickId = requestAnimationFrame(tick); return; }
-            tilt = 0;
-            tiltVel = 0;
-            place();
             tickId = null;
-            this._setAnim(true);
+            place();
+            if (!dragging && rafId === null) { this._setAnim(true); return; }
+            tickId = requestAnimationFrame(tick);
         };
 
         const wake = () => {
@@ -54,12 +40,12 @@ Object.assign(Orbit, {
         };
 
         const inertia = () => {
+            rafId = null;
             setRot(getRot() + velocity);
-            spin = velocity;
             velocity *= 0.92;          // 惯性衰减
-            wake();
-            if (Math.abs(velocity) < 0.05) { rafId = null; spin = 0; snapToCard(); return; }
+            if (Math.abs(velocity) < 0.05) { velocity = 0; snapToCard(); return; }
             rafId = requestAnimationFrame(inertia);
+            wake();
         };
 
         /** 吸附：拖到最后/惯性停下后，把轨道转到最近一张卡正对观众 */
@@ -71,36 +57,31 @@ Object.assign(Orbit, {
         };
         const snapToCard = () => {
             const stepDeg = snapStep();
-            if (!stepDeg) return;
-            this._setAnim(false);
+            if (!stepDeg) { rafId = null; wake(); return; }
             const goal = 90 + Math.round((getRot() - 90) / stepDeg) * stepDeg;
-            const tick = () => {
-                if (dragging) return;
+            const step = () => {
+                rafId = null;
+                if (dragging) { wake(); return; }
                 const now = getRot();
                 const diff = goal - now;
-                // ⚠️ 这里【绝对不能】调 this._setAnim(true)。
-                //    .slot.anim 挂的是 transform 0.5s 弹簧过渡（cubic-bezier .34,1.56,.64,1），
-                //    而 tilt tick 这时候还在每帧 place() 写新 transform →
-                //    每帧都在追一个 0.5s 弹簧的目标，scale() 被弹簧插值 →
-                //    肉眼就是"卡片缩一下再弹回来"（快速拖动时 spin 大、tilt 晃得久，最明显）。
-                //    .anim 的恢复只交给 tilt tick 自己收尾那一次（那才是真的停止写入了）。
-                // 收尾要把动画态还回去：不还的话 .rotating 永远留在容器上，
-                // 子卡/浮层的过渡全被 .rotating 的 !important 杀掉 → 扇展变"闪现"。
-                // 不会重现"快速滑动收缩"：现在 .slot 上没有 transform 过渡（见 cards.css），
-                // 逐帧写 transform 不可能被弹簧插值。
-                if (Math.abs(diff) < 0.2) { setRot(goal); place(); this._setAnim(true); return; }
+                // ⚠️ 这里【绝对不能】调 this._setAnim(true)：
+                //    吸附期间还在每帧写 transform，早期 .anim 带 transform 弹簧过渡 →
+                //    每帧都在追一个 0.5s 的目标 → 看着像"卡片缩一下再弹回来"。
+                //    收尾统一交给 tick（它只在真正停止写入之后才恢复 .anim）。
+                //    也不会留下 .rotating：tick 退出时会自己 _setAnim(true)。
+                if (Math.abs(diff) < 0.2) { setRot(goal); wake(); return; }
                 setRot(now + diff * 0.22);
-                place();
-                rafId = requestAnimationFrame(tick);
+                rafId = requestAnimationFrame(step);
+                wake();
             };
-            rafId = requestAnimationFrame(tick);
+            rafId = requestAnimationFrame(step);
+            wake();
         };
 
         const onMove = (e) => {
             if (!dragging) return;
             const dx = e.clientX - lastX;
             velocity = dx * 0.35;
-            spin = dx * 0.3;
             lastX = e.clientX;
             setRot(getRot() + dx * 0.3);
             wake();
@@ -113,10 +94,9 @@ Object.assign(Orbit, {
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
             setTimeout(() => { this.suppressClick = false; }, 50);
-            if (rafId !== null) cancelAnimationFrame(rafId);
-            if (Math.abs(velocity) > 0.05) rafId = requestAnimationFrame(inertia);
-            else { rafId = null; spin = 0; snapToCard(); }
-            wake();
+            if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+            if (Math.abs(velocity) > 0.05) { rafId = requestAnimationFrame(inertia); wake(); }
+            else { velocity = 0; snapToCard(); }
         };
 
         container.addEventListener('mousedown', (e) => {
@@ -126,7 +106,6 @@ Object.assign(Orbit, {
             this._dragging = true;
             lastX = e.clientX;
             velocity = 0;
-            spin = 0;
             if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
             this.suppressClick = false;
             wake();

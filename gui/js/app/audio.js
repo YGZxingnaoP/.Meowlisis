@@ -142,10 +142,10 @@ Object.assign(App, {
         }
         container.innerHTML = speakers.map(s => `
             <div class="speaker-item">
-                <input type="checkbox" id="spk_${s.name}" ${s.enabled ? 'checked' : ''} data-speaker-name="${s.name}">
+                <input type="checkbox" id="spk_${this._escAttr(s.name)}" ${s.enabled ? 'checked' : ''} data-speaker-name="${this._escAttr(s.name)}">
                 <div class="speaker-name-block">
-                    <label for="spk_${s.name}">${s.nickname || this._t('未设昵称')}</label>
-                    <div class="uid-sub">${this._t('编号')} ${s.id || this._t('未填')}</div>
+                    <label for="spk_${this._escAttr(s.name)}">${this._esc(s.nickname || this._t('未设昵称'))}</label>
+                    <div class="uid-sub">${this._t('编号')} ${this._esc(s.id || this._t('未填'))}</div>
                 </div>
             </div>
         `).join('');
@@ -253,17 +253,29 @@ Object.assign(App, {
     },
     async pollBuildStatus() {
         const progressEl = document.getElementById('speakerBuildProgress');
-        const timer = setInterval(async () => {
+        // 同一个面板重复触发时先清掉上一轮，避免多个 interval 叠加着打接口
+        clearInterval(this._speakerPoll);
+        this._speakerPoll = setInterval(async () => {
+            // 面板已经被换掉/关掉 → 立刻停（原来关掉面板还会每 1.5s 打一次接口）
+            if (!progressEl || !document.body.contains(progressEl)) {
+                clearInterval(this._speakerPoll);
+                this._speakerPoll = null;
+                return;
+            }
             try {
                 const status = await API.getBuildStatus();
-                if (progressEl) progressEl.textContent = status.progress || '生成中...';
-                if (status.progress.includes('声纹库已写入') || status.progress.includes('未找到 wav')) {
-                    clearInterval(timer);
+                progressEl.textContent = status.progress || '生成中...';
+                // 后端 running=false 已经包含"完成 / 失败 / 未找到 wav"三种收尾，
+                // 只看它，不再靠文案 includes() 猜（失败那条会导致永远不停）
+                if (!status.running) {
+                    clearInterval(this._speakerPoll);
+                    this._speakerPoll = null;
                     this.showToast('声纹生成完成');
                     await this.loadSpeakers();
                 }
             } catch (e) {
-                clearInterval(timer);
+                clearInterval(this._speakerPoll);
+                this._speakerPoll = null;
             }
         }, 1500);
     },

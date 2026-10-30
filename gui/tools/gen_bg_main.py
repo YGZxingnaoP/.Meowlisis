@@ -28,32 +28,53 @@ GUI = os.path.join(ROOT, "gui")
 OUT_DIR = os.path.join(GUI, "resource", "bg")
 
 # ============================ 提示词（要调就改这里） ============================
-# 角色沿用卡面那套（白毛猫娘 / 黄眼 / 左侧蓝蝴蝶结 / JK），保证和卡片是同一只
+#
+# 【色调设计】主界面的配色是：奶白 #FFF0F5 / 樱粉 #FFD1DC / 玫瑰 #FFB6C1 /
+# 桃粉 #FF69B4，卡片还带一层淡薰衣草光晕（rgba(150,110,255)）。所以壁纸走
+# 「高明度、低对比、粉里带一点薰衣草」的柔雾调，占比大致：
+#     奶白 / 象牙 60% · 樱花粉 25% · 玫瑰粉 10% · 淡薰衣草 + 蜜桃 5%
+# 三个硬约束（都跟"它只是背景"有关）：
+#   1. 低对比、高明度：这层在 CSS 里是 opacity .62 + blur 5px，高对比会被糊成脏灰；
+#   2. 不要高频细节：满屏花瓣/树枝一模糊就成噪点（旧版就是这个问题）；
+#   3. 画面中上部留干净：中心球和外环卡都压在那一带，背景在那儿抢戏会很难看。
+#
+# 角色沿用卡面那套（白毛猫娘 / 黄眼 / 左侧蓝蝴蝶结 / JK），保证和卡片是同一只。
 CHARACTER = ("1girl, solo, catgirl, cat ears, cat tail, white hair, long curly white hair, "
              "yellow eyes, blue butterfly hair ornament on the left side of her hair, "
-             "white blouse, JK uniform, pleated skirt")
+             "white blouse, JK uniform, pleated skirt, "
+             "lying, lying on back, lying on the ground covered with cherry blossom petals, "
+             "head resting on one arm, arms relaxed, knees slightly bent, "
+             "looking up at the sky, gentle smile, relaxed, sleepy, peaceful")
 
-# 明朗 + 偏粉：界面本来就是粉色系，背景基调要接得上（所以负向里把冷色/蓝绿主调压掉）
-BRIGHT = ("bright cheerful atmosphere, soft pink dominant color palette, sakura pink, "
-          "rose pink, cream white, warm golden sunlight, high key lighting, sunny, "
-          "soft pink sky, cotton candy clouds, blooming cherry blossoms, petals in the air, "
-          "sparkling, clean and airy, luminous, gentle pastel tones, adorable")
+# 柔雾粉调：奶油白打底，粉是"淡樱粉"而不是洋红；天空偏蜜桃粉，薰衣草只做点缀
+BRIGHT = ("soft pink dominant color palette, sakura pink, dusty rose, cream white, ivory, "
+          "milky pastel tones, pale lavender accents, peach highlights, "
+          "warm pink sky, peach pink gradient sky, cream clouds, "
+          "warm white sunlight, high key lighting, low contrast, ultra soft gradient, "
+          "hazy dreamy atmosphere, airy, luminous, gentle and calm, sparkling light particles")
 
-# 壁纸感 + 猫娘偏侧：位置偏但不留大白，整个画面是铺满的
-COMPOSED = ("wide shot, full body, standing on the left third of the frame, "
-            "off-center composition, scenery fills the whole frame, "
-            "layered foreground and background, cherry blossom trees everywhere, "
-            "soft depth of field, detailed background, cinematic anime wallpaper")
+# 躺着 + 大量留白：她是画面底部的一条横向暖色块，上半屏整片天空让给界面
+COMPOSED = ("very wide shot, full body, small figure lying along the bottom of the frame, "
+            "high angle view, bird's eye view, vast soft sky filling the upper two thirds, "
+            "huge clean negative space above, off-center composition, figure on the left half, "
+            "soft bokeh, petals floating in the air, petal covered ground, "
+            "distant blurred cherry blossom trees, smooth color transitions, "
+            "minimalist composition, cinematic anime wallpaper, scenery")
 
 QUALITY = ("masterpiece, very aesthetic, best quality, score_9, score_8_up, score_7_up, "
            "highres, absurdres, anime wallpaper, official art, cute anime illustration, "
-           "kawaii, soft pastel palette, gentle shading, clean crisp lineart")
+           "kawaii, soft pastel palette, gentle shading, clean crisp lineart, "
+           "delicate rendering, beautiful lighting")
 
 POSITIVE = ", ".join([QUALITY, CHARACTER, BRIGHT, COMPOSED])
-NEGATIVE = ("dark, gloomy, night, shadow, dark background, moody, desaturated, dull, "
-            "cold colors, blue dominant, teal dominant, green dominant, "
-            "empty background, large empty space, blank space, plain flat background, "
-            "centered composition, symmetrical composition, close-up, portrait, "
+NEGATIVE = ("dark, gloomy, night, deep shadow, harsh shadow, high contrast, oversaturated, "
+            "neon, neon magenta, strong magenta, vivid red, teal, blue dominant, green dominant, "
+            "brown dominant, blue sky, cyan sky, turquoise, muddy colors, muddy shading, "
+            "dull, desaturated, "
+            "cluttered, busy background, dense detail, high frequency detail, noise, gritty, "
+            "empty background, blank space, plain flat background, white background, "
+            "centered composition, symmetrical composition, standing, walking, sitting, "
+            "close-up, upper body, portrait, large figure, filling the frame, "
             "cropped, cut off, 2girls, multiple girls, crowd, extra people, "
             "text, watermark, signature, logo, letters, lowres, jpeg artifacts, "
             "realistic, photorealistic, 3d, messy, cluttered")
@@ -169,7 +190,7 @@ def main():
     raw = paths[0]
     print("原图: %s  (%.1fs)" % (raw, time.time() - t0))
 
-    # ---------- 3. 后处理：只做 cover 缩放到最终尺寸（不虚化，模糊交给显示层） ----------
+    # ---------- 3. 后处理：cover 缩放 + 柔化（背景不是主角） ----------
     from PIL import Image, ImageEnhance
     img = Image.open(raw).convert("RGB")
     sc = max(W / img.width, H / img.height)
@@ -177,8 +198,11 @@ def main():
         img = img.resize((max(1, round(img.width * sc)), max(1, round(img.height * sc))), Image.LANCZOS)
     left, top = (img.width - W) // 2, (img.height - H) // 2
     img = img.crop((left, top, left + W, top + H))
-    img = ImageEnhance.Color(img).enhance(1.06)        # 再提一点鲜艳度，压上去之后依然明朗
-    img = ImageEnhance.Brightness(img).enhance(1.03)
+    img = ImageEnhance.Color(img).enhance(1.02)        # 提示词里色调已经定了，这里只微调
+    img = ImageEnhance.Brightness(img).enhance(1.02)
+    # ★ 柔化：和暖白混一点点，等于"抬黑位 + 压对比"。
+    #   这层最终是 opacity .66 + blur 4px 压在卡片底下，对比一高就会透出脏色、和卡片抢视线。
+    img = Image.blend(img, Image.new("RGB", img.size, (255, 252, 250)), 0.06)
     if args.blur and args.blur > 0:
         from PIL import ImageFilter
         img = img.filter(ImageFilter.GaussianBlur(radius=float(args.blur)))

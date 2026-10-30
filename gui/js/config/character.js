@@ -69,7 +69,7 @@ Object.assign(Config, {
         return h;
     },
     _charText(label, field, value) {
-        return `<div class="form-group"><label>${label}</label>
+        return `<div class="form-group"><label>${this._t(label)}</label>
             <textarea class="auto-grow" rows="2" data-char-field="${field}">${this._esc(value)}</textarea>
         </div>`;
     },
@@ -81,7 +81,7 @@ Object.assign(Config, {
     _settingRow(index, key, value) {
         return `<div class="dict-row" data-dict-index="${index}">
             <div class="form-group"><label>${this._t('设定名')}</label>
-                <input type="text" data-setting-key value="${key == null ? '' : key}"></div>
+                <input type="text" data-setting-key value="${this._escAttr(key == null ? '' : key)}"></div>
             <div class="form-group"><label>${this._t('设定内容')}</label>
                 <textarea class="auto-grow" rows="2" data-setting-value>${this._esc(value)}</textarea></div>
         </div>`;
@@ -89,7 +89,7 @@ Object.assign(Config, {
     _personalityRow(index, key, value) {
         return `<div class="dict-row" data-dict-index="${index}">
             <div class="form-group"><label>${this._t('性格名')}</label>
-                <input type="text" data-personality-key value="${key == null ? '' : key}"></div>
+                <input type="text" data-personality-key value="${this._escAttr(key == null ? '' : key)}"></div>
             <div class="form-group"><label>${this._t('性格提示词')}</label>
                 <textarea class="auto-grow" rows="2" data-personality-value>${this._esc(value)}</textarea></div>
         </div>`;

@@ -120,9 +120,19 @@ const Cards = {
         flux_workflow:        { n: '工作流',    g: 'art',     e: '🧩' }
     },
 
+    /* 卡面路径：优先 .jpg —— 由 gui/tools/gen_card_jpg.py 生成的 392×542 版本
+       （卡片在界面上最大 196×271 CSS px，2× 屏也就 392×542，原图 832×1152 纯属浪费；
+        72 张从 75.8MB 降到 3.6MB。原 PNG 保留，缺 .jpg 时由 orbit.js 的 onerror 回退） */
     img(id) {
         const m = this.META[id];
-        if (m && m.img) return m.img;          // 插件卡面走接口（plugins/<id>/card.png）
+        if (m && m.img) return m.img;          // 插件卡面走接口（/api/plugins/<id>/card）
+        return this.DIR + id + '.jpg';
+    },
+
+    /** 卡面兜底：.jpg 缺失时换回原 PNG */
+    fallbackImg(id) {
+        const m = this.META[id];
+        if (m && m.img) return m.img;
         return this.DIR + id + '.png';
     },
 

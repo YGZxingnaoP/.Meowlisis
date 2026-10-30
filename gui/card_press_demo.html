@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>卡片压感反馈 · 调参 Demo（主界面已用同款 full）</title>
+<style>
+  /* =========================================================
+     压感反馈 Demo —— 参数试听台。主界面已接同款（js/press.js + css/cards.css 的 .card-press）：
+     full 模式 = 3D 跟随(20°) + 下沉 3px + 触点光斑 + 镜面高光，回弹 .42s cubic-bezier(.22,1.36,.36,1)
+     配色、圆角、描边、卡面尺寸都对齐 gui/css/cards.css 的 .sub（198×270）
+     ========================================================= */
+  :root{
+    --pink-light:#FFF0F5; --pink-soft:#FFD1DC; --pink-main:#FFB6C1;
+    --pink-deep:#FF69B4;  --pink-dark:#FF1493;
+    --white:#FFFFFF; --white-soft:#FAFAFA;
+    --text-main:#4A4A4A; --text-light:#888888;
+    --shadow:rgba(255,182,193,.4); --shadow-deep:rgba(255,105,180,.3);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    font-family:'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+    background:linear-gradient(135deg,var(--white-soft) 0%,var(--pink-light) 50%,var(--pink-soft) 100%);
+    min-height:100vh;color:var(--text-main);padding:26px 26px 40px;
+    -webkit-user-select:none;user-select:none;
+  }
+  h1{font-size:19px;color:var(--pink-dark);margin-bottom:6px}
+  .lead{font-size:13px;line-height:1.7;color:var(--text-light);max-width:980px}
+  .lead b{color:var(--pink-deep)}
+  code{font-family:Consolas,monospace;font-size:12px;background:rgba(255,255,255,.7);
+    border:1px solid rgba(255,105,180,.25);border-radius:6px;padding:1px 5px}
+
+  /* ---------- 工具条 ---------- */
+  .bar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:18px 0 6px;font-size:13px}
+  .bar label{display:flex;align-items:center;gap:8px;color:var(--text-light)}
+  .bar input[type=range]{width:170px;accent-color:var(--pink-deep)}
+  .bar input[type=checkbox]{width:18px;height:18px;accent-color:var(--pink-deep)}
+  .bar .val{font-family:Consolas,monospace;color:var(--pink-dark);min-width:34px}
+
+  /* ---------- 展示区 ---------- */
+  .grid{display:flex;flex-wrap:wrap;gap:46px;margin:26px 0 10px;padding-left:6px}
+  .cell{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .cell .tag{font-size:12.5px;font-weight:700;color:var(--pink-deep)}
+  .cell .sub{font-size:11.5px;color:var(--text-light);text-align:center;max-width:220px;line-height:1.6}
+
+  /* slot = 主界面里的 .sub：固定尺寸 + perspective + 挂 will-change */
+  .slot{
+    position:relative;width:198px;height:270px;perspective:1400px;
+    cursor:pointer;touch-action:none;-webkit-tap-highlight-color:transparent;
+  }
+  /* card = 真正吃压感的那一层。★ 不要写在 .slot 上：主界面轨道每帧都在重写 .slot 的 transform */
+  .card{
+    position:relative;width:100%;height:100%;
+    transform-style:preserve-3d;
+    transform:
+      translateZ(calc(var(--press,0) * -8px))
+      rotateX(calc(var(--ry,0) * 1deg))
+      rotateY(calc(var(--rx,0) * 1deg))
+      scale(calc(1 - var(--press,0) * 0.035));
+    /* 松手：带回弹的弹簧（过冲 1.36）—— 这就是"手感"的一半来源 */
+    transition:transform .42s cubic-bezier(.22,1.36,.36,1);
+    will-change:transform;
+  }
+  /* 按下：快、不弹，模拟"金属弹片被压下去"的那一下 */
+  .slot.down .card{
+    transition:transform .09s cubic-bezier(.2,.8,.3,1);
+  }
+  .face{
+    position:absolute;inset:0;border-radius:20px;overflow:hidden;
+    display:flex;flex-direction:column;background:rgba(255,255,255,.96);
+    border:2px solid #141414;
+    box-shadow:
+      0 calc(18px - var(--press,0) * 14px)
+        calc(46px - var(--press,0) * 34px)
+        rgba(255,105,180,calc(.34 + var(--press,0) * .16)),
+      0 0 calc(var(--press,0) * 26px) rgba(150,110,255,calc(var(--press,0) * .45)),
+      inset 0 0 0 1px rgba(255,255,255,.7);
+    transition:box-shadow .42s ease;
+  }
+  .slot.down .face{transition:box-shadow .09s ease}
+
+  .art{
+    position:relative;flex:1 1 auto;min-height:0;display:flex;
+    align-items:center;justify-content:center;overflow:hidden;
+    background:linear-gradient(160deg,var(--a),var(--b));
+  }
+  .art .emoji{font-size:56px;filter:drop-shadow(0 3px 8px rgba(0,0,0,.28));transform:translateZ(1px)}
+  .name{
+    flex:0 0 auto;padding:9px 6px 10px;font-size:18px;font-weight:800;
+    text-align:center;color:var(--text-main);background:rgba(255,255,255,.96);
+  }
+
+  /* 高光：跟着指针走的镜面反射（只 tilt/full 用） */
+  .glare{
+    position:absolute;inset:0;border-radius:18px;pointer-events:none;
+    background:radial-gradient(180px 180px at calc(var(--mx,50) * 1%) calc(var(--my,50) * 1%),
+      rgba(255,255,255,.85),rgba(255,255,255,.25) 42%,transparent 68%);
+    opacity:0;mix-blend-mode:screen;
+    transition:opacity .25s ease;
+  }
+  .slot[data-mode="tilt"] .glare,
+  .slot[data-mode="full"] .glare{opacity:calc(.25 + var(--press,0) * .55)}
+
+  /* 触点光斑 + 涟漪：按下的那一点"发光一圈"（spot/full 用） */
+  .spot{
+    position:absolute;inset:0;border-radius:18px;pointer-events:none;overflow:hidden;
+  }
+  .spot::before{
+    content:'';position:absolute;left:calc(var(--sx,50) * 1%);top:calc(var(--sy,50) * 1%);
+    width:var(--spot-size,60px);height:var(--spot-size,60px);margin:calc(var(--spot-size,60px) / -2);
+    border-radius:50%;
+    background:radial-gradient(closest-side,rgba(255,255,255,.95),rgba(255,182,193,.55) 55%,transparent 72%);
+    opacity:calc(var(--spot,0) * .95);
+    transform:scale(calc(.5 + var(--spot,0) * .9));
+    transition:opacity .3s ease,transform .3s ease;
+  }
+  .slot.down .spot::before{transition:opacity .08s ease,transform .08s ease}
+  .ring{
+    position:absolute;left:calc(var(--sx,50) * 1%);top:calc(var(--sy,50) * 1%);
+    width:8px;height:8px;margin:-4px;border-radius:50%;pointer-events:none;
+    border:2px solid rgba(255,255,255,.95);
+    box-shadow:0 0 16px rgba(255,182,193,.9);
+    opacity:0;
+  }
+  .ring.go{animation:ripple .62s cubic-bezier(.2,.7,.3,1) 1}
+  @keyframes ripple{
+    0%{opacity:.9;transform:scale(1)}
+    100%{opacity:0;transform:scale(9)}
+  }
+
+  /* ---------- 说明 ---------- */
+  .notes{margin-top:34px;max-width:980px;font-size:13px;line-height:1.85;color:var(--text-main)}
+  .notes h2{font-size:15px;color:var(--pink-dark);margin:22px 0 8px}
+  .notes ul{padding-left:20px}
+  .notes li{margin:4px 0}
+  .notes .warn{background:rgba(255,214,102,.28);border:1px solid rgba(214,138,32,.35);
+    border-radius:10px;padding:10px 14px;margin:10px 0}
+  .notes table{border-collapse:collapse;width:100%;margin-top:8px;font-size:12.5px}
+  .notes th,.notes td{border:1px solid rgba(255,105,180,.28);padding:6px 10px;text-align:left}
+  .notes th{background:rgba(255,255,255,.7);color:var(--pink-dark);font-weight:700}
+  .notes td code{background:rgba(255,255,255,.55)}
+
+  /* 尊重系统"减少动态"：关掉回弹与涟漪，只留下沉 */
+  @media (prefers-reduced-motion:reduce){
+    .card,.face,.slot.down .card,.slot.down .face{transition-duration:.01ms}
+    .ring.go{animation:none}
+  }
+</style>
+</head>
+<body>
+
+  <h1>卡片压感反馈 · 调参 Demo</h1>
+  <p class="lead">
+    主界面用的就是下面 <b>full（组合）</b>这一套，参数与本页一致（3D 幅度 <b>20°</b>、下沉 3px、90ms 按下 / 420ms 弹簧回弹）。
+    想改手感就改本页的 <code>MAX_TILT</code> / <code>HOVER_TILT</code> 与 <code>.card-press</code> 的过渡，再同步到
+    <code>js/press.js</code> 和 <code>css/cards.css</code>。
+    笔/触屏设备会<b>真的</b>读 <code>pointer.pressure</code> 决定下沉深度，鼠标固定 0.5。
+  </p>
+
+  <div class="bar">
+    <label>笔压力模拟 <input type="range" id="force" min="0" max="1" step="0.01" value="1"><span class="val" id="forceVal">1.00</span></label>
+    <label><input type="checkbox" id="spring" checked>松开回弹（spring）</label>
+    <label><input type="checkbox" id="haptic">触屏震动（navigator.vibrate）</label>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="notes">
+    <h2>四种模式在做什么</h2>
+    <table>
+      <thead><tr><th>模式</th><th>按下去</th><th>松手</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>sink</code> 下沉</td>
+          <td>90ms 内下沉 3px + 缩到 0.965，阴影<b>收紧、变短</b>（卡片贴近桌面）</td>
+          <td>420ms 弹簧回弹，过冲到 1.008 再落回（用 <code>cubic-bezier(.22,1.36,.36,1)</code> 近似）</td>
+        </tr>
+        <tr>
+          <td><code>tilt</code> 3D 跟随</td>
+          <td>最多 20° 的 rotateX/rotateY 跟着指针，镜面高光跟着走；按下再往屏幕里推 8px</td>
+          <td>指针离开 → 角度归零；松手 → 弹回并带一点光晕收束</td>
+        </tr>
+        <tr>
+          <td><code>spot</code> 触点涟漪</td>
+          <td>按下那一点亮起白色光斑，同时向外炸一圈涟漪（62% 时最亮）</td>
+          <td>光斑随压力值淡出</td>
+        </tr>
+        <tr>
+          <td><code>full</code> 组合（推荐）</td>
+          <td>3D 跟随 + 下沉 + 触点光斑 + 镜面高光 + 外发光</td>
+          <td>弹簧回弹，涟漪一次性散开</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>接入方式（主界面已经是这样做的）</h2>
+    <div class="warn">
+      <b>1. 压感挂在 <code>.card-press</code>，绝不是 <code>.slot</code>。</b><br>
+      结构：<code>.slot &gt; .card（只翻牌）&gt; .card-press（只管下沉/倾斜）&gt; .face.front + .face.back</code>。
+      <code>.slot</code> 的 <code>transform</code> 是轨道每帧重写的（<code>orbit/rotation.js</code> 的 <code>_placeAt</code>），
+      写上去会被下一帧吞掉，还会重演"半径在变"的老 bug。分两层也让翻牌的 0.5s 弹簧和压感的 90ms 下沉各走各的时序。
+    </div>
+    <div class="warn">
+      <b>2. 事件用 Pointer Events + <code>setPointerCapture</code>。</b><br>
+      <code>pointerdown</code> 里 capture，<code>pointerup / pointercancel / lostpointercapture</code> 里复位；
+      另外指针一移超过 4px 就当场复位 —— 那说明用户在搓轨道，不是按卡片（<code>js/press.js</code> 的 <code>DRAG_TOLERANCE</code>）。
+    </div>
+    <div class="warn">
+      <b>3. 只写 CSS 变量，并且合帧。</b><br>
+      <code>--press / --tx / --ty / --sx / --sy</code> 五个变量 + <code>.pressing</code> 一个类，
+      写入统一丢进 <code>requestAnimationFrame</code>；不碰 width/height/top/left，就不会有重排。
+    </div>
+
+    <h2>落到主界面上的清单（已实现）</h2>
+    <ul>
+      <li><code>js/press.js</code>：<code>PressFx.bind(el)</code> 由 <code>Orbit._buildCard</code> 逐张调用，外环 / 启动 / 工具箱 / 子卡全覆盖；<code>closeAll</code> 里 <code>PressFx.releaseAll()</code> 兜底复位。</li>
+      <li><code>css/cards.css</code> 的 <code>.card-press / .card-glare / .card-spot / .card-ring</code> 四块样式，参数和本页一致（3D 幅度 20°）。</li>
+      <li>触屏用 <code>navigator.vibrate(8)</code> 做"真的"触感；桌面端靠弹簧曲线表达。</li>
+      <li><code>prefers-reduced-motion: reduce</code> 下退化成"只有下沉、没有回弹和涟漪"（本页可切系统设置验证）。</li>
+      <li>拖动轨道、点空白收起、打开面板都会复位，不会留一张卡卡在半按状态。</li>
+    </ul>
+  </div>
+
+<script>
+(function () {
+  'use strict';
+
+  const CARDS = [
+    { mode: 'sink', tag: 'sink · 下沉回弹', sub: '最克制的一种：按下贴着桌面，松手弹回来',
+      name: 'LLM', emoji: '🧠', a: '#b07bff', b: '#6a3ad6' },
+    { mode: 'tilt', tag: 'tilt · 3D 跟随', sub: '卡片会跟着指针倾斜，高光跟着跑',
+      name: 'TTS', emoji: '🎙️', a: '#2fd6d6', b: '#159aa8' },
+    { mode: 'spot', tag: 'spot · 触点涟漪', sub: '从按下的那一点亮起来，向外散一圈',
+      name: '歌曲', emoji: '🎵', a: '#ff9d5c', b: '#d66a20' },
+    { mode: 'full', tag: 'full · 组合（推荐）', sub: '3D + 下沉 + 触点光斑 + 外发光，四个一起',
+      name: 'CatBrain', emoji: '🐾', a: '#8f7bff', b: '#5a3ad6' }
+  ];
+
+  const MAX_TILT = 20;       // tilt 最大角度（度）—— 主界面同款（js/press.js 的 PressFx.MAX_TILT）
+  const HOVER_TILT = 6;      // 没按下、指针划过时的轻微倾斜
+  const springEl = document.getElementById('spring');
+  const hapticEl = document.getElementById('haptic');
+  const forceEl = document.getElementById('force');
+  const forceVal = document.getElementById('forceVal');
+
+  /* ---------- 建卡（结构和主界面 .sub > .card > .face 一模一样） ---------- */
+  const grid = document.getElementById('grid');
+  CARDS.forEach(function (cfg) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.dataset.mode = cfg.mode;
+
+    slot.innerHTML =
+      '<div class="card" style="--a:' + cfg.a + ';--b:' + cfg.b + '">' +
+        '<div class="face">' +
+          '<div class="art"><span class="emoji">' + cfg.emoji + '</span></div>' +
+          '<div class="name">' + cfg.name + '</div>' +
+          '<div class="glare"></div>' +
+          '<div class="spot"></div>' +
+          '<div class="ring"></div>' +
+        '</div>' +
+      '</div>';
+
+    const tag = document.createElement('div');
+    tag.className = 'tag';
+    tag.textContent = cfg.tag;
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.textContent = cfg.sub;
+
+    cell.appendChild(slot);
+    cell.appendChild(tag);
+    cell.appendChild(sub);
+    grid.appendChild(cell);
+
+    bindPress(slot, cfg.mode);
+  });
+
+  /* ---------- 压感绑定 ---------- */
+  function bindPress(slot, mode) {
+    const card = slot.querySelector('.card');
+    const ring = slot.querySelector('.ring');
+    const allowsTilt = (mode === 'tilt' || mode === 'full');
+    const allowsSpot = (mode === 'spot' || mode === 'full');
+
+    let down = false;
+    let press = 0;          // 0..1 当前下沉量
+    let rx = 0, ry = 0;     // 当前倾斜
+    let sx = 50, sy = 50;   // 触点（百分比）
+    let mx = 50, my = 50;   // 高光位置（百分比）
+    let raf = 0;
+    let dirty = false;
+
+    // 所有样式写入都合到一帧里，避免 pointermove 高频时反复触发样式重算
+    function flush() {
+      raf = 0;
+      if (!dirty) return;
+      dirty = false;
+      card.style.setProperty('--press', press.toFixed(3));
+      card.style.setProperty('--rx', rx.toFixed(2));
+      card.style.setProperty('--ry', ry.toFixed(2));
+      card.style.setProperty('--mx', mx.toFixed(1));
+      card.style.setProperty('--my', my.toFixed(1));
+      card.style.setProperty('--sx', sx.toFixed(1));
+      card.style.setProperty('--sy', sy.toFixed(1));
+      card.style.setProperty('--spot', (down && allowsSpot ? 1 : 0).toString());
+    }
+    function schedule() {
+      dirty = true;
+      if (!raf) raf = requestAnimationFrame(flush);
+    }
+
+    // 指针 → 卡片局部坐标（百分比）
+    function local(e) {
+      const r = slot.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1))),
+        y: Math.max(0, Math.min(1, (e.clientY - r.top) / (r.height || 1)))
+      };
+    }
+
+    slot.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      down = true;
+      slot.classList.add('down');
+      try { slot.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器忽略 */ }
+
+      const p = local(e);
+      sx = p.x * 100; sy = p.y * 100;
+      mx = sx; my = sy;
+      // 真·压感：笔/触屏用 pointer.pressure（0..1），鼠标固定 0.5
+      const raw = (typeof e.pressure === 'number' && e.pressure > 0) ? e.pressure : 0.5;
+      const force = parseFloat(forceEl.value) || 1;
+      press = Math.min(1, (0.55 + raw * 0.45) * force);
+
+      if (allowsTilt) {
+        rx = (p.x - 0.5) * MAX_TILT * 2;    // 指针在左 → 卡片左边被压下去
+        ry = (0.5 - p.y) * MAX_TILT * 2;
+      }
+      if (allowsSpot) {
+        ring.style.left = sx.toFixed(1) + '%';
+        ring.style.top = sy.toFixed(1) + '%';
+        ring.classList.remove('go');
+        void ring.offsetWidth;              // 强制重排，同一元素也能重放动画
+        ring.classList.add('go');
+      }
+      if (hapticEl.checked && navigator.vibrate) navigator.vibrate(8);
+      schedule();
+    });
+
+    slot.addEventListener('pointermove', function (e) {
+      const p = local(e);
+      mx = p.x * 100; my = p.y * 100;
+      if (allowsTilt && down) {
+        rx = (p.x - 0.5) * MAX_TILT * 2;
+        ry = (0.5 - p.y) * MAX_TILT * 2;
+      } else if (allowsTilt && !down) {
+        // 还没按下：给一点点"呼吸"的倾斜，鼠标划过就知道这张卡能按
+        rx = (p.x - 0.5) * HOVER_TILT * 2;
+        ry = (0.5 - p.y) * HOVER_TILT * 2;
+      }
+      schedule();
+    });
+
+    function release() {
+      if (!down) return;
+      down = false;
+      press = 0;
+      rx = 0; ry = 0;
+      slot.classList.remove('down');
+      if (!springEl.checked) {
+        // 关掉回弹：把过渡时长临时压到 0，松手就是"瞬回"
+        card.style.transitionDuration = '0s';
+        requestAnimationFrame(function () { card.style.transitionDuration = ''; });
+      }
+      schedule();
+    }
+    slot.addEventListener('pointerup', release);
+    slot.addEventListener('pointercancel', release);
+    slot.addEventListener('pointerleave', function (e) {
+      if (down) release();
+      if (allowsTilt) {
+        rx = (e.pointerType === 'mouse') ? 0 : rx;
+        ry = (e.pointerType === 'mouse') ? 0 : ry;
+        schedule();
+      }
+    });
+    slot.addEventListener('lostpointercapture', release);
+  }
+
+  forceEl.addEventListener('input', function () {
+    forceVal.textContent = parseFloat(forceEl.value).toFixed(2);
+  });
+})();
+</script>
+</body>
+</html>
