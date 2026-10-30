@@ -29,10 +29,10 @@
 
 *⚠️ 核心功能流程图（待完善，点击图片查看大图）*
 
-完整的功能、模块、配置与运行说明见 [项目各个模块详细说明](说明书.md)。
+完整的功能、模块、配置与运行说明见 [项目各个模块详细说明](INSTRUCTION.md)。
 
 - 运行环境：Windows 10/11，Python 3.11（项目内置 runtime），依赖见 requirements.txt
-- 快速开始：见说明书的「运行环境」
+- 快速开始：见 INSTRUCTION 的「运行环境」
 
 ## 一些原创算法
 ```也可能不是原创，反正是自己瞎想瞎做的，有兴趣的可以看一下```
@@ -81,9 +81,27 @@ func/pipeline/toolbox_audio.py
 
 相关配置：`config.yml → meowsongs.pass_the_baton`。
 
+### 三、导演（主动回复的表演规划）
+
+```
+对应模块：
+func/llm_active/director
+func/pipeline/msg_director.py
+```
+
+思路：角色空闲后主动开口，不是随机说一句，而是先排一段可以推进的表演计划，再一回合走一步。
+
+1. **规划**：`director_plan` 输出 steps，每步含 goal（这一步要达成什么）、move（具体做什么）、expect（预期用户反应）、if_not（没达到怎么办）。
+2. **执行**：导演激活期间用户回合由 `msg_director.py` 接管，复用主链路回复逻辑，每回合只推进或完成一步。
+3. **推进与收尾**：`director_step` 打标 done / adjust / advance / clear；漏标累计 `stall_turns` 触发补判；全部完成或用户明确拒绝就收尾。
+4. **素材**：规划阶段可查 `character/memory`，也可复用 B 站视频素材池。
+5. **落盘与提示词**：状态写 `.temp/director_topic/main.json`，clear 后归档到 `character/director_topic/main/`；`director_block.py` 把当前计划渲染成「当前对话走向」块插进 system_prompt。
+6. **QQ 简化版**：`func/toolbox/napcat/director` 有独立的状态、判官与提示词，不参与群聊冒泡。
+
+相关配置：`config.yml → llm_active.director`、`napcat.director_qq`。
+
 ## To do list
-1、给不同的提示词配置对应的参考音频
-2、补全施工内容
+1. 补全施工内容
 
 ## 相关文档
 - 插件系统：[plugins/plugins.md](plugins/plugins.md)

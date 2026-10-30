@@ -16,6 +16,7 @@ STOPWORDS = {
     "主人", "喵呜", "喵利呜西斯", "今天", "现在", "一下", "觉得", "知道", "记得",
     "之前", "之后", "以后", "以前", "时候", "事情", "好像", "还有", "一些", "一直",
     "已经", "出来", "起来", "开始", "继续", "真的", "确实", "肯定", "到底", "反正",
+    "上次", "上回", "那次",
 }
 
 NOISE_PATTERNS = (
@@ -30,12 +31,16 @@ RETRO_PATTERN = re.compile(
 FIELD_WEIGHTS = {"event": 1.0, "tags": 0.5, "joint": 0.3}
 BM25_K1 = 0.9
 BM25_B = 0.5
-GATE_RATIO = 0.2
-TAG_MIN_IDF = 3.5
-MAX_DF_RATIO = 0.1
+GATE_RATIO = 0.1
+TAG_MIN_IDF = 2.0
+MAX_DF_RATIO = 0.35
 RRF_K = 60.0
 CHANNEL_TOP = 200
-TOPIC_WEIGHT = 0.5
+W_BM25 = 1.0
+W_TAG = 1.0
+W_ENTITY = 1.0
+W_MONTH = 1.0
+W_TOPIC = 0.5
 ANCHOR_LIMIT = 5
 
 
@@ -55,6 +60,9 @@ class MeowRecallIndex:
         self.nick_tokens = set()
         self.blocked = set()
         self._evidence = MeowEvidence()
+        self._strength = {}
+        self._recency = {}
+        self._accuracy = {}
         self._build(docs, now or datetime.datetime.now())
 
     def _tokens(self, text):
@@ -68,10 +76,13 @@ class MeowRecallIndex:
             if not doc_id or doc_id in self.docs:
                 continue
             event = str(item.get("event") or "")
-            tags = [str(t).strip() for t in (item.get("tags") or []) if str(t).strip()]
-            topics = [str(t).strip() for t in (item.get("topics") or []) if str(t).strip()]
+            raw_tags = item.get("tags")
+            raw_topics = item.get("topics")
+            raw_joint = item.get("joint")
+            tags = [str(t).strip() for t in (raw_tags if isinstance(raw_tags, list) else []) if str(t).strip()]
+            topics = [str(t).strip() for t in (raw_topics if isinstance(raw_topics, list) else []) if str(t).strip()]
             names, uids = [], []
-            for entry in (item.get("joint") or []):
+            for entry in (raw_joint if isinstance(raw_joint, list) else []):
                 if isinstance(entry, dict):
                     name = str(entry.get("nickname") or "").strip()
                     uid = str(entry.get("meowid") or entry.get("id") or "").strip()
@@ -109,11 +120,58 @@ class MeowRecallIndex:
                 self.nick_tokens.add(token)
 
             evidence = item.get("evidence")
-            if isinstance(evidence, dict) and self._evidence.score(evidence, now) < 0:
+            if isinstance(evidence, dict) and self._evidence.score(evidence, now) <= self._evidence.config.evidence_archive_threshold:
                 self.blocked.add(doc_id)
+            self._strength[doc_id] = self._strength_of(evidence, now)
+            self._recency[doc_id] = self._recency_of(item.get("time"), now)
+            try:
+                accuracy = float(item.get("accuracy", 5) or 5)
+            except (TypeError, ValueError):
+                accuracy = 5.0
+            self._accuracy[doc_id] = max(0.0, min(5.0, accuracy)) / 5.0
 
         lengths = list(self.doc_len.values())
         self.avg_len = (sum(lengths) / len(lengths)) if lengths else 1.0
+
+    def _strength_of(self, evidence, now):
+        """归一化证据分"""
+        if not isinstance(evidence, dict):
+            return 0.0
+        cap = float(self._evidence.config.rank_evidence_saturation or 0)
+        if cap <= 0:
+            return 0.0
+        score = max(0.0, self._evidence.score(evidence, now))
+        return min(score / cap, 1.0)
+
+    def _recency_of(self, value, now):
+        """按半衰期计算新近度"""
+        ts = str(value or "")
+        parsed = None
+        for fmt, size in (("%Y-%m-%d-%H-%M", 16), ("%Y-%m-%d", 10)):
+            try:
+                parsed = datetime.datetime.strptime(ts[:size], fmt)
+                break
+            except (TypeError, ValueError):
+                continue
+        if parsed is None:
+            return 0.0
+        half = float(self._evidence.config.rank_recency_half_life_days or 0)
+        if half <= 0:
+            return 0.0
+        age = max(0.0, (now - parsed).total_seconds() / 86400)
+        return 0.5 ** (age / half)
+
+    def _final(self, doc_id, fused):
+        """综合相关度与证据/新近/准确度"""
+        cfg = self._evidence.config
+        if not cfg.rank_use_evidence:
+            return fused.get(doc_id, 0.0)
+        def weight(name):
+            return max(0.0, min(1.0, float(getattr(cfg, name, 0.0) or 0.0)))
+        mult = (1 + weight("rank_w_evidence") * (self._strength.get(doc_id, 0.0) - 0.5))
+        mult *= (1 + weight("rank_w_recency") * (self._recency.get(doc_id, 0.0) - 0.5))
+        mult *= (1 + weight("rank_w_accuracy") * (self._accuracy.get(doc_id, 0.0) - 0.5))
+        return fused.get(doc_id, 0.0) * mult
 
     def _idf(self, token):
         total = len(self.docs)
@@ -133,9 +191,47 @@ class MeowRecallIndex:
                 continue
             if word in self.nick_tokens:
                 continue
-            if word not in terms:
-                terms.append(word)
+            if word in self.df:
+                if word not in terms:
+                    terms.append(word)
+                continue
+            if len(word) >= 3 and all('\u4e00' <= c <= '\u9fff' for c in word):
+                for i in range(len(word) - 1):
+                    piece = word[i:i + 2]
+                    if piece in STOPWORDS or piece not in self.df or piece in terms:
+                        continue
+                    terms.append(piece)
         return terms
+
+    def _char_fallback(self, query):
+        """词组全未命中时的单字兜底：只用低频字，按命中字数和时间排序"""
+        if re.search(r"[A-Za-z0-9]", str(query or "")):
+            return []
+        chars = list(dict.fromkeys(c for c in str(query or "") if '\u4e00' <= c <= '\u9fff'))
+        if not chars:
+            return []
+        texts = {}
+        for doc_id, item in self.docs.items():
+            if not isinstance(item, dict):
+                continue
+            tags = item.get("tags")
+            tag_text = " ".join(str(t) for t in tags) if isinstance(tags, list) else ""
+            texts[doc_id] = str(item.get("event") or "") + " " + tag_text
+        total = len(texts) or 1
+        limit = max(3, int(total * 0.05))
+        low_freq = [c for c in chars
+                    if 0 < sum(1 for text in texts.values() if c in text) <= limit]
+        if not low_freq:
+            return []
+        scored = []
+        for doc_id, text in texts.items():
+            if doc_id in self.blocked:
+                continue
+            hit = sum(1 for c in low_freq if c in text)
+            if hit:
+                scored.append((hit, self._time_of(doc_id), doc_id))
+        scored.sort(reverse=True)
+        return [doc_id for _, _, doc_id in scored[:ANCHOR_LIMIT * 2]]
 
     def bm25(self, terms):
         total = len(self.docs)
@@ -240,7 +336,12 @@ class MeowRecallIndex:
         return [doc_id for doc_id, _ in ranked[:CHANNEL_TOP]]
 
     def recall(self, query, months=None, gate_ratio=None, topic="", blocked=()):
+        cfg = self._evidence.config
         ratio = GATE_RATIO if gate_ratio is None else float(gate_ratio)
+        rrf_k = float(cfg.rank_rrf_k or RRF_K)
+        if rrf_k <= 0:
+            rrf_k = RRF_K
+        tag_weight = float(cfg.rank_w_tag or W_TAG)
         blocked = set(blocked) | self.blocked
         terms = self.query_terms(query)
         month_docs = set()
@@ -250,6 +351,9 @@ class MeowRecallIndex:
         topic_docs = set(self.topic_postings.get(topic, ())) - blocked if topic else set()
 
         if not terms:
+            fallback = self._char_fallback(query)
+            if fallback:
+                return fallback
             if not topic_docs:
                 return []
             return self._ordered(topic_docs)[:ANCHOR_LIMIT * 2]
@@ -260,22 +364,22 @@ class MeowRecallIndex:
 
         channels = []
         if bm25:
-            channels.append((self._rank(bm25), 1.0))
+            channels.append((self._rank(bm25), W_BM25))
         if tag:
-            channels.append((self._rank(tag), 1.0))
+            channels.append((self._rank(tag), tag_weight))
         if entity:
-            channels.append((self._ordered(entity), 1.0))
+            channels.append((self._ordered(entity), W_ENTITY))
         if month_docs:
-            channels.append((self._ordered(month_docs), 1.0))
+            channels.append((self._ordered(month_docs), W_MONTH))
         if topic_docs:
-            channels.append((self._ordered(topic_docs), TOPIC_WEIGHT))
+            channels.append((self._ordered(topic_docs), W_TOPIC))
         if not channels:
             return []
 
         fused = defaultdict(float)
         for ranked, weight in channels:
             for position, doc_id in enumerate(ranked):
-                fused[doc_id] += weight / (position + RRF_K)
+                fused[doc_id] += weight / (position + rrf_k)
 
         gate = max(bm25.values()) * ratio if bm25 else None
         core, supp = [], []
@@ -295,6 +399,11 @@ class MeowRecallIndex:
         picked = core[:ANCHOR_LIMIT] + supp
         if not picked and bm25:
             picked = [max(bm25, key=lambda d: (bm25[d], d))]
+        if not picked and topic_docs:
+            picked = self._ordered(topic_docs)[:ANCHOR_LIMIT]
+        if cfg.rank_use_evidence and picked:
+            picked = sorted(picked, key=lambda d: (self._final(d, fused), bm25.get(d, 0.0),
+                                                   tag.get(d, 0.0), self._time_of(d), d), reverse=True)
         return picked
 
 

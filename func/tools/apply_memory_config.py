@@ -15,11 +15,8 @@ GUI_LLM_JS = os.path.join(BASE_DIR, "gui", "js", "config", "llm.js")
 ADD_KEYS = [
     ("catbrain.abstract_mem", "rank_evidence_saturation", 5.0),
     ("catbrain.abstract_mem", "rank_recency_half_life_days", 14),
-    ("catbrain.abstract_mem", "summary_relevance_guarantee", 8),
     ("catbrain.long_term_mem", "inject_recent", False),
     ("catbrain.long_term_mem", "inject_recent_lines", 20),
-    # 摘要写入门槛（减少低价值/重复摘要）
-    ("catbrain.abstract_mem", "min_importance", 5),
     ("catbrain.abstract_mem", "max_events", 10),
     ("catbrain.abstract_mem", "recent_memory_lines", 12),
 ]
@@ -33,14 +30,12 @@ BUMP_KEYS = [
 GUI_ABSTRACT_ANCHOR = "            this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);\n"
 GUI_ABSTRACT_BLOCK = """        h += this._fold('检索排序 (rank)',
             this._num('证据分饱和上限', 'catbrain.abstract_mem.rank_evidence_saturation', 5.0, 0.1, 100, 0.1) +
-            this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1) +
-            this._num('相关性保底条数', 'catbrain.abstract_mem.summary_relevance_guarantee', 8, 0, 100, 1)
+            this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1)
         );
 """
 
 # 前端「记忆摘要」面板新增的「写入过滤 (write)」折叠块
 GUI_WRITE_BLOCK = """        h += this._fold('写入过滤 (write)',
-            this._num('最小重要度', 'catbrain.abstract_mem.min_importance', 5, 0, 10, 1) +
             this._num('单次最多事件数', 'catbrain.abstract_mem.max_events', 10, 1, 100, 1) +
             this._num('附带近期记忆条数', 'catbrain.abstract_mem.recent_memory_lines', 12, 0, 100, 1)
         );
@@ -112,10 +107,10 @@ def patch_gui() -> list:
     with open(GUI_LLM_JS, "r", encoding="utf-8") as f:
         text = f.read()
     changed = []
-    if "rank_evidence_saturation" not in text and GUI_ABSTRACT_ANCHOR in text:
+    if "检索排序 (rank)" not in text and GUI_ABSTRACT_ANCHOR in text:
         text = text.replace(GUI_ABSTRACT_ANCHOR, GUI_ABSTRACT_ANCHOR + GUI_ABSTRACT_BLOCK, 1)
         changed.append("abstract_mem 新增「检索排序 (rank)」块")
-    if "min_importance" not in text and GUI_ABSTRACT_ANCHOR in text:
+    if "写入过滤 (write)" not in text and GUI_ABSTRACT_ANCHOR in text:
         text = text.replace(GUI_ABSTRACT_ANCHOR, GUI_ABSTRACT_ANCHOR + GUI_WRITE_BLOCK, 1)
         changed.append("abstract_mem 新增「写入过滤 (write)」块")
     if "inject_recent" not in text and GUI_LT_OLD in text:

@@ -61,29 +61,22 @@ class MeowEvidence:
         """计算净证据分数"""
         return self.effective_reinforcement(evidence, now) - self.effective_disputation(evidence, now)
 
-    def status(self, evidence, now):
-        """推导证据状态"""
-        s = self.score(evidence, now)
-        if s >= self.config.evidence_confirmed_threshold:
-            return "confirmed"
-        if s <= self.config.evidence_archive_threshold:
-            return "archive_candidate"
-        return "pending"
-
-    def apply_signal(self, evidence, relation, now_iso):
+    def apply_signal(self, evidence, relation, now_iso, delta=None):
         """应用 same/opposite 信号"""
         if relation == "same":
-            value = float(evidence.get("reinforcement", 0.0) or 0.0) + self.config.evidence_same_delta
+            step = self.config.evidence_same_delta if delta is None else delta
+            value = float(evidence.get("reinforcement", 0.0) or 0.0) + step
             evidence["reinforcement"] = min(value, self.reinforcement_cap)
             evidence["rein_last_signal_at"] = now_iso
         elif relation == "opposite":
-            evidence["disputation"] = float(evidence.get("disputation", 0.0) or 0.0) + self.config.evidence_opposite_delta
+            step = self.config.evidence_opposite_delta if delta is None else delta
+            evidence["disputation"] = float(evidence.get("disputation", 0.0) or 0.0) + step
             evidence["disp_last_signal_at"] = now_iso
         return evidence
 
     def mark_sub_zero(self, evidence, now):
         """负分标记每天最多累计一次"""
-        if self.score(evidence, now) >= 0:
+        if self.score(evidence, now) > self.config.evidence_archive_threshold:
             return False
         today = now.date().isoformat()
         if evidence.get("sub_zero_last_increment_date") == today:

@@ -101,10 +101,17 @@ class MeowAbstractMeowLLM:
 
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None, options: Optional[Dict] = None,
-             enable_thinking=None, thinking_level=None, **kwargs):
+             enable_thinking=None, thinking_level=None, temperature=None,
+             max_tokens=None, **kwargs):
         if not self.client:
             self.log.error("[abstract_mem] MeowLLM 客户端不可用")
             return None
+        if temperature is not None or max_tokens is not None:
+            options = dict(options or {})
+            if temperature is not None:
+                options["temperature"] = temperature
+            if max_tokens is not None:
+                options["max_tokens"] = max_tokens
         params = self._build_params(messages, tools, options, tool_choice,
                                     enable_thinking, thinking_level, stream=False)
         try:

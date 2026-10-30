@@ -37,7 +37,7 @@ class MeowArchive:
             if not isinstance(evidence, dict):
                 kept.append(item)
                 continue
-            if self.evidence.score(evidence, now) < 0:
+            if self.evidence.score(evidence, now) <= self.config.evidence_archive_threshold:
                 self.evidence.mark_sub_zero(evidence, now)
                 if int(evidence.get("sub_zero_days", 0) or 0) >= self.config.evidence_archive_days:
                     archived.append(item)

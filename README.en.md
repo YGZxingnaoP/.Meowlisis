@@ -29,7 +29,7 @@ Updates come whenever they come — you can occasionally catch me in @YGZ醒脑�
 
 *⚠️ Core feature flowchart (work in progress — click the image to view it full size)*
 
-For the full feature, module, configuration and runtime documentation, see [Detailed module documentation](说明书.en.md).
+For the full feature, module, configuration and runtime documentation, see [Detailed module documentation](INSTRUCTION.en.md).
 
 - Runtime: Windows 10/11, Python 3.11 (the project bundles its own runtime); dependencies are in requirements.txt
 - Quick start: see "Runtime Environment" in the manual
@@ -80,6 +80,25 @@ Idea: while the character is singing, the user hums along for a bit; the charact
 4. **Memory and thoughts**: the lyrics the user hummed and the lyrics the AI sang are written into short-term/long-term/user memory (type=hum_song); once the continuation finishes playing, the toolbox LLM generates a comment from a template (song title plus the sung lines) and speaks it; if nothing was locked or the margin was too small, the candidate songs and a "don't start singing yet" note go to the LLM with a `[System]` prefix, and the character confirms in its own words whether the user really is singing.
 
 Related config: `config.yml → meowsongs.pass_the_baton`.
+
+### 3. Director (performance planning for proactive replies)
+
+```
+Corresponding modules:
+func/llm_active/director
+func/pipeline/msg_director.py
+```
+
+Idea: when the character speaks up after being idle, it doesn't just say something at random — it first lays out a performance plan that can be advanced step by step, then moves one step per turn.
+
+1. **Planning**: `director_plan` outputs steps, each with goal (what this step should achieve), move (what to do), expect (the expected reaction), and if_not (what to do if it doesn't happen).
+2. **Execution**: while the Director is active, user turns are taken over by `msg_director.py`, reusing the main-chain reply logic; each turn advances or completes exactly one step.
+3. **Advancing and wrapping up**: `director_step` marks done / adjust / advance / clear; missed marks accumulate as `stall_turns` and trigger a catch-up judgement; it wraps up when everything is done or the user clearly refuses.
+4. **Material**: the planning stage can read `character/memory` and reuse the Bilibili video material pool.
+5. **Persistence and prompt**: state goes to `.temp/director_topic/main.json`, archived to `character/director_topic/main/` on clear; `director_block.py` renders the current plan as a "current conversation arc" block spliced into system_prompt.
+6. **QQ simplified version**: `func/toolbox/napcat/director` has its own state, judge and prompt block, and takes no part in group bubble-in.
+
+Related config: `config.yml → llm_active.director`, `napcat.director_qq`.
 
 ## To do list
 1. Configure matching reference audio for each prompt

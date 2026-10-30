@@ -15,6 +15,8 @@ class MeowSummaryTool:
     GREP_TOOL_NAME = "grep_memories"
     JUDGE_TOOL_NAME = "judge_memory_relation"
     RECALL_TOOL_NAME = "decide_abmem_recall"
+    TEMP_PROMISE_TAG = "temp_promise"
+    SYSTEM_TAGS = {TEMP_PROMISE_TAG}
     TOPICS = ["日常", "爱好", "哲思", "闲聊", "情感"]
     ACCURACY_VALUES = [1, 3, 5]
     ACTIONS = ["strengthen", "weaken", "new"]
@@ -23,6 +25,11 @@ class MeowSummaryTool:
         """初始化 tag 存储与配置"""
         self.tag_store = MeowTagStore()
         self.config = MeowCatBrainConfig()
+        try:
+            configured = int(self.config.summary_max_events)
+        except (TypeError, ValueError):
+            configured = 0
+        self.MAX_EVENTS = max(1, configured or self.MAX_EVENTS)
 
     @staticmethod
     def parse_arguments(text, default=None):
@@ -104,6 +111,10 @@ class MeowSummaryTool:
                                         "items": {"type": "string"},
                                         "description": "该事件涉及的用户名列表（不含AI自己），可多人"
                                     },
+                                    "temp_promise": {
+                                        "type": "boolean",
+                                        "description": "有时效、会结束的约定填 true，永久规则与仪式填 false"
+                                    },
                                     "action": {
                                         "type": "string",
                                         "enum": self.ACTIONS,
@@ -114,7 +125,8 @@ class MeowSummaryTool:
                                         "description": "相关已有记忆的编号，action 为 new 时留空"
                                     }
                                 },
-                                "required": ["event", "accuracy", "importance", "tags", "topics", "joint", "action"]
+                                "required": ["event", "accuracy", "importance", "tags", "topics",
+                                             "joint", "temp_promise", "action"]
                             }
                         }
                     },
@@ -208,7 +220,7 @@ class MeowSummaryTool:
 
     def build_tags_attachment(self) -> str:
         """构建已有 tags 附件文本"""
-        tags = self.tag_store.load()
+        tags = [t for t in self.tag_store.load() if t not in self.SYSTEM_TAGS]
         if not tags:
             return "【已有tags附件】暂无已有tags，请新建精炼短语。"
         return "【已有tags附件】优先从以下已有tags中选择，完全没有贴合内容时才新建：\n" + "、".join(tags)

@@ -36,12 +36,14 @@ class MeowDedup:
                 current.append(v)
         item[key] = current
 
-    def _apply_same(self, item, event, now_iso):
+    def _apply_same(self, item, event, now_iso, delta=None, accuracy_step=None):
         """强化已有记忆：累加证据、合并标签，不改写原文"""
         evidence = item.setdefault("evidence", {})
-        self.evidence.apply_signal(evidence, "same", now_iso)
-        acc = int(item.get("accuracy", 5) or 5)
-        item["accuracy"] = min(5, acc + self.config.accuracy_same_increment)
+        self.evidence.apply_signal(evidence, "same", now_iso, delta)
+        step = self.config.accuracy_same_increment if accuracy_step is None else accuracy_step
+        if step:
+            acc = int(item.get("accuracy", 5) or 5)
+            item["accuracy"] = min(5, acc + step)
         self._merge_list(item, "tags", event.get("tags"))
         self._merge_list(item, "topics", event.get("topics"))
         item["joint"] = joint_util.merge(item.get("joint"), event.get("joint"))

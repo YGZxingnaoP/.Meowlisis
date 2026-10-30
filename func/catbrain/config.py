@@ -6,6 +6,22 @@ from func.pipeline.config_reader import ConfigReader
 from func.tools.singleton_mode import singleton
 
 
+def _as_int(value, default):
+    """容错转整数"""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value, default):
+    """容错转浮点"""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 @singleton
 class MeowCatBrainConfig:
     """集中管理 catbrain 节点的全部配置项与默认值"""
@@ -15,10 +31,9 @@ class MeowCatBrainConfig:
         cfg = root.get('catbrain', {})
 
         # ========== 角色卡选择 ==========
-        # character_card 节点：卡片文件名（不含 .json 后缀）与当前选中角色
+        # character_card 节点：卡片文件名（不含 .json 后缀）
         card = root.get('character_card', {})
         self.character_card_file = card.get('card_file', 'prompt')
-        self.character_card_select = card.get('select', '')
 
         # ========== 长期记忆 ==========
         lt = cfg.get('long_term_mem', {})
@@ -35,15 +50,18 @@ class MeowCatBrainConfig:
         self.summary_rounds = am.get('summary_rounds', 30)
         # 摘要提示词检索时加载的摘要条数上限
         self.summary_top_limit = am.get('summary_top_limit', 20)
-        self.recall_gate_ratio = am.get('recall_gate_ratio', 0.3)
+        self.recall_gate_ratio = am.get('recall_gate_ratio', 0.1)
         # 摘要排序：证据分饱和上限（超过该值按该值计，避免历史虚高分一票通吃）
         self.rank_evidence_saturation = am.get('rank_evidence_saturation', 5.0)
         # 摘要排序：新近度半衰期（天，越小越偏向近期记忆）
         self.rank_recency_half_life_days = am.get('rank_recency_half_life_days', 14)
-        # 摘要注入：相关性保底条数（至少保留与当前消息相关的条数）
-        self.summary_relevance_guarantee = am.get('summary_relevance_guarantee', 8)
-        # 摘要写入：importance 低于该值的事件是否丢弃（0 表示不做重要度过滤，全部保留）
-        self.summary_min_importance = am.get('min_importance', 0)
+        # 摘要排序：是否把证据分/新近度/准确度并入排序
+        self.rank_use_evidence = bool(am.get('rank_use_evidence', False))
+        self.rank_w_evidence = _as_float(am.get('rank_w_evidence'), 0.1)
+        self.rank_w_recency = _as_float(am.get('rank_w_recency'), 0.0)
+        self.rank_w_accuracy = _as_float(am.get('rank_w_accuracy'), 0.1)
+        self.rank_rrf_k = _as_float(am.get('rank_rrf_k'), 20.0)
+        self.rank_w_tag = _as_float(am.get('rank_w_tag'), 2.0)
         # 单次概括最多写入的事件数（防止一次对话产生过多摘要）
         self.summary_max_events = am.get('max_events', 10)
         # 概括提示词附带的「近期已记忆要点」条数（0 表示不附带，用于让模型避免重复记录）
@@ -85,36 +103,33 @@ class MeowCatBrainConfig:
         self.abmem_recall_enabled = am.get('recall_enabled', True)
         self.abmem_recall_months_limit = am.get('recall_months_limit', 3)
 
+        # 临时约定清理：摘要时顺带判定带 temp_promise 标签的条目是否已完成
+        tp = am.get('temp_promise') or {}
+        self.temp_promise_enabled = bool(tp.get('enabled', True))
+        self.temp_promise_max_items = max(1, _as_int(tp.get('max_items'), 30))
+
+        # 共处强化：与本次新事件共享标签的旧条目小幅加强
+        co = am.get('cooccur') or {}
+        self.cooccur_enabled = bool(co.get('enabled', True))
+        self.cooccur_delta = _as_float(co.get('delta'), 0.1)
+        self.cooccur_max = max(0, _as_int(co.get('max_boost'), 5))
+
         # ========== 摘要证据 ==========
         ev = am.get('evidence', {})
         # 强化值半衰期（天）
         self.evidence_rein_half_life_days = ev.get('rein_half_life_days', 30)
         # 质疑值半衰期（天）
         self.evidence_disp_half_life_days = ev.get('disp_half_life_days', 180)
-        # 净分数达到该值即 confirmed
-        self.evidence_confirmed_threshold = ev.get('confirmed_threshold', 1.0)
         # 净分数低于该值即归档候选
         self.evidence_archive_threshold = ev.get('archive_threshold', -2.0)
         # 负分持续该天数后真正归档
         self.evidence_archive_days = ev.get('archive_days', 14)
         # same 判定的强化增量
         self.evidence_same_delta = ev.get('same_delta', 0.5)
+        # 精确复述命中的强化增量（用于区分用户强调与模型复读）
+        self.evidence_same_recite_delta = _as_float(ev.get('same_recite_delta'), 0.1)
         # opposite 判定的质疑增量
         self.evidence_opposite_delta = ev.get('opposite_delta', 1.0)
-
-        # ========== 摘要去重 ==========
-        dd = am.get('dedup', {})
-        # 去重比对每批候选条数
-        self.dedup_batch_size = dd.get('batch_size', 20)
-        # 去重比对最大批次数
-        self.dedup_max_batches = dd.get('max_batches', 9)
-        # 检索匹配模式：strict 两元素相同 / broad 首 tag 匹配
-        self.dedup_match_mode = dd.get('match_mode', 'strict')
-
-        # ========== 摘要归档 ==========
-        ar = am.get('archive', {})
-        # 归档扫描间隔（秒）
-        self.archive_sweep_interval_seconds = ar.get('sweep_interval_seconds', 3600)
 
         # ========== 摘要准确度 ==========
         ac = am.get('accuracy', {})

@@ -767,6 +767,25 @@ class TBFluxPainterCore:
         except Exception:
             self.log.exception("[flux_painter] QQ 文本发送失败")
 
+    @staticmethod
+    def _qq_send_ok(resp):
+        if not isinstance(resp, dict):
+            return False
+        if str(resp.get("status", "")).lower() == "ok":
+            return True
+        return str(resp.get("retcode", "")).strip() in ("0",)
+
+    def _qq_private_send(self, ncore, user_id, group_id, message):
+        uid = int(user_id)
+        if self._qq_send_ok(ncore.call_action_sync(
+                "send_private_msg", {"user_id": uid, "message": message})):
+            return True
+        gid = int(group_id) if str(group_id or "").isdigit() else 0
+        if gid:
+            return self._qq_send_ok(ncore.call_action_sync(
+                "send_private_msg", {"user_id": uid, "group_id": gid, "message": message}))
+        return False
+
     def _send_qq_image(self, session, image_path):
         """把成品图+角色点评发给 QQ。
         群聊：先做裸露审查（nsfw_check.enabled）→ 命中则群聊只发 @+点评+【私】占位，
@@ -795,21 +814,19 @@ class TBFluxPainterCore:
                     nsfw, why = self._nsfw_check(image_path)
                     self.log.info(f"[flux_painter] 群裸图审查 {os.path.basename(image_path)} -> {why}")
                 if nsfw:
-                    # 群聊：@发起人 + 点评 + 【私】占位，不带图
+                    delivered = False
+                    if owner:
+                        delivered = self._qq_private_send(ncore, owner, gid, [
+                            {"type": "text", "data": {"text": reply}}, img])
                     msg = []
                     if owner:
                         msg.append({"type": "at", "data": {"qq": owner}})
-                        msg.append({"type": "text",
-                                    "data": {"text": " " + reply + "（这张比较大胆，已私发给你啦~【私】）"}})
+                    if delivered:
+                        tail = reply + "（这张比较大胆，已私发给你啦~【私】）"
                     else:
-                        msg.append({"type": "text",
-                                    "data": {"text": reply + "（已私发给你~【私】）"}})
+                        tail = reply + "（这张比较大胆，群里就不发了）"
+                    msg.append({"type": "text", "data": {"text": (" " + tail) if owner else tail}})
                     ncore.call_action_sync("send_group_msg", {"group_id": int(gid), "message": msg})
-                    # 图仅私发给发起人
-                    if owner:
-                        ncore.call_action_sync("send_private_msg", {
-                            "user_id": int(owner),
-                            "message": [{"type": "text", "data": {"text": reply}}, img]})
                     return
                 msg = []
                 if owner:

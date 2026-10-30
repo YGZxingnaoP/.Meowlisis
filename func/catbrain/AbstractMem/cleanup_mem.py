@@ -142,7 +142,11 @@ class MeowMemorySlimmer:
                 t = str(t).strip()
                 if t and t not in tags:
                     tags.append(t)
-            item["tags"] = tags[: self.config.summary_tags_limit or 3]
+            limit = self.config.summary_tags_limit or 3
+            keep = [t for t in tags if t != self.summary_tool.TEMP_PROMISE_TAG][:limit]
+            if self.summary_tool.TEMP_PROMISE_TAG in tags:
+                keep.append(self.summary_tool.TEMP_PROMISE_TAG)
+            item["tags"] = keep
             topics = [str(t).strip() for t in (item.get("topics") or [])
                       if str(t).strip() in self.summary_tool.TOPICS]
             item["topics"] = topics or ["日常"]

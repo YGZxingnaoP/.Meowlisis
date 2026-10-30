@@ -186,23 +186,52 @@ Object.assign(Config, {
             this._num('摘要检索条数上限', 'catbrain.abstract_mem.summary_top_limit', 30, 1, 200, 1) +
             this._num('话题更新间隔(秒)', 'catbrain.abstract_mem.topic_update_interval', 60, 1, 3600, 1);
         h += this._fold('写入过滤 (write)',
-            this._num('最小重要度', 'catbrain.abstract_mem.min_importance', 5, 0, 10, 1) +
             this._num('单次最多事件数', 'catbrain.abstract_mem.max_events', 10, 1, 100, 1) +
             this._num('附带近期记忆条数', 'catbrain.abstract_mem.recent_memory_lines', 12, 0, 100, 1)
         );
         h += this._fold('检索排序 (rank)',
             this._num('证据分饱和上限', 'catbrain.abstract_mem.rank_evidence_saturation', 5.0, 0.1, 100, 0.1) +
             this._num('新近度半衰期(天)', 'catbrain.abstract_mem.rank_recency_half_life_days', 14, 1, 3650, 1) +
-            this._num('相关性保底条数', 'catbrain.abstract_mem.summary_relevance_guarantee', 8, 0, 100, 1)
+            this._num('召回门槛比例', 'catbrain.abstract_mem.recall_gate_ratio', 0.1, 0, 1, 0.05) +
+            this._check('启用证据排序', 'catbrain.abstract_mem.rank_use_evidence', false) +
+            this._num('证据权重', 'catbrain.abstract_mem.rank_w_evidence', 0.1, 0, 1, 0.05) +
+            this._num('新近权重', 'catbrain.abstract_mem.rank_w_recency', 0.0, 0, 1, 0.05) +
+            this._num('准确度权重', 'catbrain.abstract_mem.rank_w_accuracy', 0.1, 0, 1, 0.05) +
+            this._num('RRF K', 'catbrain.abstract_mem.rank_rrf_k', 20, 1, 200, 1) +
+            this._num('标签通道权重', 'catbrain.abstract_mem.rank_w_tag', 2.0, 0, 10, 0.5)
         );
         h += this._fold('证据分数 (evidence)',
             this._num('强化值半衰期(天)', 'catbrain.abstract_mem.evidence.rein_half_life_days', 30, 1, 3650, 1) +
             this._num('质疑值半衰期(天)', 'catbrain.abstract_mem.evidence.disp_half_life_days', 180, 1, 3650, 1) +
-            this._num('confirmed 阈值', 'catbrain.abstract_mem.evidence.confirmed_threshold', 1.0, -10, 10, 0.1) +
             this._num('归档候选阈值', 'catbrain.abstract_mem.evidence.archive_threshold', -2.0, -10, 10, 0.1) +
             this._num('负分持续天数后归档', 'catbrain.abstract_mem.evidence.archive_days', 14, 1, 365, 1) +
             this._num('same 强化增量', 'catbrain.abstract_mem.evidence.same_delta', 0.5, 0, 10, 0.1) +
-            this._num('opposite 质疑增量', 'catbrain.abstract_mem.evidence.opposite_delta', 1.0, 0, 10, 0.1)
+            this._num('opposite 质疑增量', 'catbrain.abstract_mem.evidence.opposite_delta', 1.0, 0, 10, 0.1) +
+            this._num('复述强化增量', 'catbrain.abstract_mem.evidence.same_recite_delta', 0.1, 0, 10, 0.1)
+        );
+        h += this._fold('临时约定 (temp_promise)',
+            this._check('开启临时约定清理', 'catbrain.abstract_mem.temp_promise.enabled', true) +
+            this._num('每次最多判定条数', 'catbrain.abstract_mem.temp_promise.max_items', 30, 1, 200, 1)
+        );
+        h += this._fold('共处强化 (cooccur)',
+            this._check('开启共处强化', 'catbrain.abstract_mem.cooccur.enabled', true) +
+            this._num('共处强化增量', 'catbrain.abstract_mem.cooccur.delta', 0.1, 0, 10, 0.1) +
+            this._num('每次最多强化条数', 'catbrain.abstract_mem.cooccur.max_boost', 5, 0, 100, 1)
+        );
+        h += this._fold('记忆审查 (review)',
+            this._check('开启记忆审查', 'catbrain.abstract_mem.review.enabled', true) +
+            this._select('记忆审查 LLM 类型', 'catbrain.abstract_mem.review.llm_type', [
+                { value: '', label: '跟随摘要后端' },
+                { value: 'deepseek', label: 'DeepSeek' },
+                { value: 'aliyun', label: '阿里云' },
+                { value: 'gemini', label: 'Gemini' },
+                { value: 'meowllm', label: 'MeowLLM' }
+            ], '') +
+            this._password('API Key（留空复用摘要后端）', 'catbrain.abstract_mem.review.api_key', '') +
+            this._text('Base URL（留空复用）', 'catbrain.abstract_mem.review.base_url', '') +
+            this._text('模型（留空复用）', 'catbrain.abstract_mem.review.model', '') +
+            this._num('max_tokens', 'catbrain.abstract_mem.review.max_tokens', 2048, 1, 32768, 16) +
+            this._num('工具调用最大次数', 'catbrain.abstract_mem.review.max_rounds', 3, 1, 20, 1)
         );
         h += this._llmTypeSelect('摘要 LLM 类型', 'catbrain.abstract_mem.llm_type', ab);
         h += `<div class="modal-tabs">
@@ -269,12 +298,15 @@ Object.assign(Config, {
         h += this._check('启用二次审查', 'catbrain.cat_values.second_review.enabled', false);
         h += this._llmTypeSelect('二次审查 LLM 类型', 'catbrain.cat_values.second_review.llm_type', sr);
         h += this._fold('二次审查 · DeepSeek',
+            this._password('API Key', 'catbrain.cat_values.second_review.deepseek.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.second_review.deepseek.base_url', 'https://api.deepseek.com/v1') +
             this._text('模型', 'catbrain.cat_values.second_review.deepseek.model', 'deepseek-chat'));
         h += this._fold('二次审查 · ' + this._t('阿里云'),
+            this._password('API Key', 'catbrain.cat_values.second_review.aliyun.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.second_review.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
             this._text('模型', 'catbrain.cat_values.second_review.aliyun.model', 'qwen-plus'));
         h += this._fold('二次审查 · Gemini',
+            this._password('API Key', 'catbrain.cat_values.second_review.gemini.api_key', '') +
             this._text('Base URL', 'catbrain.cat_values.second_review.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
             this._text('模型', 'catbrain.cat_values.second_review.gemini.model', 'gemini-3.6-flash'));
         return h;

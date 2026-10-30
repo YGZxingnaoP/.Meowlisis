@@ -45,15 +45,17 @@ class MeowAbstractDeepSeekLLM:
         return resp
 
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
-             tool_choice=None):
+             tool_choice=None, temperature=None, max_tokens=None):
         """非流式对话，返回完整响应对象"""
         if not self.client:
             return None
         params = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": self.max_tokens,
+            "max_tokens": self.max_tokens if max_tokens is None else max_tokens,
         }
+        if temperature is not None:
+            params["temperature"] = temperature
         if tools:
             params["tools"] = tools
         if tool_choice:

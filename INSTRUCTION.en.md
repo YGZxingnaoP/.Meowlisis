@@ -1,6 +1,6 @@
 # Meowlisis!
 
-[![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-README-red?style=for-the-badge)](说明书.md) [![English](https://img.shields.io/badge/English-README-blue?style=for-the-badge)](说明书.en.md)
+[![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-README-red?style=for-the-badge)](INSTRUCTION.md) [![English](https://img.shields.io/badge/English-README-blue?style=for-the-badge)](INSTRUCTION.en.md)
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -133,19 +133,25 @@ Based on a slimmed-down GPT-SoVITS(v2Pro), bundled, calling a local service over
  - Random pause between segments: by default 0.5~1s after each segment, can be turned off, can be set per source
 
 ### Memory Module
-CatBrain multi-layer memory (func/catbrain), each layer with its own LLM backend (deepseek/aliyun/gemini)
- - Short-term memory: public_short_mem.json, trimmed by an independent turn count per message type
- - Long-term memory: written to disk per day as character/memory/<date>.txt, a full archive of the conversation
- - Memory summaries: record.txt in .temp triggers a summarize pass once it holds 50 messages, and the result is written per month as meow-YYMM.json; if summarization fails, the raw text goes back into the cache and waits for the next try
- - Summary write-in: three steps — categorize first, then search existing memories, then decide the relationship
- - Memory review: every new candidate is reviewed one by one and fails by default; passing requires a category and a confidence; whatever fails is dropped outright
- - Evidence score: every memory carries a credit score, both reinforcement and disputation decay by half-life, and ones that score too low are moved into the archive
- - Summary retrieval: sorted by total score, the top 30 go into the prompt; negative-scored and irrelevant ones are left out
- - Memory cleanup: cleanup_mem.py is run by hand when needed, by default it only looks and doesn't write, and only writes with --apply, backing up first
- - Current topic: decided periodically by the LLM (60s cache) and factored into summary ranking
- - User memory: new users get a profile guessed by the LLM, existing users are analyzed and updated every 50 turns (the AI can decide nothing changed and leave it)
- - Values: maintained by a separate LLM (high thinking effort), refreshed every 12 hours plus triggered by philosophical musing/conversation, with an optional second review
- - Message archive: everyone is recorded + vector store (embedding + keyword retrieval) + site retrieval
+CatBrain multi-layer memory (func/catbrain), each layer with its own LLM backend (deepseek/aliyun/gemini); writing, review, retrieval and archiving are separate stages:
+ - Layers: short-term public_short_mem.json (trimmed by an independent turn count per message type); long-term character/memory/<date>.txt (the full conversation archived per day); summaries character/abstract_memory/meow-YYMM.json (structured events per month); user profiles and values are separate
+ - Summarize trigger: .temp/record.txt triggers a pass once it holds summary_rounds (50) messages; on failure the raw text goes back into the cache and waits for the next try
+ - Write-in: the summary LLM submits events through save_memory_summary (event/tags/topics/joint/importance/accuracy/temp_promise); the program first normalizes the fields (prefix cleanup, tag dedup/limit, topic whitelist, importance/accuracy clamping), then reviews each event
+ - Review: new candidates fail by default; passing requires a category and a confidence; failures are dropped. Experience entries pass only when they are clearly real-world tool transactions (phone/messages/takeout, etc.)
+ - Dedup: a content hash (event text + the people involved) that matches the same person and text reinforces; otherwise the summary LLM judges the relation to existing memories (strengthen / weaken / new), weaken disputes, everything else creates or reinforces
+ - Evidence: score = R·2^(-t/30) − D·2^(-t/180), decayed by half-life at read time; the initial reinforcement comes from importance (10→0.8, 9→0.6, 8→0.4, 7→0.2); re-mentioning the same memory adds 0.1; old entries sharing tags with this batch add 0.1 each time, capped at 5 per entry; a score ≤ -2 accumulated over 14 days (at most one count per day) is moved to wrong_mem.json and no longer retrieved
+ - Accuracy: accuracy has three tiers 1/3/5; reinforcement raises it one tier, disputation lowers it two (floor 1)
+ - Temporary promises: time-sensitive promises carry the temp_promise tag; before each summary the tagged entries are swept, using the last 30 days of memories as evidence, and the LLM judges each one; a confirmed completion is rewritten into a "has happened" description, the tag is removed and resolved_at is recorded; unfinished ones stay as-is; no expiry handling
+ - Retrieval: jieba → BM25 (K1=0.9, B=0.5; event=1.0/tags=0.5/joint=0.3) + tag + entity + month + topic, five channels fused with RRF (K=20, tag weight 2.0, topic 0.5); terms appearing in >35% of documents are skipped; tags with IDF <2.0 are not used in the tag channel; the gate is 0.1 of the round's top score
+ - Fallback: a query term missing from the index and at least 3 characters long is retried as adjacent two-character pieces; when no multi-character term survives, low-frequency single characters are used
+ - Ordering: core entries hit by entity/month go first, the rest fill in by fused score; evidence ordering is off by default (rank_use_evidence=false) and weights evidence/recency/accuracy when enabled
+ - Into the prompt: the top 30 in final order; score ≤ -2 and irrelevant entries are excluded
+ - Current topic: decided periodically by the LLM (60s cache) and used as the topic channel
+ - Memory cleanup: cleanup_mem.py is run by hand when needed, read-only by default, writes only with --apply and backs up first; tag trimming preserves temp_promise
+ - User memory: new users get an LLM-guessed profile, existing users are analyzed every 50 turns (the AI may decide nothing changed)
+ - Values: maintained by a separate LLM (high thinking effort), refreshed every 12 hours plus philosophical/conversation triggers, with an optional second review
+ - Message archive: everyone recorded + vector store (embedding + keyword retrieval) + site retrieval
+ - The evidence formula (read-time decay, 30/180-day half-lives, importance→initial reinforcement tiers, -2 archive threshold) references the N.E.K.O open-source project; this project is an independent reimplementation
 
 <details>
 <summary>📁 .temp/public_short_mem.json · short-term memory</summary>

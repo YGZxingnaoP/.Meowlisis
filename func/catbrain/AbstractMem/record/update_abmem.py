@@ -3,6 +3,7 @@ import os
 import re
 import time
 import datetime
+import threading
 from typing import List, Dict
 
 from func.log.default_log import DefaultLog
@@ -16,6 +17,10 @@ from func.catbrain.AbstractMem.load_abmem import MeowLoadAbstractMemory
 from func.catbrain.AbstractMem.process.dedup import MeowDedup
 from func.catbrain.AbstractMem.process.archive import MeowArchive
 from func.catbrain.AbstractMem import joint_util
+
+
+GENERIC_TAGS = {"闲聊", "日常", "情感", "爱好", "哲思", "社交", "直播互动", "视频分享", "图片分享"}
+_SUMMARIZE_LOCK = threading.Lock()
 
 
 class MeowUpdateAbstractMemory:
@@ -32,6 +37,7 @@ class MeowUpdateAbstractMemory:
         self._dedup = MeowDedup()
         self._archive = MeowArchive()
         self._review = None
+        self._sweep = None
         self._last_philosophy_trigger = 0.0
 
     def _ensure_llm(self):
@@ -46,6 +52,13 @@ class MeowUpdateAbstractMemory:
             from func.catbrain.AbstractMem.review.review_core import MeowMemoryReview
             self._review = MeowMemoryReview()
         return self._review
+
+    def _ensure_sweep(self):
+        """懒加载临时约定清理器"""
+        if self._sweep is None:
+            from func.catbrain.AbstractMem.record.promise_sweep import MeowPromiseSweep
+            self._sweep = MeowPromiseSweep()
+        return self._sweep
 
     def _create_llm(self):
         """按配置创建摘要独立 LLM 客户端"""
@@ -205,6 +218,12 @@ class MeowUpdateAbstractMemory:
         event["joint"] = self._normalize_joint(event.get("joint"), content)
         event["importance"] = self._normalize_number(event.get("importance"), 0, 10)
         event["accuracy"] = self._normalize_accuracy(event.get("accuracy"))
+        flag = event.pop("temp_promise", False)
+        if isinstance(flag, str):
+            flag = flag.strip().lower() in ("true", "1", "yes", "是")
+        if flag:
+            if self.summary_tool.TEMP_PROMISE_TAG not in event["tags"]:
+                event["tags"] = event["tags"] + [self.summary_tool.TEMP_PROMISE_TAG]
         return event
 
     @staticmethod
@@ -316,7 +335,9 @@ class MeowUpdateAbstractMemory:
                             replies.append("本次已提交过该事件，已按你的判定更新")
                             continue
                         if exist is not None:
-                            self._dedup._apply_same(exist, event, now_iso)
+                            self._dedup._apply_same(exist, event, now_iso,
+                                                    delta=self.config.evidence_same_recite_delta,
+                                                    accuracy_step=0)
                             event["action"] = "origin"
                             replies.append("该事件与已有记忆完全一致，已加强")
                             continue
@@ -379,6 +400,39 @@ class MeowUpdateAbstractMemory:
         current["action"] = "new"
         return "已按新建处理"
 
+    def _reinforce_cooccur(self, data, new_events, now_iso, skip_ids) -> int:
+        """共处强化：与本次事件共享标签的旧条目小幅加强"""
+        if not self.config.cooccur_enabled or not new_events:
+            return 0
+        delta = float(self.config.cooccur_delta)
+        limit = max(0, int(self.config.cooccur_max))
+        if delta <= 0 or limit <= 0:
+            return 0
+        boosted, count = set(), 0
+        for event in new_events:
+            tags = [t for t in (event.get("tags") or [])
+                    if t not in self.summary_tool.SYSTEM_TAGS]
+            if not any(t not in GENERIC_TAGS for t in tags):
+                continue
+            for item in data:
+                if count >= limit:
+                    break
+                if not isinstance(item, dict):
+                    continue
+                item_id = item.get("id")
+                if not item_id or item_id in skip_ids or item_id in boosted:
+                    continue
+                item_tags = item.get("tags")
+                if not isinstance(item_tags, list):
+                    continue
+                overlap = [t for t in tags if t in item_tags]
+                if len(overlap) < 2 or not any(t not in GENERIC_TAGS for t in overlap):
+                    continue
+                self._dedup._apply_same(item, {}, now_iso, delta=delta, accuracy_step=0)
+                boosted.add(item_id)
+                count += 1
+        return count
+
     def _trigger_values_update(self):
         """哲思话题触发价值观更新"""
         cooldown = self.config.values_philosophy_cooldown_minutes * 60
@@ -399,7 +453,16 @@ class MeowUpdateAbstractMemory:
         if llm is None or not llm.client:
             self.log.error("摘要 LLM 不可用，跳过概括")
             return False
+        with _SUMMARIZE_LOCK:
+            return self._summarize_locked(llm, content)
+
+    def _summarize_locked(self, llm, content: str) -> bool:
+        """持锁执行概括本体"""
         data = self._loader.load()
+        try:
+            self._ensure_sweep().sweep(llm, content, data)
+        except Exception:
+            self.log.exception("临时约定清理失败")
         index = {item.get("id"): item for item in data if isinstance(item, dict) and item.get("id")}
         now = datetime.datetime.now()
         now_str = now.strftime("%Y-%m-%d-%H-%M")
@@ -425,10 +488,15 @@ class MeowUpdateAbstractMemory:
                 self.log.info(f"记忆审查丢弃 {len(dropped)} 条")
         for event in new_events:
             self._dedup._init_evidence(event, now_iso)
+        skip_ids = {event.get("id") for event in events if event.get("id")}
+        boosted = self._reinforce_cooccur(data, new_events, now_iso, skip_ids)
+        if boosted:
+            self.log.info(f"共处强化 {boosted} 条")
         if new_events:
             data.extend(new_events)
-            self.tag_store.append([t for e in new_events for t in (e.get("tags") or [])])
-        if new_events or changed:
+            self.tag_store.append([t for e in new_events for t in (e.get("tags") or [])
+                                   if t not in self.summary_tool.SYSTEM_TAGS])
+        if new_events or changed or boosted:
             self._loader.save(data)
         for event in events:
             if "哲思" in (event.get("topics") or []):

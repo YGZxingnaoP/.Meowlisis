@@ -3,7 +3,7 @@ from typing import List, Dict
 
 class MeowMemoryReviewTool:
     TOOL_NAME = "review_memories"
-    KINDS = ["身份", "偏好", "习惯", "关系", "约定", "价值观"]
+    KINDS = ["身份", "偏好", "习惯", "关系", "约定", "价值观", "经历"]
     ACCURACY_VALUES = [1, 3, 5]
 
     def build_tools(self) -> List[Dict]:

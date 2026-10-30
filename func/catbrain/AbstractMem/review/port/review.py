@@ -40,7 +40,7 @@ class MeowMemoryReviewLLM:
                 llm.client = None
         return llm
 
-    def chat(self, messages, tools=None, tool_choice=None):
+    def chat(self, messages, tools=None, tool_choice=None, **kwargs):
         """非流式对话，转发到内层客户端"""
         if not self._inner:
             return None

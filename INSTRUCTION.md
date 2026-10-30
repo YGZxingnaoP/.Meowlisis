@@ -1,6 +1,6 @@
 # Meowlisis!
 
-[![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-README-red?style=for-the-badge)](说明书.md) [![English](https://img.shields.io/badge/English-README-blue?style=for-the-badge)](说明书.en.md)
+[![中文](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-README-red?style=for-the-badge)](INSTRUCTION.md) [![English](https://img.shields.io/badge/English-README-blue?style=for-the-badge)](INSTRUCTION.en.md)
 
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -133,19 +133,25 @@ llm主要负责快速回复，基本仅使用flash级别的文本模型，即可
  - 段间随机停顿：默认每段播完停 0.5~1s，可关、可按来源
 
 ### 记忆模块
-CatBrain多层记忆（func/catbrain），各层独立LLM后端（deepseek/aliyun/gemini）
- - 短期记忆：public_short_mem.json，按消息类型独立轮数裁剪
- - 长期记忆：按天落盘 character/memory/日期.txt，对话全量存档
- - 记忆摘要：.temp 下的 record.txt 缓存满 50 条消息就触发一次概括，概括完按月写成 meow-YYMM.json；概括失败把原文写回缓存，等下次重试
- - 摘要写入：三步走，先归类，再检索已有记忆，最后判定关系
- - 记忆审查：新建的候选逐条过审，默认不合格；过审的必须给出归类与置信度，没过审的直接丢掉
- - 证据分：每条记忆带一份信用分，加强和削弱都按半衰期衰减，分太低的挪进归档
- - 摘要检索：按总分排序取前 30 条进提示词，负分和不相关的都不带
- - 记忆精简：cleanup_mem.py 需要时自己执行，默认只看不写，加 --apply 才写入，写入前先备份
- - 当前话题：LLM定期决策（60s缓存），参与摘要排序
- - 用户记忆：新用户LLM猜测建档，老用户每50轮分析更新（AI可判定无变化不改）
- - 价值观：独立LLM维护（高思考强度），12小时定时更新 + 哲思/对话触发，可选二次审查
+CatBrain 多层记忆（func/catbrain），各层独立 LLM 后端（deepseek/aliyun/gemini），写入、审查、检索、归档分开：
+ - 分层：短期 public_short_mem.json（按消息类型独立轮数裁剪）；长期 character/memory/日期.txt（对话全量按天落盘）；摘要 character/abstract_memory/meow-YYMM.json（按月存结构化事件）；用户档案、价值观各自独立
+ - 概括触发：.temp 下的 record.txt 缓存满 summary_rounds（50）条消息触发一次概括；概括失败把原文写回缓存，等下次重试
+ - 写入：summary LLM 通过 save_memory_summary 提交 events（event/tags/topics/joint/importance/accuracy/temp_promise），程序先清洗字段（去前缀、标签去重限量、话题白名单、importance/accuracy 归一），再逐条送审
+ - 审查：新候选默认不合格；必须给出归类与置信度，没过审的直接丢弃；经历类只在明确是现实工具事务（手机/消息/外卖等）时放行
+ - 去重：内容哈希（事件文本 + 共同经历人）命中同人同文走强化；未命中时概括 LLM 再判定与已有记忆的关系（strengthen / weaken / new），weaken 走削弱，其余新建或加强
+ - 证据分：score = R·2^(-t/30) − D·2^(-t/180)，读取时按半衰期衰减；初始强化由 importance 决定（10→0.8、9→0.6、8→0.4、7→0.2）；同一次回忆再提 +0.1；与本次新事件共享标签的旧条目 +0.1/次，单条上限 5 次；score ≤ -2 累计 14 天（每天最多计一次）才移入 wrong_mem.json 归档，之后不再参与检索
+ - 准确度：accuracy 分 1/3/5 三档；再提强化升一档，反证削弱降两档（最低 1）
+ - 临时约定：时间敏感的承诺打 temp_promise 标签；每次概括前先扫带标签的条目，用最近 30 天记忆做证据，LLM 逐条判断是否完成；确认完成就改写成已发生的描述、去掉标签并记 resolved_at，未完成保持原样；不做过期处理
+ - 检索：jieba 分词 → BM25（K1=0.9、B=0.5，event=1.0/tags=0.5/joint=0.3）+ 标签 + 实体 + 月份 + 话题五路召回，RRF 融合（K=20、标签通道权重 2.0、话题 0.5）；出现率 >35% 的词不参与 BM25，标签 IDF <2.0 不进标签通道，门槛取本轮最高分的 0.1
+ - 兜底：查询词不在索引且长度 ≥3 时用相邻二字片段再查一次；一个多字词都没有时用低频单字兜底
+ - 排序：实体/月份命中的核心条目优先，其余按融合分补足；证据排序默认关闭（rank_use_evidence=false），开启后按证据/新近/准确度加权
+ - 进提示词：按最终顺序取前 30 条，score ≤ -2 和无关的都不带
+ - 当前话题：LLM 定期决策（60s 缓存），作为话题通道参与召回
+ - 记忆精简：cleanup_mem.py 需要时自己执行，默认只看不写，加 --apply 才写入，写入前先备份；裁剪标签时保留 temp_promise
+ - 用户记忆：新用户 LLM 猜测建档，老用户每 50 轮分析更新（AI 可判定无变化不改）
+ - 价值观：独立 LLM 维护（高思考强度），12 小时定时更新 + 哲思/对话触发，可选二次审查
  - 消息存档：全员记录 + 向量库（embedding+关键词检索）+ 站点检索
+ - 证据分公式（读时衰减、30/180 天双半衰期、importance→初始强化档位、-2 归档阈值）参考 N.E.K.O 开源项目，本项目为独立重实现
 
 <details>
 <summary>📁 .temp/public_short_mem.json · 短期记忆</summary>
@@ -476,8 +482,7 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
 ```
 
 ## To do list
-1、给不同的提示词配置对应的参考音频
-2、补全施工内容
+1. 补全施工内容
 
 ## Requirements
 依赖清单见 requirements.txt，运行环境为 Python 3.11（项目内置 runtime 目录）。
