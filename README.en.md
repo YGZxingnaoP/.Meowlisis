@@ -6,7 +6,7 @@
 
 > This project is open source under the [MIT License](LICENSE).
 
-<p align="center"><img src="gui/MiaoWuFace2.0.ico" alt="MiaoWu" width="112" height="112"></p>
+<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
 
 ```
 I started coding because I wanted someone to chat with while I make animations.
@@ -27,7 +27,7 @@ Updates come whenever they come — you can occasionally catch me in @YGZ醒脑�
 
 ## Features
 
-[<img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis core feature flowchart (work in progress)">](工作流程解析/【待完善】meowlisis工作流程.webp)
+<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）"></a></p>
 
 *⚠️ Core feature flowchart (work in progress — click the image to view it full size)*
 
@@ -104,12 +104,9 @@ Related config: `config.yml → llm_active.director`, `napcat.director_qq`.
 
 ## Frontend Demo
 
-A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB) — resolution lowered only, nothing trimmed; click the links for the full-quality versions:
-
+A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). 
+- The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB) 
 <p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="Frontend demo" width="720"></p>
-
-- Lightweight 30 fps version (2.9 MB, 1280×800, no audio): [frontend_demo_30fps.mp4](工作流程解析/media/frontend_demo_30fps.mp4)
-- Original recording (1920×1200 @60fps, 21.5 MB): [前端展示.mp4](工作流程解析/前端展示.mp4)
 
 ## To do list
 1. Configure matching reference audio for each prompt

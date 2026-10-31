@@ -6,7 +6,7 @@
 
 > This project is open source under the [MIT License](LICENSE).
 
-<p align="center"><img src="gui/MiaoWuFace2.0.ico" alt="MiaoWu" width="112" height="112"></p>
+<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
 
 ```
 I started coding because I wanted someone to chat with while I make animations.
@@ -74,7 +74,7 @@ Related config: `config.yml → meowsongs.pass_the_baton`.
 
 
 ## Next, a Few Feature Introductions
-[<img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis core feature flowchart (work in progress)">](工作流程解析/【待完善】meowlisis工作流程.webp)
+<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis core feature flowchart (work in progress)"></a></p>
 
 *⚠️ Core feature flowchart (work in progress — click the image to view it full size)*
 
@@ -351,7 +351,7 @@ Toolbox core (toolbox_core / analysis / config / get_prompt / excuse / port):
  - `port/`: the toolbox's independent LLM port (DeepSeek / Qwen / Gemini / MeowLLM)
  - `qq_response.py`: the complete QQ private/group reply chain, see "QQ / NapCat" below for details
 
-## Vision Module (MeowVision)
+### Vision Module (MeowVision)
 Online vision models only (Alibaba Cloud Bailian qvq / Gemini / MeowLLM vision port), code is in func/toolbox/meowvision
  - Trigger: LLM tool decision (use_vision), or active watching (periodic screenshots + frame-change detection)
  - Screenshot / cropping / change detection: the `image_handle` tool set; it only interprets when the picture changes, and confirms automatically when a window disappears; images are all cached in `.temp/vision_cache`, and pictures NapCat receives land there first too
@@ -360,7 +360,7 @@ Online vision models only (Alibaba Cloud Bailian qvq / Gemini / MeowLLM vision p
  - watching: screenshot interval 20~120s, duration 5 minutes~5 hours, similarity threshold and the window-disappearance confirmation seconds are all configurable; the session is saved to `.temp/watching_session.json`
  - Tunable: meowvision.* (model/cache), watching.*
 
-## Bilibili Livestream and Danmaku (danmaku)
+### Bilibili Livestream and Danmaku (danmaku)
 Hooks into Bilibili livestream danmaku (blivedm dual channel: open platform + web SESSDATA), code is in func/toolbox/danmaku, and you can log in by QR code in the config UI
  - Reading: a connection thread runs both channels, and a consuming poll thread drains the queue while TTS is idle; danmaku is read out from a template (random/fixed), with a selectable multi-user strategy
  - Replies: single or merged replies; SC goes through the LLM; gift/guard thanks aren't hardcoded but composed by the toolbox LLM + TTS (priority on par with weather/news)
@@ -368,7 +368,7 @@ Hooks into Bilibili livestream danmaku (blivedm dual channel: open platform + we
  - Identity and interception: uname cache; song requests/covers in danmaku are intercepted by meowsinger first
  - Tunable: danmaku.* (room ID / SESSDATA / open-platform keys / reading / gifts / merging / active sending)
 
-## Music (meowsinger / meowsongs)
+### Music (meowsinger / meowsongs)
 Song requests and covers are in func/meowsinger; impromptu humming and hum-and-continue are in func/toolbox/meowsongs
  - Song request: prefix `Meowlisis点歌` ("Meowlisis, play a song") / intents `点歌、放歌、放首歌` ("request a song, play a song, put on some music") → search and download via the NetEase Cloud API → announce the title → play → end signal, with synced lyric subtitles; new messages that arrive while singing go into a summary pool and are answered together at the end
  - Cover: prefix `Meowlisis唱歌` ("Meowlisis, sing") / intents `唱首歌、唱歌` ("sing a song, sing") → RVC three-stem separation + voice conversion + mixing, with selectable model and feature index (the .RVC service); song-learning tasks run serially; results are stored in meow_list; falls back automatically when the remote RVC has no API; pitch/formant/volume are adjustable
@@ -377,7 +377,7 @@ Song requests and covers are in func/meowsinger; impromptu humming and hum-and-c
  - Stop/learn: a stop word cuts the singing off immediately; learn triggers and learn users are configurable
  - Tunable: meowsinger.*, meowsongs.*
 
-## QQ / NapCat (napcat)
+### QQ / NapCat (napcat)
 NapCat is a OneBot v11 forward WS client, code is in func/toolbox/napcat, reply orchestration is in func/toolbox/qq_response.py, config node napcat
  - Connection: `napcat_core` (connection / event_handler / api_client / buffer); `ws_url` / `access_token`; `self_nickname` is used to recognize itself; for debugging, raw events can be dumped to `.temp/napcat_raw_events.jsonl`
  - Private chat: `receive_qq` → identity → Creeper → database → image-edit check → plugins → intent analysis (weather/news/backlog/impromptu humming/Turtle Soup/drawing, etc.) → armor-break → short/long-term memory → QQ Director → reply (`llm/napcat_llm`) → emote/emotion
@@ -392,31 +392,31 @@ NapCat is a OneBot v11 forward WS client, code is in func/toolbox/napcat, reply 
  - Others: `poke_detector`, `creeper`, `excuse_router`, `emotion_bridge`, `identity/qq_cmd`, `identity/qq_send`, `psyche`, `vision_active`, `director` (QQ Director)
  - Tunable: napcat.* (reply length/punctuation/quoting/rhythm, images, emotes, keywords, merging, continued chat, bubble-in, group info, group bots, Director)
 
-## Weather (weather)
+### Weather (weather)
 Tool `weather`, code is in func/toolbox/weather
  - Flow: city-code lookup → `calendar_new` fetches the forecast → (city missing) excuse asks back → LLM drafts the announcement → TTS playback (source=toolbox_weather)
  - QQ case: `TBWeatherNapcatPlugin` sends the QQ question in the character's voice, waits for the user's reply and decides whether to start a new topic; the result is sent on QQ by the napcat module, not through pipeline TTS
  - Tunable: weather.*
 
-## News (news)
+### News (news)
 Tool `news`, code is in func/toolbox/news
  - Flow: scrape readhub hot-list titles → open the detail page for the body (main headline + related reports) → LLM summarizes `top_n` items → TTS playback (source=toolbox_news)
  - QQ case: `TBNewsNapcatPlugin` uses excuse to ask how many items and sends the result on QQ
  - Tunable: news.*
 
-## Backlog and Reminders (add_backlog / calendar)
+### Backlog and Reminders (add_backlog / calendar)
  - Create: the `add_backlog` tool — the parent shallow-triggers it, then it does a second, deeper parse internally (`parse_backlog`: content/time/need_excuse), asks one round of excuse questions for missing fields, and finally appends to `character/backlog/{id}/backlog.json`
  - Defaults: day=none, type=instant, loop=3, repeat_interval=300, qq=true; the QQ case goes through `TBNapcatExcuseRouter` to ask on QQ, and writes no memory and makes no announcements along the way
  - Reminders: `func/calendar/backlog.py` runs a separate thread polling `character/backlog` and reminds proactively at the scheduled time; state goes to `.temp/calendar_backlog_state.json`; plugins can pause it through `CAP_REMINDER`; works on both the livestream and QQ
 
-## Holiday Greetings (calendar)
+### Holiday Greetings (calendar)
 Code is in func/calendar
  - Holiday data: `holiday.json`, covering fixed Gregorian holidays, lunar-calendar holidays, the 24 solar terms and floating holidays (Mother's Day/Father's Day, etc.)
  - Greeting text: `greeting.json` configures templates per birthday/holiday/solar term, falling back to a default template; priority birthday > holiday > solar term
  - Trigger: the greeting is only consumed when the user speaks for the first time that day; with `mark_first=False` only the date info is kept and no greeting is decided; birthdays come from the user profile
  - Date block: holidays/solar terms/birthdays are summarized into the prompt; prompt_builder handles splicing and the first-time decision
 
-## Drawing and Image Editing (flux_painter)
+### Drawing and Image Editing (flux_painter)
 Tool `flux_paint`, code is in func/toolbox/flux_painter
  - Generation: ComfyUI text-to-image (UNET base model, 1024x1024 / 1080x1960 canvas options); the LLM produces the title, positive tags, cinema natural language, report line and canvas spec, with character knowledge included
  - Review and archiving: NSFW review, artwork archiving; a review voice line is announced once the drawing is done
@@ -425,57 +425,37 @@ Tool `flux_paint`, code is in func/toolbox/flux_painter
  - Scenes: works on live / QQ; it cools down while drawing and never takes over for long
  - Tunable: flux_painter.*
 
-## Turtle Soup (turtle_soup)
+### Turtle Soup (turtle_soup)
 Tool `turtle_soup`, code is in func/toolbox/turtle_soup
  - Puzzle bank: `character/turtle_soup`; cache `.temp/turtle_soup`; the story surface length is controlled per easy/hard
  - Flow: `generate` picks a puzzle → `prompt` assembles the game block → the user asks questions → `judge` rules solved / give_up / repeat → the answer is revealed
  - Session isolation: live / qq_private / qq_group each have their own runtime state
  - Tunable: turtle_soup.* (enabled, qq_enabled, puzzle bank/cache directories, story surface length, etc.)
 
-## Storytelling
+### Storytelling
 Under construction, not implemented yet.
 
-## File Reading (txt_reader)
+### File Reading (txt_reader)
 Text-reading module (func/catbrain/txt_reader), supporting file listing, chunking, keyword locating and tokenization; the text it reads can be handed to the LLM for long-document reading, locating and Q&A.
 
-## Knowledge Base (database)
+### Knowledge Base (database)
 Database/RAG knowledge base supporting crawling specified sites, vector retrieval and keyword matching; content can be learned into the store.
  - Ingest: scrape the body text → chunk → embed → write to the vector store; the raw files are archived
  - Retrieval: vector similarity + keyword on two paths, and the matching snippets are spliced into the prompt
 
-## Web Browsing (web_browse)
+### Web Browsing (web_browse)
 Browses Bilibili content on its own, automatically grabbing frames, filtering topics and generating summaries, with caching and favorites; it is also the video material pool for origin/the Director.
  - Flow: candidate videos → LLM filtering (topics/tags/red lines) → frame extraction → visual summary → saved to cache; once adopted it moves to `character/shared_videos`
  - Tunable: llm_active.web_browse.* (switch, interval, cache cap, allowed topics, etc.)
-
-## Memory Curation (catbrain)
-Abstract memory, user memory and long-term memory work together in layers, with scheduled summarization and tidying, still being optimized.
- - Summaries: a full record cache triggers a summarize pass, archived by month; on failure the raw text is written back and retried next time
- - User profile: new users get a guessed profile, existing users are updated incrementally by turn count; values are maintained by a separate thread
- - Cleanup: cleanup_mem only looks by default and doesn't write, only runs with --apply, and backs up before writing
- - Recall experiments: [scripts/memory_recall_lab/README.en.md](scripts/memory_recall_lab/README.en.md)
-
-## Phone Control
-Let the character handle things on a phone itself: the PC runs WebDriverAgent on an iPhone over a USB tunnel (see [CatApps_iOS](https://github.com/YGxingnaoP/CatApps_iOS) for the modified version), and the character looks at the screen, taps, types and turns pages while talking as it goes. Maps to `func/catpaws` (intent judgement and voice/memory bridging only, it doesn't touch the LLM) and `.vendor/.CatPaws` (its own LLM, action chain, action scripts, screen streaming); the source of truth for config is `.vendor/.CatPaws/config.yml`.
-
-- Trigger: saying "喵呜我要点外卖" ("meow, I want to order takeout") goes straight into the chain; merely mentioning intent words like "phone" first lets the LLM decide whether to take over
-- Operations come in three kinds: one-shot (tap once, swipe once, back), continuous (several steps dispatched at once, 90ms apart by default), and action scripts (a fixed flow is distilled into `actions/<id>/`; whatever is written during the reflection stage needs the master to nod twice)
-- Wrap-up: when it's done it first asks "anything else?", and after confirmation goes into reflection to distill a script; payment, password and privacy-type operations are forbidden across the whole chain
-- Speech and memory: replies on the phone side are spoken in the character's voice and also written into short-term memory (`phone_control_user` / `phone_control_response`), long-term memory and user memory
-- GUI: the phone-control panel has a live view, the operation log, a config panel and a start button; opening `https://<PC-IP>:8443` in a phone browser shows the desktop pet
-- Standalone debugging: `scripts\catpaws\catpaws_device_test.bat` opens two windows ("chat + log") and can drive a real device directly, without starting the main program
-- Details: CatPaws service [.vendor/.CatPaws/README.en.md](.vendor/.CatPaws/README.en.md); launcher [.vendor/.CatPaws/catpaws-launcher/README.en.md](.vendor/.CatPaws/catpaws-launcher/README.en.md); debugging scripts [scripts/catpaws/README.en.md](scripts/catpaws/README.en.md); phone UI [.vendor/.cam/README.en.md](.vendor/.cam/README.en.md)
-
-## Vtuber Avatar
+ - 
+### Vtuber Avatar
 Drives a Live2D avatar through the VTube Studio WebSocket API, with emotion→expression mapping, body sway and lip sync; corresponds to the func/vts module.
  - Emotion: the emotion/intensity the LLM decides maps to expressions and motions
  - Lip sync: mouth shapes are driven by the audio during TTS playback; speech and motion can layer
  - Connection: VTube Studio plugin auth + a persistent WebSocket
 
-## Plugin System (plugins)
-Plugin directories, plugin.py / schema.py / config.yml, the main / qq channels, and the load/disable rules are covered in [plugins/plugins.en.md](plugins/plugins.en.md).
 
-## Minecraft Log Reading (minecraft)
+### Minecraft Log Reading (minecraft)
 Code is in func/toolbox/minecraft
  - `logreader`: polls the log file, auto-detects encoding, regex-extracts chat/events and feeds them to the LLM after de-duplication; interval, path, encoding and player allowlist are configurable
  - In-game adaptation is under construction.
@@ -483,14 +463,38 @@ Code is in func/toolbox/minecraft
 There is no Minecraft-playing adaptation at all — let's wait for world models; models playing games right now are really not worth watching
 ```
 
+## Phone Control
+```
+Yes, after a year of accumulation and three months of intense development!
+this feature was the initial small goal 
+And also a MILESTONE - normal communication allowing the kitten to help me order takeout
+```
+Let the character handle things on a phone itself: the PC runs WebDriverAgent on an iPhone over a USB tunnel 
+- see [@CatApps_iOS](https://github.com/YGxingnaoP/CatApps_iOS) for the modified version and the character looks at the screen, taps, types and turns pages while talking as it goes. 
+- Maps to `func/catpaws` (intent judgement and voice/memory bridging only, it doesn't touch the LLM) and `.vendor/.CatPaws` (its own LLM, action chain, action scripts, screen streaming); the source of truth for config is `.vendor/.CatPaws/config.yml`.
+
+- Trigger: saying "喵呜我要点外卖" ("meow, I want to order takeout") goes straight into the chain; merely mentioning intent words like "phone" first lets the LLM decide whether to take over
+- Operations come in three kinds: one-shot (tap once, swipe once, back), continuous (several steps dispatched at once, 90ms apart by default), and action scripts (a fixed flow is distilled into `actions/<id>/`; whatever is written during the reflection stage needs the master to nod twice)
+- Wrap-up: when it's done it first asks "anything else?", and after confirmation goes into reflection to distill a script; payment, password and privacy-type operations are forbidden across the whole chain
+- Speech and memory: replies on the phone side are spoken in the character's voice and also written into short-term memory (`phone_control_user` / `phone_control_response`), long-term memory and user memory
+- GUI: the phone-control panel has a live view, the operation log, a config panel and a start button; opening `https://<PC-IP>:8443` in a phone browser shows the desktop pet
+- Standalone debugging: `scripts\catpaws\catpaws_device_test.bat` opens two windows ("chat + log") and can drive a real device directly, without starting the main program
+- Details: 
+  - CatPaws service [.vendor/.CatPaws/README.en.md](.vendor/.CatPaws/README.en.md); 
+  - launcher [.vendor/.CatPaws/catpaws-launcher/README.en.md](.vendor/.CatPaws/catpaws-launcher/README.en.md); 
+  - phone UI [.vendor/.cam/README.en.md](.vendor/.cam/README.en.md)
+
+
+## Plugin System (plugins)
+Plugin directories, plugin.py / schema.py / config.yml, the main / qq channels, and the load/disable rules are covered in [plugins/plugins.en.md](plugins/plugins.en.md).
+
+
 ## Frontend Demo
 
-A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB) — resolution lowered only, nothing trimmed; click the links for the full-quality versions:
+A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). 
+- The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB)
 
 <p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="Frontend demo" width="720"></p>
-
-- Lightweight 30 fps version (2.9 MB, 1280×800, no audio): [frontend_demo_30fps.mp4](工作流程解析/media/frontend_demo_30fps.mp4)
-- Original recording (1920×1200 @60fps, 21.5 MB): [前端展示.mp4](工作流程解析/前端展示.mp4)
 
 ## To do list
 1. Configure matching reference audio for each prompt

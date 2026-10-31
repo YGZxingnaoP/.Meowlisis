@@ -27,7 +27,7 @@
 
 ## 功能说明
 
-[<img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）">](工作流程解析/【待完善】meowlisis工作流程.webp)
+<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）"></a></p>
 
 *⚠️ 核心功能流程图（待完善，点击图片查看大图）*
 

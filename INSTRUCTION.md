@@ -74,7 +74,7 @@ func/pipeline/toolbox_audio.py
 
 
 ## 接下来是一些功能介绍
-[<img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）">](工作流程解析/【待完善】meowlisis工作流程.webp)
+<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis core feature flowchart (work in progress)"></a></p>
 
 *⚠️ 核心功能流程图（待完善，点击图片查看大图）*
 
@@ -351,7 +351,7 @@ CatBrain 多层记忆（func/catbrain），各层独立 LLM 后端（deepseek/al
  - `port/`：toolbox 独立 LLM 端口（DeepSeek / Qwen / Gemini / MeowLLM）
  - `qq_response.py`：QQ 私聊/群聊完整回复链路，详见下面「QQ / NapCat」
 
-## 视觉模块（MeowVision）
+### 视觉模块（MeowVision）
 仅在线视觉模型（阿里云百炼 qvq / Gemini / MeowLLM 视觉端口），代码在 func/toolbox/meowvision
  - 触发方式：LLM工具决策(use_vision)，或主动观看(watching)周期截图+画面变化检测
  - 截图 / 画面裁剪 / 变化检测：`image_handle` 工具集；画面有变化才理解，窗口消失自动确认；图片统一缓存到 `.temp/vision_cache`，NapCat 收到的图也先落这里
@@ -360,7 +360,7 @@ CatBrain 多层记忆（func/catbrain），各层独立 LLM 后端（deepseek/al
  - watching：截屏频率 20~120s、持续 5 分钟~5 小时、相似度阈值、窗口消失确认秒数都可配；会话落 `.temp/watching_session.json`
  - 可调：meowvision.*（模型/缓存）、watching.*
 
-## Bilibili直播与弹幕（danmaku）
+### Bilibili直播与弹幕（danmaku）
 接入 B 站直播弹幕（blivedm 双通道：开放平台 + web SESSDATA），代码在 func/toolbox/danmaku，可在配置界面扫码登录
  - 读取：连接线程跑双通道，消费轮询线程在 TTS 空闲时消费队列；弹幕按模板朗读（随机/固定）、多用户策略可选
  - 回复：单条/合并回复；SC 走 LLM；礼物/舰长感谢不硬编码，交给 toolbox LLM 拟词 + TTS（优先级与 weather/news 同级）
@@ -368,7 +368,7 @@ CatBrain 多层记忆（func/catbrain），各层独立 LLM 后端（deepseek/al
  - 身份与拦截：uname 缓存；弹幕里的点歌/翻唱会先被 meowsinger 拦截
  - 可调：danmaku.*（房间号 / SESSDATA / 开放平台密钥 / 朗读 / 礼物 / 合并 / 主动发送）
 
-## 音乐（meowsinger / meowsongs）
+### 音乐（meowsinger / meowsongs）
 点歌、翻唱在 func/meowsinger，即兴哼唱与哼唱接龙在 func/toolbox/meowsongs
  - 点歌：前缀「Meowlisis点歌」/ 意图「点歌、放歌、放首歌」→ 网易云 API 搜歌下载 → 报歌名 → 播放 → 结束信号，支持歌词同步字幕；唱歌中收到的新消息进汇总池，结束后统一回复
  - 翻唱：前缀「Meowlisis唱歌」/ 意图「唱首歌、唱歌」→ RVC 三轨分离 + 变声 + 混音，支持指定模型与特征索引（对应 .RVC 服务）；学歌任务串行；成品存 meow_list；远程 RVC 无接口时自动回退；变调/共振峰/音量可调
@@ -377,7 +377,7 @@ CatBrain 多层记忆（func/catbrain），各层独立 LLM 后端（deepseek/al
  - 停止/学歌：唱歌中停止词立即掐断；学歌触发词、学歌用户可配
  - 可调：meowsinger.*、meowsongs.*
 
-## QQ / NapCat（napcat）
+### QQ / NapCat（napcat）
 NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回复编排在 func/toolbox/qq_response.py，配置节点 napcat
  - 连接：`napcat_core`（connection / event_handler / api_client / buffer）；`ws_url` / `access_token`；`self_nickname` 用于识别自己；调试可把原始事件落盘 `.temp/napcat_raw_events.jsonl`
  - 私聊：`receive_qq` → 身份 → Creeper → 数据库 → 改图判定 → 插件 → 意图分析（天气/新闻/待办/即兴哼唱/海龟汤/画图等）→ 破甲 → 短/长期记忆 → QQ 导演 → 回复（`llm/napcat_llm`）→ 表情/情绪
@@ -392,31 +392,31 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
  - 其它：`poke_detector`、`creeper`、`excuse_router`、`emotion_bridge`、`identity/qq_cmd`、`identity/qq_send`、`psyche`、`vision_active`、`director`（QQ 导演）
  - 可调：napcat.*（回复字数/标点/引用/节奏、图片、表情、关键词、合并、续聊、冒泡、群信息、群机器人、导演）
 
-## 天气（weather）
+### 天气（weather）
 工具 `weather`，代码在 func/toolbox/weather
  - 流程：城市代码查询 → `calendar_new` 获取预报 →（缺城市）excuse 追问 → LLM 拟播报 → TTS 播放（source=toolbox_weather）
  - QQ 场景：`TBWeatherNapcatPlugin` 负责以角色口吻发 QQ 询问、等用户回复、判断是否另起话题；结果由 napcat 模块发 QQ，不走 pipeline TTS
  - 可调：weather.*
 
-## 新闻（news）
+### 新闻（news）
 工具 `news`，代码在 func/toolbox/news
  - 流程：爬取 readhub 热榜标题 → 进详情页取正文（主标题+相关报道）→ LLM 概括 `top_n` 条 → TTS 播放（source=toolbox_news）
  - QQ 场景：`TBNewsNapcatPlugin` 负责 excuse 追问条数、结果发 QQ
  - 可调：news.*
 
-## 待办与提醒（add_backlog / calendar）
+### 待办与提醒（add_backlog / calendar）
  - 新建：`add_backlog` 工具，父级浅触发后内部二次深度解析（`parse_backlog`：content/time/need_excuse），缺字段用 excuse 追问一轮，最后追加写入 `character/backlog/{编号}/backlog.json`
  - 默认值：day=none、type=instant、loop=3、repeat_interval=300、qq=true；QQ 场景走 `TBNapcatExcuseRouter` 发 QQ 追问，全程不写记忆、不播报
  - 提醒：`func/calendar/backlog.py` 独立线程轮询 `character/backlog`，按计划时刻主动提醒；状态落 `.temp/calendar_backlog_state.json`；插件可通过 `CAP_REMINDER` 暂停；支持直播端与 QQ 双通道
 
-## 节日祝福（calendar）
+### 节日祝福（calendar）
 代码在 func/calendar
  - 节日数据：`holiday.json`，支持公历固定节日、农历节日、24 节气、浮动节日（母亲节/父亲节等）
  - 祝福文案：`greeting.json` 按生日/节日/节气配置模板，缺省用兜底模板；优先级生日 > 节日 > 节气
  - 触发：用户当天第一次说话才占用祝福；`mark_first=False` 时只保留日期信息、不判祝福；生日按用户档案
  - 日期块：节日/节气/生日汇总进提示词；prompt_builder 负责拼接与首次判定
 
-## 绘画与改图（flux_painter）
+### 绘画与改图（flux_painter）
 工具 `flux_paint`，代码在 func/toolbox/flux_painter
  - 生成：ComfyUI 文生图（UNET 底模、1024x1024 / 1080x1960 两档画布）；LLM 产出标题、positive tag、cinema 自然语言、汇报语、画布规格，并带角色知识
  - 审查与存档：NSFW 审查、画作归档；画完播报 review 语音
@@ -425,63 +425,68 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
  - 场景：live / QQ 都能用；绘画中冷却，不长期接管
  - 可调：flux_painter.*
 
-## 海龟汤（turtle_soup）
+### 海龟汤（turtle_soup）
 工具 `turtle_soup`，代码在 func/toolbox/turtle_soup
  - 题库：`character/turtle_soup`；缓存 `.temp/turtle_soup`；汤面按 easy/hard 长度控制
  - 流程：`generate` 出题 → `prompt` 拼游戏块 → 用户提问 → `judge` 判 solved / give_up / repeat → 揭开汤底
  - 会话隔离：live / qq_private / qq_group 各一份运行态
  - 可调：turtle_soup.*（enabled、qq_enabled、题库/缓存目录、汤面长度等）
 
-## 讲故事
+### 讲故事
 施工中，暂无实现。
 
-## 文件读取（txt_reader）
+### 文件读取（txt_reader）
 文本读取模块（func/catbrain/txt_reader），支持文件列表、切分、关键词定位与分词；读到的文本可交给 LLM 做长文阅读、定位与问答。
 
-## 知识库（database）
+### 知识库（database）
 数据库/RAG 知识库，支持爬取指定站点、向量检索与关键词匹配，可将内容学习入库。
  - 入库：抓取正文 → 分块 → 向量化 → 写入向量库；原始文件归档
  - 检索：向量相似度 + 关键词双路，命中片段拼进提示词
 
-## 网页浏览（web_browse）
+### 网页浏览（web_browse）
 主动浏览 B 站内容，自动截帧、筛选话题并生成摘要，支持缓存与收藏；也是 origin/导演的视频素材池。
  - 流程：候选视频 → LLM 过滤（话题/标签/红线）→ 抽帧 → 视觉概括 → 落缓存；被采用后移到 `character/shared_videos`
  - 可调：llm_active.web_browse.*（开关、间隔、缓存上限、允许话题等）
 
-## 记忆整理（catbrain）
-抽象记忆、用户记忆与长期记忆等多层记忆协同，定时摘要与整理，持续优化中。
- - 摘要：record 缓存满额触发概括，按月归档；失败回写原文等下次重试
- - 用户档案：新用户猜测建档，老用户按轮数增量更新；价值观独立线程维护
- - 精简：cleanup_mem 默认只看不写，加 --apply 才执行，写入前备份
- - 召回实验：[scripts/memory_recall_lab/README.md](scripts/memory_recall_lab/README.md)
-
-## 手机操控
-让角色自己拿着手机办事：电脑通过 USB 隧道把 WebDriverAgent 跑在 iPhone 上（魔改版见 [CatApps_iOS](https://github.com/YGxingnaoP/CatApps_iOS)），角色看图、点击、输入、翻页，边做边说话。对应 `func/catpaws`（只做意图判断与语音/记忆桥接，不碰 LLM）与 `.vendor/.CatPaws`（独立 LLM、操作链路、action 脚本、屏幕推流），配置真值在 `.vendor/.CatPaws/config.yml`。
-
-- 触发：说「喵呜我要点外卖」直接接链路；只提「手机」等意图词则先让 LLM 判断要不要接管
-- 操作分三类：单次（点一下、滑一下、返回）、连续（一次下发多步，默认 90ms 间隔）、action 脚本（流程固定就沉淀成 `actions/<id>/`，反思阶段写完要主人点两次头）
-- 收尾：办完先问「还有别的事吗」，确认后进反思沉淀脚本；付款、密码、隐私类操作整条链路都禁止
-- 说话与记忆：手机端的回复走角色声线播报，同时写进短期记忆（`phone_control_user` / `phone_control_response`）、长期记忆与用户记忆
-- GUI：手机操作面板里有实时画面、操作流水、配置面板与启动按钮；手机端用浏览器打开 `https://<电脑IP>:8443` 能看到桌宠
-- 单独联调：`scripts\catpaws\catpaws_device_test.bat` 开「对话 + 流水」两个窗口，可直接跑真机，不用启动主程序
-- 详细说明：CatPaws 服务 [.vendor/.CatPaws/README.md](.vendor/.CatPaws/README.md)；启动器 [.vendor/.CatPaws/catpaws-launcher/README.md](.vendor/.CatPaws/catpaws-launcher/README.md)；联调脚本 [scripts/catpaws/README.md](scripts/catpaws/README.md)；手机界面 [.vendor/.cam/README.md](.vendor/.cam/README.md)
-
-## Vtuber皮套
+### Vtuber皮套
 通过 VTube Studio 的 WebSocket 接口驱动 Live2D 皮套，支持情绪→表情映射、身体摆动与口型同步，对应 func/vts 模块。
  - 情绪：LLM 决策的情绪/强度映射到表情与动作
  - 口型：TTS 播放时按音频驱动口型；说话/动作可叠加
  - 连接：VTube Studio 插件鉴权 + WebSocket 常驻
 
-## 插件系统（plugins）
-插件目录、plugin.py / schema.py / config.yml、main / qq 通道、加载与禁用规则见 [plugins/plugins.md](plugins/plugins.md)。
-
-## Minecraft日志读取（minecraft）
+### Minecraft日志读取（minecraft）
 代码在 func/toolbox/minecraft
  - `logreader`：轮询日志文件、自动编码检测、正则提取聊天/事件、去重后送入 LLM；间隔、路径、编码、玩家白名单可配
  - 游戏内适配施工中。
 ```
 完全没有做玩MC的适配，等世界模型吧，现在模型玩游戏真不能看
 ```
+
+
+## 手机操控
+```
+没错，历时一年的积累和三个月的高强度开发!
+这个功能是最开始的小目标;
+也是一个里程碑——正常交流让小猫帮我点外卖
+```
+让角色自己拿着手机办事：电脑通过 USB 隧道把 WebDriverAgent 跑在 iPhone 上
+- 魔改版见 [@CatApps_iOS](https://github.com/YGxingnaoP/CatApps_iOS)
+- 对应 `func/catpaws`（只做意图判断与语音/记忆桥接，不碰 LLM）与 `.vendor/.CatPaws`（独立 LLM、操作链路、action 脚本、屏幕推流）。
+- 触发：说「喵呜我要点外卖」直接接链路；只提「手机」等意图词则先让 LLM 判断要不要接管
+- 操作分三类：单次（点一下、滑一下、返回）、连续（一次下发多步，默认 90ms 间隔）、action 脚本（流程固定就沉淀成 `actions/<id>/`，反思阶段写完要主人点两次头）
+- 收尾：办完先问「还有别的事吗」，确认后进反思沉淀脚本；付款、密码、隐私类操作整条链路都禁止
+- 说话与记忆：手机端的回复走角色声线播报，同时写进短期记忆（`phone_control_user` / `phone_control_response`）、长期记忆与用户记忆
+- GUI：手机操作面板里有实时画面、操作流水、配置面板与启动按钮；手机端用浏览器打开 `https://<电脑IP>:8443` 能看到桌宠
+- 单独联调：`scripts\catpaws\catpaws_device_test.bat` 开「对话 + 流水」两个窗口，可直接跑真机，不用启动主程序
+- 详细说明：
+  - CatPaws 服务 [.vendor/.CatPaws/README.md](.vendor/.CatPaws/README.md)；
+  - 启动器 [.vendor/.CatPaws/catpaws-launcher/README.md](.vendor/.CatPaws/catpaws-launcher/README.md)；
+  - 手机界面 [.vendor/.cam/README.md](.vendor/.cam/README.md)
+
+
+## 插件系统（plugins）
+插件目录、plugin.py / schema.py / config.yml、main / qq 通道、加载与禁用规则见 [plugins/plugins.md](plugins/plugins.md)。
+
 
 ## 前端展示
 
