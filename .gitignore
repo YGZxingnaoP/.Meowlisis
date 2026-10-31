@@ -29,9 +29,6 @@ output/*.mp3
 #配置项
 config.yml
 
-#资源文件
-*.ico
-
 #内置Sovits
 .vendor/.Sovits/FFmpeg
 .vendor/.Sovits/GPT_SoVITS
