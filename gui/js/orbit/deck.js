@@ -136,6 +136,7 @@ Object.assign(Orbit, {
         if (d.sysEl) d.sysEl.classList.add('focusing');   // 轨道层提到主球之上（见 orbit.css）
         const kc = this._kidCfg(name);
         parentEl.style.zIndex = '900';
+        parentEl._z = null;   // 绕开 _placeAt 直接写了 zIndex → 把它的记忆值作废，否则收起时会卡在 900
 
         // ★ 子卡的【动画原点】= 父卡被点中前的那个位置（屏幕正下方那张，a≈0 的聚焦卡）。
         //   子卡从那里"长出来"，再飞到各自的扇位 —— 这就是"直接从底部聚焦卡展开"。
@@ -155,7 +156,9 @@ Object.assign(Orbit, {
         const total = kids.length;
         d.box.innerHTML = '';
         d.subs = kids.map((k, i) => {
-            const el = this._buildCard({ id: k.id, label: k.label, tooltip: k.tooltip }, total, i, k.card);
+            // 子卡跟随父轨：主界面（outer）的子卡用抠像透明版，工具箱子卡用不透明 jpg
+            const el = this._buildCard({ id: k.id, label: k.label, tooltip: k.tooltip }, total, i, k.card,
+                                       null, false, name !== 'outer');
             el.className = 'sub';
             // 扇展错峰：第 i 张晚 i × SUB_STAGGER 秒再飞出去（纯视觉，位置 80ms 后一次性算完）
             el.style.transitionDelay = (i * (this.CFG.SUB_STAGGER || 0)).toFixed(3) + 's';

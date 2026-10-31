@@ -163,6 +163,38 @@ class PluginManager:
                 return True
         return False
 
+    def qq_knowledge(self, text, qq_context=None, stage=""):
+        """收集插件提供的只读 QQ 资料（供续聊判断 / 群聊主动回复的提示词使用）"""
+        self._ensure()
+        text = str(text or "")
+        if not text.strip():
+            return ""
+        blocks = []
+        for plugin in self.registry.plugins():
+            fn = getattr(plugin, "qq_knowledge", None)
+            if not callable(fn):
+                continue
+            try:
+                block = fn(text, dict(qq_context or {}), str(stage or ""))
+            except Exception:
+                self.log.exception(f"[插件] {plugin.id} qq_knowledge 失败")
+                continue
+            if block and str(block).strip():
+                blocks.append(str(block).strip())
+        if not blocks:
+            return ""
+        try:
+            limit = int((self._config() or {}).get("qq_knowledge_max_chars", 4000))
+        except (TypeError, ValueError):
+            limit = 4000
+        merged = "\n\n".join(blocks)
+        if limit > 0 and len(merged) > limit:
+            merged = merged[:limit]
+            # 尽量截在完整行，避免把一条梗/标签切一半
+            if "\n" in merged:
+                merged = merged.rsplit("\n", 1)[0]
+        return merged
+
     def route_qq(self, channel, text, qq_context=None, nickname=""):
         self._ensure()
         text = str(text or "")

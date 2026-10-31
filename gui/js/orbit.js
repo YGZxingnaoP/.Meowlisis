@@ -2,7 +2,7 @@
  * Orbit 系统（卡片版）
  *
  * - 中心启动球 / 工具箱父级模型球：保留球形态
- * - 外层配置卡 13 / 启动卡 9 / 工具箱卡 10：卡面 = resource/cat_photos/{id}.png
+ * - 外层配置卡 13 / 启动卡 9 / 工具箱卡 10：卡面 = resource/cat_photos_alpha/{id}.webp（抠像透明版）
  * - 有子卡的卡：点击 → 该卡放大到中央 + 子卡扇形摊开
  * - 无子卡的卡：点击 → 直接开配置面板（Modal 从该卡位置放大）
  * - 已摊开的父卡（self=true 的）：再点 → 打开父卡自身的配置面板；否则收起
@@ -117,8 +117,9 @@ const Orbit = {
         system.appendChild(kidsBox);
 
         // ---------- 外层配置卡 ----------
+        // 最后一参 = opaque：false → 用抠像透明版；true → 用不透明 jpg
         const outerEls = this.outerPlanets.map((p, i) => {
-            const el = this._buildCard(p, this.outerPlanets.length, i, null, null, true);
+            const el = this._buildCard(p, this.outerPlanets.length, i, null, null, true, false);
             this._place(el, el._ang, 0, this.GEO.R, this.GEO.RY);
             el.addEventListener('click', (e) => this._onCardClick(e, 'outer', el, p));
             orbitOuter.appendChild(el);
@@ -131,7 +132,7 @@ const Orbit = {
         // ---------- 启动卡 ----------
         const lTotal = this.launcherPlanets.length;
         this.launchEls = this.launcherPlanets.map((p, i) => {
-            const el = this._buildCard(p, lTotal, i, null, 'slot-launch', true);
+            const el = this._buildCard(p, lTotal, i, null, 'slot-launch', true, true);
             el._lang = (2 * Math.PI / lTotal) * i - Math.PI / 2;   // 启动轨道的均匀分布角
             this._applyLaunch(el, i, lTotal, false);
             el.addEventListener('click', (e) => {
@@ -179,13 +180,14 @@ const Orbit = {
 
     // ==================== 建卡 / 定位 ====================
     /**
-     * 一张卡 = .slot > [.card-glow + .card-ripple] + .card > .card-press > (.face.front + .face.back)
+     * 一张卡 = .slot > [.card-glow + .card-ripple + .card-ring-focus] + .card > .card-press > (.face.front + .face.back)
      * 点击时 .card 加 .flipped 做 3D 翻牌，翻完再摊开子卡 / 打开配置。
      * .card-press 是压感层（下沉 + 微倾斜，见 css/cards.css / js/press.js）：
      * 翻牌和压感各占一层 transform，互不抢过渡时序。
      * fx=true 时插入呼吸/涟漪两层（只有主界面卡片要）
+     * opaque=true → 用不透明 jpg（启动卡 / 工具箱卡 / 插件卡不抠像），false → 抠像透明版
      */
-    _buildCard(node, total, index, cardId, extraClass, fx) {
+    _buildCard(node, total, index, cardId, extraClass, fx, opaque) {
         const id = cardId || node.card || node.id;
         const th = Cards.theme(id);
         const label = I18n.text(Cards.name(id, node.label));
@@ -203,12 +205,13 @@ const Orbit = {
         const badge = node.badge || (id.indexOf('launcher_') === 0 ? I18n.text('启动') : '');
         el.innerHTML =
             (fx ? '<span class="card-glow"></span><span class="card-ripple"></span>' : '') +
+            '<span class="card-ring-focus"></span>' +
             '<div class="card" style="--a:' + th.a + ';--b:' + th.b + '">' +
                 '<div class="card-press">' +
                     '<div class="face front">' +
                         (badge ? '<span class="card-badge">' + badge + '</span>' : '') +
                         '<div class="card-art">' +
-                            '<img class="card-img" alt="" draggable="false" decoding="async" src="' + Cards.img(id) + '">' +
+                            '<img class="card-img" alt="" draggable="false" decoding="async" src="' + Cards.img(id, opaque) + '">' +
                             '<span class="card-emoji">' + Cards.emoji(id) + '</span>' +
                         '</div>' +
                         '<div class="card-name">' + label + '</div>' +
@@ -229,10 +232,10 @@ const Orbit = {
         }
         const img = el.querySelector('.card-img');
         img.addEventListener('error', () => {
-            // 先退回 PNG（卡面已换成 webp，缺文件时不至于整张变 emoji）
-            const png = Cards.fallbackImg(id);
-            if (png && img.getAttribute('src') !== png) {
-                img.setAttribute('src', png);
+            // 递进回退：alpha.webp → jpg → png → 都没有才退成 emoji
+            const next = Cards.nextImg(id, img.getAttribute('src'));
+            if (next) {
+                img.setAttribute('src', next);
                 return;
             }
             const art = img.parentNode;
@@ -394,7 +397,8 @@ const Orbit = {
         system.appendChild(kidsBox);
 
         const els = this.toolboxPlanets.map((p, i) => {
-            const el = this._buildCard(p, this.toolboxPlanets.length, i);
+            // 工具箱卡不抠像：用不透明 jpg（opaque=true）
+            const el = this._buildCard(p, this.toolboxPlanets.length, i, null, null, false, true);
             this._place(el, el._ang, 0, this.GEO.TR, this.GEO.TRY);
             el.addEventListener('click', (e) => this._onCardClick(e, 'tool', el, p));
             orbit.appendChild(el);

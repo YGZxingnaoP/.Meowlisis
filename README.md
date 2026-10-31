@@ -6,6 +6,8 @@
 
 > 本项目采用 [MIT 许可证](LICENSE) 开源。
 
+<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
+
 ```
 写代码的初衷是希望自己做动画的时候有个人陪我聊天
 然后找不到人，就把一只小猫变成人了awa
@@ -99,6 +101,14 @@ func/pipeline/msg_director.py
 6. **QQ 简化版**：`func/toolbox/napcat/director` 有独立的状态、判官与提示词，不参与群聊冒泡。
 
 相关配置：`config.yml → llm_active.director`、`napcat.director_qq`。
+
+## 前端展示
+
+主界面的实际录屏（轨道卡片 / 3D 压感 / 扇形展开 / 看壁纸 / 高级设置）
+- 下面是部分展示（720×450 · 12fps · 2.0MB）：
+
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="720"></p>
+
 
 ## To do list
 1. 补全施工内容

@@ -42,7 +42,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def _system_prompt(self, username, group_name, group_info_text, current_message,
                        group_id: str = "", decide: bool = False, with_bot_tool: bool = False,
-                       with_director: bool = False) -> str:
+                       with_director: bool = False, extra_context: str = "") -> str:
         """获取群聊系统提示词；decide=True 时追加回复决策指令
 
         with_director=True 时附上 QQ 导演走向块（只在 @ / 续聊回复时传，冒泡 decide 永远不传）。
@@ -54,6 +54,12 @@ class TBNapCatGroupLLM(TBNapCatLLM):
                 group_info_text=group_info_text, current_message=current_message,
                 group_id=group_id,
             )
+            block = str(extra_context or "").strip()
+            if block:
+                prompt = (
+                    f"{prompt}\n\n【插件资料·仅作参考】\n{block}\n【资料结束】\n"
+                    "只把资料当参考，不要照念、不要提“插件/资料”，不要逐条复述。"
+                )
             if decide:
                 if with_bot_tool:
                     prompt = (
@@ -83,9 +89,10 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def _messages(self, username, group_name, group_info_text, text, short_memory, decide,
                   group_id: str = "", with_bot_tool: bool = False, quote: Optional[str] = None,
-                  with_director: bool = False):
+                  with_director: bool = False, extra_context: str = ""):
         system_prompt = self._system_prompt(username, group_name, group_info_text, text,
-                                           group_id, decide, with_bot_tool, with_director)
+                                           group_id, decide, with_bot_tool, with_director,
+                                           extra_context=extra_context)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -144,7 +151,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
               nsfw: bool = False, quote: Optional[str] = None,
-              with_director: bool = False) -> str:
+              with_director: bool = False, extra_context: str = "") -> str:
         """@ 触发或强制回复：生成并回传短句，返回完整回复
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
@@ -155,7 +162,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             tools = self._at_tools()
             messages = self._messages(username, group_name, group_info_text, text, short_memory,
                                       decide=False, group_id=group_id, quote=quote,
-                                      with_director=with_director)
+                                      with_director=with_director, extra_context=extra_context)
             if tools and messages and messages[0].get("role") == "system":
                 messages[0]["content"] += (
                     "\ngroup_at 是可选的：默认不要 @ 人，大多数回复直接说就行；"
@@ -182,7 +189,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,
                short_memory: List[dict], group_info_text: str = "",
-               ask_bot_tools: Optional[List[dict]] = None) -> str:
+               ask_bot_tools: Optional[List[dict]] = None, extra_context: str = "") -> str:
         """阈值触发：判断是否插话 / 是否调用 ask_group_bot / 输出 pass。
 
         - 若模型调用 ask_group_bot 工具，返回 "ASK_BOT:结果"（上层不再文本回复）；
@@ -191,20 +198,24 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         """
         if ask_bot_tools:
             return self._decide_with_tools(
-                username, group_name, group_info_text, text, short_memory, group_id, ask_bot_tools
+                username, group_name, group_info_text, text, short_memory, group_id, ask_bot_tools,
+                extra_context=extra_context
             )
         return self._run(username, group_name, group_info_text, text, short_memory,
-                         group_id=group_id, decide=True, on_segment=None)
+                         group_id=group_id, decide=True, on_segment=None,
+                         extra_context=extra_context)
 
     def _decide_with_tools(self, username, group_name, group_info_text, text,
-                           short_memory, group_id: str = "", ask_bot_tools=None) -> str:
+                           short_memory, group_id: str = "", ask_bot_tools=None,
+                           extra_context: str = "") -> str:
         """非流式 decide：支持 ask_group_bot 工具调用"""
         llm, base_max_tokens = self._llm()
         if llm is None or not llm.client:
             self.log.error("NapCat 群聊回复 LLM 不可用")
             return ""
         messages = self._messages(username, group_name, group_info_text, text, short_memory,
-                                  decide=True, group_id=group_id, with_bot_tool=True)
+                                  decide=True, group_id=group_id, with_bot_tool=True,
+                                  extra_context=extra_context)
         old_max = getattr(llm, "max_tokens", None)
         try:
             llm.max_tokens = max(512, int(base_max_tokens) + 256)
@@ -229,9 +240,9 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         return self.remove_analysis(content).strip()
 
     def _run(self, username, group_name, group_info_text, text, short_memory,
-             decide: bool, on_segment, group_id: str = "") -> str:
+             decide: bool, on_segment, group_id: str = "", extra_context: str = "") -> str:
         messages = self._messages(username, group_name, group_info_text, text, short_memory,
-                                  decide, group_id=group_id)
+                                  decide, group_id=group_id, extra_context=extra_context)
         final = self._clean_reply(self._generate(messages))
         if final and final.strip().lower() != "pass" and not final.startswith("ASK_BOT:"):
             final = self._rewrite_if_too_long(messages, final,

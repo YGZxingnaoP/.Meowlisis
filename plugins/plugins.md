@@ -81,6 +81,9 @@ class Plugin(ToolboxPlugin):
     def prompt_hint(self):
         return "【我的插件】用户想xxx时调用 my_tool"
 
+    def qq_knowledge(self, text, qq_context, stage=""):
+        return ""
+
     def setup(self, ctx):
         self.ctx = ctx
 
@@ -131,6 +134,66 @@ PLUGIN = Plugin()
 ```python
 PluginManager().call_interface("my_probe", deep=True)
 ```
+
+## QQ 知识注入：qq_knowledge
+
+`route_qq` 是“接管这次回复”；`qq_knowledge` 是“只提供资料”，不接管、不发消息、不改变主链路决策。
+
+```python
+from func.toolbox.plugins.sdk import (
+    QQ_STAGE_FOLLOWUP_JUDGE, QQ_STAGE_ACTIVE_DECIDE, QQ_STAGE_ACTIVE_REPLY,
+)
+
+
+class Plugin(ToolboxPlugin):
+    id = "my_plugin"
+    title = "我的插件"
+
+    def qq_knowledge(self, text, qq_context, stage=""):
+        if not text.strip():
+            return ""
+        if stage == QQ_STAGE_FOLLOWUP_JUDGE:
+            return "【资料】..."   # 只给续聊判断参考
+        if stage in (QQ_STAGE_ACTIVE_DECIDE, QQ_STAGE_ACTIVE_REPLY):
+            return "【资料】..."   # 给群聊主动回复参考
+        return ""
+```
+
+实际调用阶段：
+
+| 阶段 | `stage` | 调用方 | 说明 |
+|---|---|---|---|
+| 续聊判断 | `followup_judge` | `TBNapcatFollowupJudge.judge()` | 只作判断参考，`pass/continue` 仍由判断器决定 |
+| 群聊主动决策 | `active_decide` | `_reply_group_active()` 的 `decide` | 资料进入主动回复的 system 提示词 |
+| 群聊主动强制回复 | `active_reply` | `_reply_group_active()` 的 `force` | 资料进入最终回复的 system 提示词 |
+
+`private` / `directed` / `followup_reply` 常量保留，但当前主项目**不**调用
+`qq_knowledge`；这些场景仍由 `route_qq` 接管。
+
+`qq_context` 至少包含：
+
+```python
+{
+    "channel": "qq",
+    "message_type": "group",
+    "group_id": "...",
+    "group_name": "...",
+    "self_id": "...",
+    "user_id": "...",        # 续聊判断/主动回复的主发言人，可能为空
+    "nickname": "...",
+    "participants": [...],
+}
+```
+
+约束：
+
+- 只读：不发送消息、不写记忆、不调用 LLM；
+- 返回纯资料，不要返回指令；
+- 没有资料返回空字符串；
+- 多个插件的资料由 `PluginManager.qq_knowledge()` 聚合，受
+  `plugins.qq_knowledge_max_chars`（默认 4000）限制；
+- 必须快速返回，避免网络、文件扫描、模型调用；
+- 它不能强制插话、不能改变续聊判断的 `pass`，也不能改变主动回复的 `pass`。
 
 ## PluginContext 能力
 

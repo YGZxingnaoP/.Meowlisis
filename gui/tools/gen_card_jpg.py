@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
 # gui/tools/gen_card_jpg.py
-r"""卡面压缩：resource/cat_photos/*.png（832×1152，单张约 1.1MB）→ 同名 .jpg（392×542）。
+r"""卡面压缩：cat_photos_png/*.png（832×1152，单张约 1.1MB）→ cat_photos_jpg/*.jpg（392×542）。
+
+目录分工（resource/ 下）：
+    cat_photos_png    白底原图（源，不参与加载，只给两个生成器当输入）
+    cat_photos_jpg    不透明压缩版（392×542）—— 没 alpha 时的兜底
+    cat_photos_alpha  抠像透明版（392×542 WebP）—— 主用，见 cutout_cards.py
 
 为什么要做：
     主界面一次要挂 33 张卡面，原图总计约 75MB，最贵的不是下载（本地服务）而是解码 + 显存。
@@ -29,12 +34,13 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent          # gui/
-CARD_DIR = ROOT / 'resource' / 'cat_photos'
+SRC_DIR = ROOT / 'resource' / 'cat_photos_png'         # 白底原图（源）
+OUT_DIR = ROOT / 'resource' / 'cat_photos_jpg'         # 不透明压缩版
 W, H = 392, 542
 
 
 def convert(src: Path, quality: int) -> int:
-    dst = src.with_suffix('.jpg')
+    dst = OUT_DIR / (src.stem + '.jpg')
     im = Image.open(src)
     if im.mode != 'RGB':
         im = im.convert('RGB')
@@ -52,18 +58,19 @@ def main() -> int:
     ap.add_argument('--quality', type=int, default=90, help='JPEG 质量，默认 90')
     args = ap.parse_args()
 
-    if not CARD_DIR.is_dir():
-        print('找不到目录: %s' % CARD_DIR)
+    if not SRC_DIR.is_dir():
+        print('找不到源目录: %s' % SRC_DIR)
         return 1
-    pngs = sorted(CARD_DIR.glob('*.png'))
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    pngs = sorted(SRC_DIR.glob('*.png'))
     if not pngs:
-        print('目录里没有 PNG: %s' % CARD_DIR)
+        print('目录里没有 PNG: %s' % SRC_DIR)
         return 1
 
     done = skipped = 0
     total_src = total_dst = 0
     for src in pngs:
-        dst = src.with_suffix('.jpg')
+        dst = OUT_DIR / (src.stem + '.jpg')
         if (not args.force) and dst.exists() and dst.stat().st_mtime >= src.stat().st_mtime:
             skipped += 1
             total_src += src.stat().st_size

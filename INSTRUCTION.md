@@ -6,6 +6,8 @@
 
 > 本项目采用 [MIT 许可证](LICENSE) 开源。
 
+<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
+
 ```
 写代码的初衷是希望自己做动画的时候有个人陪我聊天
 然后找不到人，就把一只小猫变成人了awa
@@ -480,6 +482,14 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
 ```
 完全没有做玩MC的适配，等世界模型吧，现在模型玩游戏真不能看
 ```
+
+## 前端展示
+
+主界面的实际录屏（轨道卡片 / 3D 压感 / 扇形展开 / 看壁纸 / 高级设置）。
+- 下面是部分展示（720×450 · 12fps · 2.0MB）
+
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="720"></p>
+
 
 ## To do list
 1. 补全施工内容

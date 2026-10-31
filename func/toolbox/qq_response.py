@@ -595,12 +595,33 @@ class TBoxQQResponse:
         short_memory = TBGetGroupRecord().fetch(gid, self_id)
         group_info_text = TBGroupInfo().build_prompt(group_name)
 
+        # 插件资料：主动回复的 decide / 最终 reply 都带同一份参考
+        plugin_knowledge = ""
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            from func.toolbox.plugins.sdk import QQ_STAGE_ACTIVE_DECIDE, QQ_STAGE_ACTIVE_REPLY
+            plugin_knowledge = PluginManager().qq_knowledge(
+                merged_text,
+                {
+                    "channel": "qq", "message_type": "group",
+                    "target_id": gid, "group_id": gid, "group_name": group_name,
+                    "self_id": self_id,
+                    "user_id": str(primary.get("user_id", "") or ""),
+                    "nickname": str(primary.get("username", "") or ""),
+                    "participants": participants,
+                },
+                QQ_STAGE_ACTIVE_REPLY if force else QQ_STAGE_ACTIVE_DECIDE,
+            )
+        except Exception:
+            self.log.exception("主动回复读取插件资料失败")
+
         if force:
             _pace = self._make_pacer("group")
             final = self.napcat_group_llm.reply(
                 None, gid, group_name, merged_text, short_memory, group_info_text,
                 on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
                 quote=self._take_quote("group", gid, merged_text),
+                extra_context=plugin_knowledge,
             )
             active.record_reply(gid)
             if final and final.strip().lower() != "pass":
@@ -633,7 +654,8 @@ class TBoxQQResponse:
             self.log.exception("构建 ask_group_bot 工具失败")
 
         decision_text = self.napcat_group_llm.decide(
-            None, gid, group_name, merged_text, short_memory, group_info_text, ask_bot_tools
+            None, gid, group_name, merged_text, short_memory, group_info_text, ask_bot_tools,
+            extra_context=plugin_knowledge,
         )
         final = (decision_text or "").strip()
         if final.startswith("ASK_BOT:"):
@@ -947,7 +969,7 @@ class TBoxQQResponse:
                 {"role": "system", "content": (
                     "根据本轮对话判断角色此刻的情绪、强度与性格。情绪是此刻的瞬时表情，"
                     "会随每轮对话自然变化：默认 happy，只有本轮确实发生了对应情绪才选；"
-                    "angry 需要有明确理由（被辱骂、被反复挑衅），普通吐槽、玩笑、傲娇、"
+                    "angry 需要有明确理由，普通吐槽、玩笑、傲娇、"
                     "被安排做事不算生气；情绪不激烈时用低强度表达，不要动辄切到极端情绪。"
                 )},
                 {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}

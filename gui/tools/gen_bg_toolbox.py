@@ -27,29 +27,41 @@ GUI = os.path.join(ROOT, "gui")
 OUT_DIR = os.path.join(GUI, "resource", "bg")
 
 # ============================ 提示词（要调就改这里） ============================
+#
+# 【和主界面壁纸同一套色调】主界面那张（gen_bg_main.py）是"柔雾粉 + 奶白 + 淡薰衣草"。
+# 这张是工具箱面板里的底图，显示时还会再 blur(4px) + opacity .6 压一层白，
+# 所以：颜色要比主界面【略浓一点】才不至于被洗没，但同样不许高饱和、不许金光乱闪
+# （旧版就是满天金黄宝箱，和主界面的粉完全不搭）。
 CHARACTER = ("1girl, solo, catgirl, cat ears, cat tail, white hair, long curly white hair, "
-             "yellow eyes, blue butterfly hair ornament on the left side of her hair, "
+             "(bright yellow eyes:1.3), (glowing golden yellow eyes:1.2), large detailed eyes, "
+             "sharp yellow iris, light reflection in eyes, eyes fully open, looking at viewer, "
+             "blue butterfly hair ornament on the left side of her hair, "
              "white blouse, JK uniform, pleated skirt")
 
-BRIGHT = ("bright cheerful atmosphere, high key lighting, sunny daylight, warm golden light, "
-          "soft pink and gold color accents, sparkling magical glow, vivid colors, "
-          "clean and airy, luminous, cozy and warm, adorable")
+BRIGHT = ("soft pink and cream color palette, sakura pink, dusty rose, rose gold, warm ivory, "
+          "pale lavender shadows, high key lighting, gentle warm sunlight from a window, "
+          "soft glow, airy and cozy, low contrast, dreamy pastel anime background")
 
-# 工具箱这张：猫娘回中间，双手打开闪光的宝箱
-COMPOSED = ("1girl in the center of the frame, full body, centered composition, "
-            "opening a large treasure chest in front of her with both hands, "
-            "the chest glowing brightly, sparkling treasure, gold coins and jewels "
-            "spilling out, magical light rays, sparkles everywhere, "
-            "wide shot, bright cozy room, soft depth of field, cinematic anime wallpaper")
+# 构图：人物靠右、宝箱在她旁边，画面左上整片留干净（面板中心的卡片和父级球都压在中间）
+COMPOSED = ("wide shot, catgirl sitting on a fluffy rug at the right third of the frame, "
+            "an open treasure chest beside her with rose gold coins and pale gems, "
+            "she is holding up a small glowing gem, looking at viewer with a soft smile, "
+            "cozy pastel pink room, cream wallpaper, large clean empty space in the upper left, "
+            "soft bokeh, petals and sparkles floating, cinematic anime wallpaper")
 
 QUALITY = ("masterpiece, very aesthetic, best quality, score_9, score_8_up, score_7_up, "
            "highres, absurdres, anime wallpaper, official art, cute anime illustration, "
            "kawaii, soft pastel palette, gentle shading, clean crisp lineart")
 
 POSITIVE = ", ".join([QUALITY, CHARACTER, BRIGHT, COMPOSED])
-# 注意：这张要"居中"，所以负向里不能像主界面那样压 centered / symmetrical
-NEGATIVE = ("dark, gloomy, night, shadow, dark background, moody, desaturated, dull, "
-            "off-center composition, close-up, portrait, "
+# 注意：这张要"偏右构图"，所以负向里压 centered / symmetrical；另外重点压金色/黄光，
+# 但【不能】把 yellow eyes 一起压掉 —— 眼睛必须一眼看出是黄猫眼。
+NEGATIVE = ("gold dominant, yellow dominant, golden light, glowing yellow scene, oversaturated, "
+            "brown eyes, amber eyes, orange eyes, dark eyes, small eyes, narrow eyes, "
+            "closed eyes, looking away, no pupils, "
+            "dark, gloomy, night, deep shadow, harsh shadow, high contrast, neon, "
+            "cluttered, busy background, dense detail, "
+            "centered composition, symmetrical composition, close-up, portrait, "
             "cropped, cut off, 2girls, multiple girls, crowd, extra people, "
             "text, watermark, signature, logo, letters, lowres, jpeg artifacts, "
             "realistic, photorealistic, 3d, messy, cluttered")
@@ -169,8 +181,9 @@ def main():
         img = img.resize((max(1, round(img.width * sc)), max(1, round(img.height * sc))), Image.LANCZOS)
     left, top = (img.width - W) // 2, (img.height - H) // 2
     img = img.crop((left, top, left + W, top + H))
-    img = ImageEnhance.Color(img).enhance(1.06)
-    img = ImageEnhance.Brightness(img).enhance(1.03)
+    # 面板里还有一层 blur(4px) + opacity .6 压在白面板上，所以这里只做很轻的调整：
+    # 颜色略提一点（不然被洗成灰白），亮度不动（再亮就真的没了）。
+    img = ImageEnhance.Color(img).enhance(1.04)
     if args.blur and args.blur > 0:
         from PIL import ImageFilter
         img = img.filter(ImageFilter.GaussianBlur(radius=float(args.blur)))

@@ -13,8 +13,8 @@
  *   DRAG_TOLERANCE 指针位移超过这么多 px 就当成在拖轨道，立刻复位
  */
 const PressFx = {
-    MAX_TILT: 20,
-    HOVER_TILT: 6,
+    MAX_TILT: 26,
+    HOVER_TILT: 9,
     DRAG_TOLERANCE: 4,
 
     /** 当前正在被按的那张（同一时刻只允许一张有"按下"态，避免多点触控串味） */
@@ -35,7 +35,8 @@ const PressFx = {
         const st = {
             down: false, press: 0, tx: 0, ty: 0,
             sx: 50, sy: 50, ox: 0, oy: 0, pointerId: null,
-            raf: 0, dirty: false
+            raf: 0, dirty: false,
+            rect: null        // ★ 缓存卡片矩形：pointermove 里不再每次量（那会强制重算样式/布局）
         };
 
         const flush = () => {
@@ -47,21 +48,24 @@ const PressFx = {
             wrap.style.setProperty('--ty', st.ty.toFixed(2));
             wrap.style.setProperty('--sx', st.sx.toFixed(1));
             wrap.style.setProperty('--sy', st.sy.toFixed(1));
+            if (glare) {
+                wrap.style.setProperty('--mx', st.sx.toFixed(1));
+                wrap.style.setProperty('--my', st.sy.toFixed(1));
+            }
         };
         const schedule = () => {
             st.dirty = true;
             if (!st.raf) st.raf = requestAnimationFrame(flush);
         };
+        const measure = () => { st.rect = el.getBoundingClientRect(); };
 
-        // 指针 → 卡内百分比（0..1），并同步高光位置（高光和触点共用一套变量）
+        // 指针 → 卡内百分比（0..1）。只算数，样式统一在 flush 里写（每帧最多一组）。
         const track = (e) => {
-            const r = el.getBoundingClientRect();
+            const r = st.rect || (st.rect = el.getBoundingClientRect());
             const px = Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1)));
             const py = Math.max(0, Math.min(1, (e.clientY - r.top) / (r.height || 1)));
             st.sx = px * 100;
             st.sy = py * 100;
-            if (glare) wrap.style.setProperty('--mx', st.sx.toFixed(1));
-            if (glare) wrap.style.setProperty('--my', st.sy.toFixed(1));
             return { px: px, py: py };
         };
 
@@ -86,10 +90,14 @@ const PressFx = {
         st.reset = reset;
         el._pressState = st;
 
+        // 进入卡片时量一次矩形（之后 pointermove 复用），离开/旋转后下次进入会重新量
+        el.addEventListener('pointerenter', measure);
+
         el.addEventListener('pointerdown', (e) => {
             if (e.button !== 0 && e.pointerType === 'mouse') return;
             // 已经有一张在按（多点触控）→ 先把上一张放开
             if (PressFx._active && PressFx._active !== st) PressFx._active.reset();
+            measure();                       // 按下那一刻位置最准，重新量
             const p = track(e);
             st.down = true;
             st.ox = e.clientX;
@@ -127,7 +135,10 @@ const PressFx = {
             schedule();
         });
 
-        el.addEventListener('pointerleave', () => { if (!st.down) { st.tx = 0; st.ty = 0; schedule(); } });
+        el.addEventListener('pointerleave', () => {
+            st.rect = null;                                   // 下次进入重新量
+            if (!st.down) { st.tx = 0; st.ty = 0; schedule(); }
+        });
         el.addEventListener('pointerup', reset);
         el.addEventListener('pointercancel', reset);
         el.addEventListener('lostpointercapture', reset);

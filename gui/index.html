@@ -4,17 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>喵呜配置管理器</title>
-    <link rel="stylesheet" href="css/style.css?v=35">
-    <link rel="stylesheet" href="css/orbit.css?v=41">
-    <link rel="stylesheet" href="css/cards.css?v=35">
-    <link rel="stylesheet" href="css/modal.css?v=35">
+    <link rel="stylesheet" href="css/style.css?v=39">
+    <!-- 预载"清晰版"壁纸：平时用烘焙过的 main_display.jpg，点向下箭头看壁纸时才换成它 -->
+    <link rel="preload" as="image" href="resource/bg/main.jpg">
+    <link rel="stylesheet" href="css/orbit.css?v=45">
+    <link rel="stylesheet" href="css/cards.css?v=40">
+    <link rel="stylesheet" href="css/modal.css?v=36">
     <link rel="stylesheet" href="css/vts.css?v=33">
     <link rel="stylesheet" href="css/advanced.css?v=33">
 </head>
 <body>
-    <!-- 主界面背景图（由 tools/gen_bg_main.py 生成；这里显示时才做模糊，原图是清晰的） -->
+    <!-- 主界面背景图：平时用烘焙好模糊的 main_display.jpg，点右上角向下箭头看壁纸时才换清晰的 -->
     <div class="bg-main"></div>
-    <div class="bg-stars"></div>
     <!-- 语言切换（右上角悬浮；样式走 .lang-switch / .lang-btn） -->
     <div id="langSwitch" class="lang-switch lang-switch-fixed">
         <button type="button" data-lang="zh-CN" class="lang-btn">中文</button>
@@ -31,7 +32,8 @@
             <div class="launcher-cluster" id="launcherCluster">
                 <div class="center-launcher" id="centerLauncher">
                     <div class="launcher-glow"></div>
-                    <img src="MiaoWuFace.png" alt="启动" data-i18n-alt="启动" class="launcher-face">
+                    <img src="MiaoWuFace2.0.png?v=3" alt="启动" data-i18n-alt="启动" class="launcher-face">
+                    <span class="launcher-glare"></span>
                     <div class="launcher-label" data-i18n="启动">启动</div>
                 </div>
             </div>
@@ -109,17 +111,18 @@
     <!-- 面板注册表：app / advanced 只从这里取面板 -->
     <script src="js/config/registry.js?v=46"></script>
     <script src="js/config/panels.js?v=47"></script>
-    <script src="js/cards.js?v=40"></script>
-    <script src="js/press.js?v=2"></script>
+    <script src="js/cards.js?v=42"></script>
+    <script src="js/press.js?v=4"></script>
     <script src="js/peek.js?v=1"></script>
+    <script src="js/ballfx.js?v=1"></script>
     <script src="js/orbit/data.js?v=42"></script>
-    <script src="js/orbit.js?v=35"></script>
-    <script src="js/orbit/rotation.js?v=34"></script>
+    <script src="js/orbit.js?v=37"></script>
+    <script src="js/orbit/rotation.js?v=35"></script>
     <script src="js/orbit/drag.js?v=34"></script>
-    <script src="js/orbit/deck.js?v=43"></script>
+    <script src="js/orbit/deck.js?v=45"></script>
     <script src="js/modal.js?v=33"></script>
     <!-- 应用控制器（App 对象，按功能域拆分） -->
-    <script src="js/app/core.js?v=46"></script>
+    <script src="js/app/core.js?v=47"></script>
     <script src="js/app/tts.js?v=33"></script>
     <script src="js/app/llm.js?v=33"></script>
     <script src="js/app/audio.js?v=34"></script>

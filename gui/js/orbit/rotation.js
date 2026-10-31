@@ -237,13 +237,27 @@ Object.assign(Orbit, {
         return (zBase || 0) + Math.round((depth + 1) * 50 + 5);
     },
 
+    /**
+     * 把解算结果写到元素上。
+     * transform 每帧都得写（位置在变），但 zIndex / --inv / .front 大多数时候没变 ——
+     * 重复写同一个值也会让这个元素样式失效、触发重算和层重排。
+     * 所以这三个都记忆化：只在真的变了才写。
+     * ⚠️ 任何【绕开这里】直接改 zIndex 的路径（比如 deck.js 给父卡写 900）
+     *    必须把 el._z 置空，否则这里的记忆值会让它卡在 900。
+     */
     _placeAt(el, x, y, depth, sc, zBase) {
         const tf = 'translate3d(' + x.toFixed(1) + 'px, ' + y.toFixed(1) + 'px, 0) ' +
                    'scale(' + sc.toFixed(3) + ')';
         el.style.transform = tf;
-        el.style.zIndex = String(this._depthZ(depth, zBase));        // 越近越靠前
-        el.style.setProperty('--inv', (1 / sc).toFixed(3));
-        el.classList.toggle('front', depth > 0.985);                  // 正对观众那一张
+
+        const z = this._depthZ(depth, zBase);                         // 越近越靠前
+        if (el._z !== z) { el.style.zIndex = String(z); el._z = z; }
+
+        const inv = (1 / sc).toFixed(3);
+        if (el._inv !== inv) { el.style.setProperty('--inv', inv); el._inv = inv; }
+
+        const front = depth > 0.985;                                   // 正对观众那一张
+        if (el._front !== front) { el.classList.toggle('front', front); el._front = front; }
     },
 
     /** 中心球的 z：配置态 = 中心深度(0) 的 z；启动器展开时整层抬到启动卡那一带 */

@@ -9,6 +9,14 @@ CHANNEL_MAIN = "main"
 CHANNEL_QQ = "qq"
 CHANNELS = (CHANNEL_MAIN, CHANNEL_QQ)
 
+# QQ 链路上调用 qq_knowledge 的阶段
+QQ_STAGE_PRIVATE = "private"
+QQ_STAGE_DIRECTED = "directed"
+QQ_STAGE_FOLLOWUP_JUDGE = "followup_judge"
+QQ_STAGE_FOLLOWUP_REPLY = "followup_reply"
+QQ_STAGE_ACTIVE_DECIDE = "active_decide"
+QQ_STAGE_ACTIVE_REPLY = "active_reply"
+
 _REQUEST = contextvars.ContextVar("plugin_request", default={})
 
 
@@ -195,6 +203,12 @@ class ToolboxPlugin:
         return []
 
     def prompt_hint(self):
+        return ""
+
+    def qq_knowledge(self, text, qq_context, stage=""):
+        """返回一段只读的 QQ 参考资料；主项目会把它放进 system 提示词。
+        约束：不发送消息、不写记忆、不调用 LLM；没有资料返回空字符串。
+        """
         return ""
 
     def state_decl(self):

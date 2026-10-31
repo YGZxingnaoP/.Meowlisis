@@ -1,12 +1,19 @@
 /**
  * 卡面数据层（与 card_assets/cards.json 一一对应，共 69 张）
  *
- * 图片：resource/cat_photos/{id}.png（832×1152）
+ * 图片目录（resource/ 下按用途分三份，别混用）：
+ *   cat_photos_alpha  抠像透明版 392×542 WebP  ← 主用（Cards.img）
+ *   cat_photos_jpg    不透明压缩版 392×542 JPG ← 第一档兜底
+ *   cat_photos_png    白底原图 832×1152 PNG    ← 只给两个生成器当输入，不参与加载
+ *
  * 主题：group 字段决定渐变配色（同一主题的卡视觉成组）
  * 注意：cards.json 里的 rarity 字段前端不使用，不显示任何稀有度文案。
  */
 const Cards = {
-    DIR: 'resource/cat_photos/',
+    DIR_ALPHA: 'resource/cat_photos_alpha/',
+    DIR_JPG: 'resource/cat_photos_jpg/',
+    DIR_PNG: 'resource/cat_photos_png/',
+    DIR: 'resource/cat_photos_jpg/',      // 兼容旧引用（等同 DIR_JPG）
 
     /** 8 大主题配色（--a → --b 渐变，用于卡面兜底底/描边/配置面板头部） */
     THEMES: {
@@ -120,20 +127,37 @@ const Cards = {
         flux_workflow:        { n: '工作流',    g: 'art',     e: '🧩' }
     },
 
-    /* 卡面路径：优先 .jpg —— 由 gui/tools/gen_card_jpg.py 生成的 392×542 版本
-       （卡片在界面上最大 196×271 CSS px，2× 屏也就 392×542，原图 832×1152 纯属浪费；
-        72 张从 75.8MB 降到 3.6MB。原 PNG 保留，缺 .jpg 时由 orbit.js 的 onerror 回退） */
-    img(id) {
+    /* 卡面路径：
+       opaque=true  → 不透明压缩版 .jpg（启动卡 / 工具箱卡 / 插件卡不抠像）
+       opaque=false → 抠像透明版 .webp（主界面配置卡 + 它的子卡）
+       缺文件时由 nextImg() 逐档回退。 */
+    img(id, opaque) {
         const m = this.META[id];
         if (m && m.img) return m.img;          // 插件卡面走接口（/api/plugins/<id>/card）
-        return this.DIR + id + '.jpg';
+        return opaque ? (this.DIR_JPG + id + '.jpg') : (this.DIR_ALPHA + id + '.webp');
     },
 
-    /** 卡面兜底：.jpg 缺失时换回原 PNG */
+    /** 第一档兜底：不透明压缩版 .jpg */
     fallbackImg(id) {
         const m = this.META[id];
         if (m && m.img) return m.img;
-        return this.DIR + id + '.png';
+        return this.DIR_JPG + id + '.jpg';
+    },
+
+    /** 最后一档兜底：白底原图 .png */
+    pngImg(id) {
+        return this.DIR_PNG + id + '.png';
+    },
+
+    /* onerror 用的递进回退：alpha.webp → jpg → png → null（null 表示彻底没有，交给 emoji 兜底）
+       传 current 是当前 <img> 上的 src 属性值（相对路径，不能用 DOM 解析后的绝对 URL）。 */
+    nextImg(id, current) {
+        const m = this.META[id];
+        if (m && m.img) return null;           // 插件卡走接口，不做链式回退
+        const chain = [this.DIR_JPG + id + '.jpg', this.DIR_PNG + id + '.png'];
+        const i = chain.indexOf(current || '');
+        if (i >= 0) return chain[i + 1] || null;
+        return chain[0];
     },
 
     theme(id) {

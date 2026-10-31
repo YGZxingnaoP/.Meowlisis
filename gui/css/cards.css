@@ -1,6 +1,7 @@
 /* =========================================================
    卡片体系：正面(卡面图) / 卡背，3D 翻牌
-   图片 resource/cat_photos/{id}.png，主题渐变由 --a/--b 注入
+   卡面图 = resource/cat_photos_alpha/{id}.webp（抠像透明版，缺图自动回退 jpg → png）
+   主题渐变（--a/--b）只在"缺图"和卡背上用，正常卡面底下【不垫渐变】
    ========================================================= */
 
 /* 整页禁止选中文本（拖动轨道不会选中文字），输入框放开 */
@@ -31,7 +32,11 @@ img {
     cursor: pointer;
     pointer-events: auto;
     will-change: transform;
-    transition: opacity 0.35s ease, filter 0.35s ease;
+    /* 只隔离布局/样式计算：卡位是绝对定位，子元素本来就已经以它为包含块，
+       所以这条不影响任何渲染结果，只是让引擎少算外面的东西。
+       ★ 不能加 paint —— 会裁掉外扩的光晕和 tooltip。 */
+    contain: layout style;
+    transition: opacity 0.35s ease;     /* filter 已经不用了，别留无效过渡 */
 }
 
 /* 启动卡：展开/收起要有回弹（不参与轨道景深，所以单独一条）
@@ -87,7 +92,8 @@ img {
    （捕获阶段按几何仲裁的 _routeDeckClick 已经不存在了，别再照这条老注释去找它。） */
 .slot.dim {
     opacity: 0.12;
-    filter: saturate(0.45);
+    /* 原来是 filter: saturate(.45) —— 12% 不透明度下根本看不出饱和差异，
+       却要多一张离屏面，所以去掉。 */
     pointer-events: none;
 }
 .slot.dim::after {
@@ -99,7 +105,50 @@ img {
     z-index: 900;
 }
 .slot.focus .face {
-    box-shadow: 0 18px 46px rgba(255, 105, 180, 0.45), 0 0 0 3px rgba(255, 255, 255, 0.8);
+    box-shadow: 0 18px 46px rgba(255, 105, 180, 0.45);
+}
+
+/* ============ 聚焦环（.card-ring-focus）============
+   最近的那张卡（.slot.front）和摊开时的父卡（.slot.focus）会亮一圈圆角环。
+   环是 .slot 的子元素（不是 .face 的伪元素）：它要伸到卡片外面 7px，
+   而 .face 有 overflow:hidden 会把它裁掉。
+   入场做一次"从大到小收进来"的收缩动画 —— 比直接亮起来更像"聚焦"。 */
+.card-ring-focus {
+    position: absolute;
+    inset: -7px;
+    z-index: 5;
+    border-radius: 21px;              /* = 卡面 14 + 7，和卡角同心 */
+    border: 2px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 0 18px rgba(255, 150, 205, 0.7),
+                inset 0 0 14px rgba(255, 255, 255, 0.5),
+                0 0 0 1px rgba(255, 255, 255, 0.35);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 子卡的圆角大一号（20px），环跟着走 */
+.sub .card-ring-focus {
+    border-radius: 27px;
+}
+
+.slot.front .card-ring-focus,
+.slot.focus .card-ring-focus {
+    opacity: 1;
+    animation: focusRingIn 0.5s cubic-bezier(0.22, 0.9, 0.28, 1.06) 1;
+}
+
+@keyframes focusRingIn {
+    0%   { opacity: 0; transform: scale(1.16); }
+    55%  { opacity: 1; }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* 系统要求减少动态：只淡入，不收缩 */
+@media (prefers-reduced-motion: reduce) {
+    .slot.front .card-ring-focus,
+    .slot.focus .card-ring-focus {
+        animation: none;
+    }
 }
 
 /* ---------- 卡片本体（3D 翻牌） ---------- */
@@ -136,19 +185,69 @@ img {
     transition: box-shadow 0.3s ease;
 }
 
+/* 卡面：底是"半透明白"（--face-a 一个数调通透度），卡面图是抠像透明版，
+   所以壁纸会从卡面和角色轮廓外面透上来。
+   ⚠️ 不再用黑描边：卡牌的血统改由"3D 边"承担（见下面 ::after 的斜面）。
+   ⚠️ 描边环走【双层背景 + transparent border】，不用 mask：
+      mask 会让每张卡多一层离屏合成（23 张一起动的时候这是真开销），
+      padding-box / border-box 两层背景达到同样效果，零额外图层。 */
 .face.front {
+    --face-a: 0.45;              /* ★ 0 = 全透，1 = 接近原来的 .94 白 */
+    --edge-grad: linear-gradient(150deg,
+        rgba(255, 255, 255, 0.98) 0%,
+        rgba(255, 255, 255, 0.34) 24%,
+        rgba(255, 205, 226, 0.5) 58%,
+        rgba(176, 128, 210, 0.62) 100%);
     display: flex;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.94);
-    border: 1px solid rgba(255, 255, 255, 0.7);
+    background:
+        linear-gradient(180deg,
+            rgb(255 253 252 / var(--face-a)),
+            rgb(255 246 249 / var(--face-a))) padding-box,
+        var(--edge-grad) border-box;
+    border: 1.2px solid transparent;
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.30),
+        0 2px 4px rgba(120, 80, 150, 0.14),
+        0 14px 30px -10px rgba(150, 100, 190, 0.36),
+        0 34px 66px -32px rgba(120, 70, 170, 0.44);
+}
+
+/* 立体边：斜面（bevel）+ 玻璃反光。
+   左上受光、右下背光、底边压一条"厚度线"，再叠一道 150° 的柔光 ——
+   合起来是一块有厚度的亚克力，而不是一张贴纸。
+   （必须画在卡面图【之上】，所以用 ::after 覆盖层；挂 .face 自己的 inset 会被图盖住。） */
+.face.front::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    border-radius: inherit;
+    /* 柔光只走左上 45%，避开发梢/脸最亮的位置，免得糊 */
+    background: linear-gradient(150deg,
+        rgba(255, 255, 255, 0.16) 0%,
+        rgba(255, 255, 255, 0.05) 26%,
+        rgba(255, 255, 255, 0) 46%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.95),          /* 顶面受光 */
+        inset 1px 0 0 rgba(255, 255, 255, 0.6),           /* 左侧受光 */
+        inset -1px 0 0 rgba(160, 110, 200, 0.3),          /* 右侧背光 */
+        inset 0 -3px 0 rgba(120, 70, 160, 0.3),           /* 底部厚度线 */
+        inset 0 -20px 30px -22px rgba(255, 255, 255, 0.85);
 }
 
 .slot:hover .face,
 .sub:hover .face {
-    box-shadow: 0 10px 26px rgba(255, 105, 180, 0.45);
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.5),
+        0 4px 8px rgba(120, 80, 150, 0.18),
+        0 22px 40px -10px rgba(150, 100, 190, 0.46),
+        0 46px 80px -32px rgba(120, 70, 170, 0.52);
 }
 
-/* 卡面图（铺满，缺图时露出主题渐变 + emoji） */
+/* 卡面图（铺满）。★ 这里【不要】挂主题渐变：图本身是抠像透明的，
+   底下再垫一层渐变就把透出来的壁纸重新挡住了。渐变只留给"缺图"的兜底。 */
 .card-art {
     position: relative;
     flex: 1 1 auto;
@@ -157,7 +256,7 @@ img {
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    background: linear-gradient(160deg, var(--a, #9db4d6), var(--b, #5a7fb0));
+    background: transparent;
 }
 
 .card-img {
@@ -175,12 +274,18 @@ img {
     font-size: 42px;
     filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.25));
 }
+/* 没有卡面文件时才露出主题渐变 + emoji（唯一保留渐变的地方） */
+.card-art.no-img {
+    background: linear-gradient(160deg, var(--a, #9db4d6), var(--b, #5a7fb0));
+}
 .card-art.no-img .card-emoji {
     display: block;
 }
 
 /* 底部名字条 */
 .card-name {
+    position: relative;
+    z-index: 3;                    /* 压在内圈高光 ::after（z=2）之上 */
     flex: 0 0 auto;
     padding: 6px 5px 7px;
     font-size: 13px;
@@ -188,7 +293,10 @@ img {
     line-height: 1.2;
     text-align: center;
     color: var(--text-main, #4a4a4a);
-    background: rgba(255, 255, 255, 0.96);
+    /* 磨砂名字条：半透明白 + 顶部亮线 + 上方一层薄影（"贴在图上"的厚度） */
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.30), rgba(255, 255, 255, 0.40));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 -10px 18px -12px rgba(90, 60, 110, 0.8);
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.85);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -211,7 +319,7 @@ img {
 }
 
 /* 启动卡：青色描边，一眼区分于配置卡。
-   注意用外圈阴影而不是 border-color —— 父卡的黑色勾线现在统一占着 border。 */
+   用外圈阴影而不是 border-color —— 卡面现在没有 border 了，而且阴影不吃布局。 */
 .slot-launch {
     border-radius: 16px;
     box-shadow: 0 0 0 2px rgba(126, 224, 255, 0.9);
@@ -234,12 +342,9 @@ img {
     border: 1px solid rgba(255, 255, 255, 0.55);
 }
 
-/* 父级卡片的黑色勾线：外环 13 + 启动 9 + 工具箱 10。
-   放在 .face.front / .face.back 之后才能盖掉它们原来的浅色 1px 描边；
-   子卡（.sub .face）不在这里面，所以子卡不加黑线。 */
-.slot .face {
-    border: 2px solid #141414;
-}
+/* 父级卡片（外环 13 + 启动 9 + 工具箱 10）不再画黑描边 ——
+   卡牌的"血统"交给 .face.front::before 那圈渐变描边环 + ::after 的斜面，
+   黑线一去掉，半透明卡才不会像贴纸。子卡（.sub .face）同样走这套。 */
 .face.back::before {
     content: '';
     position: absolute;
@@ -373,7 +478,10 @@ img {
    工具箱卡 / 子卡都没有这两层）
    - 呼吸：常驻的柔和光晕，周期和相位每张卡随机（--bd / --bdel 由 JS 注入），刻意不同步
    - 涟漪：JS 不定期随机挑一张触发一次，1.15s 扩一圈就散
-   ========================================================= */
+
+   ★ 性能：只有【最前面那张】真的在呼吸。13 层同时动画时，每帧都要把各自覆盖的
+     卡片区域重新混合一次（实测能占十几个点的核显 3D）；其余卡冻结在中间亮度，
+     视觉上几乎看不出（它们本来就压暗了）。 */
 .card-glow {
     position: absolute;
     inset: -9px;
@@ -384,9 +492,20 @@ img {
         rgba(255, 255, 255, 0.55),
         rgba(255, 182, 193, 0.30) 62%,
         transparent 78%);
+    /* 静止态 = 动画的中点亮度（.08 ~ .42 的中值 .25） */
+    opacity: 0.25;
     animation: cardBreath var(--bd, 5s) ease-in-out infinite;
     animation-delay: var(--bdel, 0s);
 }
+
+/* 非最前 / 悬停中的卡：冻结光晕（不跑动画）。整组选择器都提升不了优先级问题，
+   因为它排在 .card-glow 之后、且 .slot.front 的规则更具体。 */
+.slot:not(.front) > .card-glow,
+.sub > .card-glow {
+    animation: none;
+    opacity: 0.25;
+}
+
 
 @keyframes cardBreath {
     0%, 100% { opacity: 0.08; transform: scale(1); }

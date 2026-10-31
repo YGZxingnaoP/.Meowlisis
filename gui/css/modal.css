@@ -29,21 +29,16 @@
    性能要点（否则打开面板必掉帧）：
    ① 只过渡 opacity，filter 不参与过渡 —— filter 一旦参与过渡，
       浏览器会在过渡期间每帧重算整块模糊（1500×1500 的大层）。
-   ② 模糊层里不许有动画：.card-glow 的呼吸、.launcher-glow 的脉冲、.bg-stars 的闪烁全部暂停。
+   ② 模糊层里不许有动画：.card-glow 的呼吸、.launcher-glow 的脉冲全部暂停。
       漏一个就白费：只要层内像素在变，模糊结果就必须每帧重算，这是掉帧的真正来源。
-   ③ .bg-stars 不参与模糊（全屏元素 + 动画 = 最贵的一项），只压暗。 */
+   （原来的 .bg-stars 那层已经整个删掉了，见 style.css。） */
 body.modal-open .container {
     filter: blur(3.5px) saturate(0.92);
     opacity: 0.45;
     transition: opacity 0.22s ease;
 }
-body.modal-open .bg-stars {
-    opacity: 0.30;
-    transition: opacity 0.22s ease;
-}
 body.modal-open .card-glow,
-body.modal-open .launcher-glow,
-body.modal-open .bg-stars {
+body.modal-open .launcher-glow {
     animation-play-state: paused;
 }
 

@@ -81,6 +81,9 @@ class Plugin(ToolboxPlugin):
     def prompt_hint(self):
         return "[My Plugin] call my_tool when the user wants xxx"
 
+    def qq_knowledge(self, text, qq_context, stage=""):
+        return ""
+
     def setup(self, ctx):
         self.ctx = ctx
 
@@ -131,6 +134,67 @@ Not exposed to the LLM; called internally by name. Implement `call(ctx, **kwargs
 ```python
 PluginManager().call_interface("my_probe", deep=True)
 ```
+
+## QQ knowledge injection: qq_knowledge
+
+`route_qq` takes over a reply; `qq_knowledge` only supplies reference text — it does not take over, send messages, or change main-chain decisions.
+
+```python
+from func.toolbox.plugins.sdk import (
+    QQ_STAGE_FOLLOWUP_JUDGE, QQ_STAGE_ACTIVE_DECIDE, QQ_STAGE_ACTIVE_REPLY,
+)
+
+
+class Plugin(ToolboxPlugin):
+    id = "my_plugin"
+    title = "My Plugin"
+
+    def qq_knowledge(self, text, qq_context, stage=""):
+        if not text.strip():
+            return ""
+        if stage == QQ_STAGE_FOLLOWUP_JUDGE:
+            return "[reference] ..."   # for follow-up judging only
+        if stage in (QQ_STAGE_ACTIVE_DECIDE, QQ_STAGE_ACTIVE_REPLY):
+            return "[reference] ..."   # for proactive group replies
+        return ""
+```
+
+Actual call stages:
+
+| Stage | `stage` | Caller | Meaning |
+|---|---|---|---|
+| Follow-up judging | `followup_judge` | `TBNapcatFollowupJudge.judge()` | Reference only; `pass/continue` is still decided by the judge |
+| Proactive group decision | `active_decide` | `decide` in `_reply_group_active()` | Reference is added to the proactive-reply system prompt |
+| Forced proactive reply | `active_reply` | `force` in `_reply_group_active()` | Reference is added to the final reply system prompt |
+
+The `private` / `directed` / `followup_reply` constants are reserved, but the main
+project currently does **not** call `qq_knowledge` for them; `route_qq` still handles
+those paths.
+
+`qq_context` contains at least:
+
+```python
+{
+    "channel": "qq",
+    "message_type": "group",
+    "group_id": "...",
+    "group_name": "...",
+    "self_id": "...",
+    "user_id": "...",        # primary speaker for follow-up/proactive; may be empty
+    "nickname": "...",
+    "participants": [...],
+}
+```
+
+Constraints:
+
+- read-only: do not send messages, write memory, or call an LLM;
+- return plain reference text, not instructions;
+- return an empty string when there is nothing to add;
+- multiple plugins are aggregated by `PluginManager.qq_knowledge()` and capped by
+  `plugins.qq_knowledge_max_chars` (default 4000);
+- return quickly; no network, file scans, or model calls;
+- it cannot force a reply, override a follow-up `pass`, or override a proactive `pass`.
 
 ## PluginContext capabilities
 

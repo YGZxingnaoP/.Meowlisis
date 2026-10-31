@@ -149,7 +149,9 @@ const App = {
         this.pluginMap = {};
         if (typeof Cards !== 'undefined' && Cards.META) {
             Cards.META['plugins'] = { n: '插件', g: 'core', e: '🧩', img: '/api/plugins/card' };
-            Cards.META['plugins_more'] = { n: '更多', g: 'core', e: '⋯', img: Cards.DIR + 'plugins_more.png' };
+            // plugins_more 有自己的卡面（cat_photos_alpha/plugins_more.webp），
+            // 不写死 img → 交给 Cards.img/nextImg 走 alpha→jpg→png 的回退链
+            Cards.META['plugins_more'] = { n: '更多', g: 'core', e: '⋯' };
         }
         const kids = [];
         (this.plugins || []).forEach(p => {

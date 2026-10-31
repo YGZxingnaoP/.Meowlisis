@@ -98,6 +98,23 @@ class TBNapcatFollowupJudge:
         ctx = dict(ctx or {})
         if not str(ctx.get("batch") or "").strip():
             return result
+        # 插件资料：只给判断器参考，不改变 pass/continue 规则
+        try:
+            from func.toolbox.plugins.manager import PluginManager
+            from func.toolbox.plugins.sdk import QQ_STAGE_FOLLOWUP_JUDGE
+            anchor = ctx.get("anchor") or {}
+            qq_context = {
+                "channel": "qq", "message_type": "group",
+                "target_id": ctx.get("group_id", ""), "group_id": ctx.get("group_id", ""),
+                "group_name": ctx.get("group_name", ""), "self_id": ctx.get("self_id", ""),
+                "user_id": anchor.get("user_id", ""), "nickname": anchor.get("username", ""),
+                "participants": ctx.get("participants") or [],
+            }
+            ctx["plugin_knowledge"] = PluginManager().qq_knowledge(
+                ctx.get("batch", ""), qq_context, QQ_STAGE_FOLLOWUP_JUDGE)
+        except Exception:
+            self.log.exception("[群续聊判断] 读取插件资料失败")
+            ctx["plugin_knowledge"] = ""
         llm = self._llm()
         if llm is None or not getattr(llm, "client", None):
             self.log.error("[群续聊判断] LLM 不可用")
@@ -164,6 +181,12 @@ class TBNapcatFollowupJudge:
         history = "\n".join([str(x) for x in (ctx.get("history") or []) if str(x).strip()]) or "（暂无）"
         anchor = ctx.get("anchor") or {}
         anchor_name = str(anchor.get("username") or anchor.get("user_id") or "某人")
+        plugin_knowledge = str(ctx.get("plugin_knowledge") or "").strip()
+        plugin_block = (
+            "\n\n【插件资料（仅用于判断是否在接梗）】\n"
+            f"{plugin_knowledge}\n"
+            "【资料结束】只把它当判断参考，不改变工具输出格式。"
+        ) if plugin_knowledge else ""
         return (
             "你是群聊消息分流器，只判断一批新的群聊消息要不要交给角色接着回复。\n"
             "你不扮演角色、不写回复、不做分析，只调用工具给出判断；"
@@ -175,7 +198,8 @@ class TBNapcatFollowupJudge:
             "【背景】\n"
             f"· 角色最近一次在这个群说话：{ctx.get('elapsed') or '未知'}（「{ctx.get('last_reply') or '还没说话'}」）\n"
             f"· 角色是被【{anchor_name}】用{ctx.get('trigger') or '@'}叫出来的，"
-            f"当时说的是：「{ctx.get('anchor_text') or ''}」\n\n"
+            f"当时说的是：「{ctx.get('anchor_text') or ''}」"
+            f"{plugin_block}\n\n"
             "【最近的群聊记录】（旧 → 新；可能已包含本批消息，一切以【本批新消息】为准）\n"
             f"{history}"
         )

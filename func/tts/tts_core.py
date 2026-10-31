@@ -15,7 +15,7 @@ from func.log.default_log import DefaultLog
 from func.tts.config import TTSConfig
 from func.tts.emotion import resolve_emotion, resolve_ref_audio
 from func.tts.gpt_sovits import GptSovits
-from func.tts.player import AudioPlayer
+from func.tts.player import AudioPlayer, fade_in, SILENCE_TICK_MS
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
 from func.pipeline.get_subtitle import GetSubtitleBridge
@@ -25,6 +25,12 @@ from func.llm.state import LLmState
 from func.config.app_config import AppConfig
 from func.pipeline.system_prompt import SystemPromptBridge
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
+
+
+# 段尾静音（毫秒）：淡出落零后再留一小段静音，切下一句/关声卡都不会有残音
+TAIL_SILENCE_MS = 30
+# 流中断判定（秒）：拿不到数据时补静音顶着，超过这个时长才放弃本段
+IDLE_GIVEUP_SECONDS = 8.0
 
 
 class StreamSource:
@@ -162,6 +168,11 @@ class TTsCore:
         self.task_thread = Thread(target=self._task_worker, daemon=True)
         self.task_thread.start()
 
+        # 一轮回复的音色锁定：traceid -> (emotion, intensity, ref_audio)
+        self.VOICE_CACHE_LIMIT = 64
+        self._voice_lock = Lock()
+        self._voice_cache = {}
+
         # 启动播放线程与子模块后台线程
         self.play_thread = Thread(target=self._play_worker, daemon=True)
         self.play_thread.start()
@@ -245,6 +256,7 @@ class TTsCore:
                 self.pending_segments.clear()
             self._clear_task_queue()
             self._interrupt_flag.set()
+            self._clear_voices()
             with self.priority_lock:
                 self._playing_priority = 0
                 self._synth_priority = 0
@@ -292,6 +304,7 @@ class TTsCore:
                             pass
             self.paused = True
             self.ttsData.is_tts_ready = True
+            self._clear_voices()
             with self.priority_lock:
                 self._playing_priority = 0
                 self._synth_priority = 0
@@ -389,40 +402,13 @@ class TTsCore:
                     self._playing_priority = 0
                 source.cancel()
 
-            # 段间随机停顿（播放层）：每播完一段后停顿 pause_min~max 秒，可被暂停/打断/抢占中断
-            self._segment_pause(source)
-
-    def _segment_pause(self, source=None):
-        """段间随机停顿：不按标点，每段播完后停顿 0.5~1s（配置 pause_min/max_ms）。
-
-        - 仅当 pause_enabled 开启；
-        - pause_sources 非空时仅对指定来源停顿（空=所有来源）；
-        - 每 30ms 检查暂停与代际（打断/抢占/停止都会 generation+1），可立即中断。
-        """
-        try:
-            cfg = self.config
-            if not getattr(cfg, "pause_enabled", False):
-                return
-            if cfg.pause_sources:
-                src_name = getattr(source, "source", "") if source else ""
-                if src_name not in cfg.pause_sources:
-                    return
-            if self._is_paused():
-                return
-            duration = random.uniform(cfg.pause_min_ms, cfg.pause_max_ms) / 1000.0
-            gen = self.ttsData.generation
-            end = time.time() + duration
-            while time.time() < end:
-                if self._is_paused():
-                    return
-                if gen != self.ttsData.generation:
-                    return
-                time.sleep(0.03)
-        except Exception as e:
-            self.log.debug(f"段间停顿异常: {e}")
-
     def _play_stream_source(self, source: StreamSource, text: str = ""):
-        """阻塞播放一个流式源：边收边播直到结束/打断，同时旁路镜像给手机通道"""
+        """阻塞播放一个流式源：边收边播直到结束/打断，同时旁路镜像给手机通道
+
+        - 没有数据时补静音顶上（不空转）：空转会让 mpv underrun，听感就是卡顿+爆音；
+        - 段首淡入、段尾淡出+静音：段与段拼接处不会有振幅突变；
+        - 段间停顿以「静音内容」写入（_play_tail），不再睡线程，也不重启 mpv。
+        """
         samplerate = int(source.sample_rate or self.config.sample_rate or 32000)
         channels = source.channels or 1
         src_name = getattr(source, "source", "") or "other"
@@ -442,21 +428,76 @@ class TTsCore:
             self.log.info(f"[TTS->phone] source={src_name} bytes_text={len(text or '')}")
         except Exception:
             pass
+        ok = True
+        # 段首、以及每次补静音之后的第一个音频块都要淡入：
+        # 静音结束点振幅为 0，若直接接上波形中段就是一次跳变（爆音）
+        need_fade = True
+        idle_start = None
         try:
             while True:
-                data, finished = source.pop(timeout=0.5)
+                data, finished = source.pop(timeout=0.02)
                 if finished:
                     break
                 if data:
+                    idle_start = None
                     try:
                         self.tts_phone.push(data)
                     except Exception:
                         pass
+                    if need_fade:
+                        need_fade = False
+                        data = fade_in(data, samplerate, channels)
                     if not self.player.write(data, self.config.volume):
+                        ok = False
                         break
+                else:
+                    # 暂无数据：补一块静音，保证 mpv 一直在消费
+                    now = time.monotonic()
+                    if idle_start is None:
+                        idle_start = now
+                    elif now - idle_start > IDLE_GIVEUP_SECONDS:
+                        self.log.warning(
+                            f"[{getattr(source, 'traceid', '')}] 音频流中断超过 "
+                            f"{IDLE_GIVEUP_SECONDS:.0f}s，收尾本段")
+                        ok = False
+                        break
+                    if not self.player.write_silence(SILENCE_TICK_MS):
+                        ok = False
+                        break
+                    need_fade = True
         finally:
             self.tts_phone.end_stream()
-            self.player.close_stream()
+        # 无论正常结束还是异常收尾，都补淡出+尾静音，避免停在非零振幅上（爆音）
+        self._play_tail(src_name, allow_pause=ok)
+
+    def _play_tail(self, src_name: str = "", allow_pause: bool = True):
+        """段尾收尾：淡出 + 尾静音；后面还有片段时再把段间停顿也写成静音内容"""
+        try:
+            self.player.fade_out_tail()
+            self.player.write_silence(TAIL_SILENCE_MS)
+            if not allow_pause or not self._pause_enabled_for(src_name):
+                return
+            # 这一轮已经播完就不必再为停顿占时间
+            if self.play_queue.empty() and not self._has_pending_segments():
+                return
+            pause_ms = random.uniform(self.config.pause_min_ms, self.config.pause_max_ms)
+            self.player.write_silence(pause_ms)
+        except Exception as e:
+            self.log.debug(f"段尾收尾异常: {e}")
+
+    def _pause_enabled_for(self, src_name: str) -> bool:
+        """按配置判断该来源是否需要段间停顿"""
+        cfg = self.config
+        if not getattr(cfg, "pause_enabled", False):
+            return False
+        if cfg.pause_sources and src_name not in cfg.pause_sources:
+            return False
+        return not self._is_paused()
+
+    def _has_pending_segments(self) -> bool:
+        """是否还有未播完的分段（顺序缓冲里有内容）"""
+        with self.pending_lock:
+            return bool(self.pending_segments)
 
     def _play_stream_phone(self, source: StreamSource, text: str = "",
                            src_name: str = "phone"):
@@ -503,6 +544,7 @@ class TTsCore:
         self._clear_task_queue()
         self._interrupt_flag.set()
         self.subtitle.clear()
+        self._clear_voices()
         with self.priority_lock:
             self._playing_priority = 0
             self._synth_priority = 0
@@ -617,17 +659,14 @@ class TTsCore:
             else:
                 self.subtitle.put(reply_json)
                 self.log.info(reply_json)
+            self._drop_voice(traceid)
             return
 
         text = re.sub(r"(《|》|（|）)", "", text)
 
+        # 一轮回复内锁定同一音色（不再逐句重取情绪/参考音频）
         override = str(json.get("emotion") or "").strip()
-        if override:
-            emotion, intensity = override, 3.0
-        else:
-            emotion, intensity = self._resolve_emotion()
-
-        ref_audio = self._resolve_ref_audio(emotion)
+        emotion, intensity, ref_audio = self._resolve_voice(traceid, override, seg_index)
 
         generator, cancel_func = self.sovits.get_sovits_stream(
             text, ref_audio, emotion=emotion, intensity=intensity
@@ -654,6 +693,9 @@ class TTsCore:
             is_last = (chat_status == "end")
             self.subtitle.put(reply_json)
             self.play_queue.put((source, reply_json, is_last, priority))
+
+        if chat_status == "end":
+            self._drop_voice(traceid)
 
         self._pump_stream(source, generation)
 
@@ -692,6 +734,52 @@ class TTsCore:
         if not ref:
             return {}
         return resolve_ref_audio(emotion, ref, getattr(self.config, "emotion_audio", {}))
+
+    def _resolve_voice(self, traceid: str, override: str = "", seg_index=0):
+        """解析本段音色：(emotion, intensity, ref_audio)。
+
+        逐句重新取情绪会让参考音频在句中变化：服务端 prompt_cache 失效（参考特征/phones/bert
+        全部重算，多一次首包开销），音色也会中途跳变。因此从 seg_index≥1 起按 traceid 锁定，
+        一轮回复内保持同一音色。
+        seg_index==0 不锁定：弹幕前置朗读在情绪工具调用之前就送来了 TTS（会拿到上一轮情绪），
+        锁它会把整轮情绪都固定成上一轮的。
+        显式 override 始终优先，且不写入锁定。
+        """
+        if override:
+            return override, 3.0, self._resolve_ref_audio(override)
+        try:
+            lockable = bool(traceid) and int(seg_index or 0) > 0
+        except Exception:
+            lockable = False
+        if lockable:
+            with self._voice_lock:
+                hit = self._voice_cache.get(traceid)
+            if hit is not None:
+                return hit
+        emotion, intensity = self._resolve_emotion()
+        ref_audio = self._resolve_ref_audio(emotion)
+        voice = (emotion, intensity, ref_audio)
+        if lockable:
+            with self._voice_lock:
+                if len(self._voice_cache) >= self.VOICE_CACHE_LIMIT:
+                    try:
+                        self._voice_cache.pop(next(iter(self._voice_cache)))
+                    except Exception:
+                        pass
+                self._voice_cache[traceid] = voice
+        return voice
+
+    def _drop_voice(self, traceid: str):
+        """本轮回复结束：释放音色锁定"""
+        if not traceid:
+            return
+        with self._voice_lock:
+            self._voice_cache.pop(traceid, None)
+
+    def _clear_voices(self):
+        """打断/暂停/抢占：全部音色锁定作废"""
+        with self._voice_lock:
+            self._voice_cache.clear()
 
     def check_tts(self):
         """定时轮询回答队列，将合成请求按来源归组到任务队列"""
@@ -765,6 +853,7 @@ class TTsCore:
         self._clear_task_queue()
         with self.pending_lock:
             self.pending_segments.clear()
+        self._clear_voices()
         # 抢占后立即重置优先级，避免残留导致后续同优先级任务连锁抢占
         with self.priority_lock:
             self._playing_priority = 0

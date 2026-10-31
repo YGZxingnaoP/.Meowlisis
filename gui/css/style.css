@@ -32,44 +32,28 @@ body {
     color: var(--text-main);
 }
 
-/* 主界面背景图：由 tools/gen_bg_main.py 生成的清晰原图，这里靠 filter 做显示时模糊。
-   （模糊放在图这一层是"一次性"成本：这层里没有任何动画，光栅化一次就缓存住了；
-     千万别把模糊加到 .container 上——那里面全是会动的卡片，会每帧重算。） */
+/* 主界面背景图。
+   ★ 模糊已经【烘焙进图片】了（main_display.jpg = 原图 blur(4px) + saturate 1.05 + brightness 1.02，
+     用 PIL 按 CSS filter 的数学复现），所以这里不再挂 filter：
+     去掉一层全屏滤镜 = 少一张全屏离屏纹理 + 少一次全屏 shader pass，观感完全一样。
+     改模糊程度就重烘（脚本见 git 历史/说明），或者临时把 filter 加回来。
+   平时 opacity .66 让 body 的粉渐变透上来；点右上角向下箭头"看壁纸"时换回清晰原图。
+   ⚠️ 千万别把 filter 加到 .container 上——那里面全是会动的卡片，会每帧重算。 */
 .bg-main {
     position: fixed;
     inset: 0;
     z-index: 0;
     pointer-events: none;
-    background: url('../resource/bg/main.jpg') center center / cover no-repeat;
-    /* 新壁纸是"高明度低对比的柔雾粉"，比旧版（满屏樱花）干净，所以模糊可以少一点、
-       不透明度可以多一点 —— 人物躺着的那抹暖色才透得出来，又不会和卡片抢戏。 */
-    filter: blur(4px) saturate(1.05) brightness(1.02);
-    transform: scale(1.03);            /* 放大一点，盖掉模糊后边缘的半透明 */
-    /* 66% 透明度：让 body 的淡粉渐变透上来，整体就是"淡粉底 + 一点图"，
-       不透明的话图会盖满整个屏幕、显得很杂。想更淡就往下调。 */
+    background: url('../resource/bg/main_display.jpg') center center / cover no-repeat;
+    filter: none;
+    transform: scale(1.03);
     opacity: 0.66;
-    /* 只给 opacity 挂过渡："看壁纸"时要把这层提亮，filter 一起过渡会每帧重算模糊 */
     transition: opacity 0.5s ease;
 }
 
-.bg-stars {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-        radial-gradient(circle at 20% 30%, var(--pink-main) 0%, transparent 1%),
-        radial-gradient(circle at 80% 20%, var(--pink-soft) 0%, transparent 1.5%),
-        radial-gradient(circle at 40% 70%, var(--pink-main) 0%, transparent 1%),
-        radial-gradient(circle at 70% 80%, var(--pink-soft) 0%, transparent 1.2%);
-    opacity: 0.6;
-    animation: twinkle 4s ease-in-out infinite alternate;
-}
-
-@keyframes twinkle {
-    from { opacity: 0.4; }
-    to { opacity: 0.8; }
-}
-
+/* 原 .bg-stars（4 个 19px 粉色小圆点 + 4s 透明度呼吸）已删：
+   它是 fixed inset:0 的整屏图层，为了几个几乎看不见的点，每帧要多混合一整屏像素
+   —— 在核显上这是实打实的负载，观感上却几乎不存在。 */
 .container {
     display: flex;
     align-items: center;
@@ -80,12 +64,18 @@ body {
     overflow: hidden;
 }
 
-/* Center Launcher */
+/* Center Launcher
+   ★ 3D：--lx / --ly 由 js/ballfx.js 每帧写入（指针跟随，弹簧缓动）。
+     perspective() 写在 transform 里，作用点就是球心，不需要给父级加 perspective。
+     注意 translate(-50%,-50%) 必须留在里面 —— 它是居中定位的一部分。 */
 .center-launcher {
+    --lx: 0deg;
+    --ly: 0deg;
     position: absolute;
     top: 50%;
     left: 50%;
-    transform: translate(-50%, -50%);
+    transform: perspective(900px) translate(-50%, -50%)
+               rotateX(var(--ly)) rotateY(var(--lx));
     width: 210px;
     height: 210px;
     border-radius: 50%;
@@ -97,7 +87,7 @@ body {
     cursor: pointer;
     box-shadow: 0 8px 32px var(--shadow), 0 0 60px var(--shadow-deep);
     /* ★ 不要 transition: all —— 它会把任何尺寸/transform 变化都做成动画。
-       只留不进尺寸的三样。反馈走光晕/亮度（见下面的 :hover / :active）。 */
+       只留不进尺寸的三样（transform 的缓动在 JS 里做，避免和跟随打架）。 */
     transition: box-shadow 0.4s ease, filter 0.4s ease, opacity 0.4s ease;
     /* ★ 球按【中心深度】定层级 = 55，卡按各自深度 5~105：
        近半圈（z>55）盖住球，远半圈（z<55）被球盖住 —— 俯视圆盘的正确遮挡。
@@ -105,6 +95,30 @@ body {
     z-index: 55;
     overflow: hidden;
     pointer-events: auto;
+    will-change: transform;
+}
+
+/* 球面高光 + 亮边：跟着指针移动（--gx/--gy），让球看起来是"球"而不是贴纸 */
+.launcher-glare {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+    background: radial-gradient(circle at var(--gx, 32%) var(--gy, 26%),
+        rgba(255, 255, 255, 0.66) 0%,
+        rgba(255, 255, 255, 0.16) 28%,
+        transparent 54%);
+    box-shadow:
+        inset 0 -16px 28px -10px rgba(120, 70, 160, 0.34),   /* 底半球阴影 */
+        inset 0 10px 22px -12px rgba(255, 255, 255, 0.9),    /* 顶部受光 */
+        inset 0 0 0 2px rgba(255, 255, 255, 0.5);            /* 亮边 */
+}
+.center-launcher:hover .launcher-glare,
+.center-launcher:focus-visible .launcher-glare {
+    opacity: 1;
 }
 
 /* ★ 不再 scale：反馈改成光晕/亮度，杜绝任何"看起来半径变了"的观感 */
@@ -240,11 +254,12 @@ body.peek-wall .launcher-glow {
     animation-play-state: paused;
 }
 
-/* 这时壁纸才是主角：提亮、淡掉模糊。
-   filter 故意不进 transition —— 大图层过渡 filter 会每帧重算，这里让它一次性切换。 */
+/* "看壁纸"时：换回清晰原图 + 满亮（原来那层 blur 已经不在 CSS 里了，靠换图实现）。
+   注意 background-image 的切换不做过渡（会闪），这里只过渡 opacity。 */
 body.peek-wall .bg-main {
-    filter: blur(1.2px) saturate(1.04) brightness(1.03);
-    opacity: 0.96;
+    background-image: url('../resource/bg/main.jpg');
+    filter: saturate(1.04);
+    opacity: 1;
 }
 
 /* Buttons */
@@ -408,3 +423,20 @@ body.peek-wall .bg-main {
     cursor: pointer; background: transparent; color: #333;
 }
 .lang-btn.on { background: #ff6b9d; color: #fff; }
+
+/* ===== 全屏浮层打开时：浮层后面必须【完全静止】=====
+   高级设置 / 插件"更多" / 各类面板的浮层都用了 backdrop-filter 或给 .container 挂 blur，
+   只要后面还有东西在动（呼吸光晕、中心球脉冲、随机涟漪），
+   那一整屏模糊就得【每帧重算】—— 实测点开高级设置能让 3D 从 ~60% 飙回 90%。
+   用 :has() 直接盯浮层自己的 class，不用改任何 JS。 */
+body:has(.adv-overlay.show) .card-glow,
+body:has(.adv-overlay.show) .launcher-glow,
+body:has(.adv-overlay.show) .card-ripple,
+body.modal-open .card-glow,
+body.modal-open .launcher-glow,
+body.modal-open .card-ripple,
+body.plugin-more-open .card-glow,
+body.plugin-more-open .launcher-glow,
+body.plugin-more-open .card-ripple {
+    animation-play-state: paused;
+}

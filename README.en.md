@@ -6,6 +6,8 @@
 
 > This project is open source under the [MIT License](LICENSE).
 
+<p align="center"><img src="gui/MiaoWuFace2.0.ico" alt="MiaoWu" width="112" height="112"></p>
+
 ```
 I started coding because I wanted someone to chat with while I make animations.
 Then I couldn't find anyone, so I turned a little cat into a person awa
@@ -99,6 +101,15 @@ Idea: when the character speaks up after being idle, it doesn't just say somethi
 6. **QQ simplified version**: `func/toolbox/napcat/director` has its own state, judge and prompt block, and takes no part in group bubble-in.
 
 Related config: `config.yml → llm_active.director`, `napcat.director_qq`.
+
+## Frontend Demo
+
+A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB) — resolution lowered only, nothing trimmed; click the links for the full-quality versions:
+
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="Frontend demo" width="720"></p>
+
+- Lightweight 30 fps version (2.9 MB, 1280×800, no audio): [frontend_demo_30fps.mp4](工作流程解析/media/frontend_demo_30fps.mp4)
+- Original recording (1920×1200 @60fps, 21.5 MB): [前端展示.mp4](工作流程解析/前端展示.mp4)
 
 ## To do list
 1. Configure matching reference audio for each prompt

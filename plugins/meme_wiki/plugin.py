@@ -618,6 +618,19 @@ class Plugin:
         )
 
     # ==================== QQ 入口 ====================
+    def qq_knowledge(self, text, qq_context=None, stage=""):
+        """给续聊判断 / 群聊主动回复提供只读梗库资料。"""
+        if not self._bool("enabled", True):
+            return ""
+        try:
+            entries = self._recall(str(text or ""))
+        except Exception:
+            self.log.exception("[meme_wiki] 读取梗库资料失败")
+            return ""
+        if not entries:
+            return ""
+        return self._knowledge(entries)
+
     def route_qq(self, text, qq_context=None, nickname=""):
         try:
             if not self._bool("enabled", True):
