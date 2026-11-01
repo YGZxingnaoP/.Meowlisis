@@ -105,6 +105,15 @@ set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\paints\*" -x"character\svg_paints\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\books\*" -x"character\catfiles\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\userinfo\*" -x"character\plugin_data\*""
+
+  rem ---- 2026-11 补齐：.gitignore 里有、但之前漏排的 ----
+  rem 刻意保留：character/ref_audio（音色参考）、.vendor/.CatPaws/ios_apps、
+  rem            character/info/character_prompt（角色卡，分享包必须带，否则对方跑空角色）
+  set "EXCLUSIVE=!EXCLUSIVE! -x"character\director_topic\*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x"scripts\napcat_diagnose\out\*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\output\*" -x".vendor\.ComfyNode\engine.pid""
+  set "EXCLUSIVE=!EXCLUSIVE! -x"gui\resource\cat_photos_png\*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x"*.bak*" -x"config.yml.tmp""
 )
 set "EXCLUDES=%EXCOMMON% %EXCLUSIVE%"
 

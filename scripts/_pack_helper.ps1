@@ -69,7 +69,7 @@ switch ($Verb) {
                 @{ p = '(^|/)\.git/';      why = '.git leaked in' }
             )
         } else {
-            $required = @('api.py', 'runtime/311/python.exe')
+            $required = @('api.py', 'runtime/311/python.exe', 'character/info/character_prompt/prompt.json')
             $forbidden = @(
                 @{ p = '^config\.yml$';                    why = 'root config.yml NOT excluded (secret leak)' },
                 @{ p = '^config\.example\.yml$';           why = 'config.example.yml must not ship (personal data)' },
@@ -82,6 +82,10 @@ switch ($Verb) {
                 @{ p = '(^|/)\.vendor/\.CatPaws/catpaws-launcher/run/'; why = 'CatPaws device identity or logs leaked in' },
                 @{ p = '(^|/)character/userinfo/';         why = 'character/userinfo (personal profiles) leaked in' },
                 @{ p = '(^|/)character/plugin_data/';      why = 'character/plugin_data (plugin user data) leaked in' },
+                @{ p = '(^|/)character/director_topic/';   why = 'director plans NOT excluded' },
+                @{ p = '(^|/)scripts/napcat_diagnose/out/'; why = 'napcat diagnostic dumps (personal QQ events) NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/output/'; why = 'ComfyUI output images NOT excluded' },
+                @{ p = '(^|/)gui/resource/cat_photos_png/'; why = 'source PNG set (unused at runtime) NOT excluded' },
                 @{ p = '(^|/)plugins/[^/]+/config\.yml$';  why = 'plugin config.yml NOT excluded (sk- key leak)' },
                 @{ p = '(^|/)__pycache__/';                why = '__pycache__ leaked in' },
                 @{ p = '\.pyc$';                           why = '.pyc leaked in' }

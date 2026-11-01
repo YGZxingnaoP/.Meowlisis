@@ -561,7 +561,17 @@ class Plugin:
             return False
         try:
             if group:
-                self.ctx.napcat().send_group_file(target, path)
+                resp = self.ctx.napcat().call_action_sync("upload_group_file", {
+                    "group_id": int(target),
+                    "file": os.path.abspath(path),
+                    "name": os.path.basename(path),
+                }, timeout=30)
+                if not isinstance(resp, dict):
+                    self.log.warning(f"[meme_wiki] 群文件发送无响应: {resp}")
+                    return False
+                if resp.get("retcode") not in (0, "0", None):
+                    self.log.warning(f"[meme_wiki] 群文件发送失败: {resp}")
+                    return False
             else:
                 resp = self.ctx.napcat().call_action_sync("upload_private_file", {
                     "user_id": int(target),

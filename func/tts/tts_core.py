@@ -15,7 +15,7 @@ from func.log.default_log import DefaultLog
 from func.tts.config import TTSConfig
 from func.tts.emotion import resolve_emotion, resolve_ref_audio
 from func.tts.gpt_sovits import GptSovits
-from func.tts.player import AudioPlayer, fade_in, SILENCE_TICK_MS
+from func.tts.player import AudioPlayer, fade_in
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
 from func.pipeline.get_subtitle import GetSubtitleBridge
@@ -27,8 +27,8 @@ from func.pipeline.system_prompt import SystemPromptBridge
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
 
-# 段尾静音（毫秒）：淡出落零后再留一小段静音，切下一句/关声卡都不会有残音
-TAIL_SILENCE_MS = 30
+# 段尾静音（毫秒）：句尾自然衰减之后留一小段静音，让声卡在静音区收尾（不做淡出，避免吞末字）
+TAIL_SILENCE_MS = 60
 # 流中断判定（秒）：拿不到数据时补静音顶着，超过这个时长才放弃本段
 IDLE_GIVEUP_SECONDS = 8.0
 
@@ -405,9 +405,9 @@ class TTsCore:
     def _play_stream_source(self, source: StreamSource, text: str = ""):
         """阻塞播放一个流式源：边收边播直到结束/打断，同时旁路镜像给手机通道
 
-        - 没有数据时补静音顶上（不空转）：空转会让 mpv underrun，听感就是卡顿+爆音；
-        - 段首淡入、段尾淡出+静音：段与段拼接处不会有振幅突变；
-        - 段间停顿以「静音内容」写入（_play_tail），不再睡线程，也不重启 mpv。
+        - 段首做一次淡入，段尾只补静音（服务端句尾本身是自然衰减，不再叠淡出）；
+        - 没有数据就等：管道自带约 1s 缓冲，不要在这里补静音，否则句内分块间隙
+          会把语音切成碎片（实测能让 2 秒语音里塞进 30 段静音）。
         """
         samplerate = int(source.sample_rate or self.config.sample_rate or 32000)
         channels = source.channels or 1
@@ -429,9 +429,7 @@ class TTsCore:
         except Exception:
             pass
         ok = True
-        # 段首、以及每次补静音之后的第一个音频块都要淡入：
-        # 静音结束点振幅为 0，若直接接上波形中段就是一次跳变（爆音）
-        need_fade = True
+        first_chunk = True
         idle_start = None
         try:
             while True:
@@ -444,14 +442,13 @@ class TTsCore:
                         self.tts_phone.push(data)
                     except Exception:
                         pass
-                    if need_fade:
-                        need_fade = False
+                    if first_chunk:
+                        first_chunk = False
                         data = fade_in(data, samplerate, channels)
                     if not self.player.write(data, self.config.volume):
                         ok = False
                         break
                 else:
-                    # 暂无数据：补一块静音，保证 mpv 一直在消费
                     now = time.monotonic()
                     if idle_start is None:
                         idle_start = now
@@ -461,23 +458,17 @@ class TTsCore:
                             f"{IDLE_GIVEUP_SECONDS:.0f}s，收尾本段")
                         ok = False
                         break
-                    if not self.player.write_silence(SILENCE_TICK_MS):
-                        ok = False
-                        break
-                    need_fade = True
         finally:
             self.tts_phone.end_stream()
-        # 无论正常结束还是异常收尾，都补淡出+尾静音，避免停在非零振幅上（爆音）
         self._play_tail(src_name, allow_pause=ok)
 
     def _play_tail(self, src_name: str = "", allow_pause: bool = True):
-        """段尾收尾：淡出 + 尾静音；后面还有片段时再把段间停顿也写成静音内容"""
+        """段尾只补静音；后面还有片段时把段间停顿也写成静音内容"""
         try:
-            self.player.fade_out_tail()
             self.player.write_silence(TAIL_SILENCE_MS)
             if not allow_pause or not self._pause_enabled_for(src_name):
                 return
-            # 这一轮已经播完就不必再为停顿占时间
+            # 这一轮已经播完就不占用停顿时间
             if self.play_queue.empty() and not self._has_pending_segments():
                 return
             pause_ms = random.uniform(self.config.pause_min_ms, self.config.pause_max_ms)
