@@ -23,3 +23,11 @@ class SenseVoiceLLMBridge:
         traceid = str(uuid.uuid4())
         self.log.info(f"[{traceid}] SenseVoice → LLM(source={source}): {text[:50]}...")
         LLmCore().msg_deal(traceid, text, uid, source=source)
+
+    def abort_current(self, reason: str = "用户开口"):
+        """用户开口：正在生成的回答立刻收手，不等它想完"""
+        try:
+            from func.pipeline.speech_interrupt import SpeechInterruptBridge
+            SpeechInterruptBridge().bump(reason)
+        except Exception:
+            self.log.exception("打断当前生成失败")

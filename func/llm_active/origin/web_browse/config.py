@@ -39,9 +39,6 @@ class AutoWebBrowseConfig:
         # 是否禁止抽象视频
         self.forbid_abstract = bool(wb.get('forbid_abstract', True))
 
-        # UP 主 mid：0 = 自动用登录态拿自己 mid；也可手动指定
-        self.mid = int(wb.get('mid', 0) or 0)
-
         # 缓存目录（json 落盘）
         self.cache_dir = wb.get('cache_dir', os.path.join('.temp', 'web_browse_cache'))
 

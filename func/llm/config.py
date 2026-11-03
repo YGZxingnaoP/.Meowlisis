@@ -46,7 +46,6 @@ class LLMConfig:
         self.deepseek_temperature = deepseek_cfg.get('temperature', 0.7)
         self.deepseek_max_tokens = deepseek_cfg.get('max_tokens', 1024)
         self.deepseek_top_p = deepseek_cfg.get('top_p', 0.9)
-        self.deepseek_stream = deepseek_cfg.get('stream', True)
         self.deepseek_enable_thinking = deepseek_cfg.get('enable_thinking', False)
 
         # ========== Aliyun 配置 ==========
@@ -57,7 +56,6 @@ class LLMConfig:
         self.aliyun_temperature = aliyun_cfg.get('temperature', 0.7)
         self.aliyun_max_tokens = aliyun_cfg.get('max_tokens', 1024)
         self.aliyun_top_p = aliyun_cfg.get('top_p', 0.9)
-        self.aliyun_stream = aliyun_cfg.get('stream', True)
         self.aliyun_enable_thinking = aliyun_cfg.get('enable_thinking', False)
 
         # ========== Gemini 配置 ==========
@@ -68,7 +66,6 @@ class LLMConfig:
         self.gemini_temperature = gemini_cfg.get('temperature', 0.7)
         self.gemini_max_tokens = gemini_cfg.get('max_tokens', 1024)
         self.gemini_top_p = gemini_cfg.get('top_p', 0.9)
-        self.gemini_stream = gemini_cfg.get('stream', True)
 
         # ========== MeowLLM（本地/自建，OpenAI 兼容）==========
         # 与 deepseek / aliyun / gemini 完全并列。这里的两层兜底是有意的：

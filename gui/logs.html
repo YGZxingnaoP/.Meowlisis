@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>日志中心 · Meowlisis</title>
-<link rel="stylesheet" href="css/logs.css?v=20261014c">
+<link rel="stylesheet" href="css/logs.css?v=20261103a">
 </head>
 <body>
 
@@ -52,13 +52,16 @@
             </div>
         </header>
 
-        <!-- 级别分类页签：日志 / 警告 / 错误 分开看 -->
-        <div class="lh-tabs" id="levelTabs">
-            <button type="button" class="lh-tab on" data-lv=""><span data-i18n="全部">全部</span><i class="lh-badge" id="cntAll">0</i></button>
-            <button type="button" class="lh-tab" data-lv="INFO"><span data-i18n="日志">日志</span><i class="lh-badge" id="cntINFO">0</i></button>
-            <button type="button" class="lh-tab" data-lv="WARN"><span data-i18n="警告">警告</span><i class="lh-badge" id="cntWARN">0</i></button>
-            <button type="button" class="lh-tab" data-lv="ERROR"><span data-i18n="错误">错误</span><i class="lh-badge" id="cntERROR">0</i></button>
+        <!-- 场景页签 + 只看问题：日志主区按"在干什么"分，不按级别分 -->
+        <div class="lh-bar2">
+            <div class="lh-scenes" id="scenes"><!-- JS 渲染 --></div>
+            <button type="button" class="lh-scene" id="onlyProblems">
+                <i>⚠️</i><span data-i18n="只看问题">只看问题</span>
+            </button>
         </div>
+
+        <!-- 折叠预算：被吞掉的技术日志按类别计数（不丢信息，可展开） -->
+        <div class="lh-budget" id="budget" hidden></div>
 
         <section class="lh-qr" id="qrBox" hidden>
             <img class="lh-qr-img" id="qrImg" alt="登录二维码">
@@ -78,12 +81,22 @@
         <section class="lh-panel" id="svcPanel" hidden></section>
 
         <section class="lh-view" id="view">
-            <div class="lh-empty" id="empty" data-i18n="选择左侧服务查看日志">选择左侧服务查看日志</div>
+            <div class="lh-empty" id="empty" data-i18n="选择左侧服务查看事件">选择左侧服务查看事件</div>
             <div class="lh-lines" id="lines"></div>
         </section>
 
+        <!-- 原文抽屉：点一行才出现，不占常驻空间 -->
+        <aside class="lh-drawer" id="drawer" hidden>
+            <div class="lh-drawer-head">
+                <span id="drawerTitle" data-i18n="原文">原文</span>
+                <button type="button" class="lh-icon-btn" id="drawerClose" title="关闭">✕</button>
+            </div>
+            <pre class="lh-drawer-body" id="drawerRaw"></pre>
+        </aside>
+
         <footer class="lh-foot">
-            <span id="statLines">0 行</span>
+            <span id="statLines">0 条事件</span>
+            <span id="statBg">后台 0 行</span>
             <span id="statSize">—</span>
             <span id="statRate">—</span>
             <span class="lh-grow"></span>
@@ -97,7 +110,7 @@
 <script src="locales/zh-CN.js"></script>
 <script src="locales/en.js"></script>
 <script src="js/i18n.js"></script>
-<script src="js/logs.js?v=20261027a"></script>
+<script src="js/logs.js?v=20261103a"></script>
 <script src="js/view_panel.js?v=20261027a"></script>
 <script src="js/logs_camera.js?v=20261027a"></script>
 <script src="js/logs_catpaws.js?v=20261027a"></script>

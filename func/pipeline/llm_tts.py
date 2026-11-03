@@ -2,14 +2,8 @@
 # func/pipeline/llm_tts.py
 # LLM 传递 TTS 桥接
 
-from func.log.default_log import DefaultLog
-
-
 class LLMTtsBridge:
     """LLM → TTS 传递桥接"""
-
-    def __init__(self):
-        self.log = DefaultLog().getLogger()
 
     def send_to_answer_queue(self, llm_data, text: str, traceid: str,
                              seg_index: int = 0, chat_status: str = "end",

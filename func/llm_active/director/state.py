@@ -64,22 +64,6 @@ def new_plan(kind: str, reason: str, material: Optional[Dict], raw_steps) -> Opt
     }
 
 
-def current_step(plan: Dict) -> Optional[Dict]:
-    """当前这一步（[>]）：优先 current_id，其次第一条未完成"""
-    steps = plan.get("steps") or []
-    if not steps:
-        return None
-    cur = plan.get("current_id")
-    for step in steps:
-        if step.get("id") == cur and not step.get("done"):
-            return step
-    for step in steps:
-        if not step.get("done"):
-            plan["current_id"] = step.get("id")
-            return step
-    return None
-
-
 def first_pending_id(plan: Dict) -> int:
     """第一条未完成步骤的 id（全完成返回 0）"""
     for step in plan.get("steps") or []:

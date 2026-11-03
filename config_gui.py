@@ -1348,5 +1348,11 @@ try:
 except Exception as _catpaws_e:
     print('[catpaws_hub] 注册失败:', _catpaws_e)
 
+try:
+    from gui.tools import catpaws_sign
+    catpaws_sign.register(app)
+except Exception as _catpaws_sign_e:
+    print('[catpaws_sign] 注册失败:', _catpaws_sign_e)
+
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=1801, debug=False)

@@ -183,6 +183,7 @@
             this._check('允许操作 mock 设备', 'device.allow_mock', '只在桥接回归测试时打开；真机使用请关掉') +
             this._text('Runner bundle id', 'device.runner_bundle_id') +
             this._text('CatCam bundle id', 'device.catcam_bundle_id') +
+            this._signRow() +
 
             S('模型端口') +
             this._select('端口类型', 'port.type', [
@@ -249,6 +250,69 @@
             this._num('等主人回答（秒）', 'sync.answer_timeout', '', 10) +
             this._check('回传记忆与播报', 'sync.notify', '角色说的每句话写进长期记忆/摘要/短期记忆并走 TTS') +
             this._num('短期记忆轮数', 'sync.short_rounds', '启动时带给手机链路的对话轮数');
+    };
+
+    CW._signRow = function () {
+        return '<div class="form-group">' +
+            '<button type="button" class="btn btn-secondary" data-cwp-sign="1">' +
+            this._t('从手机获取签名') + '</button>' +
+            '<div class="help-text" data-cwp-sign-tip="1">' +
+            this._t('重签重装后 bundle id 后缀会变（如 D79NHBM8JL → 27KKPW936V）；点一下从手机读当前值，launcher 与服务端配置一起写回') +
+            '</div></div>';
+    };
+
+    CW._sign = function (btn) {
+        var root = document.getElementById('modalBody');
+        if (!root || !btn || btn.disabled) return;
+        var tip = root.querySelector('[data-cwp-sign-tip]');
+        var setTip = function (text, bad) {
+            if (!tip) return;
+            tip.textContent = text;
+            tip.style.color = bad ? '#D9464E' : '';
+        };
+        var label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = CW._t('读取中…');
+        var finish = function () { btn.disabled = false; btn.textContent = label; };
+        var read = function (url, opt) {
+            return fetch(url, opt || { cache: 'no-store' }).then(function (r) {
+                if (r.status === 404) throw new Error(CW._t('接口未就绪：重启一次 GUI'));
+                return r.json().catch(function () { return {}; }).then(function (j) {
+                    if (!r.ok) throw new Error(j.message || ('HTTP ' + r.status));
+                    return j;
+                });
+            });
+        };
+        read('/api/catpaws/sign').then(function (j) {
+            var runner = (j.runner || {}).id || '';
+            var catcam = (j.catcam || {}).id || '';
+            if (!runner || !catcam) {
+                throw new Error((j.problems || []).join('；') || CW._t('设备上没读到 CatPaws/CatCam'));
+            }
+            var fill = function (path, value) {
+                var node = root.querySelector('[data-cwp="' + path + '"]');
+                if (node) node.value = value;
+                CW._assign(CW.data, path, value);
+            };
+            fill('device.runner_bundle_id', runner);
+            fill('device.catcam_bundle_id', catcam);
+            if (!(j.stale || []).length) {
+                setTip(CW._t('已是最新：') + (j.suffix || '-'));
+                finish();
+                return;
+            }
+            return read('/api/catpaws/sign/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: '{}'
+            }).then(function (k) {
+                setTip(CW._t('已写回：') + (k.suffix || j.suffix || '-'));
+                finish();
+            });
+        }).catch(function (e) {
+            setTip(CW._t('获取失败：') + (e && e.message ? e.message : e), true);
+            finish();
+        });
     };
 
     CW.collect = function () {
@@ -381,6 +445,11 @@
     if (typeof document !== 'undefined' && !window.__cwpBound) {
         window.__cwpBound = true;
         document.addEventListener('click', function (ev) {
+            var sign = ev.target.closest ? ev.target.closest('[data-cwp-sign]') : null;
+            if (sign) {
+                CW._sign(sign);
+                return;
+            }
             var remove = ev.target.closest ? ev.target.closest('[data-cwp-tag-remove]') : null;
             if (remove) {
                 var path = remove.getAttribute('data-cwp-tag-remove');

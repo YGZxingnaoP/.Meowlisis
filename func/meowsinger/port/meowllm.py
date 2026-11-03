@@ -113,5 +113,3 @@ class MeowSingerMeowLLM:
             self.log.error(f"[meowsinger] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = MeowSingerMeowLLM

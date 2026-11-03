@@ -57,23 +57,48 @@ class TBExcuse:
             self._save_memory("user", str(reply))
         return reply
 
-    def wait_text(self, meowid: str = "", timeout: float = None) -> Optional[str]:
-        """只注册等待队列并阻塞取一条文本（不自带提问、TTS 与记忆）"""
-        wait_for = float(timeout if timeout is not None else self.config.excuse_timeout)
+    def open_wait(self, meowid: str = ""):
+        """只注册等待队列、不阻塞：用于「先把窗口打开，再去提问」
+
+        提问本身（生成台词+TTS）有延迟，若等台词念完才注册窗口，
+        主人抢在台词之前答的话就会被当成普通消息走掉，窗口随后只能干等超时。
+        """
         key = meowid or "default"
         q = queue.Queue()
         with self._lock:
             self._queues[key] = q
+        return q
+
+    def take_wait(self, meowid: str = "", timeout: float = None) -> Optional[str]:
+        """从已注册的等待队列里阻塞取一条文本（未注册返回 None）"""
+        wait_for = float(timeout if timeout is not None else self.config.excuse_timeout)
+        key = meowid or "default"
+        with self._lock:
+            q = self._queues.get(key)
+        if q is None:
+            self.log.warning("[Excuse] 没有打开的等待窗口，无法取回复")
+            return None
         try:
             reply = q.get(timeout=wait_for) if wait_for > 0 else q.get()
         except queue.Empty:
             self.log.warning("[Excuse] 等待用户回复超时")
-            reply = None
-        finally:
-            with self._lock:
-                self._queues.pop(key, None)
+            return None
         body = str(reply or "").strip()
         return body or None
+
+    def close_wait(self, meowid: str = ""):
+        """关闭等待窗口（此后的文本不再被拦截）"""
+        key = meowid or "default"
+        with self._lock:
+            self._queues.pop(key, None)
+
+    def wait_text(self, meowid: str = "", timeout: float = None) -> Optional[str]:
+        """注册等待队列并阻塞取一条文本（开窗/取回复/关窗的组合版本）"""
+        self.open_wait(meowid)
+        try:
+            return self.take_wait(meowid, timeout)
+        finally:
+            self.close_wait(meowid)
 
     # ==================== 文本拦截入口 ====================
     def route_text(self, text: str, meowid: str = "") -> bool:

@@ -5,7 +5,6 @@
 import re
 from typing import List, Dict, Optional
 
-from func.log.default_log import DefaultLog
 from func.llm_active.origin.vision.sender import AutoVisionSender
 
 
@@ -19,7 +18,6 @@ class AutoVisionGetResponse:
     """
 
     def __init__(self):
-        self.log = DefaultLog().getLogger()
         self.sender = AutoVisionSender()
 
     def analyze(self, images: List[str], meta: Dict,

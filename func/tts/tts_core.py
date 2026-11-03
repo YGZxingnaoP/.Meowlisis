@@ -9,26 +9,31 @@ import threading
 import time
 import uuid
 from threading import Lock, Thread
-from concurrent.futures import ThreadPoolExecutor
 
 from func.log.default_log import DefaultLog
 from func.tts.config import TTSConfig
 from func.tts.emotion import resolve_emotion, resolve_ref_audio
 from func.tts.gpt_sovits import GptSovits
-from func.tts.player import AudioPlayer, fade_in
+from func.tts.player import AudioPlayer, fade_in, fade_out
 from func.tts.subtitle import SubtitleWorker
 from func.tts.interrupt import InterruptManager
 from func.pipeline.get_subtitle import GetSubtitleBridge
 from func.tools.singleton_mode import singleton
 from func.tts.state import TTsState
 from func.llm.state import LLmState
-from func.config.app_config import AppConfig
 from func.pipeline.system_prompt import SystemPromptBridge
 from func.pipeline.sensevoice_tts import SenseVoiceTtsBridge
 
 
-# 段尾静音（毫秒）：句尾自然衰减之后留一小段静音，让声卡在静音区收尾（不做淡出，避免吞末字）
+# 段尾静音（毫秒）：句尾自然衰减之后留一小段静音，让声卡在静音区收尾
 TAIL_SILENCE_MS = 60
+# 段尾淡出（毫秒）：最后这一段先留住，收尾时做斜坡，避免硬切到静音
+TAIL_FADE_MS = 40.0
+# 一轮回复结束时的额外收尾静音（毫秒）：话音刚停就关声卡会像"掐断"，
+# 只加在整轮的最后一段，句间停顿不受影响
+END_SILENCE_MS = 150
+# 空闲多久才关掉常驻 mpv（秒）：关声卡会有一声"嗒"，别让它贴在每句话的句尾
+IDLE_CLOSE_SEC = 120.0
 # 流中断判定（秒）：拿不到数据时补静音顶着，超过这个时长才放弃本段
 IDLE_GIVEUP_SECONDS = 8.0
 
@@ -49,7 +54,6 @@ class StreamSource:
         self.source = source or "other"
         self.buffer = queue.Queue()
         self.cancelled = False
-        self.finished = False
         self._lock = threading.Lock()
 
     def push(self, chunk: bytes) -> bool:
@@ -65,7 +69,6 @@ class StreamSource:
         with self._lock:
             if self.cancelled:
                 return
-            self.finished = True
             self.buffer.put(self._END)
 
     def pop(self, timeout: float = 0.5):
@@ -146,8 +149,7 @@ class TTsCore:
         self._streams_lock = Lock()
         self._active_streams = {}
 
-        # 计数锁与暂停标志
-        self.count_lock = Lock()
+        # 暂停标志
         self.paused = False
         self.pause_lock = Lock()
 
@@ -217,9 +219,6 @@ class TTsCore:
                 return True
             if not self.ttsData.task_queue.empty():
                 return True
-            with self.ttsData.task_lock:
-                if self.ttsData.pending_tasks:
-                    return True
             with self._streams_lock:
                 if self._active_streams:
                     return True
@@ -291,8 +290,6 @@ class TTsCore:
                     pass
             with self.pending_lock:
                 self.pending_segments.clear()
-            with self.count_lock:
-                self.ttsData.SayCount = 0
             # 删除输出目录下所有语音文件
             output_dir = self.config.output_dir
             if os.path.exists(output_dir):
@@ -303,20 +300,11 @@ class TTsCore:
                         except Exception:
                             pass
             self.paused = True
-            self.ttsData.is_tts_ready = True
             self._clear_voices()
             with self.priority_lock:
                 self._playing_priority = 0
                 self._synth_priority = 0
         self.log.info("TTS 彻底清除完成")
-
-    def _remove_file(self, file_path):
-        """删除音频文件（忽略异常）"""
-        try:
-            if isinstance(file_path, str) and os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception:
-            pass
 
     def _cancel_active_streams(self):
         """取消所有活跃流式源（关闭 HTTP 拉取），打断/暂停/抢占时调用"""
@@ -353,9 +341,11 @@ class TTsCore:
             try:
                 source, subtitle_json, _, priority = self.play_queue.get(timeout=0.5)
             except queue.Empty:
-                # 完全空闲时关闭常驻 mpv 进程，避免进程挂着占资源
+                # 空闲：先解除"正在说话"（嘴型/loopback），但先不关 mpv——
+                # 关掉声卡会有一声"嗒"贴在句尾，挂一会儿再真正关
                 if not self.is_busy():
-                    self.player.shutdown()
+                    self.player.mark_idle()
+                    self.player.shutdown_if_idle(IDLE_CLOSE_SEC)
                 continue
 
             if self._is_paused():
@@ -405,7 +395,7 @@ class TTsCore:
     def _play_stream_source(self, source: StreamSource, text: str = ""):
         """阻塞播放一个流式源：边收边播直到结束/打断，同时旁路镜像给手机通道
 
-        - 段首做一次淡入，段尾只补静音（服务端句尾本身是自然衰减，不再叠淡出）；
+        - 段首淡入、段尾淡出：最后 30ms 留下一段，收尾时做斜坡，避免硬切到静音的"啪";
         - 没有数据就等：管道自带约 1s 缓冲，不要在这里补静音，否则句内分块间隙
           会把语音切成碎片（实测能让 2 秒语音里塞进 30 段静音）。
         """
@@ -425,12 +415,16 @@ class TTsCore:
                                     sample_rate=samplerate, source=src_name,
                                     seg_index=getattr(source, "seg_index", 0))
         try:
-            self.log.info(f"[TTS->phone] source={src_name} bytes_text={len(text or '')}")
+            self.log.debug(f"[TTS->phone] source={src_name} bytes_text={len(text or '')}")
         except Exception:
             pass
         ok = True
         first_chunk = True
         idle_start = None
+        frame = 2 * max(1, int(channels))
+        # 留住最后 TAIL_FADE_MS 毫秒，收尾时淡出再写入
+        hold = int(samplerate * TAIL_FADE_MS / 1000.0) * frame
+        pending = bytearray()
         try:
             while True:
                 data, finished = source.pop(timeout=0.02)
@@ -442,12 +436,18 @@ class TTsCore:
                         self.tts_phone.push(data)
                     except Exception:
                         pass
-                    if first_chunk:
-                        first_chunk = False
-                        data = fade_in(data, samplerate, channels)
-                    if not self.player.write(data, self.config.volume):
-                        ok = False
-                        break
+                    pending += data
+                    cut = len(pending) - hold
+                    cut -= cut % frame
+                    if cut > 0:
+                        out = bytes(pending[:cut])
+                        del pending[:cut]
+                        if first_chunk:
+                            first_chunk = False
+                            out = fade_in(out, samplerate, channels)
+                        if not self.player.write(out, self.config.volume):
+                            ok = False
+                            break
                 else:
                     now = time.monotonic()
                     if idle_start is None:
@@ -460,16 +460,21 @@ class TTsCore:
                         break
         finally:
             self.tts_phone.end_stream()
+        if ok and pending:
+            self.player.write(fade_out(bytes(pending), samplerate, channels), self.config.volume)
         self._play_tail(src_name, allow_pause=ok)
 
     def _play_tail(self, src_name: str = "", allow_pause: bool = True):
-        """段尾只补静音；后面还有片段时把段间停顿也写成静音内容"""
+        """段尾补静音：段间按配置停顿；整轮最后一段额外补一点收尾静音"""
         try:
             self.player.write_silence(TAIL_SILENCE_MS)
-            if not allow_pause or not self._pause_enabled_for(src_name):
+            if not allow_pause:
                 return
-            # 这一轮已经播完就不占用停顿时间
+            # 这一轮已经播完：只补收尾静音（不改句间停顿），别让声卡在话音刚停时收工
             if self.play_queue.empty() and not self._has_pending_segments():
+                self.player.write_silence(END_SILENCE_MS)
+                return
+            if not self._pause_enabled_for(src_name):
                 return
             pause_ms = random.uniform(self.config.pause_min_ms, self.config.pause_max_ms)
             self.player.write_silence(pause_ms)
@@ -567,7 +572,7 @@ class TTsCore:
             source, reply_json, is_end, priority = tracker["buffer"].pop(idx)
             self.subtitle.put(reply_json)
             if source is not None:
-                self.log.info(f"[{tracker['traceid']}] 播放片段 {idx + 1}")
+                self.log.debug(f"[{tracker['traceid']}] 播放片段 {idx + 1}")
                 self.play_queue.put((source, reply_json, is_end, priority))
             tracker["next"] += 1
 
@@ -633,9 +638,6 @@ class TTsCore:
         """tts_say_do 的加锁主体（调用方已持有 synth_lock）"""
         seg_index = json.get("seg_index", 0)
         is_segmented = "seg_index" in json
-
-        with self.count_lock:
-            self.ttsData.SayCount += 1
 
         text = json.get("text", "")
         reply_text = text
@@ -891,8 +893,6 @@ class TTsCore:
                 self.ttsData.task_queue.get_nowait()
             except Exception:
                 pass
-        with self.ttsData.task_lock:
-            self.ttsData.pending_tasks.clear()
 
     def http_chatreply(self):
         """返回聊天回复 JSON（供前端轮询）"""

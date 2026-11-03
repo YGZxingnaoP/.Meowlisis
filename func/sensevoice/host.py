@@ -26,15 +26,3 @@ class SenseVoiceHost:
         """热重载钩子：按最新 sensevoice.enabled 切换总开关"""
         if self.core is not None:
             self.core.apply_enabled(SenseVoiceConfig().enabled)
-
-    @property
-    def running(self) -> bool:
-        return bool(self.core is not None and self.core.enabled)
-
-    @property
-    def hub(self):
-        return self.core.hub if self.core is not None else None
-
-    @property
-    def subtitle(self):
-        return self.core.subtitle if self.core is not None else None

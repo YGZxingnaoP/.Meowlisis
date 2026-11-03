@@ -2,7 +2,6 @@
 # func/sensevoice/subtitle.py - 手机语音识别文本（用户字幕）环形缓冲
 # 供手机端轮询显示"你说：..."，与 tts 的回复字幕（ReplyTextList）分开
 
-import re
 import threading
 from collections import deque
 
@@ -27,8 +26,3 @@ class SenseVoiceSubtitle:
             if not self._items:
                 return None
             return self._items.popleft()
-
-    def clear(self):
-        """清空缓冲"""
-        with self._lock:
-            self._items.clear()

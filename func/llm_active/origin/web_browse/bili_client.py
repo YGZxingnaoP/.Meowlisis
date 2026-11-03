@@ -7,7 +7,6 @@ import random
 from typing import Dict, Optional
 
 from func.log.default_log import DefaultLog
-from func.llm_active.origin.web_browse.config import AutoWebBrowseConfig
 
 # 修过 cookie 的 Credential 子类（延迟构造，只建一次）
 _CREDENTIAL_CLS = None
@@ -109,7 +108,6 @@ class AutoBiliClient:
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
-        self.config = AutoWebBrowseConfig()
         # 启用 bili_ticket，应对 B站 412 安全风控（需在发请求前设置）；
         # 必须配套装兜底：该接口失败时 bilibili_api 会抛 KeyError 打死所有请求
         try:

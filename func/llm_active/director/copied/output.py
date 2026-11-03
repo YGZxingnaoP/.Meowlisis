@@ -25,7 +25,6 @@ class Output:
         self.tts_bridge = LLMTtsBridge()
         self.source = source
 
-        self.all_content = ""
         self.filtered_content = ""
         self.temp = ""
         self.segment_idx = 0
@@ -53,7 +52,6 @@ class Output:
         """处理单个流式块：逐字符过滤后尝试分段发送"""
         if not chunk:
             return
-        self.all_content += chunk
         for ch in chunk:
             self._feed(ch)
         self._split_send(traceid)
@@ -113,16 +111,6 @@ class Output:
                     self.temp += c
             else:
                 self.temp += ch
-
-    def send_preamble(self, text: str, traceid: str):
-        """发送朗读前置段（弹幕朗读等），占用 seg_index=0，后续 LLM 回复从 1 开始。"""
-        if not text or not text.strip():
-            return
-        self.tts_bridge.send_chat_segment(
-            text.strip(), traceid,
-            seg_index=0, chat_status="", source=self.source,
-        )
-        self.segment_idx = 1
 
     def _split_send(self, traceid: str):
         """按标点在达到最小长度后切分发送"""
@@ -195,40 +183,6 @@ class Output:
         text = re.sub(r"（[^）]*）", "", text)
         text = re.sub(r"\([^)]*\)", "", text)
         return text.strip()
-
-    @staticmethod
-    def clean_text(text: str) -> str:
-        """一次性清洗完整回复文本：去 think 标签、方括号【】、圆括号（）() 内容"""
-        if not text:
-            return ""
-        text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
-        text = re.sub(r"</?think>", "", text)
-        text = re.sub(r"【[^】]*】", "", text)
-        text = re.sub(r"（[^）]*）", "", text)
-        text = re.sub(r"\([^)]*\)", "", text)
-        return text.strip()
-
-    @classmethod
-    def split_text(cls, text: str, split_chars, split_limit: int) -> list:
-        """一次性把完整文本切分为小句列表（与流式 _split_send 同规则）"""
-        segments = []
-        temp = ""
-        for ch in text:
-            temp += ch
-            if len(temp) >= split_limit:
-                last_punct_pos = -1
-                for punct in split_chars:
-                    pos = temp.rfind(punct)
-                    if pos > last_punct_pos:
-                        last_punct_pos = pos
-                if last_punct_pos != -1:
-                    seg = temp[:last_punct_pos + 1].strip()
-                    temp = temp[last_punct_pos + 1:]
-                    if seg:
-                        segments.append(seg)
-        if temp.strip():
-            segments.append(temp.strip())
-        return segments
 
     @staticmethod
     def _collapse_punctuation(text: str) -> str:

@@ -509,14 +509,16 @@ def _is_traceback_cont(ln, pending):
 def _make_record(ln):
     """把一行原始日志解析成结构化记录。
 
-    返回 {lv, ts, src, msg, txt, more, t}：
+    返回 {lv, ts, src, msg, txt, more, tier, noise, t, d, scene, icon, fault}：
         lv   归一后的级别（ERROR / WARN / INFO / ''）
         ts   时间戳（非标准格式为空）
         src  来源 logger（非标准格式为空）
-        msg  去掉时间/来源/级别后的正文（前端主行显示这个）
-        txt  完整原始行（前端"原文"折叠里显示）
+        msg  去掉时间/来源/级别后的正文
+        txt  完整原始行（前端"原文"抽屉里显示）
         more 归并进来的续行数（异常堆栈用）
-        t    转译短句（匹配不到规则则为空，前端回退显示 msg）
+        tier story / warn / error / bg（见 log_rules.classify）
+        noise 噪音类别（bg 时的归类，用于"折叠了多少行"统计）
+        t/d  事件短句与关键值（story/warn/error 才有）
     """
     m = _STD_LOG.match(ln)
     if m:
@@ -536,34 +538,58 @@ def _make_record(ln):
         elif _TB_START.search(ln):
             lv = 'ERROR'
         rec = {'lv': lv, 'ts': '', 'src': '', 'msg': ln, 'txt': ln, 'more': 0}
-    # t = 转译短句（稳定 i18n key，不含变量）；d = 关键值（工具名/用户名…）
-    rec['t'], rec['d'] = log_rules.translate(rec['msg'])
+    cls = log_rules.classify(rec['msg'], rec.get('src') or '', rec.get('lv') or '')
+    rec.update(tier=cls['tier'], noise=cls['noise'], t=cls['title'],
+               d=cls['detail'], scene=cls['scene'], icon=cls['icon'],
+               fault=cls['fault'])
     return rec
 
 
-def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
+def _reclassify_block(rec):
+    """堆栈块整段重新判一遍：块头和错误行不在同一行，只看首行会误判。
+
+    典型：CatPaws 的 `Exception occurred...` + Traceback + ConnectionAbortedError
+    —— 首行看不出是"无害断连"，整段才看得出来。
+    """
+    body = rec.get('txt') or ''
+    if not body:
+        return
+    cls = log_rules.classify(body, rec.get('src') or '', rec.get('lv') or '')
+    rec.update(tier=cls['tier'], noise=cls['noise'], t=cls['title'],
+               d=cls['detail'], scene=cls['scene'], icon=cls['icon'],
+               fault=cls['fault'])
+    if cls['tier'] == log_rules.TIER_ERROR and not rec.get('d'):
+        for ln in body.split('\n'):
+            if log_rules.CONN_ERROR.search(ln):
+                rec['d'] = ln.strip()[:120]
+                break
+
+
+def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None,
+              include_bg=False):
     """按字节偏移读日志。
 
     since=None 首次读：只取文件尾部 first_bytes，避免几十 MB 老日志拖死浏览器。
     since 有值：只读 since 之后的新内容（增量轮询用，几乎零成本）。
-    返回 (lines, offset, size)。offset 永远停在最后一个换行之后，
-    这样"半行"不会被截断返回，下次也不会重复。
+    include_bg=True：把"后台层"也返回（前端展开后台时才要）。
+    返回 (lines, offset, size, noise)——noise 是本次被折叠的行按类别计数。
     """
     path = _log_path(key, day)
+    noise = {}
     if not path.is_file():
-        return [], 0, 0
+        return [], 0, 0, noise
     size = path.stat().st_size
     start = since if isinstance(since, int) and since >= 0 else None
     if start is None or start > size:
         start = max(0, size - first_bytes)
     if start == size:
-        return [], size, size
+        return [], size, size, noise
     with open(path, 'rb') as f:
         f.seek(start)
         blob = f.read(min(size - start, 4 * 1024 * 1024))
     cut = blob.rfind(b'\n')
     if cut < 0:
-        return [], start, size          # 还没有完整的一行
+        return [], start, size, noise          # 还没有完整的一行
     text = _decode(blob[:cut + 1])
     offset = start + cut + 1
     raw = text.split('\n')[:-1]
@@ -594,9 +620,12 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
             pending['more'] += 1
             pending['lv'] = 'ERROR'
             continue
+        if pending is not None:
+            _reclassify_block(pending)      # 块结束：整段重新判一次
+            pending = None
         rec = _make_record(ln)
         pending = rec if _TB_START.search(ln) else None
-        shp = (rec.get('lv'), shape_of(rec['msg']))
+        shp = (rec.get('tier'), rec.get('lv'), shape_of(rec['msg']))
         if out and shp == prev_shape:
             top = out[-1]
             top['n'] = int(top.get('n') or 1) + 1
@@ -606,6 +635,8 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
         rec['_k'] = shp
         prev_shape = shp
         out.append(rec)
+    if pending is not None:
+        _reclassify_block(pending)
     if len(out) > 1:
         freq = {}
         for r in out:
@@ -613,7 +644,7 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
         keep, first = [], {}
         for r in out:
             k = r.pop('_k', None)
-            if freq.get(k, 0) >= REPEAT_MIN and r.get('lv') != 'ERROR':
+            if freq.get(k, 0) >= REPEAT_MIN and r.get('tier') != log_rules.TIER_ERROR:
                 if k in first:
                     top = first[k]
                     top['n'] = int(top.get('n') or 1) + int(r.get('n') or 1)
@@ -622,7 +653,22 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None):
                 first[k] = r
             keep.append(r)
         out = keep
-    return out, offset, size
+    # 后台层：默认不返回，只按类别计数；展开后台时才带上
+    if not include_bg:
+        kept = []
+        for r in out:
+            if r.get('tier') == log_rules.TIER_BG:
+                cat = r.get('noise') or 'other'
+                noise[cat] = noise.get(cat, 0) + int(r.get('n') or 1)
+                continue
+            kept.append(r)
+        out = kept
+    else:
+        for r in out:
+            if r.get('tier') == log_rules.TIER_BG:
+                cat = r.get('noise') or 'other'
+                noise[cat] = noise.get(cat, 0) + int(r.get('n') or 1)
+    return out, offset, size, noise
 
 
 def _decode(blob):
@@ -1065,10 +1111,12 @@ def register(app, base_dir=None, gui_dir=None):
         except Exception:
             limit = 1500
         day = request.args.get('date') or None
-        lines, offset, size = read_tail(key, since, limit, day=day)
+        show_bg = request.args.get('bg') not in (None, '', '0', 'false')
+        lines, offset, size, noise = read_tail(key, since, limit, day=day, include_bg=show_bg)
         run, pid, ports = _running(key)
         return jsonify({'status': 'ok', 'key': key, 'lines': lines,
-                        'offset': offset, 'size': size,
+                        'offset': offset, 'size': size, 'noise': noise,
+                        'bg': 1 if show_bg else 0,
                         'running': run, 'pid': pid, 'ports': ports})
 
 

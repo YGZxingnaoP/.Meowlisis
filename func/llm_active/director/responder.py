@@ -49,6 +49,7 @@ class DirectorResponder:
         """用户回合入队；立即重置一次主动回复计时（与主链路 msg_deal 一致）"""
         if not self.core.is_active():
             return False
+        self._abort_turn()
         try:
             self._queue.put_nowait({"uid": str(uid or ""), "text": str(text or ""),
                                     "source": str(source or "msg"),
@@ -106,6 +107,22 @@ class DirectorResponder:
         except Exception:
             self.log.exception("[导演] 归档副本短期记忆失败")
 
+    def _abort_turn(self):
+        """用户开口：让正在生成的那一轮收手（与主链路共用同一代际）"""
+        try:
+            from func.pipeline.speech_interrupt import SpeechInterruptBridge
+            SpeechInterruptBridge().bump("导演收到新回合")
+        except Exception:
+            self.log.exception("[导演] 打断上一轮失败")
+
+    def _discard_output(self):
+        """打断后清掉已排队的 TTS 段"""
+        try:
+            from func.pipeline.toolbox_tts import ToolboxTtsBridge
+            ToolboxTtsBridge().interrupt()
+        except Exception:
+            self.log.exception("[导演] 打断后清理 TTS 队列失败")
+
     # ==================== 生成 ====================
     def _generate(self, kind: str, uid, user_text: str, source: str, traceid: str) -> str:
         if not self.core.is_active():
@@ -117,6 +134,9 @@ class DirectorResponder:
         ai_name = str(AppConfig().ai_name or "")
         traceid = traceid or str(uuid.uuid4())
         is_reply = (kind == "reply")
+        from func.pipeline.speech_interrupt import SpeechInterruptBridge
+        abort = SpeechInterruptBridge()
+        token = abort.token()
 
         # 1) 工具与合并开关（与主链路一致：合并开着才挂 toolbox 工具）
         tools = [step_tool()]
@@ -145,9 +165,10 @@ class DirectorResponder:
             if plan is not None:
                 name, arguments = plan
                 if name:
+                    # 走 hard_trigger：先进触发态，角色可拒绝（拒绝台词已 TTS 播报）
                     threading.Thread(
-                        target=self.toolbox.handle_tool_calls,
-                        args=([{"name": name, "arguments": arguments}], uid, user_text),
+                        target=self.toolbox.hard_trigger,
+                        args=(name, arguments, uid, user_text),
                         daemon=True).start()
                 try:
                     self.builder.add_user_message(uid, user_text)
@@ -200,6 +221,8 @@ class DirectorResponder:
             stream = self.core.reply_llm.chat_stream(
                 messages, tools=tools, tool_choice="auto", options=options)
             for chunk in stream:
+                if abort.aborted(token):
+                    break
                 if not chunk.choices:
                     continue
                 delta = chunk.choices[0].delta
@@ -214,6 +237,13 @@ class DirectorResponder:
         payload = acc.payload() if acc.has_calls() else []
         step_args, other_calls = self._split_calls(payload)
 
+        if abort.aborted(token):
+            self.log.info("[导演] 已被新的输入打断，本轮不写记忆、不推进计划")
+            self._discard_output()
+            if is_reply:
+                self.ltmem.clear_memory_context()
+            return ""
+
         # 8) 只调了工具、没正文 → 去掉全部工具重生成一次
         if not got_content and step_args is not None:
             self.log.info("[导演] 只回了 director_step，没有正文，去工具重生成")
@@ -225,6 +255,8 @@ class DirectorResponder:
             try:
                 stream = self.core.reply_llm.chat_stream(retry_messages, options=options)
                 for chunk in stream:
+                    if abort.aborted(token):
+                        break
                     if not chunk.choices:
                         continue
                     delta = chunk.choices[0].delta

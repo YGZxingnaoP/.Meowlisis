@@ -1,20 +1,23 @@
 /**
  * 日志中心前端（/logs）
  *
- * 拉取：1s 轮询 /api/logs/tail?svc=&since=<字节偏移>，只取新增内容。
- * 展示：后端已把每行解析成 {lv, ts, src, msg, txt, more, t}
- *   - t    转译后的人话（匹配不到规则则为空）
- *   - msg  去掉时间/来源/级别后的正文
- *   - txt  完整原始行（折叠在"原文"里，诊断用）
- *   - more 归并进来的续行数（异常堆栈）
- * 级别分成「日志 / 警告 / 错误」三个页签（另有"全部"），每个页签带计数。
+ * 设计原则：这里是"她干了什么"的事件流，不是工程日志查看器。
+ *   - 后端把每行判成 story / warn / error / bg 四层（见 gui/tools/log_rules.py）
+ *   - 默认只渲染前三层，一行一个事件（图标 + 一句话 + 时间）
+ *   - 后台层（管道/参数/轮询/进度条/已知无害断连）只折叠计数，一键可展开
+ *   - 点一行 → 右侧抽屉看原文/堆栈（不再占三行常驻）
+ *
+ * 接口：GET /api/logs/tail?svc=&since=&bg=1
+ *   lines: [{tier, scene, icon, t, d, ts, src, txt, n, more, fault, lv}]
+ *   noise: {类别: 折叠行数}
  */
 (function () {
     'use strict';
 
-    var MAX_LINES = 4000;          // 页面最多保留多少行，防内存膨胀
+    var MAX_LINES = 3000;          // 页面最多保留多少条事件，防内存膨胀
     var TAIL_MS = 1000;            // 日志轮询间隔
     var LIST_MS = 3000;            // 服务状态轮询间隔
+    var MERGE_MS = 30000;          // 同一条事件在这个时间窗内合并成 ×N
 
     var $ = function (id) { return document.getElementById(id); };
 
@@ -23,27 +26,58 @@
         return s;
     }
 
+    // 场景 → 图标（页面上的页签）
+    var SCENES = [
+        ['', '全部', '📋'],
+        ['chat', '聊天', '💬'],
+        ['voice', '语音', '🎤'],
+        ['phone', '手机', '📱'],
+        ['paint', '画图', '🎨'],
+        ['sing', '唱歌', '🎵'],
+        ['mind', '心情', '💗'],
+        ['sys', '系统', '⚙️']
+    ];
+
+    // 事件图标键 → 字符
+    var ICONS = {
+        'in': '📥', 'say': '🗣', 'out': '💬', 'pic': '🖼', 'file': '📎', 'emoji': '😊',
+        'phone': '📱', 'paint': '🎨', 'music': '🎵', 'heart': '💗', 'mic': '🎤',
+        'eye': '👁', 'power': '🔌', 'link': '🔗', 'tool': '🔧', 'gear': '⚙️',
+        'warn': '⚠️', 'error': '❗', 'dot': '·'
+    };
+
+    // 折叠类别 → 中文（只用于"已折叠 N 行"的明细）
+    var NOISE_LABEL = {
+        'access': '访问日志', 'frame': '帧注入', 'progress': '进度条',
+        'tts-pipe': '语音管道', 'conn-quiet': '连接抖动', 'retry': '重连重试',
+        'boundary': '说话边界', 'known-fail': '已知失败', 'judge': '判定细节',
+        'banner': '分隔行', 'diag': '诊断', 'module': '模块内部',
+        'other': '未分类', 'empty': '空行'
+    };
+
     var elList = $('svcList'), elLines = $('lines'), elView = $('view');
     var elCurName = $('curName'), elCurState = $('curState'), elCurFile = $('curFile');
-    var elFilter = $('filter'), elEmpty = $('empty'), elTabs = $('levelTabs');
-    var elPanel = $('svcPanel');
+    var elFilter = $('filter'), elEmpty = $('empty'), elScenes = $('scenes');
+    var elPanel = $('svcPanel'), elBudget = $('budget'), elOnlyProb = $('onlyProblems');
+    var elDrawer = $('drawer'), elDrawerTitle = $('drawerTitle'), elDrawerRaw = $('drawerRaw');
     var elQrBox = $('qrBox'), elQrImg = $('qrImg'), elQrHint = $('qrHint');
     var elQrWebui = $('qrWebui'), elQrToken = $('qrToken');
-    var elStatLines = $('statLines'), elStatSize = $('statSize'), elStatRate = $('statRate');
-    var elStatErr = $('statErr'), elTs = $('tsInfo'), elAuto = $('autoScroll');
+    var elStatLines = $('statLines'), elStatBg = $('statBg'), elStatSize = $('statSize');
+    var elStatRate = $('statRate'), elStatErr = $('statErr'), elTs = $('tsInfo');
+    var elAuto = $('autoScroll');
 
     var cur = 'main';              // 当前服务
     var offset = null;             // 已读到的字节偏移
-    var paused = false;            // 暂停拉取
+    var paused = false;
     var rate = 0, rateTick = 0, rateN = 0;
     var alive = true;
-    var level = '';                // 当前级别页签：'' | 'INFO' | 'WARN' | 'ERROR'
-    // 没有级别的行（第三方服务日志居多）归入「日志」一类
-    var counts = { 'INFO': 0, 'WARN': 0, 'ERROR': 0 };
-
-    function bucketOf(lv) {
-        return (lv === 'WARN' || lv === 'ERROR') ? lv : 'INFO';
-    }
+    var scene = '';                // 当前场景页签
+    var onlyProblems = false;      // 只看问题
+    var bgShown = false;           // 是否展开后台层
+    var noiseTotals = {};          // 折叠统计（本次会话累计）
+    var counts = { story: 0, warn: 0, error: 0, bg: 0 };
+    var lastRec = null;            // 上一条事件的 DOM/时间去重合并用
+    var openedKey = '';            // 抽屉里当前是哪个事件
 
     // ---------------- 工具 ----------------
     function toast(msg, isErr) {
@@ -92,8 +126,16 @@
         }
     }
 
+    function hhmm(ts) {
+        var m = /(\d{2}:\d{2}:\d{2})/.exec(String(ts || ''));
+        return m ? m[1].slice(0, 5) : '';
+    }
+
+    function iconOf(rec) {
+        return ICONS[rec.icon] || (rec.tier === 'error' ? '❗' : (rec.tier === 'warn' ? '⚠️' : '·'));
+    }
+
     // ---------------- 过滤 ----------------
-    // 过滤正则按"关键词"缓存：refilter 时会逐条问一遍，原来每问一条就 new 一次 RegExp
     var _fReKw = null, _fRe = null;
     function filterRe() {
         var kw = (elFilter.value || '').trim();
@@ -112,35 +154,89 @@
     }
 
     function lineOk(rec) {
-        if (level && bucketOf(rec.lv || '') !== level) return false;
+        if (onlyProblems && rec.tier !== 'error') return false;
+        if (scene && rec.scene !== scene) return false;
         var re = filterRe();
         if (!re) return true;
         return re.test(rec.txt || rec.msg || '');
     }
 
-    // ---------------- 计数（页签角标） ----------------
-    function setBadge(id, n) {
-        var el = $(id);
-        if (el) el.textContent = n > 999 ? '999+' : String(n);
+    // ---------------- 计数 / 折叠预算 ----------------
+    function updateCounts() {
+        elStatLines.textContent = _t('{n} 条事件', { n: counts.story + counts.warn + counts.error });
+        if (elStatBg) {
+            var hidden = 0;
+            Object.keys(noiseTotals).forEach(function (k) { hidden += noiseTotals[k]; });
+            counts.bg = hidden;
+            elStatBg.textContent = _t('后台 {n} 行', { n: hidden });
+        }
+        renderBudget();
     }
 
-    function updateCounts() {
-        setBadge('cntAll', counts.INFO + counts.WARN + counts.ERROR);
-        setBadge('cntINFO', counts.INFO);
-        setBadge('cntWARN', counts.WARN);
-        setBadge('cntERROR', counts.ERROR);
+    function renderBudget() {
+        if (!elBudget) return;
+        var keys = Object.keys(noiseTotals).sort(function (a, b) { return noiseTotals[b] - noiseTotals[a]; });
+        var total = 0;
+        keys.forEach(function (k) { total += noiseTotals[k]; });
+        if (!total) {
+            elBudget.innerHTML = '';
+            elBudget.hidden = true;
+            return;
+        }
+        elBudget.hidden = false;
+        var detail = keys.slice(0, 5).map(function (k) {
+            return esc(_t(NOISE_LABEL[k] || k)) + ' ' + noiseTotals[k];
+        }).join(' · ');
+        elBudget.innerHTML =
+            '<span class="budget-t">' + esc(_t('已折叠 {n} 行技术日志', { n: total })) + '</span>' +
+            '<span class="budget-d">' + detail + (keys.length > 5 ? ' …' : '') + '</span>' +
+            '<button class="lh-btn budget-btn" id="btnBg">' +
+            esc(bgShown ? _t('收起后台') : _t('展开后台')) + '</button>';
+        var b = $('btnBg');
+        if (b) b.addEventListener('click', function () { toggleBg(); });
+    }
+
+    function addNoise(noise) {
+        if (!noise) return;
+        Object.keys(noise).forEach(function (k) {
+            noiseTotals[k] = (noiseTotals[k] || 0) + noise[k];
+        });
     }
 
     function resetCounts() {
-        counts = { 'INFO': 0, 'WARN': 0, 'ERROR': 0 };
+        counts = { story: 0, warn: 0, error: 0, bg: 0 };
+        noiseTotals = {};
+        lastRec = null;
         updateCounts();
     }
 
-    function applyTabs() {
-        if (!elTabs) return;
-        Array.prototype.forEach.call(elTabs.querySelectorAll('.lh-tab'), function (t) {
-            t.classList.toggle('on', (t.dataset.lv || '') === level);
+    function applyScenes() {
+        if (!elScenes) return;
+        Array.prototype.forEach.call(elScenes.querySelectorAll('.lh-scene'), function (b) {
+            b.classList.toggle('on', (b.dataset.scene || '') === scene);
         });
+        if (elOnlyProb) elOnlyProb.classList.toggle('on', onlyProblems);
+    }
+
+    // ---------------- 抽屉（原文） ----------------
+    function openDrawer(rec) {
+        if (!elDrawer) return;
+        var head = (rec.t ? _t(rec.t) : _t('日志原文'));
+        if (rec.d) head += '：' + rec.d;
+        elDrawerTitle.textContent = head;
+        var meta = [];
+        if (rec.ts) meta.push(rec.ts);
+        if (rec.src) meta.push(shortSrc(rec.src));
+        if (rec.lv) meta.push(rec.lv);
+        if (rec.n > 1) meta.push('×' + rec.n);
+        elDrawerRaw.textContent = (meta.length ? meta.join(' · ') + '\n\n' : '') + (rec.txt || rec.msg || '');
+        elDrawer.hidden = false;
+        openedKey = (rec.ts || '') + (rec.txt || '').slice(0, 40);
+    }
+
+    function closeDrawer() {
+        if (elDrawer) elDrawer.hidden = true;
+        openedKey = '';
     }
 
     // ---------------- 渲染 ----------------
@@ -152,42 +248,59 @@
         if (elAuto.checked && wasBottom) elView.scrollTop = elView.scrollHeight;
     }
 
-    /** 一条日志 = 级别 + 摘要（转译后的人话，没有就用正文）+ 时间/来源 + 可折叠原文 */
+    /** 一条事件 = 图标 + 一句话 + ×N + 时间；点开看原文 */
     function lineNode(rec) {
-        var lv = rec.lv || '';
         var d = document.createElement('div');
-        d.className = 'lh-line' + (lv ? ' line-' + lv : '');
-
-        // 转译命中 → 显示人话（有 key 值就拼成「短句：值」）；否则回退原始正文
-        var seen = rec.t ? _t(rec.t) : '';
-        if (seen && rec.d) seen += '：' + rec.d;
-        var title = seen || rec.msg || rec.txt || '';
-        var html = '<span class="lv">' + esc(lv) + '</span><div class="body">';
-        html += '<div class="sum">' + esc(title);
-        if (rec.n > 1) html += '<i class="more" title="' + esc(_t('相同内容合并了多少行')) + '">×' + rec.n + '</i>';
-        if (rec.more) html += '<i class="more" title="' + esc(_t('展开原文可看到其余堆栈行')) + '">+' + rec.more + '</i>';
-        html += '</div>';
-
-        var meta = [];
-        if (rec.ts) meta.push('<span class="ts">' + esc(rec.ts) + '</span>');
-        if (rec.src) meta.push('<span class="src" title="' + esc(rec.src) + '">' + esc(shortSrc(rec.src)) + '</span>');
-        if (meta.length) html += '<div class="meta">' + meta.join(' · ') + '</div>';
-
-        if (rec.t) {
-            html += '<details class="raw"><summary>' + esc(_t('原文')) + '</summary><pre>' + esc(rec.txt || '') + '</pre></details>';
-        }
-        html += '</div>';
+        d.className = 'lh-ev tier-' + (rec.tier || 'story') + (rec.fault ? ' fault' : '')
+            + (rec.tier === 'bg' ? ' is-bg' : '');
+        var text = rec.t ? _t(rec.t) : (rec.msg || '');
+        if (rec.d) text += '：' + rec.d;
+        var html = '<span class="ic">' + esc(iconOf(rec)) + '</span>';
+        html += '<span class="tx">' + esc(text) + '</span>';
+        if (rec.n > 1) html += '<span class="n">×' + rec.n + '</span>';
+        if (rec.more) html += '<span class="n more">+' + rec.more + '</span>';
+        html += '<span class="tm">' + esc(hhmm(rec.ts)) + '</span>';
         d.innerHTML = html;
+        d.title = _t('点开看原文');
+        d.addEventListener('click', function () { openDrawer(rec); });
         return d;
+    }
+
+    /** 同一条事件在 30 秒内合并成 ×N（后端已经按形状合并过一轮，这里补时间窗） */
+    function mergeInto(rec) {
+        if (!lastRec || !lastRec.el || !lastRec.ms) return false;
+        if (rec.tier === 'error') return false;
+        var key = (rec.t || rec.msg || '') + '|' + (rec.d || '') + '|' + (rec.tier || '');
+        if (key !== lastRec.key) return false;
+        var ms = Date.parse((rec.ts || '').replace(',', '.'));
+        if (isNaN(ms) || isNaN(lastRec.ms)) return false;
+        if (Math.abs(ms - lastRec.ms) > MERGE_MS) return false;
+        lastRec.n += 1;
+        var el = lastRec.el;
+        var badge = el.querySelector('.n');
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.className = 'n';
+            el.insertBefore(badge, el.querySelector('.tm'));
+        }
+        badge.textContent = '×' + lastRec.n;
+        return true;
     }
 
     function append(records) {
         var keep = elAuto.checked ? atBottom() : false;
         var frag = document.createDocumentFragment(), added = 0;
         records.forEach(function (rec) {
+            counts[rec.tier] = (counts[rec.tier] || 0) + 1;
             if (!lineOk(rec)) return;
-            counts[bucketOf(rec.lv || '')]++;
-            frag.appendChild(lineNode(rec));
+            if (mergeInto(rec)) return;
+            var el = lineNode(rec);
+            frag.appendChild(el);
+            lastRec = {
+                el: el, n: rec.n || 1, tier: rec.tier,
+                key: (rec.t || rec.msg || '') + '|' + (rec.d || '') + '|' + (rec.tier || ''),
+                ms: Date.parse((rec.ts || '').replace(',', '.'))
+            };
             added++;
         });
         updateCounts();
@@ -199,7 +312,6 @@
             rateN += added;
             stick(keep);
         }
-        elStatLines.textContent = _t('{n} 行', { n: elLines.childElementCount });
     }
 
     function renderAll(records) {
@@ -208,10 +320,25 @@
         elEmpty.style.display = 'none';
         append(records);
         elView.scrollTop = elView.scrollHeight;      // 首次直接到底
+        // 这个服务这段时间没有任何"人话"事件 → 明确告诉用户，别以为坏了
+        if (!elLines.childElementCount) {
+            elEmpty.style.display = '';
+            var hidden = 0;
+            Object.keys(noiseTotals).forEach(function (k) { hidden += noiseTotals[k]; });
+            elEmpty.textContent = hidden
+                ? _t('这段时间只有技术日志（{n} 行，已折叠）· 点上面「展开后台」查看', { n: hidden })
+                : _t('这段时间没有事件');
+        }
     }
 
     function refilter() {
-        // 过滤/页签变了就从头重新拉一次（简单可靠，日志量可控）
+        offset = null;
+        bgShown = bgShown;      // 保持用户选择
+        loadOnce(true);
+    }
+
+    function toggleBg() {
+        bgShown = !bgShown;
         offset = null;
         loadOnce(true);
     }
@@ -220,6 +347,7 @@
     function loadOnce(reset) {
         var q = '/api/logs/tail?svc=' + encodeURIComponent(cur) + '&limit=1500';
         if (offset !== null && !reset) q += '&since=' + offset;
+        if (bgShown) q += '&bg=1';
         return api(q).then(function (j) {
             offset = j.offset;
             elStatSize.textContent = _t('文件 {size}', { size: fmtSize(j.size) });
@@ -231,8 +359,10 @@
                 elCurState.textContent = _t('○ 未运行');
             }
             elCurState.className = 'lh-state' + (j.running ? ' run' : '');
+            addNoise(j.noise);
             if (reset) renderAll(j.lines);
             else if (j.lines.length) append(j.lines);
+            else updateCounts();
             elStatErr.textContent = '';
             return j;
         }).catch(function (e) {
@@ -248,7 +378,7 @@
         if (now - rateTick >= 2000) {
             rate = Math.round(rateN / ((now - rateTick) / 1000));
             rateN = 0; rateTick = now;
-            elStatRate.textContent = rate ? _t('{n} 行/秒', { n: rate }) : '—';
+            elStatRate.textContent = rate ? _t('{n} 条/秒', { n: rate }) : '—';
         }
         setTimeout(tick, TAIL_MS);
     }
@@ -343,11 +473,10 @@
     }
 
     function refreshList(deep) {
-        // deep=1：点 ⟳ 时让后端在后台重扫一遍命令行（认出手动启动的服务）
         return api('/api/logs/services' + (deep ? '?deep=1' : '')).then(function (j) {
             renderList(j.items || []);
             var it = (j.items || []).filter(function (x) { return x.key === cur; })[0];
-            renderQr(it);              // 选中的是 NapCat 时同步二维码
+            renderQr(it);
         }).catch(function (e) {
             elStatErr.textContent = _t('服务列表读取失败: {msg}', { msg: e.message });
         });
@@ -359,7 +488,8 @@
 
     function toggleLogUi(show) {
         if (elView) elView.style.display = show ? '' : 'none';
-        if (elTabs) elTabs.style.display = show ? '' : 'none';
+        if (elScenes) elScenes.style.display = show ? '' : 'none';
+        if (elBudget) elBudget.style.display = show ? '' : 'none';
         if (elFilter) elFilter.style.display = show ? '' : 'none';
         var foot = document.querySelector('.lh-foot');
         if (foot) foot.style.display = show ? '' : 'none';
@@ -401,10 +531,15 @@
         elEmpty.style.display = '';
         elEmpty.textContent = _t('加载中…');
         offset = null;
+        scene = '';
+        onlyProblems = false;
+        bgShown = false;
+        closeDrawer();
+        applyScenes();
         resetCounts();
-        elStatLines.textContent = _t('{n} 行', { n: 0 });
+        elStatLines.textContent = _t('{n} 条事件', { n: 0 });
         elStatRate.textContent = '—';
-        qrShown = '';                  // 强制重画二维码区
+        qrShown = '';
         renderQr(it);
         Array.prototype.forEach.call(elList.children, function (r) {
             r.classList.toggle('on', r.dataset.key === key);
@@ -446,7 +581,7 @@
                 toast(nm + '：' + _t('已停止'));
                 return refreshList();
             }
-            if (tries >= 30) {                 // 最多盯 12 秒
+            if (tries >= 30) {
                 busyBtn(btn, false);
                 setRowBusy(key, false);
                 toast(nm + '：' + _t('已发出停止指令，进程还在释放资源'), false);
@@ -481,25 +616,48 @@
     }
 
     // ---------------- 绑定 ----------------
+    function buildScenes() {
+        if (!elScenes) return;
+        elScenes.innerHTML = '';
+        SCENES.forEach(function (s) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'lh-scene' + (s[0] === '' ? ' on' : '');
+            b.dataset.scene = s[0];
+            b.innerHTML = '<i>' + s[2] + '</i><span>' + esc(_t(s[1])) + '</span>';
+            b.addEventListener('click', function () {
+                if (scene === s[0]) return;
+                scene = s[0];
+                applyScenes();
+                refilter();
+            });
+            elScenes.appendChild(b);
+        });
+    }
+
     function bind() {
-        elFilter.placeholder = _t('过滤关键字（支持 | 或）');
-        elEmpty.textContent = _t('选择左侧服务查看日志');
-        applyTabs();
+        elFilter.placeholder = _t('搜索：关键词，多个用 | 分隔');
+        elEmpty.textContent = _t('选择左侧服务查看事件');
+        buildScenes();
+        applyScenes();
 
         if (elFilter) elFilter.setAttribute('autocomplete', 'off');
         elFilter.addEventListener('input', function () {
             clearTimeout(bind._t);
             bind._t = setTimeout(refilter, 400);
         });
-        if (elTabs) {
-            elTabs.addEventListener('click', function (e) {
-                var b = e.target.closest ? e.target.closest('.lh-tab') : null;
-                if (!b) return;
-                var lv = b.dataset.lv || '';
-                if (lv === level) return;
-                level = lv;
-                applyTabs();
+        if (elOnlyProb) {
+            elOnlyProb.addEventListener('click', function () {
+                onlyProblems = !onlyProblems;
+                applyScenes();
                 refilter();
+            });
+        }
+        if (elDrawer) {
+            var close = $('drawerClose');
+            if (close) close.addEventListener('click', closeDrawer);
+            elDrawer.addEventListener('click', function (e) {
+                if (e.target === elDrawer) closeDrawer();
             });
         }
         $('btnReload').addEventListener('click', function () {
@@ -522,6 +680,9 @@
         });
         $('btnStart').addEventListener('click', function () { act('start', cur); });
         $('btnStop').addEventListener('click', function () { act('stop', cur); });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') closeDrawer();
+        });
         window.addEventListener('beforeunload', function () { alive = false; unmountPanel(); });
     }
 

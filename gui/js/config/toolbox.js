@@ -353,6 +353,9 @@ Object.assign(Config, {
             this._check('启用 excuse 询问', 'toolbox.excuse_enabled', true,
                 'AI 有疑问时以角色口吻语音询问，并阻塞等待用户文本输入补充需求') +
             this._num('excuse 等待超时(秒)', 'toolbox.excuse_timeout', 60, 1, 600, 1);
+        h += this._section('硬触发裁决') +
+            this._num('情绪强度阈值', 'toolbox.consent_intensity', 2, 0, 5, 0.1,
+                '情绪强度大于该值时，关键字命中的工具会先问角色办不办（可以拒绝）；否则直接执行');
         h += this._section('快速回复工具选择') +
             this._check('启用快速回复直接选择工具', 'toolbox.fast_reply_direct_tool', true,
                 '优势：消除割裂感。工具决策与主回复合并为同一次 LLM 调用，上下文统一，不再出现快速回复与工具箱两条链路各行其是。' +

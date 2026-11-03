@@ -114,5 +114,3 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
             self.log.error(f"[flux_painter] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = TBFluxPainterMeowLLM

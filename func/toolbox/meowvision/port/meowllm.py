@@ -115,5 +115,3 @@ class TBVisionMeowLLM:
             self.log.error(f"[meowvision] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = TBVisionMeowLLM

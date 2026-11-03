@@ -26,7 +26,7 @@ class AutoVisionMeowLLM:
 
     def __init__(self, config: Optional[AutoVisionConfig] = None):
         self.log = DefaultLog().getLogger()
-        self.config = cfg = config if config is not None else AutoVisionConfig()
+        cfg = config if config is not None else AutoVisionConfig()
         self.base_url = getattr(cfg, "meowllm_base_url", None) or DEFAULT_BASE_URL
         self.model = getattr(cfg, "meowllm_model", None) or "meowllm-local"
         self.temperature = float(getattr(cfg, "temperature", None) or 0.8)
@@ -115,5 +115,3 @@ class AutoVisionMeowLLM:
             self.log.error(f"[auto_vision] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = AutoVisionMeowLLM

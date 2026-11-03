@@ -24,7 +24,6 @@ class Output:
         self.tts_bridge = LLMTtsBridge()
         self.source = source
 
-        self.all_content = ""
         self.filtered_content = ""
         self.temp = ""
         self.segment_idx = 0
@@ -53,7 +52,6 @@ class Output:
         """处理单个流式块：逐字符过滤后尝试分段发送"""
         if not chunk:
             return
-        self.all_content += chunk
         for ch in chunk:
             self._feed(ch)
         self._split_send(traceid)

@@ -36,25 +36,56 @@ class CWCatPawsVoice:
         except Exception:
             self.log.exception("[CatPaws] 打断播报失败")
 
-    def wait(self, meowid="", timeout=None):
-        """阻塞等待用户的一条文本回复（经 TBExcuse 的等待队列送达）"""
+    def begin_wait(self, meowid=""):
+        """先把回答窗口打开（不阻塞），再去生成/播报问题
+
+        问题本身要过一遍模型和 TTS，主人往往在这几秒里就答了；
+        窗口早开，抢答就会被截住送到服务端，而不是当成普通消息走掉。
+        """
+        try:
+            from func.toolbox.excuse import TBExcuse
+            TBExcuse().open_wait(meowid)
+        except Exception:
+            self.log.exception("[CatPaws] 打开回答窗口失败")
+
+    def take_wait(self, meowid="", timeout=None):
+        """从已打开的回答窗口里取一条文本"""
         wait_for = timeout if timeout is not None else (self.config.answer_timeout or 300)
         try:
             from func.toolbox.excuse import TBExcuse
-            return TBExcuse().wait_text(meowid, wait_for)
+            return TBExcuse().take_wait(meowid, wait_for)
         except Exception:
             self.log.exception("[CatPaws] 等待用户回复失败")
             return None
 
+    def end_wait(self, meowid=""):
+        """关闭回答窗口（此后的输入回到正常链路）"""
+        try:
+            from func.toolbox.excuse import TBExcuse
+            TBExcuse().close_wait(meowid)
+        except Exception:
+            self.log.exception("[CatPaws] 关闭回答窗口失败")
+
+    def wait(self, meowid="", timeout=None):
+        """阻塞等待用户的一条文本回复（开窗+取回复+关窗）"""
+        self.begin_wait(meowid)
+        try:
+            return self.take_wait(meowid, timeout)
+        finally:
+            self.end_wait(meowid)
+
     def excuse(self, reason, meowid=""):
         """手机没连上/服务没起来时，以角色口吻说明一句（不是固定播报）"""
-        text = self._character_line(reason, meowid)
-        if text:
-            self.speak(text)
-            return text
-        fallback = "手机那边现在还没连好，等我弄好了再帮你办。"
-        self.speak(fallback)
-        return fallback
+        text = ""
+        for _ in range(2):
+            text = self._character_line(reason, meowid)
+            if text:
+                break
+        if not text:
+            self.log.warning("[CatPaws] 兜底说明生成失败，本次不播报：%s" % reason)
+            return ""
+        self.speak(text)
+        return text
 
     def _character_line(self, reason, meowid=""):
         """让角色把「内部原因」转成自己会说的一句话"""

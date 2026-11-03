@@ -3,6 +3,7 @@
 import os
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import numpy as np
@@ -47,6 +48,30 @@ def fade_in(data: bytes, samplerate: int, channels: int = 1, ms: float = FADE_IN
         return data
 
 
+def fade_out(data: bytes, samplerate: int, channels: int = 1, ms: float = FADE_IN_MS) -> bytes:
+    """对一段 int16 PCM 的尾部做线性淡出
+
+    句尾最后几个采样哪怕只有几百，直接切到静音也是一下"啪"的台阶；
+    给 20~40ms 的斜坡下去，收尾就自然了。
+    """
+    if not data or ms <= 0:
+        return data
+    try:
+        n_ch = max(1, int(channels or 1))
+        arr = np.frombuffer(data, dtype=np.int16).astype(np.float32)
+        frames = arr.size // n_ch
+        k = min(int(int(samplerate or 32000) * ms / 1000.0), frames)
+        if k <= 0:
+            return data
+        ramp = np.linspace(1.0, 0.0, k, dtype=np.float32)
+        if n_ch > 1:
+            ramp = np.repeat(ramp, n_ch)
+        arr[-k * n_ch:] *= ramp
+        return np.clip(arr, -32768, 32767).astype(np.int16).tobytes()
+    except Exception:
+        return data
+
+
 class AudioPlayer:
     """mpv 子进程音频播放器，支持立即打断
 
@@ -64,6 +89,20 @@ class AudioPlayer:
         self._write_lock = threading.Lock()
         # 置位后正在写的播放线程立即放手，保证打断及时
         self._stopping = threading.Event()
+        # 最后一次写入的时间：用于延迟关闭常驻进程（关闭声卡会有一声"嗒"）
+        self._last_ts = 0.0
+        # 对外播报状态（嘴型/loopback 静音）：进程留着不等于"还在说话"
+        self._ui_playing = False
+
+    def _touch(self):
+        self._last_ts = time.monotonic()
+
+    def _ui_set(self, playing: bool):
+        """只在状态真正变化时驱动表现层，避免重复调用"""
+        if self._ui_playing == playing:
+            return
+        self._ui_playing = playing
+        _set_playing(playing)
 
     # ==================== 进程生命周期 ====================
 
@@ -177,6 +216,7 @@ class AudioPlayer:
             return True
         if self._stopping.is_set() or not self.is_playing():
             return False
+        self._touch()
         return self._write_raw(data)
 
     def _silence_bytes(self, ms: float) -> bytes:
@@ -206,7 +246,7 @@ class AudioPlayer:
             return False
         with self._lock:
             self._proc = proc
-        _set_playing(True)
+        self._ui_set(True)
         try:
             proc.wait()
         except Exception:
@@ -217,7 +257,7 @@ class AudioPlayer:
                     self._proc = None
                     self._sr = None
                     self._channels = None
-            _set_playing(False)
+            self._ui_set(False)
         return proc.returncode == 0
 
     def open_stream(self, samplerate: int = 32000, channels: int = 1) -> bool:
@@ -231,6 +271,8 @@ class AudioPlayer:
             # 已有同参数常驻进程则直接复用
             if proc is not None and proc.poll() is None \
                     and self._sr == samplerate and self._channels == channels:
+                self._touch()
+                self._ui_set(True)
                 return True
             old = proc
             if proc is not None:
@@ -260,7 +302,8 @@ class AudioPlayer:
             self._sr = samplerate
             self._channels = channels
             self._stopping.clear()
-        _set_playing(True)
+            self._touch()
+        self._ui_set(True)
         return True
 
     def write(self, data: bytes, volume: float = 1.0) -> bool:
@@ -293,9 +336,26 @@ class AudioPlayer:
             if proc is None:
                 return
             self._close_locked(graceful=True)
-        _set_playing(False)
+        self._ui_set(False)
         # 管道里可能还有约 1s 音频：等它播完退出，避免与下一段叠着出声
         self._wait_quit(proc, timeout=3.0)
+
+    def mark_idle(self):
+        """本轮说完了：对外状态立刻置"未播放"（嘴型闭嘴、loopback 解除静音），
+        但 mpv 进程/声卡先留着，避免关声卡那一声"嗒"贴在句尾。
+        """
+        self._ui_set(False)
+
+    def shutdown_if_idle(self, idle_sec: float = 120.0):
+        """空闲够久了才真正关闭常驻 mpv
+
+        关掉 mpv 就等于关掉声卡，某些机器上会"嗒"一声（电流声/爆音）。
+        每句话播完就关，那一声就贴在句尾，听起来像被掐断；
+        所以先让进程挂着（声卡保持打开），等真的没人说话一段时间再关。
+        """
+        if self.is_playing() and (time.monotonic() - self._last_ts) < idle_sec:
+            return
+        self.shutdown()
 
     def stop(self):
         """立即停止播放并退出常驻进程"""
@@ -307,7 +367,7 @@ class AudioPlayer:
             return
         self._stopping.set()
         self._hard_kill(proc)
-        _set_playing(False)
+        self._ui_set(False)
         self._wait_quit(proc, timeout=0.5)
 
     def is_playing(self) -> bool:

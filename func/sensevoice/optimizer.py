@@ -2,14 +2,11 @@
 # func/sensevoice/optimizer.py
 # 识别结果易错词替换优化（字符串替换）
 
-from func.log.default_log import DefaultLog
-
 
 class SenseVoiceTextOptimizer:
     """识别文本优化类：按配置将错误词替换为正确词"""
 
     def __init__(self, config):
-        self.log = DefaultLog().getLogger()
         self.replace_rules = config.replace_rules
 
     def optimize(self, text: str) -> str:

@@ -116,5 +116,3 @@ class AutoMeowLLM:
             self.log.error(f"[llm_active] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = AutoMeowLLM

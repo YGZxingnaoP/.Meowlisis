@@ -3,7 +3,7 @@
 # 说话状态检测 + 打断检测（两者使用不同能量阈值）
 
 import time
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 
@@ -15,9 +15,7 @@ class InterruptDetector:
     - 打断状态：energy >= interrupt_threshold，用于触发 TTS 打断（更严格）。
     """
 
-    def __init__(self, config, log):
-        self.config = config
-        self.log = log
+    def __init__(self, config):
         self.energy_threshold = config.energy_threshold
         self.interrupt_threshold = getattr(config, 'interrupt_threshold', config.energy_threshold)
         self.silence_threshold = config.silence_threshold
@@ -27,17 +25,6 @@ class InterruptDetector:
         self.is_interrupting = False
         self._silence_start_time = None
         self._interrupt_silence_start = None
-
-    def update(self, data: bytes) -> Tuple[Optional[str], Optional[str]]:
-        """处理一帧音频，返回 (vad_event, interrupt_event)。
-
-        事件取值：'started' / 'stopped' / None
-        """
-        energy = self._compute_energy(data)
-        now = time.time()
-        vad_event = self._update_speaking(energy, now)
-        interrupt_event = self._update_interrupt(energy, now)
-        return vad_event, interrupt_event
 
     def update_vad(self, data: bytes) -> Optional[str]:
         """仅更新说话状态（VAD），返回 vad_event"""

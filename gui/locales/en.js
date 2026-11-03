@@ -607,6 +607,10 @@ window.__LOCALES__['en'] = {
     "excuse 通用询问链路": "Excuse General Inquiry Chain",
     "启用 excuse 询问": "Enable Excuse Inquiry",
     "excuse 等待超时(秒)": "Excuse Wait Timeout (s)",
+    "硬触发裁决": "Hard-trigger Consent",
+    "情绪强度阈值": "Mood Intensity Threshold",
+    "情绪强度大于该值时，关键字命中的工具会先问角色办不办（可以拒绝）；否则直接执行":
+        "When mood intensity exceeds this value, keyword-triggered tools first ask the character whether to do it (she may refuse); otherwise the tool runs directly",
     "MeowVision 视觉理解": "MeowVision Visual Understanding",
     "图片缓存目录": "Image Cache Directory",
     "Watching 长期观察": "Watching (long-term observation)",
@@ -1519,5 +1523,55 @@ window.__LOCALES__['en'] = {
 
     // ================= 轨道卡片 =================
     "长按打开总设置": "Long-press for all settings",
-    "展示壁纸": "Show wallpaper"
+    "展示壁纸": "Show wallpaper",
+
+    // ================= CatPaws 签名 =================
+    "从手机获取签名": "Read signature from device",
+    "重签重装后 bundle id 后缀会变（如 D79NHBM8JL → 27KKPW936V）；点一下从手机读当前值，launcher 与服务端配置一起写回":
+        "The bundle id suffix changes after re-signing/reinstalling (e.g. D79NHBM8JL → 27KKPW936V); click to read the current ids from the device and write them into the launcher and server configs",
+    "读取中…": "Reading…",
+    "接口未就绪：重启一次 GUI": "Endpoint not ready: restart the GUI once",
+    "设备上没读到 CatPaws/CatCam": "No CatPaws/CatCam found on the device",
+    "已是最新：": "Up to date: ",
+    "已写回：": "Written: ",
+    "获取失败：": "Failed: ",
+
+    // ================= 日志中心：事件流 =================
+    "选择左侧服务查看事件": "Pick a service on the left to see what happened",
+    "这段时间没有事件": "No events in this stretch",
+    "这段时间只有技术日志（{n} 行，已折叠）· 点上面「展开后台」查看":
+        "Only technical logs here ({n} lines, folded) · use “Show background” above",
+    "搜索：关键词，多个用 | 分隔": "Search: keywords, separate with |",
+    "只看问题": "Problems only",
+    "点开看原文": "Click to see the raw line",
+    "日志原文": "Raw log line",
+    "{n} 条事件": "{n} events",
+    "{n} 条/秒": "{n} events/s",
+    "后台 {n} 行": "{n} folded lines",
+    "已折叠 {n} 行技术日志": "{n} technical log lines folded",
+    "展开后台": "Show background",
+    "收起后台": "Hide background",
+
+    // 场景页签
+    "聊天": "Chat",
+    "画图": "Drawing",
+    "唱歌": "Singing",
+    "心情": "Mood",
+    "系统": "System",
+
+    // 折叠类别
+    "访问日志": "HTTP access log",
+    "帧注入": "Per-frame params",
+    "进度条": "Progress bars",
+    "语音管道": "Speech pipeline",
+    "连接抖动": "Connection blips",
+    "重连重试": "Retries",
+    "说话边界": "Speech boundaries",
+    "已知失败": "Known failures",
+    "判定细节": "Decision details",
+    "分隔行": "Separators",
+    "诊断": "Diagnostics",
+    "模块内部": "Module internals",
+    "未分类": "Unclassified",
+    "空行": "Blank lines"
 };

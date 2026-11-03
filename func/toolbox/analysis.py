@@ -163,18 +163,8 @@ class TBoxAnalysis:
     def _ensure_llm(self):
         """懒加载 toolbox 独立 LLM 客户端"""
         if self.llm is None:
-            if self.config.llm_type == "meowllm":
-                from func.toolbox.port.meowllm import TBoxMeowLLM
-                self.llm = TBoxMeowLLM()
-            elif self.config.llm_type == "gemini":
-                from func.toolbox.port.gemini import TBoxGeminiLLM
-                self.llm = TBoxGeminiLLM()
-            elif self.config.llm_type == "aliyun":
-                from func.toolbox.port.aliyun import TBoxAliyunLLM
-                self.llm = TBoxAliyunLLM()
-            else:
-                from func.toolbox.port.deepseek import TBoxDeepSeekLLM
-                self.llm = TBoxDeepSeekLLM()
+            from func.toolbox.port import create_toolbox_llm
+            self.llm = create_toolbox_llm(self.config)
         return self.llm
 
     # QQ 链路内部子工具名：出现即说明有人把子工具注册到了父级，会导致父级出现
@@ -235,11 +225,26 @@ class TBoxAnalysis:
         name, arguments = plan
         if not name:
             return True
-        context = {"meowid": meowid, "text": text,
-                   "short_memory": self._load_short_memory(), "system_prompt": ""}
-        result = self.dispatch(name, arguments, meowid, context)
+        result = self.hard_trigger(name, arguments, meowid, text)
         self.log.info(f"父级 toolcalls 规则硬触发 {name}: {(text or '')[:30]} -> {result}")
         return True
+
+    def hard_trigger(self, name: str, arguments: Dict, meowid: str, text: str = "",
+                     context: Dict = None):
+        """规则硬触发统一入口：登记工具触发态 → 角色裁决 → 放行才真的执行。
+
+        角色有权拒绝（心情不好 / 正在生这个人的气）：拒绝台词由裁决器 TTS 播报，
+        这里拿回台词就掐断本次工具，不派发、不启动。
+        """
+        from func.toolbox.consent import TBoxConsent
+        refused = TBoxConsent().ask(name, text, meowid)
+        if refused:
+            self.log.info(f"父级 toolcalls 硬触发被角色拒绝 {name}: {(text or '')[:30]}")
+            return refused
+        if context is None:
+            context = {"meowid": meowid, "text": text,
+                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+        return self.dispatch(name, arguments, meowid, context)
 
     def decide(self, text: str, meowid: str):
         """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。

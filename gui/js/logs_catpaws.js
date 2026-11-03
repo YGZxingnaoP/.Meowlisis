@@ -76,6 +76,8 @@
             '      <button class="cw-btn" id="cwShot">截图</button>' +
             '      <button class="cw-btn" id="cwLauncher">拉起 catpaws-launcher</button>' +
             '      <button class="cw-btn" id="cwService">启动 CatPaws 服务</button>' +
+            '      <button class="cw-btn" id="cwSign">获取签名</button>' +
+            '      <button class="cw-btn" id="cwSignApply" style="display:none">同步签名到配置</button>' +
             '    </div>' +
             '    <div class="cw-ask" id="cwAsk" hidden>' +
             '      <div class="cw-ask-q" id="cwAskQ"></div>' +
@@ -196,6 +198,8 @@
                 setTimeout(function () { self._pollStatus(); }, 1500);
             }).catch(function (e) { self._toast('启动失败：' + e.message, true); });
         });
+        $('cwSign').addEventListener('click', function () { self._sign(false); });
+        $('cwSignApply').addEventListener('click', function () { self._sign(true); });
         $('cwAskSend').addEventListener('click', function () {
             var text = ($('cwAskInput').value || '').trim();
             if (!text) return;
@@ -216,6 +220,42 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body || {})
         });
+    };
+
+    Panel._sign = function (applyNow) {
+        var self = this;
+        var req = applyNow
+            ? this._post('/api/catpaws/sign/apply')
+            : api('/api/catpaws/sign');
+        req.then(function (j) {
+            self._renderSign(j || {}, applyNow);
+            if (applyNow) {
+                var count = ((j || {}).written || []).length;
+                self._toast(count ? ('签名已写回 ' + count + ' 处配置') : '配置已是最新');
+            }
+        }).catch(function (e) { self._toast('获取签名失败：' + e.message, true); });
+    };
+
+    Panel._renderSign = function (j, applyNow) {
+        var self = this;
+        var stale = j.stale || [];
+        var btn = this.el && this.el.querySelector('#cwSignApply');
+        if (btn) btn.style.display = stale.length ? '' : 'none';
+        if (applyNow && (j.written || []).length) {
+            this._appendLine('sign', '已写回：' + j.written.map(function (w) { return w.key; }).join(' / '));
+        }
+        this._appendLine('sign', '签名后缀 ' + (j.suffix || '-') +
+            ' · runner ' + ((j.runner || {}).id || '（未安装）'));
+        this._appendLine('sign', 'CatCam ' + ((j.catcam || {}).id || '（未安装）'));
+        if (!stale.length) {
+            this._appendLine('sign', '✓ launcher 与服务端配置都一致');
+        } else {
+            stale.forEach(function (row) {
+                self._appendLine('error', '✗ ' + row.file + ' ' + row.key + ' 还是 ' +
+                    (row.current || '空值') + ' → 应为 ' + row.expected);
+            });
+        }
+        (j.problems || []).forEach(function (text) { self._appendLine('error', '⚠ ' + text); });
     };
 
     Panel._toast = function (msg, isErr) {

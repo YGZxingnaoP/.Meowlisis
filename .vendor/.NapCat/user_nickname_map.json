@@ -57,7 +57,8 @@
   },
   "825397449": {
     "nickname": "minecraft",
-    "profile_name": "minecraft"
+    "profile_name": "minecraft",
+    "card": "Samipike"
   },
   "1537838643": {
     "nickname": "Her0sen3n",
@@ -348,5 +349,9 @@
     "card": "给木噶的喵喵喵",
     "nickname": "StarryAlfie",
     "profile_name": "给木噶的喵喵喵"
+  },
+  "1795944562": {
+    "nickname": "千早10010号智慧战斗机器人",
+    "profile_name": "千早10010号智慧战斗机器人"
   }
 }

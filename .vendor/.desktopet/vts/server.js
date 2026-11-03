@@ -293,7 +293,13 @@ class VtsServer {
       }
     }
     if (mapped.length) {
-      console.log('[vts] 注入参数 ->', JSON.stringify(mapped), 'paramFix:', JSON.stringify(this.paramFix));
+      // 注入日志降噪：这个方法每帧都会被调用，逐个打印会把日志刷成几十 MB
+      // （实测占全部日志 10.7%）。只在参数值真正变化时打一行。
+      const sig = mapped.map((m) => m.id + '=' + m.value.toFixed(3)).join(',');
+      if (sig !== this._lastParamSig) {
+        this._lastParamSig = sig;
+        console.log('[vts] 注入参数 ->', sig, 'paramFix:', JSON.stringify(this.paramFix));
+      }
       this.onCommand('param', { values: mapped });
     }
     this._send(ws, Object.assign(this._base(msg), {

@@ -15,7 +15,6 @@ from func.pipeline.id_signup import display_name
 
 DEFAULT_NEGATIVE = ("lowres,bad anatomy,bad hands,error,missing fingers,extra digits,"
                     "worst quality,jpeg artifacts,watermark,signature,text")
-REVIEW_VOICE = "画完啦，快检查检查吧~"
 REJECT_TEXT = "不给看不给看awa"
 
 
@@ -39,6 +38,9 @@ class TBFluxPainterCore:
         # channel -> 上一轮绘画（完整提示词缓存，供画完后 window 秒内改图续画）
         self._last_paint = {}
         self._last_lock = threading.Lock()
+        # channel -> 最近说过的接单开场白（逼角色每次换说法）
+        self._opener_recent = {}
+        self._opener_lock = threading.Lock()
         self._clean_legacy_svg_memory()
 
     def _clean_legacy_svg_memory(self):
@@ -222,10 +224,12 @@ class TBFluxPainterCore:
         t.start()
         if qq_context:
             # QQ 渠道：AI 按需求生成开场白（异步，不阻塞开画）
-            threading.Thread(target=self._qq_opener, args=(qq_context, request),
+            threading.Thread(target=self._qq_opener, args=(qq_context, request, channel),
                              daemon=True).start()
         else:
-            self._say(channel, "收到～我去画画啦，稍等！")
+            # live 渠道：同样是角色当场应一声（异步生成，不阻塞开画）
+            threading.Thread(target=self._live_opener, args=(channel, request),
+                             daemon=True).start()
         return ("开始作画…画完把图发给你～" if qq_context
                 else "开始作画…（画作完成后会展示；画板页面可实时看进度）")
 
@@ -253,12 +257,11 @@ class TBFluxPainterCore:
                                          base_request=session.get("base_request"))
             if not elements:
                 self.log.error("[flux_painter] 提示词 LLM 未产出画作要素，本次绘画提前结束")
-                msg = "呜……我想了半天没想好怎么画，要不再换一句试试？"
-                self._say(channel, msg)
-                self._bcast(channel, {"type": "status", "text": msg})
+                self._say_need(channel, "你想了半天没想好怎么画，跟主人说一句，让他换一句试试。")
+                self._bcast(channel, {"type": "status", "text": "没想好怎么画"})
                 return
             positive = str(elements["positive"] or "").strip()
-            reply = str(elements["reply"] or "画好啦！")
+            reply = str(elements["reply"] or "")
             title = str(elements["title"] or session.get("topic") or "画")
             canvas_key = elements["canvas"]
             self.log.info(f"[flux_painter] 提示词产出 title={title} len={len(positive)} "
@@ -292,13 +295,16 @@ class TBFluxPainterCore:
                             if again and again.get("positive"):
                                 elements = again
                                 positive = str(elements["positive"] or "").strip()
-                                reply = str(elements["reply"] or "画好啦！")
+                                reply = str(elements["reply"] or "")
                                 title = str(elements["title"] or session.get("topic") or "画")
                                 canvas_key = elements["canvas"]
                                 self.log.info(f"[flux_painter] 角色查证后重出提示词 title={title} "
                                               f"card={card.get('name')}")
                 except Exception:
                     self.log.exception("[flux_painter] 角色解析异常(忽略，按原提示词继续)")
+
+            if not reply:
+                reply = self._line_need("图已经画好了，跟主人说一声，可以带点得意。")
 
             # 自然语言镜头段（producer 的 cinema 字段）附加到 tag 段之后——DiT 模型吃自然语言指令
             cinema = str(elements.get("cinema") or "").strip()
@@ -358,7 +364,7 @@ class TBFluxPainterCore:
             ok, message = self._ensure_comfy()
             if not ok:
                 self.log.error(f"[flux_painter] 绘图引擎未就绪: {message}")
-                self._say(channel, f"绘图引擎没起来：{message}")
+                self._say_need(channel, f"画图引擎没启动（原因：{message}），跟主人说一句，别提技术词。")
                 return
             self.log.info("[flux_painter] 绘图引擎就绪")
             connector = create_connector(self.config)
@@ -406,7 +412,7 @@ class TBFluxPainterCore:
                     sok, prompt_id, serr = connector.submit(graph, client_id=channel)
                 if not sok:
                     self.log.error(f"[flux_painter] 任务提交失败 clip={clip_type}: {serr[:200]}")
-                    self._say(channel, f"画图任务没提交成功：{serr[:120]}")
+                    self._say_need(channel, f"画图任务没提交成功（原因：{serr[:120]}），跟主人说一句。")
                     return
                 self.log.info(f"[flux_painter] 任务已提交 clip={clip_type} prompt_id={prompt_id}")
                 self._bcast(channel, {"type": "status", "text": "AI 正在作画…"})
@@ -433,13 +439,13 @@ class TBFluxPainterCore:
                 on_event("切换文本编码重试…")
             if not ok_done:
                 self.log.error(f"[flux_painter] 全部文本编码尝试均失败: {wmsg[:200]}")
-                self._say(channel, "画失败了…" + str(wmsg)[:100])
+                self._say_need(channel, f"图没画出来（原因：{str(wmsg)[:100]}），跟主人说一句，可以吐槽。")
                 self._bcast(channel, {"type": "error", "text": str(wmsg)[:200]})
                 return
             local_paths = connector.images_local(images)
             if not local_paths:
                 self.log.error("[flux_painter] 图已生成但本地文件未找到")
-                self._say(channel, "图出来了但没找到文件，奇怪…")
+                self._say_need(channel, "图出来了但找不到文件，跟主人说一句。")
                 return
             final_image = local_paths[0]
             self.log.info(f"[flux_painter] 图片文件: {final_image}")
@@ -468,7 +474,7 @@ class TBFluxPainterCore:
             self.archive.prune(self.config.keep_last_sessions)
             if not aok:
                 self.log.warning("[flux_painter] 归档失败，改用源图")
-                self._say(channel, "画好啦！但归档没成功…")
+                self._say_need(channel, "图出来了，但归档没成功，跟主人说一句。")
                 saved = final_image
             else:
                 self.log.info(f"[flux_painter] 画作已归档: {saved}")
@@ -485,7 +491,7 @@ class TBFluxPainterCore:
             session["ok_show"] = (not self.config.review_enabled) or _qq_private
             rmode = str(getattr(self.config, "review_mode", "onnx") or "onnx").lower()
             if self.config.review_enabled and not _qq_private and rmode == "manual":
-                self._say(channel, REVIEW_VOICE)
+                self._say_need(channel, "画好了，等主人检查；让他看一眼、说要不要收。")
                 self._review_flow(session, img_url, reply)
             elif self.config.review_enabled and not _qq_private:
                 # ONNX 自动审查：命中则收起（不展示、不发 QQ、不进记忆展示）
@@ -495,7 +501,7 @@ class TBFluxPainterCore:
                     session["ok_show"] = False
                     self.log.info(f"[flux_painter] 画板审查(onnx) 命中 -> {why}")
                     self._bcast(channel, {"type": "rejected", "text": REJECT_TEXT})
-                    self._say(channel, "这张有点大胆，我先帮你收起来啦awa")
+                    self._say_need(channel, "这张画得有点大胆，你先收起来，跟主人说一句，别道歉。")
                 else:
                     session["ok_show"] = True
                     self.log.info(f"[flux_painter] 画板审查(onnx) 通过 -> {why}")
@@ -514,7 +520,7 @@ class TBFluxPainterCore:
             self._save_memory(uid, request, reply)
         except Exception:
             self.log.exception(f"[flux_painter] 绘画异常 key={channel}")
-            self._say(channel, "画画的时候出了点问题，抱歉…")
+            self._say_need(channel, "画到一半出了点岔子，跟主人说一句，别道歉。")
         finally:
             with self._lock:
                 self._running.discard(channel)
@@ -535,11 +541,13 @@ class TBFluxPainterCore:
         if ok:
             session["ok_show"] = True
             self._bcast(channel, {"type": "done", "image": img_url})
-            self._say(channel, session.get("reply") or reply)
+            text = session.get("reply") or reply
+            if text:
+                self._say(channel, text)
         else:
             session["ok_show"] = False
             self._bcast(channel, {"type": "rejected", "text": REJECT_TEXT})
-            self._say(channel, "那这张就先收起来啦，不给看就不给看awa")
+            self._say_need(channel, "主人没通过这张，你把它收起来了，跟他说一句。")
 
     def review_submit(self, channel, passed):
         """审查按钮结果回调（由画板服务 http 调用；manual 模式使用）"""
@@ -677,6 +685,31 @@ class TBFluxPainterCore:
         except Exception:
             pass
 
+    def _line_need(self, need, max_chars=40):
+        """让角色现说一句（台词不写死；生成失败返回空串，绝不退回固定台词）"""
+        uid = str(self._context.get("meowid") or "")
+        history = self._context.get("short_memory") or []
+        for _ in range(2):
+            try:
+                from func.toolbox.character_voice import TBoxCharacterVoice
+                line = TBoxCharacterVoice().line(need, uid, history=history, max_chars=max_chars)
+            except Exception:
+                self.log.exception("[flux_painter] 台词生成失败")
+                line = ""
+            if line:
+                return line
+        self.log.warning(f"[flux_painter] 台词生成失败，本次不说：{need[:40]}")
+        return ""
+
+    def _say_need(self, channel, need, max_chars=40):
+        """把内部需求交给角色说一句并播报（QQ 渠道不本地播报）"""
+        if str(channel or "").startswith("qq_"):
+            return ""
+        line = self._line_need(need, max_chars)
+        if line:
+            self._say(channel, line)
+        return line
+
     def _say(self, channel, text):
         """经 toolbox_tts 播报（type=toolbox_painting）；QQ 渠道不播 TTS，文字点评随图发出"""
         if not text:
@@ -718,32 +751,42 @@ class TBFluxPainterCore:
         except Exception:
             pass
 
-    def _gen_short_reply(self, request):
-        """AI 生成一句接单卖萌短句（非流式轻量单轮）"""
-        try:
-            port = self.producer._llm()
-            messages = [
-                {"role": "system", "content":
-                 "你是会画画的喵系少女助手，说话软萌。主人在向你点单画图，请用一句话（30字内）可爱地接下任务，"
-                 "可带 主人/喵 等口头语；不要括号、不要表情符号、不要多余符号，只输出这句话本身。"},
-                {"role": "user", "content": str(request)[:200]},
-            ]
-            resp = port.chat(messages, tools=None, enable_thinking=False,
-                             options={"temperature": 1.0, "max_tokens": 160})
-            text = ""
-            if resp is not None and getattr(resp, "choices", None):
-                msg = resp.choices[0].message
-                text = str(getattr(msg, "content", None) or "").strip()
-            text = re.sub(r"[（(【\[][^）)】\]]*[）)】\]]", "", text)
-            return " ".join(text.split())[:60]
-        except Exception:
-            self.log.exception("[flux_painter] 开场白生成失败")
+    def _opener_line(self, channel, request):
+        """接单开场白：角色按自己此刻的语气现生成，每次不同（生成失败才随机取兜底池）"""
+        uid = str(self._context.get("meowid") or "")
+        who = display_name(uid) or "对方"
+        with self._opener_lock:
+            avoid = list(self._opener_recent.get(str(channel)) or ())
+        line = ""
+        for _ in range(2):
+            try:
+                from func.toolbox.character_voice import TBoxCharacterVoice
+                line = TBoxCharacterVoice().line(
+                    f"{who}点单让你画「{request}」，你已经动笔了。应{who}一声："
+                    f"让{who}知道你开始画了、大概要等一会儿，画完会给他看。",
+                    uid, history=self._context.get("short_memory") or [],
+                    max_chars=40, avoid=avoid)
+            except Exception:
+                self.log.exception("[flux_painter] 开场白生成失败")
+                line = ""
+            if line:
+                break
+        if not line:
+            self.log.warning("[flux_painter] 开场白生成失败，本次不应声")
             return ""
+        with self._opener_lock:
+            recent = self._opener_recent.setdefault(str(channel), [])
+            recent.append(line)
+            del recent[:-6]
+        return line
 
-    def _qq_opener(self, qq_context, request):
-        """QQ 渠道：异步 AI 开场白（生成失败则用兜底短句）"""
-        text = self._gen_short_reply(request) or "好呀，这就给你画～画完连点评一起发给你！"
-        self._qq_say_text(qq_context, text)
+    def _live_opener(self, channel, request):
+        """live 渠道：角色应一声（经 TTS 说出来）"""
+        self._say(channel, self._opener_line(channel, request))
+
+    def _qq_opener(self, qq_context, request, channel):
+        """QQ 渠道：角色应一声（文字随消息发出）"""
+        self._qq_say_text(qq_context, self._opener_line(channel, request))
 
     def _qq_say_text(self, qq_context, text):
         """给 QQ 渠道回一条普通文本（私聊直发/群聊普通消息）"""
@@ -794,7 +837,9 @@ class TBFluxPainterCore:
             if not self.config.enabled or not image_path or not os.path.isfile(image_path):
                 return
             channel = session.get("channel", "")
-            reply = str(session.get("reply") or "画好啦！")
+            reply = str(session.get("reply") or "").strip()
+            if not reply:
+                reply = self._line_need("图已经画好了，跟主人说一句。")
             from func.toolbox.napcat.napcat_core import TBNapCatCore
             ncore = TBNapCatCore()
             qc = session.get("qq_context") or {}

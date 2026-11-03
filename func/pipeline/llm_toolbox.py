@@ -116,15 +116,13 @@ class LLMToolboxBridge:
             self.log.exception("本地硬触发判断异常")
             return None
 
-    def pre_route(self, text: str, username: str) -> bool:
+    def hard_trigger(self, name: str, arguments, username: str, text: str = ""):
+        """本地规则硬触发：交给 analysis 走「工具触发态 → 角色裁决 → 派发」"""
         try:
-            return bool(self._analysis().pre_route(text, username))
+            return self._analysis().hard_trigger(name, arguments, username, text)
         except Exception:
-            self.log.exception("本地硬触发异常")
-            return False
-
-    def dispatch(self, name: str, arguments: dict, username: str = None, context: dict = None):
-        return self._analysis().dispatch(name, arguments, username, context)
+            self.log.exception(f"本地规则硬触发派发失败: {name}")
+            return ""
 
     def handle_tool_calls(self, calls, username: str, text: str = ""):
         norm = []

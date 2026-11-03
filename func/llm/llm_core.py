@@ -2,7 +2,6 @@
 # func/llm/llm_core.py
 # LLM 编排入口 + 队列调度
 
-import uuid
 from threading import Thread
 
 from func.log.default_log import DefaultLog
@@ -31,7 +30,6 @@ class LLmCore:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = LLMConfig()
-        self.local_llm_type = self.config.local_llm_type
         self.llmData = LLmState()
 
         # 选择流式 LLM 客户端
@@ -79,7 +77,6 @@ class LLmCore:
         """
         from func.llm.port import close_port_later
         old = getattr(self, "llm", None)
-        self.local_llm_type = self.config.local_llm_type
         self.llm = self._create_llm()
         if old is not None and old is not self.llm:
             close_port_later(old)
@@ -117,6 +114,10 @@ class LLmCore:
         if SilenceState().muted:
             self._record_silent(cleaned, uid, source, memory_config)
             return
+        # 正在生成时来了用户输入（语音说完/打字发送）：先掐掉上一轮，别让人等它想完
+        # 只对「人的输入」生效：弹幕/工具回灌各自有节流，不该把正在说的回答打断
+        if source in ("voice", "api", "phone", "llm") and not self.llmData.is_ai_ready:
+            self.abort_current(f"新消息到达(source={source})")
         llm_json = {
             "traceid": traceid,
             "prompt": cleaned,
@@ -169,6 +170,19 @@ class LLmCore:
         except Exception:
             self.log.exception("静默记录用户消息异常")
 
+    def abort_current(self, reason: str = "用户开口"):
+        """用户开口/新消息：让正在生成的这一轮立刻收手（不写记忆、不播报）"""
+        from func.pipeline.speech_interrupt import SpeechInterruptBridge
+        return SpeechInterruptBridge().bump(reason)
+
+    def _discard_output(self):
+        """打断后清掉已排队的 TTS 段（这部分内容不再播报）"""
+        try:
+            from func.pipeline.toolbox_tts import ToolboxTtsBridge
+            ToolboxTtsBridge().interrupt()
+        except Exception:
+            self.log.exception("打断后清理 TTS 队列失败")
+
     def check_answer(self):
         """定时轮询：从问题队列取消息并异步处理"""
         if not self.llmData.QuestionList.empty() and self.llmData.is_ai_ready:
@@ -195,6 +209,8 @@ class LLmCore:
             self.llmData.is_ai_ready = True
             return
         source = question_data.get("source", "llm")
+        # 本轮生成代际：用户开口/新消息会 bump，看到变了就收手
+        abort_token = self.llmData.abort_token()
         # 展示名：唯一规则（display_name），禁止在本处再写 nickname_of(x) or x
         from func.pipeline.id_signup import display_name
         display_name = display_name(uid)
@@ -231,9 +247,9 @@ class LLmCore:
                 name, arguments = plan
                 self.log.info(f"[{traceid}] 本地规则硬触发命中 {name or '插件会话'}")
                 if name:
-                    Thread(target=self._dispatch_tool_calls,
-                           args=([{"name": name, "arguments": arguments}],
-                                 uid, prompt, traceid), daemon=True).start()
+                    # 走 hard_trigger：先进触发态，角色可拒绝（拒绝台词已 TTS 播报）
+                    Thread(target=tb.hard_trigger,
+                           args=(name, arguments, uid, prompt), daemon=True).start()
                 if is_danmaku:
                     if not assistant_only:
                         ShortMemory().save({"role": "user", "content": prompt, "type": short_type},
@@ -292,9 +308,9 @@ class LLmCore:
         mem_options = memory_options.as_options(uid)
         # 诊断：空回复时最需要知道的就是"这一轮到底带没带工具、带了几条、
         # prompt 有多长"。没有这三项，日志里只剩一行空的 [AI回复]，完全无从判断。
-        self.log.info(f"[{traceid}] 请求 LLM: merged={merged} tools={len(tools)} "
-                      f"messages={len(messages)} "
-                      f"chars={sum(len(str(m.get('content') or '')) for m in messages)}")
+        self.log.debug(f"[{traceid}] 请求 LLM: merged={merged} tools={len(tools)} "
+                       f"messages={len(messages)} "
+                       f"chars={sum(len(str(m.get('content') or '')) for m in messages)}")
         if merged:
             stream = self.llm.chat_stream(
                 messages, tools=tools, tool_choice="auto", enable_thinking=False,
@@ -305,6 +321,8 @@ class LLmCore:
         # 正文处理与非合并模式逐行一致：边流边送 TTS，不缓冲、不丢弃
         got_content = False
         for chunk in stream:
+            if self.llmData.aborted(abort_token):
+                break
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -314,6 +332,15 @@ class LLmCore:
                 output.process_chunk(content, traceid)
             if merged and getattr(delta, "tool_calls", None):
                 acc.add(delta.tool_calls)
+
+        if self.llmData.aborted(abort_token):
+            self.log.info(f"[{traceid}] 已被新的输入打断，本轮不写记忆、不派发工具")
+            self._discard_output()
+            memory_options.clear_current_uid()
+            self.llmData.is_ai_ready = True
+            from func.pipeline.llm_timer import LLMTimerBridge
+            LLMTimerBridge().notify_ai_reply(source=source)
+            return
 
         # 模型只回了工具调用、一个字正文都没写 → final_text 会是空串，用户看到的是
         # "没回复"。本地 8B 特别容易这样（实测同一条消息：带 tools 时 0 字正文 +
@@ -394,6 +421,36 @@ class LLmCore:
         from func.pipeline.llm_timer import LLMTimerBridge
         LLMTimerBridge().notify_ai_reply(source=source)
 
+    # 情绪判定带多少条短期记忆（硬编码，不从配置读）
+    EMOTION_MEMORY_LIMIT = 20
+
+    def _emotion_history(self, prompt: str = "", reply_text: str = "") -> list:
+        """情绪判定用的上下文：最近 EMOTION_MEMORY_LIMIT 条短期记忆
+
+        只取 user/assistant 且有内容的条目；本轮的用户输入/回复已经写进短期记忆，
+        这里去掉重复的尾部，避免同一句话在消息里出现两次。
+        """
+        try:
+            items = ShortMemory().load()
+        except Exception:
+            self.log.exception("读取短期记忆失败（情绪判定）")
+            return []
+        history = []
+        for item in items:
+            role = str(item.get("role") or "")
+            content = str(item.get("content") or "").strip()
+            if role not in ("user", "assistant") or not content:
+                continue
+            history.append({"role": role, "content": content})
+        history = history[-self.EMOTION_MEMORY_LIMIT:]
+        if history and prompt and history[-1]["role"] == "user" \
+                and history[-1]["content"] == str(prompt).strip():
+            history.pop()
+        if history and reply_text and history[-1]["role"] == "assistant" \
+                and history[-1]["content"] == str(reply_text).strip():
+            history.pop()
+        return history
+
     def _update_emotion_async(self, prompt: str, reply_text: str):
         """后置情绪/性格更新：正文生成后单独调用工具，更新 latest_emotion.json"""
         try:
@@ -401,11 +458,16 @@ class LLmCore:
             tools = emotion_controller.build_tools()
             tool_choice = emotion_controller.build_tool_choice()
 
-            # 简短更新消息：仅本轮用户输入 + 角色回复
-            update_messages = [
-                {"role": "system", "content": "根据本轮对话，判断角色当前情绪、强度与性格。"},
-                {"role": "user", "content": f"用户说：{prompt}\n角色回复：{reply_text}"}
-            ]
+            # 上下文 = 最近 EMOTION_MEMORY_LIMIT 条短期记忆 + 本轮输入/回复
+            update_messages = [{"role": "system", "content": (
+                "根据最近这段对话（含历史）判断角色此刻的情绪、强度与性格。"
+                "情绪要贴着她刚说的话和当下的语气，别一直用同一个。"
+            )}]
+            update_messages.extend(self._emotion_history(prompt, reply_text))
+            update_messages.append({"role": "user", "content": (
+                f"本轮对话：\n用户说：{prompt}\n角色回复：{reply_text}\n"
+                f"请判断角色此刻的情绪、强度与性格。"
+            )})
 
             stream = self.llm.chat_stream(update_messages, tools=tools, tool_choice=tool_choice,
                                           enable_thinking=False)

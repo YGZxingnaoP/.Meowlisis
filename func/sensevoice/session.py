@@ -21,10 +21,8 @@ class SenseVoiceSession:
                  is_running=None):
         self.source_id = source_id
         self.wav_name = source_id
-        self.config = config
         self.log = log
         self.hub = hub
-        self.callback = callback
         self.tts_bridge = tts_bridge
         self.allow_interrupt = bool(allow_interrupt)
         self.speaker_verify = bool(speaker_verify)
@@ -48,7 +46,7 @@ class SenseVoiceSession:
             subtitle_publish=subtitle_publish,
             subtitle=subtitle,
         )
-        self.interrupt = InterruptDetector(config, log)
+        self.interrupt = InterruptDetector(config)
         self.silence_frame = b'\x00' * (hub.config.chunk * 2)
 
     def _apply_current_user(self):
@@ -56,6 +54,14 @@ class SenseVoiceSession:
         name = self.hub.get_meta(self.source_id, 'username')
         if name:
             self.manager.username = name
+
+    def _abort_answer(self):
+        """用户开口：正在生成的回答立刻收手（不等它想完）"""
+        try:
+            from func.pipeline.sensevoice_llm import SenseVoiceLLMBridge
+            SenseVoiceLLMBridge().abort_current()
+        except Exception:
+            self.log.exception("打断当前回答失败")
 
     async def run(self):
         """连接后并行跑采集与接收，异常/拥塞自动重连"""
@@ -169,6 +175,7 @@ class SenseVoiceSession:
         if vad_event == 'started':
             self.manager.send_speaking(True)
             self.manager.on_speech_start()
+            self._abort_answer()
         elif vad_event == 'stopped':
             self.manager.send_speaking(False)
             self.manager.on_speech_end()
@@ -205,6 +212,7 @@ class SenseVoiceSession:
                     self._ptt_speaking = True
                     self.manager.send_speaking(True)
                     self.manager.on_speech_start()
+                    self._abort_answer()
                 self.manager.send_audio(frame)
         elif self._ptt_speaking:
             self._dry_frames += 1

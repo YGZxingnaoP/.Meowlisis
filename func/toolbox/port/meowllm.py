@@ -129,6 +129,3 @@ class TBoxMeowLLM:
             self.log.error(f"[toolbox] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-# 兼容历史调用名（老代码里写的是 MeowLLMLLM）
-MeowLLMLLM = TBoxMeowLLM

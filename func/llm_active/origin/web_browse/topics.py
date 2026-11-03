@@ -4,8 +4,6 @@
 
 from typing import List
 
-from func.llm_active.origin.web_browse.config import AutoWebBrowseConfig
-
 
 def get_summary_topics() -> List[str]:
     """话题枚举：复用 catbrain 摘要话题（与随机话题一致）"""
@@ -23,8 +21,3 @@ def get_tags_pool() -> List[str]:
         return list(MeowTagStore().load())
     except Exception:
         return []
-
-
-def get_allow_topics() -> List[str]:
-    """允许主题（采集过滤用），来自配置"""
-    return list(AutoWebBrowseConfig().allow_topics)

@@ -47,8 +47,3 @@ class LanguageJudge:
 
         # 3. 其余落回默认语言
         return self.default_lang
-
-
-def judge_language(text: str, default_lang: str = "zh") -> str:
-    """模块级便捷函数"""
-    return LanguageJudge(default_lang).judge(text)

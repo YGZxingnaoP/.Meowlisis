@@ -41,6 +41,10 @@ class TBoxConfig:
         self.gemini_temperature = gm.get('temperature', 0.7)
         self.gemini_max_tokens = gm.get('max_tokens', 2048)
 
+        # ========== 硬触发裁决 ==========
+        # 情绪强度大于该值时才请角色裁决（命中关键字后先问一句办不办），否则直接执行
+        self.consent_intensity = float(cfg.get('consent_intensity', 2.0))
+
         # ========== excuse 通用询问链路 ==========
         # 是否启用 excuse 阻塞等待（关闭则询问后不阻塞，直接返回）
         self.excuse_enabled = cfg.get('excuse_enabled', True)

@@ -14,9 +14,6 @@ class TTSConfig:
     def __init__(self):
         tts_cfg = ConfigReader().get("tts", {})
 
-        self.select = tts_cfg.get("select", "gpt-sovits")
-        self.synth_workers = int(tts_cfg.get("synth_workers", 2))
-
         gpt = tts_cfg.get("gpt-sovits", {})
         self.gpt_sovits_url = gpt.get("gpt_sovits_url", "http://127.0.0.1:9880")
 

@@ -83,6 +83,7 @@ class CWCatPawsConfig:
         device = _node(data, "device")
         sync = _node(data, "sync")
         port = _node(data, "port")
+        voice = _node(data, "voice")
         self.enabled = bool(_pick(trigger, "enabled", True))
         self.allow_mock = bool(_pick(device, "allow_mock", False))
         self.trigger_mode = str(_pick(trigger, "trigger_mode", "both") or "both").strip()
@@ -101,6 +102,9 @@ class CWCatPawsConfig:
         self.short_rounds = int(_pick(sync, "short_rounds", 12) or 0)
         self.port_type = str(_pick(port, "type", "deepseek") or "deepseek").strip().lower()
         self.port_options = dict(_node(port, self.port_type))
+        self.voice_enabled = bool(_pick(voice, "enabled", True))
+        self.voice_look_min_gap = float(_pick(voice, "look_min_gap", 20) or 0)
+        self.voice_max_lines = int(_pick(voice, "max_lines", 8) or 0)
 
     def base_url(self):
         return "http://%s:%d" % (self.host, self.port)

@@ -37,7 +37,3 @@ class TtsDesktopetBridge:
                 DesktopetBodySway().stop()
         except Exception:
             self.log.exception("TTS 播放状态 → 桌宠表现桥接异常")
-
-    def is_playing(self) -> bool:
-        """读取当前播放状态"""
-        return self._playing

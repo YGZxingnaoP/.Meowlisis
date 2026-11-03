@@ -26,7 +26,6 @@ class StreamResampler:
         self.converter = converter or 'sinc_medium'
         self.ratio = self.out_rate / self.in_rate
         self.in_chunk = max(1, int(round(self.out_chunk * self.in_rate / self.out_rate)))
-        self.in_chunk_bytes = self.in_chunk * self.in_channels * 2
         self._frame_bytes = self.out_chunk * 2
         self._out = bytearray()
         self._sampler = None
@@ -43,11 +42,6 @@ class StreamResampler:
     def available(self) -> bool:
         """重采样能力是否可用（输入输出同速率时视为无需重采样）"""
         return self.in_rate == self.out_rate or self._sampler is not None
-
-    @property
-    def frame_bytes(self) -> int:
-        """一帧输出的字节数（16k 单声道 int16）"""
-        return self._frame_bytes
 
     def reset(self):
         """清空内部缓冲与采样器状态"""

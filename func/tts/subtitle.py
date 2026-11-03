@@ -40,4 +40,7 @@ class SubtitleWorker:
             if self.is_paused():
                 continue
             self.tts_data.ReplyTextList.put(reply_json)
-            self.log.info(reply_json)
+            # 只留级别与长度：整条字幕 JSON（含全文）会和 [AI回复] 重复，日志里刷屏
+            self.log.debug("[字幕] chatStatus=%s len=%s"
+                           % (reply_json.get("chatStatus", ""),
+                              len(str(reply_json.get("text") or ""))))

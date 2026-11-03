@@ -56,10 +56,6 @@ class AudioHub:
     def source_ids(self):
         return list(self._sources.keys())
 
-    def source_status(self):
-        with self._lock:
-            return {sid: self._enabled[sid] for sid in self._sources}
-
     def is_enabled(self, sid):
         with self._lock:
             return self._enabled.get(sid, False)
@@ -123,14 +119,6 @@ class AudioHub:
         if source is not None and hasattr(source, 'clear'):
             source.clear()
 
-    def drain_to_latest(self, sid, keep=2):
-        """丢弃积压旧帧，只保留最近 keep 帧（保证能量/VAD 检测实时，避免累积延迟）"""
-        with self._lock:
-            buf = self._buffers.get(sid)
-            if buf:
-                while len(buf) > keep:
-                    buf.popleft()
-
     def pop_frames(self, sid):
         """一次性取走指定源当前全部已采集帧（保持时序，识别链路不丢帧）"""
         with self._lock:
@@ -142,11 +130,6 @@ class AudioHub:
             return frames
 
     # ---------- 生命周期 ----------
-    def open(self):
-        for sid in list(self._sources.keys()):
-            if self._enabled[sid]:
-                self._start_source(sid)
-
     def close(self):
         for sid in list(self._sources.keys()):
             self._stop_source(sid)

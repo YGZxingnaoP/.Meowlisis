@@ -1,3 +1,4 @@
+import os
 import logging
 import colorlog
 
@@ -29,6 +30,10 @@ class LoggerBase:
         handler = logging.FileHandler(fileName, encoding=encoding, mode="a+")
         format_str = logging.Formatter("%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s")
         handler.setFormatter(format_str)
+        # 文件只留 INFO 及以上：DEBUG 是开发诊断用，写进文件会把日志撑到几十 MB。
+        # 真要抓细节时用 MEOW_LOG_DEBUG=1 启动即可恢复全量。
+        if os.environ.get("MEOW_LOG_DEBUG", "") != "1":
+            handler.setLevel(logging.INFO)
         logger.addHandler(handler)
 
         self.logger=logger

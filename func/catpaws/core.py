@@ -9,6 +9,7 @@ from func.catpaws.config import CWCatPawsConfig
 from func.catpaws.if_start import CWCatPawsIfStart
 from func.catpaws.memory import CWCatPawsMemory
 from func.catpaws.prompt import CWCatPawsPrompt
+from func.catpaws.say import CWCatPawsSay
 from func.catpaws.state import CWCatPawsState
 from func.catpaws.stop import CWCatPawsStop
 from func.catpaws.voice import CWCatPawsVoice
@@ -30,6 +31,7 @@ class CWCatPawsCore:
         self.memory = CWCatPawsMemory(self.config)
         self.prompt = CWCatPawsPrompt(self.config)
         self.voice = CWCatPawsVoice(self.config)
+        self.say = CWCatPawsSay(self.config)
         self._lock = threading.RLock()
         self._thread = None
 
@@ -102,10 +104,13 @@ class CWCatPawsCore:
             self.memory.user(username, body)
             self.stop_port.trigger("keyword")
             return True
+        self.say.feed_user(body)
         self.memory.user(username, body)
         result = self.client.answer(body)
         if not result.get("ok"):
             self.log.warning("[CatPaws] 补充指令未送达：%s" % result.get("message", ""))
+        # 先照办、同时回一句（生成不挡指令送达）
+        threading.Thread(target=self.say.react, args=(body, username), daemon=True).start()
         return True
 
     def _enter_state(self):
@@ -153,10 +158,12 @@ class CWCatPawsCore:
             session = str((result.get("session") or {}).get("session") or "")
             self.state.begin(goal, username, session)
             run_id = self.state.snapshot().get("run_id")
+            self.say.reset(goal, username)
             self._thread = threading.Thread(target=self._run, args=(username, run_id),
                                             name="catpaws-sync", daemon=True)
             self._thread.start()
         self._enter_state()
+        self.say.happen("ack", {"goal": goal}, username)
         self.log.info("[CatPaws] 链路启动（%s）：%s" % (source, goal[:60]))
         return True
 
@@ -188,6 +195,9 @@ class CWCatPawsCore:
                 self.state.finish(reason)
                 snapshot = self.state.snapshot()
             self.log.info("[CatPaws] 链路结束（%s）" % (snapshot.get("reason") or reason))
+            if str(snapshot.get("reason") or reason) not in ("stopped", "keyword", "stale"):
+                self.say.seal()
+                self.say.happen("done", {"reason": snapshot.get("reason") or reason}, username)
         finally:
             self._exit_state()
 
@@ -201,7 +211,8 @@ class CWCatPawsCore:
         if remote_session and remote_session != current_session:
             self.state.sync(session=remote_session, seq=0)
             return
-        for item in data.get("items") or []:
+        items = data.get("items") or []
+        for pos, item in enumerate(items):
             index = int(item.get("seq") or 0)
             if index <= self.state.seq():
                 continue
@@ -210,32 +221,63 @@ class CWCatPawsCore:
                 continue                    # 别的会话的事件，绝不重放（防 TTS 复读）
             if str(item.get("kind") or "") == "ask":
                 self.state.sync(seq=index)
+                if self._answered_later(items, pos, item):
+                    self.log.info("[CatPaws] 主人已抢答，跳过这次提问的播报")
+                    continue
                 self._answer(item, username)
                 continue
             self._event(item, username)
             self.state.sync(seq=index)
 
+    @staticmethod
+    def _answered_later(items, pos, ask_item):
+        """同一批事件里已经出现对这条提问的回答：说明主人抢在播报前答了"""
+        question = str(ask_item.get("question") or "")
+        for later in items[pos + 1:]:
+            if str(later.get("kind") or "") != "answer":
+                continue
+            answered = later.get("answered")
+            if answered is False or str(answered).lower() in ("false", "0"):
+                continue
+            later_q = str(later.get("question") or "")
+            # 同一个等待窗口里只会有一条待答的问题，问句缺失也认
+            if not later_q or not question or later_q == question:
+                return True
+        return False
+
     def _event(self, item, username):
-        """单条事件分发：assistant 说话 → 记忆 + TTS；error 只记日志"""
+        """单条事件分发：执行正文只当素材，台词只在这几个时刻由角色本人说"""
         kind = str(item.get("kind") or "")
-        if kind == "assistant":
-            text = str(item.get("text") or "").strip()
-            if text:
-                self.memory.reply(username, text)
-                self.voice.speak(text)
+        if kind == "observe":
+            self.say.feed_see(item.get("texts") or [])
+            self.say.happen("look", {}, username)
+        elif kind in ("single", "sequence", "action_finish"):
+            self.say.feed_act(item)
         elif kind == "error":
             self.log.warning("[CatPaws] 服务端异常：%s %s"
                              % (item.get("code", ""), item.get("message", "")))
+            self.say.happen("oops", item, username)
+        elif kind == "task_done":
+            self.say.closing(item.get("summary") or "")
+        elif kind == "task_done_forced":
+            self.say.closing(item.get("summary") or "", hard=True)
+        elif kind == "assistant":
+            self.log.debug("[CatPaws] 执行正文（不播报）：%s" % str(item.get("text") or "")[:80])
 
     def _answer(self, item, username):
-        """服务端在等回答：提问按事件顺序写进记忆并播报，再等一条回复送回去"""
+        """服务端在等回答：先开回答窗口，再把原问题念出来，最后取回答送回"""
         text = str(item.get("question") or "").strip()
         if not text:
             return
         options = [str(opt) for opt in (item.get("options") or []) if str(opt)]
-        self.memory.reply(username, text)
-        self.voice.speak(text)
-        reply = self.voice.wait(username, self.config.answer_timeout or 300)
+        started = time.time()
+        self.voice.begin_wait(username)
+        try:
+            self.say.ask(text, options, username)
+            reply = self.voice.take_wait(username, self.config.answer_timeout or 300)
+        finally:
+            self.voice.end_wait(username)
+        waited = time.time() - started
         if reply and self.stop_port.is_stop(reply):
             self.stop_port.trigger("keyword")
             return
@@ -244,4 +286,5 @@ class CWCatPawsCore:
             self.client.answer(reply)
         else:
             self.client.answer("")
-        self.log.info("[CatPaws] 提问已回答（选项 %s）" % "/".join(options))
+        self.log.info("[CatPaws] 提问已回答（选项 %s，等待 %.1fs）"
+                      % ("/".join(options), waited))

@@ -97,6 +97,17 @@ ws_hub = WsHub(on_audio=audio_gateway.feed, gop_max=phone_config.VIDEO_GOP_MAX,
 class PhoneRequestHandler(WSGIRequestHandler):
     """在同一 HTTPS 端口上拦截 /ws 升级，其余请求交回 Flask"""
 
+    def log_request(self, code='-', size='-'):
+        """访问日志降噪：手机端每 1~2 秒轮询一次 /api/tts/pending，
+        全量访问日志会把日志刷成几十 MB（实测占全部日志 36%）。
+        只保留 4xx/5xx，正常轮询不写。"""
+        try:
+            code_n = int(str(code).split()[0])
+        except Exception:
+            code_n = 0
+        if code_n >= 400:
+            super().log_request(code, size)
+
     def run_wsgi(self):
         """识别 WebSocket 升级并接管连接"""
         is_ws = (self.headers.get('Upgrade', '').lower() == 'websocket'

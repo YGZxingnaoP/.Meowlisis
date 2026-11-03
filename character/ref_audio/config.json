@@ -12,7 +12,7 @@
     },
     "happy": {
       "audio": "character/ref_audio/happy.wav",
-      "text": "哈哈，这镐子也太好玩了吧，飘这么高也没有衰落伤害。",
+      "text": "千万别忘了点个关注和收藏，那么我们下期再见。拜拜！",
       "lang": "zh"
     },
     "love": {
@@ -22,7 +22,7 @@
     },
     "neutral": {
       "audio": "character/ref_audio/happy.wav",
-      "text": "哈哈，这镐子也太好玩了吧，飘这么高也没有衰落伤害。",
+      "text": "千万别忘了点个关注和收藏，那么我们下期再见。拜拜！",
       "lang": "zh"
     },
     "sad": {

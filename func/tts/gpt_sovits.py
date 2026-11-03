@@ -46,56 +46,6 @@ class GptSovits:
         }
         return build_sampling_params(emotion, intensity, base, self.config.emotion_params)
 
-    def get_sovits(self, filename: str, text: str, ref_audio_config: dict = None,
-                   emotion: str = "neutral", intensity: float = 3.0) -> int:
-        """合成语音并保存为 wav，返回 1 成功 0 失败（参考音频配置来自角色卡绑定）"""
-        ref_audio_config = ref_audio_config or {}
-        ref_audio_path = ref_audio_config.get("audio", "")
-        prompt_text = ref_audio_config.get("text", "")
-        prompt_lang = ref_audio_config.get("lang", "zh")
-
-        if not ref_audio_path or not os.path.exists(ref_audio_path):
-            print(f"参考音频文件不存在: {ref_audio_path}")
-            return 0
-        if not prompt_text:
-            print("缺少参考音频对应的参考文本，无法合成")
-            return 0
-
-        # SoVITS 服务进程的 cwd 与主程序不同，转为绝对路径避免找不到文件
-        ref_audio_path = os.path.abspath(ref_audio_path)
-
-        params = self._sampling_params(emotion, intensity)
-
-        # 构造 GPT-SoVITS v2 API 请求体
-        payload = {
-            "text": text,
-            "text_lang": self._resolve_text_lang(text),
-            "ref_audio_path": ref_audio_path,
-            "prompt_text": prompt_text,
-            "prompt_lang": prompt_lang,
-            "media_type": "wav",
-            "streaming_mode": False,
-            "top_k": params["top_k"],
-            "top_p": params["top_p"],
-            "temperature": params["temperature"],
-            "repetition_penalty": params["repetition_penalty"],
-            "noise_scale": params["noise_scale"],
-            "speed_factor": params["speed"],
-        }
-
-        try:
-            response = requests.post(self.tts_endpoint, json=payload, timeout=(5, 60))
-            if response.status_code == 200:
-                save_path = os.path.join(self.config.output_dir, f"{filename}.wav")
-                with open(save_path, "wb") as f:
-                    f.write(response.content)
-                return 1
-            print(f"TTS 请求失败: {response.status_code} - {response.text}")
-            return 0
-        except Exception as e:
-            print(f"TTS 请求异常: {e}")
-            return 0
-
     def get_sovits_stream(self, text: str, ref_audio_config: dict = None,
                           emotion: str = "neutral", intensity: float = 3.0):
         """流式合成，返回 (生成器, 取消函数)。

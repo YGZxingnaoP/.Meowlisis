@@ -38,7 +38,6 @@ class SenseVoiceManager:
         # 断句状态：累积文本 + VAD 驱动的 merge 计时
         self.pending_texts = {}        # key -> 累积文本
         self._merge_task = None        # merge_delay 计时任务
-        self._merge_key = None         # 计时对应的 key
         self._expecting_final = False  # 静音后等待 final
 
     async def send_config(self):
@@ -83,7 +82,6 @@ class SenseVoiceManager:
         if self._merge_task and not self._merge_task.done():
             self._merge_task.cancel()
         self._merge_task = None
-        self._merge_key = None
         self._expecting_final = False
 
     def on_speech_end(self):
@@ -227,7 +225,6 @@ class SenseVoiceManager:
         """启动 merge 计时（静音后收到 final 时调用）"""
         if self._merge_task and not self._merge_task.done():
             self._merge_task.cancel()
-        self._merge_key = key
         self._merge_task = asyncio.create_task(self._merge_wait(key))
 
     async def _merge_wait(self, key: str):
@@ -255,7 +252,6 @@ class SenseVoiceManager:
             # 仅当仍是当前计时任务时才清理
             if self._merge_task is asyncio.current_task():
                 self._merge_task = None
-                self._merge_key = None
 
     async def _send_to_llm(self, text: str, meowid: str):
         """发送识别文本到 LLM"""

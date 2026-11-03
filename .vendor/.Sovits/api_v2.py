@@ -24,6 +24,24 @@ from pydantic import BaseModel
 import threading
 
 # print(sys.path)
+
+# 推理进度条降噪：tqdm 4.66 不认 TQDM_DISABLE，这里直接把它默认关掉。
+# 进度条每 100ms 刷一行，实测占 svc_sovits 日志的 32%（全局 6.8%），对排查没用。
+# 想看进度就把环境变量 MEOW_TQDM 设成 1 再启动。
+if os.environ.get("MEOW_TQDM", "") != "1":
+    try:
+        import tqdm as _tqdm_pkg
+
+        _tqdm_init = _tqdm_pkg.std.tqdm.__init__
+
+        def _tqdm_init_quiet(self, *args, **kwargs):
+            kwargs.setdefault("disable", True)
+            _tqdm_init(self, *args, **kwargs)
+
+        _tqdm_pkg.std.tqdm.__init__ = _tqdm_init_quiet
+    except Exception:
+        pass
+
 i18n = I18nAuto()
 cut_method_names = get_cut_method_names()
 

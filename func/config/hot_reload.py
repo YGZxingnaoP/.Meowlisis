@@ -124,7 +124,7 @@ def reload_all(trigger="manual") -> dict:
 
         # ② 原地重跑各配置单例的 __init__。
         #    跑两遍：第二遍让「派生节点」吃到新值
-        #    （AutoActiveConfig.__init__ 里又读了 LLMConfig().local_llm_type / max_tokens）
+        #    （AutoActiveConfig.__init__ 里又读了 LLMConfig().local_llm_type）
         for _ in range(2):
             for cls in _config_singletons():
                 obj = SingletonMeta._instances.get(cls)

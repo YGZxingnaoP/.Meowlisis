@@ -128,5 +128,3 @@ class CatLearnSearchMeowLLM:
             self.log.error(f"[db_search] MeowLLM 流式调用异常: {e}")
             return iter([])
 
-
-MeowLLMLLM = CatLearnSearchMeowLLM

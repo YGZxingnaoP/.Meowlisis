@@ -41,6 +41,13 @@ class CWCatPawsMemory:
         except Exception:
             self.log.exception("[CatPaws] 写角色长期记忆失败")
 
+    def say(self, meowid, text):
+        """记录角色在手机链路里说出口的台词（只进短期记忆，不写长期流水）"""
+        body = str(text or "").strip()
+        if not body:
+            return
+        self._short("assistant", body, CW_MEM_REPLY)
+
     def _short(self, role, content, mem_type):
         try:
             from func.pipeline.short_memory import ShortMemory

@@ -34,17 +34,17 @@ class TBEmoteSender:
         affinity = self._affinity(username) if with_affinity else 0
         prob = max(0, self.config.emote_probability + affinity)
         if with_affinity:
-            self.log.info(f"[表情] 概率计算: 配置{self.config.emote_probability}% + 好感度{affinity} = {prob}%")
+            self.log.debug(f"[表情] 概率计算: 配置{self.config.emote_probability}% + 好感度{affinity} = {prob}%")
         else:
-            self.log.info(f"[表情] 概率计算: 固定配置概率 {prob}%（不叠加好感度）")
+            self.log.debug(f"[表情] 概率计算: 固定配置概率 {prob}%（不叠加好感度）")
         if prob <= 0:
-            self.log.info("[表情] 概率≤0，跳过")
+            self.log.debug("[表情] 概率≤0，跳过")
             return
         roll = random.random() * 100
         if roll >= prob:
-            self.log.info(f"[表情] 未命中概率（roll={roll:.1f} >= {prob}），跳过")
+            self.log.debug(f"[表情] 未命中概率（roll={roll:.1f} >= {prob}），跳过")
             return
-        self.log.info(f"[表情] 命中概率（roll={roll:.1f} < {prob}），开始选择表情")
+        self.log.debug(f"[表情] 命中概率（roll={roll:.1f} < {prob}），开始选择表情")
         name = self.choose.choose(username, text, reply_text, chat_record)
         if not name:
             self.log.warning("[表情] 选择表情失败（返回空），未发送")
