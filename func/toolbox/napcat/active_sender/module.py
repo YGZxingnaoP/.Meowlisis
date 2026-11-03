@@ -68,10 +68,16 @@ class TBNapcatActiveModule:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self._meowid = ""
+        # 父级注入的上下文（短期记忆等）：拟稿时作为历史消息带上
+        self._context = {}
 
     def set_meowid(self, meowid: str):
         """注入当前用户（供 excuse 询问时使用）"""
         self._meowid = meowid or ""
+
+    def set_context(self, context: Dict):
+        """注入父级上下文：short_memory 用于拟稿时理解上下文"""
+        self._context = dict(context or {})
 
     # ==================== 父级 schema ====================
     def build_tools(self) -> List[Dict]:
@@ -274,6 +280,19 @@ class TBNapcatActiveModule:
             return ""
 
     # ==================== 角色拟稿 ====================
+    def _history(self):
+        """父级注入的短期记忆（只取 user/assistant 且有内容的消息）"""
+        out = []
+        for msg in (self._context.get("short_memory") or []):
+            try:
+                role = str(msg.get("role") or "")
+                content = str(msg.get("content") or "").strip()
+            except Exception:
+                continue
+            if role in ("user", "assistant") and content:
+                out.append({"role": role, "content": content})
+        return out
+
     def _draft(self, request: str, target_type: str, target: str,
                mention: str) -> str:
         """只有意图、没有现成内容时，由角色自己写出一条要发出去的正文"""
@@ -296,15 +315,15 @@ class TBNapcatActiveModule:
             if str(target_type) == "friend":
                 target_desc = f"{target_desc}（好友私聊）"
         try:
-            resp = llm.chat([
-                {"role": "system",
-                 "content": subtools.draft_prompt(self._meowid, request)},
-                {"role": "user", "content": (
-                    f"发给谁：{target_desc}\n"
-                    f"主人的要求：{request}\n"
-                    f"请直接写出要发送的消息正文。{extra}"
-                )},
-            ])
+            messages = [{"role": "system",
+                         "content": subtools.draft_prompt(self._meowid, request)}]
+            messages.extend(self._history())
+            messages.append({"role": "user", "content": (
+                f"发给谁：{target_desc}\n"
+                f"主人的要求：{request}\n"
+                f"请直接写出要发送的消息正文。{extra}"
+            )})
+            resp = llm.chat(messages)
         except Exception:
             self.log.exception("[napcat_send] 拟稿失败，改为追问内容")
             return ""

@@ -69,11 +69,30 @@ class TBVisionCore:
         self._images: List[str] = []
         # 回传 toolbox_core 的转发回调（由 toolbox_core 注入）
         self._reply_callback = None
+        # 父级注入的上下文（短期记忆等）
+        self._context = {}
 
     # ==================== 上下文与缓存 ====================
     def set_reply_callback(self, callback):
         """注入回传回调（由 toolbox_core 注入，视觉回复经 toolbox_core 转发 TTS）"""
         self._reply_callback = callback
+
+    def set_context(self, context: Dict):
+        """注入父级上下文：short_memory 作为看图对话的历史消息"""
+        self._context = dict(context or {})
+
+    def _history_messages(self):
+        """父级注入的短期记忆（只取 user/assistant 且有内容的消息）"""
+        out = []
+        for msg in (self._context.get("short_memory") or []):
+            try:
+                role = str(msg.get("role") or "")
+                content = str(msg.get("content") or "").strip()
+            except Exception:
+                continue
+            if role in ("user", "assistant") and content:
+                out.append({"role": role, "content": content})
+        return out
 
     def set_meowid(self, meowid: str):
         """注入当前用户（供记忆记录使用，由 analysis.dispatch 调用）"""
@@ -239,7 +258,8 @@ class TBVisionCore:
         timer.daemon = True
         timer.start()
         try:
-            return self.process(images, user_message, meowid, need_description)
+            return self.process(images, user_message, meowid, need_description,
+                                history_messages=self._history_messages())
         finally:
             stop.set()
             timer.cancel()

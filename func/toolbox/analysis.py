@@ -216,6 +216,9 @@ class TBoxAnalysis:
         return self._match_trigger_rule(text)
 
     # ==================== 触发规则（通用执行器，不含具体工具逻辑） ====================
+    # 硬触发/工具上下文里带的短期记忆条数：固定 30 条。
+    # 工具提示词不加整段历史，避免把很早的对话灌进去污染当前工具上下文。
+    TOOL_SHORT_MEMORY = 30
     def _collect_rules(self):
         """从已注册模块收集 TRIGGER_RULES（模块自己声明，父级只做匹配/执行）"""
         if self._rules is not None:
@@ -337,7 +340,8 @@ class TBoxAnalysis:
             return refused
         if context is None:
             context = {"meowid": meowid, "text": text,
-                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+                       "short_memory": self._load_short_memory(self.TOOL_SHORT_MEMORY),
+                       "system_prompt": ""}
         result = self.dispatch(name, arguments, meowid, context)
         self.log.info(f"父级 toolcalls 硬触发 {name} 结果: {str(result)[:200]}")
         if name in self._rule_speak_tools:
@@ -393,7 +397,7 @@ class TBoxAnalysis:
 
         from func.toolbox.get_prompt import TBoxGetPrompt
         base_prompt = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""
-        history_messages = self._load_short_memory()
+        history_messages = self._load_short_memory(self.TOOL_SHORT_MEMORY)
         # 显式上下文：身份编号 + 短记忆 + 角色提示词，供 flux_painter 等工具通过 set_context 接收
         dispatch_context = {"meowid": meowid, "text": text,
                             "short_memory": history_messages,
@@ -450,7 +454,8 @@ class TBoxAnalysis:
             self.log.warning(f"工具参数解析为空，按空参数执行 {name}: {str(arguments)[:120]!r}")
         if context is None:
             context = {"meowid": meowid, "text": text,
-                       "short_memory": self._load_short_memory(), "system_prompt": ""}
+                       "short_memory": self._load_short_memory(self.TOOL_SHORT_MEMORY),
+                       "system_prompt": ""}
             try:
                 from func.toolbox.get_prompt import TBoxGetPrompt
                 context["system_prompt"] = TBoxGetPrompt().get_tool_prompt(meowid, text) or ""

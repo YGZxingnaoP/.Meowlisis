@@ -253,6 +253,10 @@ def service_port(key: str, base):
         return 8443          # .vendor/.cam/config.py: HTTPS_PORT
     if key == 'catpaw':
         return 18110         # .vendor/.CatPaws/config.yml: server.port
+    if key == 'netease':
+        return 5000          # .vendor/.NeteaseMusic/server/server.py: app.run(port=PORT)
+    if key == 'rvc':
+        return 7865          # .vendor/.RVC/cover_server.py: RVC_PORT 默认 7865
     return None
 
 
