@@ -351,10 +351,14 @@
         return api(q).then(function (j) {
             offset = j.offset;
             elStatSize.textContent = _t('文件 {size}', { size: fmtSize(j.size) });
+            var portTxt = j.port ? String(j.port) : ((j.ports || []).join(',') || '');
             if (j.running) {
                 var extra = (j.pid ? ' pid ' + j.pid : '') +
-                            (j.ports && j.ports.length ? ' · ' + _t('端口 {ports}', { ports: j.ports.join(',') }) : '');
+                            (portTxt ? ' · ' + _t('端口 {ports}', { ports: portTxt }) : '');
                 elCurState.textContent = _t('● 运行中') + extra;
+            } else if (j.state === 'starting') {
+                elCurState.textContent = _t('◌ 启动中') +
+                    (portTxt ? ' · ' + _t('端口 {ports} 未监听', { ports: portTxt }) : '');
             } else {
                 elCurState.textContent = _t('○ 未运行');
             }
@@ -386,10 +390,14 @@
     // 暂停/只读状态栏：只刷运行状态，不动日志内容
     function refreshState() {
         api('/api/logs/tail?svc=' + encodeURIComponent(cur) + '&limit=50').then(function (j) {
+            var portTxt = j.port ? String(j.port) : ((j.ports || []).join(',') || '');
             if (j.running) {
                 var extra = (j.pid ? ' pid ' + j.pid : '') +
-                            (j.ports && j.ports.length ? ' · ' + _t('端口 {ports}', { ports: j.ports.join(',') }) : '');
+                            (portTxt ? ' · ' + _t('端口 {ports}', { ports: portTxt }) : '');
                 elCurState.textContent = _t('● 运行中') + extra;
+            } else if (j.state === 'starting') {
+                elCurState.textContent = _t('◌ 启动中') +
+                    (portTxt ? ' · ' + _t('端口 {ports} 未监听', { ports: portTxt }) : '');
             } else {
                 elCurState.textContent = _t('○ 未运行');
             }
@@ -434,13 +442,16 @@
             row.className = 'lh-item' + (it.key === cur ? ' on' : '');
             row.dataset.key = it.key;
             row.dataset.running = it.running ? '1' : '0';
+            var portTxt = it.port ? String(it.port) : ((it.ports || []).join(',') || '');
             var sub;
             if (it.running) {
-                sub = (it.ports && it.ports.length)
-                    ? _t('运行中 · {ports}', { ports: it.ports.join(',') })
-                    : _t('运行中');
+                sub = _t('运行中 · {ports}', { ports: portTxt || '—' }) +
+                      (it.pid ? ' · pid ' + it.pid : '');
+            } else if (it.state === 'starting') {
+                sub = _t('启动中（端口 {ports} 未监听）', { ports: portTxt || '?' }) +
+                      (it.proc_pid ? ' · pid ' + it.proc_pid : '');
             } else {
-                sub = it.log_exists ? fmtSize(it.size) : _t('未运行');
+                sub = (it.log_exists ? fmtSize(it.size) + ' · ' : '') + _t('未运行');
             }
             row.innerHTML =
                 '<span class="lh-dot' + (it.running ? ' run' : '') + '"></span>' +
@@ -452,9 +463,12 @@
                     '<button class="lh-act start" data-i18n-title="启动">▶</button>' +
                     '<button class="lh-act stop" data-i18n-title="停止">■</button>' +
                 '</span>';
-            row.querySelector('.lh-act.start').disabled = it.running;
+            // 按钮状态与端口绑定：端口在监听=运行中（启动置灰）；
+            // 进程在但端口没起来=启动中（也置灰，避免重复启动抢端口）
+            row.querySelector('.lh-act.start').disabled =
+                it.running || it.state === 'starting';
             // ■ 停止永不置灰：状态可能因"服务是手动启动的"而显示未运行，
-            // 但后端会用命令行反查真的去找进程，所以必须让它点得动
+            // 但后端会按端口占用者和命令行反查真的去找进程，所以必须让它点得动
             row.querySelector('.lh-act.stop').disabled = false;
             row.addEventListener('click', function (ev) {
                 if (ev.target.closest('.lh-act')) return;
@@ -594,6 +608,30 @@
         });
     }
 
+    /** 启动后盯端口：端口真的在监听才算就绪（SoVITS 冷启动约 50~60 秒） */
+    function waitUp(key, btn, nm, tries) {
+        tries = tries || 0;
+        api('/api/logs/tail?svc=' + encodeURIComponent(key) + '&limit=1').then(function (j) {
+            if (j.running) {
+                busyBtn(btn, false);
+                setRowBusy(key, false);
+                toast(nm + '：' + _t('已就绪') +
+                      (j.port ? ' · ' + _t('端口 {ports}', { ports: j.port }) : ''));
+                return refreshList();
+            }
+            if (tries >= 120) {
+                busyBtn(btn, false);
+                setRowBusy(key, false);
+                toast(nm + '：' + _t('还没就绪，请看日志（可能启动失败）'), true);
+                return refreshList();
+            }
+            setTimeout(function () { waitUp(key, btn, nm, tries + 1); }, 1000);
+        }).catch(function () {
+            busyBtn(btn, false);
+            setRowBusy(key, false);
+        });
+    }
+
     function act(what, key) {
         var it = (lastList || []).filter(function (x) { return x.key === key; })[0];
         var nm = it ? _t(it.name) : key;
@@ -606,7 +644,7 @@
                 toast(nm + '：' + ((j && j.message) || _t('完成')), !ok);
                 if (!ok) { busyBtn(tb, false); setRowBusy(key, false); return refreshList(); }
                 if (what === 'stop') waitGone(key, tb, nm, 0);
-                else { busyBtn(tb, false); setRowBusy(key, false); return refreshList(); }
+                else waitUp(key, tb, nm, 0);
             })
             .catch(function (e) {
                 toast(nm + ' ' + _t(what === 'start' ? '启动' : '停止') + _t('失败: ') + e.message, true);

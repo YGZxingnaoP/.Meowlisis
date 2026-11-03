@@ -665,6 +665,11 @@ class TTsCore:
             text, ref_audio, emotion=emotion, intensity=intensity
         )
         if generator is None:
+            # 合成引擎不可用（服务没起/参考音频缺失）：没声音时必须留痕，别静默丢弃
+            now = time.time()
+            if now - getattr(self, "_last_synth_fail_log", 0.0) > 10:
+                self._last_synth_fail_log = now
+                self.log.error(f"[TTS] 合成失败，本条语音已丢弃（引擎不可用？）traceid={traceid}")
             return
 
         source = StreamSource(generator, cancel_func, traceid, seg_index,

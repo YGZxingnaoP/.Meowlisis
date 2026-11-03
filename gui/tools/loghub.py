@@ -253,6 +253,84 @@ def _ports_of(pid):
         return []
 
 
+# 正在 LISTEN 的端口集合缓存（短 TTL：界面轮询要靠它判断「启动中→就绪」）
+_listen_cache = {'ts': 0.0, 'ports': set()}
+
+
+def _listening_ports(max_age=2.0):
+    """当前所有处于 LISTEN 的本地端口（只读状态，不发起连接）"""
+    if time.time() - _listen_cache['ts'] < max_age:
+        return _listen_cache['ports']
+    ports = set()
+    try:
+        if _psutil is not None:
+            for conn in _psutil.net_connections(kind='inet'):
+                try:
+                    if conn.status == _psutil.CONN_LISTEN and conn.laddr:
+                        ports.add(int(conn.laddr.port))
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    # 兜底/补全：psutil 对别的用户的 socket 可能拿不到，netstat 是系统级的
+    if not ports or _psutil is None:
+        try:
+            for plist in (_ports_map(max_age=max_age) or {}).values():
+                ports.update(int(p) for p in plist)
+        except Exception:
+            pass
+    _listen_cache['ts'] = time.time()
+    _listen_cache['ports'] = ports
+    return ports
+
+
+def _port_alive(port, host='127.0.0.1', timeout=0.25):
+    """端口真的在监听吗（按 LISTEN 状态判断，**不主动建连**）
+
+    不能直接 TCP connect：WebSocket 服务（如 SenseVoice 10095）会把这种
+    「连上就断」记成 opening handshake failed / InvalidMessage，日志被刷满。
+    """
+    if not port:
+        return False
+    try:
+        return int(port) in _listening_ports()
+    except Exception:
+        return False
+
+
+def _pid_on_port(port):
+    """谁在监听这个端口（覆盖「手动启动、命令行走不匹配」的实例）"""
+    if not port:
+        return None
+    try:
+        for pid, ports in (_ports_map() or {}).items():
+            if int(port) in ports:
+                return int(pid)
+    except Exception:
+        pass
+    return None
+
+
+def _svc_state(key):
+    """服务真实状态：有端口的以端口监听为准，没端口的退回进程判断。
+
+    返回 {running, state(running|starting|stopped), port, listening, pid, proc_pid, ports}
+    """
+    proc_run, pid, ports = _running(key)
+    try:
+        port = launcher.service_port(key, _base())
+    except Exception:
+        port = None
+    listening = _port_alive(port) if port else None
+    port_pid = _pid_on_port(port) if port else None
+    running = bool(listening) if port else bool(proc_run)
+    state = 'running' if running else ('starting' if proc_run else 'stopped')
+    return {
+        'running': running, 'state': state, 'port': port, 'listening': listening,
+        'pid': port_pid or pid, 'proc_pid': pid, 'ports': ports,
+    }
+
+
 def _cmdline_pids(key):
     """按命令行关键字反查进程 —— 停止/状态的兜底手段。
 
@@ -698,10 +776,16 @@ def _launch(key):
         return False, {'status': 'error', 'message': '操作太快了，稍等一下'}
     _locks[key] = time.time()
 
-    run, pid, ports = _running(key)
-    if run:
-        return True, {'status': 'ok', 'message': '已在运行', 'pid': pid,
-                      'ports': ports, 'running': True}
+    st = _svc_state(key)
+    if st['running']:
+        return True, {'status': 'ok', 'message': '已在运行', 'pid': st['pid'],
+                      'ports': st['ports'], 'port': st['port'],
+                      'state': st['state'], 'running': True}
+    if st['state'] == 'starting':
+        return False, {'status': 'error', 'running': False, 'state': 'starting',
+                       'port': st['port'], 'proc_pid': st['proc_pid'],
+                       'message': '进程已经在启动中（端口 %s 还没监听），别重复启动，等它自己就绪'
+                                  % (st['port'] or '?')}
 
     # 关键防线：现场再扫一次。_running() 可能依赖过期缓存，而外部（launcher.cmd、
     # 命令行）起的实例不会进内存句柄；不查就再起一个 → 两个进程抢同一个端口
@@ -737,8 +821,16 @@ def _launch(key):
         except Exception:
             pass
     _scan['ts'] = 0.0        # 让状态缓存失效，下次刷新就是新状态
-    return True, {'status': 'ok', 'message': msg, 'running': True,
-                  'pid': (proc.pid if proc is not None else None)}
+    # 启动成功 ≠ 服务就绪：有端口的服务要等端口真的监听才算 running，
+    # 这段时间前端显示「启动中」，避免"点完就显示运行中"骗人。
+    try:
+        port = launcher.service_port(key, _base())
+    except Exception:
+        port = None
+    ready = _port_alive(port) if port else True
+    return True, {'status': 'ok', 'message': msg,
+                  'running': bool(ready), 'state': 'running' if ready else 'starting',
+                  'port': port, 'pid': (proc.pid if proc is not None else None)}
 
 
 def start(key, app=None):
@@ -810,6 +902,15 @@ def stop(key):
     if not pids and _psutil is None:
         pids = [x for x in _cmdline_pids(key) if _pid_alive(x)]
 
+    # 端口占用者一起结束：手动起的实例可能不在进程扫描结果里，但端口是硬的
+    try:
+        port = launcher.service_port(key, _base())
+    except Exception:
+        port = None
+    port_pid = _pid_on_port(port) if port else None
+    if port_pid and port_pid not in pids:
+        pids.append(port_pid)
+
     for pid in pids:
         r = _fast_kill(pid)
         if r is None:
@@ -846,11 +947,23 @@ def stop(key):
 
     if key in _scan.get('pids', {}):
         _scan['pids'][key] = []          # 刚杀过的服务直接置空，不必 9 个服务全量重扫
+
+    # 端口为准则：杀完还得确认端口真的不再监听，否则界面不能说"已停止"
+    still = False
+    if port:
+        deadline = time.time() + 2.0
+        while time.time() < deadline and _port_alive(port):
+            time.sleep(0.1)
+        still = _port_alive(port)
+        if still:
+            msgs.append('端口 %s 还在监听（进程没退干净，可再点一次停止）' % port)
     return jsonify({
         'status': 'ok',
         'message': '；'.join(m for m in msgs if m),
         'killed': killed, 'failed': failed,
-        'running': bool(leftover),
+        'port': port, 'listening': bool(still),
+        'state': 'running' if still else 'stopped',
+        'running': bool(still) if port else bool(leftover),
     })
 
 
@@ -1067,7 +1180,8 @@ def register(app, base_dir=None, gui_dir=None):
         items = []
         for key in ORDER:
             s = SERVICES[key]
-            run, pid, ports = _running(key)
+            st = _svc_state(key)
+            run, pid, ports = st['running'], st['pid'], st['ports']
             lp = _log_path(key)
             try:
                 size = lp.stat().st_size if lp.is_file() else 0
@@ -1077,6 +1191,8 @@ def register(app, base_dir=None, gui_dir=None):
             items.append({
                 'key': key, 'name': s['name'], 'desc': s.get('desc', ''),
                 'running': run, 'pid': pid, 'ports': ports,
+                'state': st['state'], 'port': st['port'], 'listening': st['listening'],
+                'proc_pid': st['proc_pid'],
                 'log': str(lp.relative_to(_base())).replace('\\', '/'),
                 'log_exists': lp.is_file(), 'size': size, 'mtime': mtime,
             })
@@ -1113,11 +1229,13 @@ def register(app, base_dir=None, gui_dir=None):
         day = request.args.get('date') or None
         show_bg = request.args.get('bg') not in (None, '', '0', 'false')
         lines, offset, size, noise = read_tail(key, since, limit, day=day, include_bg=show_bg)
-        run, pid, ports = _running(key)
+        st = _svc_state(key)
         return jsonify({'status': 'ok', 'key': key, 'lines': lines,
                         'offset': offset, 'size': size, 'noise': noise,
                         'bg': 1 if show_bg else 0,
-                        'running': run, 'pid': pid, 'ports': ports})
+                        'running': st['running'], 'pid': st['pid'], 'ports': st['ports'],
+                        'state': st['state'], 'port': st['port'],
+                        'listening': st['listening'], 'proc_pid': st['proc_pid']})
 
 
 

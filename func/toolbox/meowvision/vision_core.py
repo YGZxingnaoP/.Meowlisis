@@ -3,6 +3,8 @@
 # MeowVision 核心：视觉模块对外汇总入口（触发型工具）
 # 职责：传输图片与消息 → 获取图片描述与角色回复 → 记录短期/长期记忆 → 回传 toolbox_core 转发 TTS
 
+import random
+import threading
 import uuid
 from typing import Dict, List, Optional
 
@@ -12,6 +14,19 @@ from func.pipeline.short_memory import ShortMemory
 from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
 from func.toolbox.meowvision.config import TBVisionConfig
 from func.toolbox.meowvision.get_response import TBVisionGetResponse
+from func.toolbox.trigger_rules import forced
+
+# 首字延迟兜底：看图链路（截图 + 视觉模型 + 角色回复）常常要好几秒，
+# 超过这个时间还没出结果，先播一句过渡语，避免长时间静默。
+LEAD_FILLER_DELAY = 5.0
+LEAD_FILLER_POOL = (
+    "嗯……",
+    "我看看。",
+    "稍等一下呀。",
+    "让我瞅瞅。",
+    "等我看一眼。",
+    "这就看。",
+)
 
 
 @singleton
@@ -26,6 +41,21 @@ class TBVisionCore:
     """
 
     TOOL_NAME = "use_vision"
+
+    # 视觉规则触发词表：命中即强制看屏幕（确定性高频需求，不依赖 LLM 自觉）
+    VISION_RULE_WORDS = (
+        "看屏幕", "看一下屏幕", "看看屏幕", "看下屏幕", "看一眼屏幕", "看着屏幕",
+        "看画面", "看一下画面", "看看画面", "看下画面", "看图片", "看我在做什么",
+        "看看我在", "看我玩", "看我打", "陪我打游戏", "陪我看", "盯屏幕",
+        "盯着屏幕", "盯着看", "盯住", "长期观察", "定期汇报", "截个图", "截图",
+        "屏幕上", "屏幕里", "屏幕", "帮我看看屏幕", "你看到了吗", "你看屏幕",
+        "现在看屏幕", "看下我", "use_vision",
+    )
+
+    TRIGGER_RULES = (
+        forced(TOOL_NAME, VISION_RULE_WORDS,
+               args=lambda text: {"user_message": text}),
+    )
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -178,7 +208,7 @@ class TBVisionCore:
                 self.log.warning("MeowVision 自动截屏失败")
                 return "错误：没有可查看的图片"
 
-        result = self.process(images, user_message, meowid, need_description)
+        result = self._process_with_lead_filler(images, user_message, meowid, need_description)
         reply = (result.get("reply") or "").strip()
         if not reply:
             self.log.warning("MeowVision 视觉回复为空")
@@ -199,6 +229,35 @@ class TBVisionCore:
 
         self.log.info(f"[{traceid}][MeowVision视觉回复]{reply[:50]}...")
         return reply
+
+    # ==================== 首字延迟兜底 ====================
+    def _process_with_lead_filler(self, images: List[str], user_message: str,
+                                  meowid: str, need_description: bool) -> Dict[str, str]:
+        """跑视觉理解；超过 LEAD_FILLER_DELAY 还没结果就先播一句过渡语"""
+        stop = threading.Event()
+        timer = threading.Timer(LEAD_FILLER_DELAY, self._speak_lead_filler, args=(stop,))
+        timer.daemon = True
+        timer.start()
+        try:
+            return self.process(images, user_message, meowid, need_description)
+        finally:
+            stop.set()
+            timer.cancel()
+
+    def _speak_lead_filler(self, stop: threading.Event):
+        """过渡语：预设语料随机一句，只在还没出结果时播（避免和回复抢话）"""
+        if stop.is_set():
+            return
+        try:
+            from func.pipeline.toolbox_tts import ToolboxTtsBridge
+            last = str(getattr(self, "_last_filler", ""))
+            pool = [x for x in LEAD_FILLER_POOL if x != last] or list(LEAD_FILLER_POOL)
+            line = random.choice(pool)
+            self._last_filler = line
+            ToolboxTtsBridge().send_stream(line, source="toolbox")
+            self.log.info(f"[MeowVision] 首字延迟兜底：{line}")
+        except Exception:
+            self.log.exception("[MeowVision] 首字延迟兜底播报失败")
 
     def process(self, images: List[str], user_message: str, meowid: str,
                 need_description: bool = True, write_memory: bool = True,

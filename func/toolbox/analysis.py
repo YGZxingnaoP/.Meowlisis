@@ -8,6 +8,7 @@ from typing import Dict, List
 
 from func.log.default_log import DefaultLog
 from func.toolbox.config import TBoxConfig
+from func.toolbox.trigger_rules import CHOOSE, FORCED, matched
 
 
 class TBoxAnalysis:
@@ -18,6 +19,9 @@ class TBoxAnalysis:
         self.config = TBoxConfig()
         self.llm = None
         self._tools = {}
+        # 触发规则缓存（由已注册模块的 TRIGGER_RULES 收集，注册时失效）
+        self._rules = None
+        self._rule_speak_tools = set()
         # 当前用户名（decide 时注入，供模块使用）
         self.current_meowid = ""
         self._register_modules()
@@ -182,6 +186,7 @@ class TBoxAnalysis:
                            f"只读/底层发送只允许在 QQ 链路内部触发")
             return
         self._tools[name] = tool
+        self._rules = None
 
     def build_tools(self) -> List[Dict]:
         """构建父级模块入口的工具定义（只暴露模块级入口，不暴露模块内部子工具）"""
@@ -208,111 +213,101 @@ class TBoxAnalysis:
                 return hit
         except Exception:
             self.log.exception("插件会话/关键词处理失败")
-        # 说「qq发消息」必然触发，但发消息 / @谁 / 指挥幻梦由角色自己选：
-        # 不再无条件派 napcat_send（那样会吞掉 mention，也永远轮不到 napcat_ask_bot）
-        if self._qq_send_rule_hit(text):
-            plan = self._choose_qq_tool(text)
+        return self._match_trigger_rule(text)
+
+    # ==================== 触发规则（通用执行器，不含具体工具逻辑） ====================
+    def _collect_rules(self):
+        """从已注册模块收集 TRIGGER_RULES（模块自己声明，父级只做匹配/执行）"""
+        if self._rules is not None:
+            return self._rules
+        rules, speak_tools, seen = [], set(), set()
+        for tool in self._tools.values():
+            if id(tool) in seen:
+                continue
+            seen.add(id(tool))
+            for rule in getattr(tool, "TRIGGER_RULES", ()) or ():
+                if not isinstance(rule, dict) or not rule.get("words"):
+                    continue
+                rules.append(rule)
+                if not rule.get("speak_result"):
+                    continue
+                if rule.get("mode") == CHOOSE:
+                    speak_tools.update(rule.get("candidates") or ())
+                else:
+                    speak_tools.add(str(rule.get("tool") or ""))
+        self._rules = rules
+        self._rule_speak_tools = speak_tools
+        return rules
+
+    def _match_trigger_rule(self, text: str):
+        """按模块声明的规则匹配：forced 直接返回入口；choose 先让角色选一个"""
+        body = str(text or "").strip()
+        if not body:
+            return None
+        for rule in self._collect_rules():
+            if not matched(rule, body):
+                continue
+            if rule.get("mode") == FORCED:
+                tool = str(rule.get("tool") or "")
+                if tool not in self._tools:
+                    continue
+                build_args = rule.get("args")
+                return tool, (build_args(body) if callable(build_args) else {})
+            plan = self._resolve_choice(rule, body)
             if plan:
                 return plan
-            if "napcat_send" in self._tools:
-                self.log.warning("QQ 工具选择没选出来，兜底 napcat_send（目标/内容交给模块内部解析）")
-                return ("napcat_send", {"request": text})
-        if self._vision_rule_hit(text):
-            return ("use_vision", {"user_message": text})
-        if self._paint_rule_hit(text):
-            return ("flux_paint", {"request": text, "topic": "规则硬触发绘画"})
+            fallback = str(rule.get("fallback") or "")
+            if fallback and fallback in self._tools:
+                self.log.warning(f"触发选择没选出来，兜底 {fallback}（候选 {rule.get('candidates')}）")
+                return fallback, {"request": body}
         return None
 
-    # ==================== QQ 工具选择（必然触发 + 角色选择） ====================
-    # 只认「qq发消息」「QQ发消息」，命中后由角色在下面两个工具里二选一
-    QQ_SEND_RULE_WORDS = ("qq发消息", "QQ发消息")
-    QQ_CHOICE_TOOLS = ("napcat_send", "napcat_ask_bot")
-    QQ_CHOICE_PROMPT = (
-        "你在替角色决定「用哪个工具」满足主人这句话，只做工具选择，不要写回复正文。\n"
-        "- napcat_send：替主人发消息 / 文件 / 链接给好友或群；要 @ 谁就把名字填进 mention。\n"
-        "- napcat_ask_bot：指挥群里的机器人（如幻梦）执行指令（今日老婆 / 打卡 / 运势…）。\n"
-        "判断依据是真实目的：让群机器人做事就选 napcat_ask_bot，绝不要用 napcat_send 在群里发一句话代替；"
-        "只是把内容发给某人/某群才选 napcat_send。必须调用其中一个工具。"
-    )
-
-    def _qq_send_rule_hit(self, text: str) -> bool:
-        """本地规则硬触发判断：命中「qq发消息」即必然触发（但不在此处决定用哪个工具）"""
-        t = (text or "").strip().lower()
-        if not t:
-            return False
-        return any(w.lower() in t for w in self.QQ_SEND_RULE_WORDS)
-
-    def _known_groups(self, limit: int = 12):
-        """给工具选择用的真实群名（填 group_name 必须一字不差照抄，否则解析不到）"""
-        try:
-            from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
-            rows = TBGetGroupList().get() or []
-        except Exception:
-            self.log.exception("读取群列表失败（本次选择不带群名提示）")
-            return []
-        names = []
-        for row in rows:
-            name = str((row or {}).get("group_name") or "").strip()
-            if name and name not in names:
-                names.append(name)
-        return names[:limit]
-
-    def _qq_choice_schemas(self):
-        """参与选择的两个父级入口 schema（只取已注册的）"""
+    def _resolve_choice(self, rule: dict, text: str):
+        """choose 规则：让角色在候选入口里选一个（required → auto），参数走容错解析"""
+        candidates = [n for n in (rule.get("candidates") or ()) if n in self._tools]
+        if not candidates:
+            return None
         schemas = []
-        for name in self.QQ_CHOICE_TOOLS:
-            tool = self._tools.get(name)
-            if tool is None:
-                continue
+        for name in candidates:
             try:
-                for schema in tool.build_tools():
+                for schema in self._tools[name].build_tools():
                     if schema.get("function", {}).get("name") == name:
                         schemas.append(schema)
             except Exception:
                 self.log.exception(f"读取工具定义失败: {name}")
-        return schemas
-
-    def _qq_choice_system(self) -> str:
-        """选择提示词 + 真实群名（模型照抄群名，解析才不会失败）"""
-        text = self.QQ_CHOICE_PROMPT
-        groups = self._known_groups()
-        if groups:
-            text += ("\n可用的群（group_name / target 必须从下面一字不差照抄一个，"
-                     "用户说的群名可能少了几个字）：" + "、".join(groups))
-        return text
-
-    def _choose_qq_tool(self, text: str):
-        """让角色在 napcat_send / napcat_ask_bot 里选一个，返回 (name, arguments) 或 None。
-
-        用 tool_choice="required" 强制选（模型不配合时退回 auto 再试一次），
-        参数走容错解析，mention / command 不会被畸形 JSON 吞掉。
-        """
+        if not schemas:
+            return None
+        system = str(rule.get("prompt") or "")
+        hint = rule.get("hint")
+        if callable(hint):
+            try:
+                hint = hint()
+            except Exception:
+                self.log.exception("触发规则的 hint 生成失败")
+                hint = ""
+        if hint:
+            system = f"{system}\n{hint}" if system else str(hint)
         llm = self._ensure_llm()
         if llm is None or not getattr(llm, "client", None):
             return None
-        schemas = self._qq_choice_schemas()
-        if not schemas:
-            return None
-        messages = [
-            {"role": "system", "content": self._qq_choice_system()},
-            {"role": "user", "content": str(text or "")},
-        ]
+        messages = [{"role": "system", "content": system},
+                    {"role": "user", "content": str(text or "")}]
         for tool_choice in ("required", "auto"):
             try:
                 resp = llm.chat(messages, tools=schemas, tool_choice=tool_choice,
                                 enable_thinking=False)
             except Exception:
-                self.log.exception(f"QQ 工具选择失败（tool_choice={tool_choice}）")
+                self.log.exception(f"触发选择失败（tool_choice={tool_choice}）")
                 continue
             choices = getattr(resp, "choices", None) if resp else None
             message = getattr(choices[0], "message", None) if choices else None
             for call in (getattr(message, "tool_calls", None) or []):
                 fn = getattr(call, "function", None)
                 name = str(getattr(fn, "name", "") or "")
-                if name not in self.QQ_CHOICE_TOOLS:
+                if name not in candidates:
                     continue
                 args = self._parse_arguments(getattr(fn, "arguments", ""))
-                self.log.info(f"QQ 工具选择: {name} {str(args)[:120]}")
+                self.log.info(f"触发选择: {name} {str(args)[:120]}")
                 return name, args
         return None
 
@@ -335,6 +330,7 @@ class TBoxAnalysis:
         这里拿回台词就掐断本次工具，不派发、不启动。
         """
         from func.toolbox.consent import TBoxConsent
+        self._collect_rules()          # 确保规则缓存就绪（speak_result 判定要用）
         refused = TBoxConsent().ask(name, text, meowid)
         if refused:
             self.log.info(f"父级 toolcalls 硬触发被角色拒绝 {name}: {(text or '')[:30]}")
@@ -344,16 +340,12 @@ class TBoxAnalysis:
                        "short_memory": self._load_short_memory(), "system_prompt": ""}
         result = self.dispatch(name, arguments, meowid, context)
         self.log.info(f"父级 toolcalls 硬触发 {name} 结果: {str(result)[:200]}")
-        self._speak_result(name, result, meowid)
+        if name in self._rule_speak_tools:
+            self._speak_result(name, result, meowid)
         return result
-
-    # 这些工具在 QQ 侧执行、自己不出声：硬触发跳过主回复后，要补一句角色台词
-    SPEAK_RESULT_TOOLS = ("napcat_send", "napcat_ask_bot")
 
     def _speak_result(self, name: str, result, meowid: str) -> str:
         """工具执行完，让角色用自己的话说一句结果（失败就不说，不写死台词）"""
-        if name not in self.SPEAK_RESULT_TOOLS:
-            return ""
         text = str(result or "").strip()
         if not text:
             return ""
@@ -500,50 +492,7 @@ class TBoxAnalysis:
                 return data
         return {}
 
-    # ==================== 规则硬触发层 ====================
-    # 视觉规则触发词表：命中即强制看屏幕（确定性高频需求，不依赖 LLM 自觉）
-    VISION_RULE_WORDS = (
-        "看屏幕", "看一下屏幕", "看看屏幕", "看下屏幕", "看一眼屏幕", "看着屏幕",
-        "看画面", "看一下画面", "看看画面", "看下画面", "看图片", "看我在做什么",
-        "看看我在", "看我玩", "看我打", "陪我打游戏", "陪我看", "盯屏幕",
-        "盯着屏幕", "盯着看", "盯住", "长期观察", "定期汇报", "截个图", "截图",
-        "屏幕上", "屏幕里", "屏幕", "帮我看看屏幕", "你看到了吗", "你看屏幕",
-        "现在看屏幕", "看下我", "use_vision",
-    )
-
-    def _vision_rule_hit(self, text: str) -> bool:
-        """本地规则硬触发判断：用户文本命中视觉意图词即返回 True（零 LLM）"""
-        t = (text or "").strip()
-        if not t:
-            return False
-        return any(w in t for w in self.VISION_RULE_WORDS)
-
-    # 绘画规则触发词表：命中即强制开画（确定性高频需求，与视觉同理不依赖 LLM 自觉）
-    PAINT_RULE_WORDS = (
-        # 带量词/动词的明确点单（画X）
-        "画一幅", "画一张", "画个", "画张", "画一个", "画一只", "画一条", "画一棵",
-        "画一朵", "画朵", "画一座", "画一栋", "画一下", "画一画",
-        "画点", "画张图", "画幅画", "画张画", "画张涩图", "画张瑟图",
-        # 高频口语（画图/画画/重画）
-        "画图", "画画", "重画", "再画", "重新画", "画个图", "去画", "画画看",
-        # 使役请求
-        "帮我画", "给我画", "替我画", "给咱画", "给我来张", "帮我出张", "帮我整张",
-        "想让你画", "你画个", "给我整张",
-        # 要图/来图
-        "来张", "来幅", "来一张", "来一幅", "来点图", "来张图", "来张涩图", "来张色图",
-        "要一张", "要张图", "想要一张", "想要张图", "想要张", "要张涩图",
-        # 生成/出图/涩图直呼
-        "生成一张图", "生成张图", "生成图片", "文生图", "出张图", "出图",
-        "涩图", "瑟图", "色图", "整张图",
-    )
-
-    def _paint_rule_hit(self, text: str) -> bool:
-        """本地规则硬触发判断：用户文本命中绘画意图词即返回 True（零 LLM）"""
-        t = (text or "").strip()
-        if not t:
-            return False
-        return any(w in t for w in self.PAINT_RULE_WORDS)
-
+    # ==================== 短期记忆 ====================
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""
         try:

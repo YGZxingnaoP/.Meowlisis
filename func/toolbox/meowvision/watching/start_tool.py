@@ -30,7 +30,7 @@ class TBWatchingStart:
         self.window_list = TBWindowList()
 
     # ==================== 主入口 ====================
-    def decide_and_start(self, username: str, user_instruction: str,
+    def decide_and_start(self, meowid: str, user_instruction: str,
                          front_window: Optional[dict] = None) -> Optional[dict]:
         """判断是否需要 watching，需要则收集配置并启动循环。返回配置 dict 或 None（不 watching）。
 
@@ -42,12 +42,12 @@ class TBWatchingStart:
             return None
 
         # 阶段1：深度思考判断（语义确认①：用户是否真要长期观察）
-        need = self._decide_watching(username, instruction)
+        need = self._decide_watching(meowid, instruction)
         if not need:
             return None
 
         # 阶段2：收集配置（可能 excuse 追问一轮；前台候选置顶供语义选窗）
-        config = self._collect_with_excuse(username, instruction, front_window=front_window)
+        config = self._collect_with_excuse(meowid, instruction, front_window=front_window)
         if not config:
             return None
 
@@ -57,19 +57,20 @@ class TBWatchingStart:
             self.log.warning(f"[Watching] 兜底路径仍缺失参数: {missing}，放弃启动")
             return None
 
-        return self._launch(config, username, instruction)
+        return self._launch(config, meowid, instruction)
 
-    def _launch(self, config: dict, username: str, instruction: str) -> Optional[dict]:
+    def _launch(self, config: dict, meowid: str, instruction: str) -> Optional[dict]:
         """公共启动流程：窗口绑定 → 落盘 → 启动循环（由 decide_and_start 深度思考入口调用）"""
         # 窗口绑定
         hwnd = self._resolve_hwnd(config)
         if not hwnd:
             self.log.warning("[Watching] 窗口绑定失败，走 LLM 告知用户")
-            self._notify_window_bind_fail(username, config)
+            self._notify_window_bind_fail(meowid, config)
             return None
 
         config["hwnd"] = hwnd
-        config["username"] = username
+        config["meowid"] = meowid
+        config["username"] = meowid      # 兼容旧会话读取（历史字段名）
         config["user_instruction"] = instruction
 
         # 落盘会话配置
@@ -91,14 +92,14 @@ class TBWatchingStart:
         return config
 
     # ==================== 阶段1：深度思考判断 ====================
-    def _decide_watching(self, username: str, instruction: str) -> bool:
+    def _decide_watching(self, meowid: str, instruction: str) -> bool:
         """深度思考判断是否需要长期观察（开启 thinking，无工具）"""
         llm = self._llm()
         if llm is None or not llm.client:
             self.log.warning("[Watching] LLM 不可用，无法判断，默认不开启")
             return False
 
-        persona = self._persona(username, instruction)
+        persona = self._persona(meowid, instruction)
         messages = [
             {"role": "system", "content": (
                 f"{persona}\n\n"
@@ -136,11 +137,11 @@ class TBWatchingStart:
             windows.insert(0, front)
         return windows
 
-    def _collect_with_excuse(self, username: str, instruction: str,
+    def _collect_with_excuse(self, meowid: str, instruction: str,
                              front_window: Optional[dict] = None) -> Optional[dict]:
         """收集配置，不确定则 excuse 追问一轮后重新收集"""
         windows = self._build_windows(front_window)
-        config = self._collect(username, instruction, windows)
+        config = self._collect(meowid, instruction, windows)
         if not config:
             return None
 
@@ -151,7 +152,7 @@ class TBWatchingStart:
 
         # 发起 excuse 追问
         from func.toolbox.excuse import TBExcuse
-        answer = TBExcuse().ask(question, username=username)
+        answer = TBExcuse().ask(question, meowid=meowid)
         if not answer:
             self.log.warning("[Watching] excuse 未获回答，按现有配置继续或终止")
             if self._missing_keys(config):
@@ -161,17 +162,17 @@ class TBWatchingStart:
         # 合并回答后重新收集一轮
         new_instruction = f"{instruction}；用户补充：{answer}"
         windows = self._build_windows(front_window)
-        config2 = self._collect(username, new_instruction, windows)
+        config2 = self._collect(meowid, new_instruction, windows)
         return config2 if config2 else config
 
-    def _collect(self, username: str, instruction: str, windows: list) -> Optional[dict]:
+    def _collect(self, meowid: str, instruction: str, windows: list) -> Optional[dict]:
         """强制 tool_choice 收集配置（关闭思考）"""
         llm = self._llm()
         if llm is None or not llm.client:
             self.log.warning("[Watching] LLM 不可用，无法收集配置")
             return None
 
-        persona = self._persona(username, instruction)
+        persona = self._persona(meowid, instruction)
         window_lines = self._format_windows(windows)
         messages = [
             {"role": "system", "content": (
@@ -316,13 +317,13 @@ class TBWatchingStart:
             return None
         return self.window_list.find_hwnd(title)
 
-    def _notify_window_bind_fail(self, username: str, config: dict):
+    def _notify_window_bind_fail(self, meowid: str, config: dict):
         """窗口绑定失败：走 LLM 告知用户（不静默失败）"""
         try:
             from func.pipeline.toolbox_llm import ToolboxLLMBridge
             title = config.get("window_title", "")
             text = f"你想看的游戏窗口「{title}」没有找到，可能游戏还没打开"
-            ToolboxLLMBridge().send_to_llm(text, username or "用户")
+            ToolboxLLMBridge().send_to_llm(text, meowid or "用户")
         except Exception:
             self.log.exception("[Watching] 窗口绑定失败通知异常")
 
@@ -354,11 +355,11 @@ class TBWatchingStart:
             return None
 
     @staticmethod
-    def _persona(username: str, current_message: str) -> str:
+    def _persona(meowid: str, current_message: str) -> str:
         """角色人设提示词（决策场景，不含用户记忆/摘要）"""
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
-            return TBoxGetPrompt().get_tool_prompt(username, current_message) or ""
+            return TBoxGetPrompt().get_tool_prompt(meowid, current_message) or ""
         except Exception:
             return ""
 

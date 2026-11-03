@@ -4,7 +4,6 @@
 # 供 toolbox 下所有模块（napcat / danmaku / minecraft ...）复用
 
 import queue
-import uuid
 import threading
 from typing import Optional
 

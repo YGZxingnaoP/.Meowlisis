@@ -4,6 +4,7 @@ import os
 
 import requests
 
+from func.log.default_log import DefaultLog
 from func.tts.config import TTSConfig
 from func.tts.emotion import build_sampling_params
 from func.tts.lan_judge import LanguageJudge
@@ -14,6 +15,7 @@ from func.tools.singleton_mode import singleton
 class GptSovits:
     def __init__(self):
         # 从集中配置读取引擎参数
+        self.log = DefaultLog().getLogger()
         self.config = TTSConfig()
         self._apply_endpoint()
 
@@ -60,10 +62,10 @@ class GptSovits:
         prompt_lang = ref_audio_config.get("lang", "zh")
 
         if not ref_audio_path or not os.path.exists(ref_audio_path):
-            print(f"参考音频文件不存在: {ref_audio_path}")
+            self.log.error(f"[TTS] 参考音频文件不存在，无法合成: {ref_audio_path}")
             return None, None
         if not prompt_text:
-            print("缺少参考音频对应的参考文本，无法合成")
+            self.log.error("[TTS] 缺少参考音频对应的参考文本，无法合成")
             return None, None
 
         # SoVITS 服务进程的 cwd 与主程序不同，转为绝对路径避免找不到文件
@@ -94,11 +96,11 @@ class GptSovits:
             # stream=True 建立连接后即返回，body 由生成器惰性读取
             response = requests.post(self.tts_endpoint, json=payload, stream=True, timeout=(5, 300))
         except Exception as e:
-            print(f"TTS 流式请求异常: {e}")
+            self.log.error(f"[TTS] 引擎不可用（{self.tts_endpoint}），本段无法合成: {e}")
             return None, None
 
         if response.status_code != 200:
-            print(f"TTS 流式请求失败: {response.status_code} - {response.text}")
+            self.log.error(f"[TTS] 引擎返回 {response.status_code}: {response.text[:200]}")
             try:
                 response.close()
             except Exception:

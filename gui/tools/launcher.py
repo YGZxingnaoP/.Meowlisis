@@ -202,6 +202,60 @@ def _sovits_host_port(base: Path):
     return '127.0.0.1', 9880
 
 
+_CFG_CACHE = {'mtime': None, 'cfg': {}}
+
+
+def load_config(base) -> dict:
+    """读项目 config.yml（按 mtime 缓存，轮询接口不重复解析）"""
+    path = Path(base) / 'config.yml'
+    try:
+        mtime = path.stat().st_mtime
+    except Exception:
+        return {}
+    if _CFG_CACHE['mtime'] == mtime:
+        return _CFG_CACHE['cfg']
+    try:
+        import yaml
+        with open(path, 'r', encoding='utf-8') as f:
+            cfg = yaml.safe_load(f) or {}
+    except Exception:
+        cfg = {}
+    _CFG_CACHE['mtime'] = mtime
+    _CFG_CACHE['cfg'] = cfg
+    return cfg
+
+
+def _url_port(url, default=None):
+    try:
+        return urlparse(str(url)).port or default
+    except Exception:
+        return default
+
+
+def service_port(key: str, base):
+    """该服务实际应监听的端口；None = 没有固定端口，只能按进程判断。
+
+    界面状态以这个端口的真实监听为准（端口连得上才算运行），
+    避免"进程还活着但服务早挂了"或"手动起的进程命令行走不匹配"两头骗人。
+    """
+    cfg = load_config(base)
+    if key == 'main':
+        return int((cfg.get('app') or {}).get('port') or 1800)
+    if key == 'painting':
+        return int(((cfg.get('flux_painter') or {}).get('comfy') or {}).get('port') or 8188)
+    if key == 'sovits':
+        return _url_port(((cfg.get('tts') or {}).get('gpt-sovits') or {}).get('gpt_sovits_url'), 9880)
+    if key == 'napcat':
+        return _url_port((cfg.get('napcat') or {}).get('ws_url'), 3001)
+    if key == 'sensevoice':
+        return _url_port((cfg.get('sensevoice') or {}).get('server_url'), 10095)
+    if key == 'phone':
+        return 8443          # .vendor/.cam/config.py: HTTPS_PORT
+    if key == 'catpaw':
+        return 18110         # .vendor/.CatPaws/config.yml: server.port
+    return None
+
+
 def build_command(key: str, base):
     """把某个服务的启动方式解析成 (args, cwd, env)；不支持的返回 (None, 原因)"""
     s = SERVICES.get(key)

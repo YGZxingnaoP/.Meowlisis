@@ -12,6 +12,7 @@ from func.toolbox.flux_painter.archive import TBPainterArchive
 from func.toolbox.flux_painter.prompt_producer import TBPromptProducer
 from func.toolbox.flux_painter.comfy_connector import create_connector, TBArtistPicker
 from func.pipeline.id_signup import display_name
+from func.toolbox.trigger_rules import forced
 
 DEFAULT_NEGATIVE = ("lowres,bad anatomy,bad hands,error,missing fingers,extra digits,"
                     "worst quality,jpeg artifacts,watermark,signature,text")
@@ -23,6 +24,30 @@ class TBFluxPainterCore:
     """ComfyUI 文生图一次性触发总入口（live/QQ），绘画中冷却，不长期接管"""
 
     TOOL_NAME = "flux_paint"
+
+    # 绘画规则触发词表：命中即强制开画（确定性高频需求，不依赖 LLM 自觉）
+    PAINT_RULE_WORDS = (
+        # 带量词/动词的明确点单（画X）
+        "画一幅", "画一张", "画个", "画张", "画一个", "画一只", "画一条", "画一棵",
+        "画一朵", "画朵", "画一座", "画一栋", "画一下", "画一画",
+        "画点", "画张图", "画幅画", "画张画", "画张涩图", "画张瑟图",
+        # 高频口语（画图/画画/重画）
+        "画图", "画画", "重画", "再画", "重新画", "画个图", "去画", "画画看",
+        # 使役请求
+        "帮我画", "给我画", "替我画", "给咱画", "给我来张", "帮我出张", "帮我整张",
+        "想让你画", "你画个", "给我整张",
+        # 要图/来图
+        "来张", "来幅", "来一张", "来一幅", "来点图", "来张图", "来张涩图", "来张色图",
+        "要一张", "要张图", "想要一张", "想要张图", "想要张", "要张涩图",
+        # 生成/出图/涩图直呼
+        "生成一张图", "生成张图", "生成图片", "文生图", "出张图", "出图",
+        "涩图", "瑟图", "色图", "整张图",
+    )
+
+    TRIGGER_RULES = (
+        forced(TOOL_NAME, PAINT_RULE_WORDS,
+               args=lambda text: {"request": text, "topic": "规则硬触发绘画"}),
+    )
 
     def __init__(self):
         self.log = DefaultLog().getLogger()

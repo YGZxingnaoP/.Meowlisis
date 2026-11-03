@@ -10,6 +10,36 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from func.log.default_log import DefaultLog
+from func.toolbox.trigger_rules import choose
+
+# 「qq发消息」命中后要选的候选入口（发消息 / 指挥群机器人）
+QQ_PICK_PROMPT = (
+    "你在替角色决定「用哪个工具」满足主人这句话，只做工具选择，不要写回复正文。\n"
+    "- napcat_send：替主人发消息 / 文件 / 链接给好友或群；要 @ 谁就把名字填进 mention。\n"
+    "- napcat_ask_bot：指挥群里的机器人（如幻梦）执行指令（今日老婆 / 打卡 / 运势…）。\n"
+    "判断依据是真实目的：让群机器人做事就选 napcat_ask_bot，"
+    "绝不要用 napcat_send 在群里发一句话代替；只是把内容发给某人/某群才选 napcat_send。"
+    "必须调用其中一个工具。"
+)
+
+
+def _group_hint(limit: int = 12) -> str:
+    """选择器提示：给真实群名，群名要一字不差才解析得到"""
+    try:
+        from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
+        rows = TBGetGroupList().get() or []
+    except Exception:
+        return ""
+    names = []
+    for row in rows:
+        name = str((row or {}).get("group_name") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    if not names:
+        return ""
+    return ("可用的群（group_name / target 必须从下面一字不差照抄一个，"
+            "用户说的群名可能少了几个字）：" + "、".join(names[:limit]))
+
 
 
 class TBNapcatActiveModule:
@@ -22,6 +52,18 @@ class TBNapcatActiveModule:
     """
 
     TOOL_NAME = "napcat_send"
+
+    # 命中「qq发消息」→ 必然触发；发消息还是指挥机器人，由角色在候选里选
+    TRIGGER_RULES = (
+        choose(
+            candidates=("napcat_send", "napcat_ask_bot"),
+            words=("qq发消息", "QQ发消息"),
+            prompt=QQ_PICK_PROMPT,
+            hint=_group_hint,
+            fallback="napcat_send",
+            speak_result=True,
+        ),
+    )
 
     def __init__(self):
         self.log = DefaultLog().getLogger()

@@ -169,14 +169,14 @@ class TBWatchingLoop:
 
     # ==================== 视觉评价 ====================
     def _analyze(self, config: dict, img_path: str) -> str:
-        username = config.get("username", "")
+        meowid = config.get("meowid") or config.get("username", "")
         instruction = config.get("user_instruction", "")
         front_note = config.get("front_note", "")
 
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
             system_prompt = SystemPromptBridge().get_watching_prompt(
-                username, instruction, front_note
+                meowid, instruction, front_note
             )
         except Exception:
             self.log.exception("[Watching] 获取 watching 提示词失败")
@@ -216,7 +216,8 @@ class TBWatchingLoop:
         try:
             from func.config.app_config import AppConfig
             self.ltmem.record_ai_message(
-                config.get("username", ""), AppConfig().ai_name, reply
+                config.get("meowid") or config.get("username", ""),
+                AppConfig().ai_name, reply
             )
         except Exception:
             self.log.exception("[Watching] 写长期记忆失败")
@@ -230,44 +231,58 @@ class TBWatchingLoop:
             self.log.exception("[Watching] TTS 发送失败")
 
     def _finish(self, config: dict, reason: str):
-        """结束循环：用 LLM 自然生成结束语并送 TTS（不写任何记忆）"""
+        """结束循环：把「要表达的意思」明确告诉角色，让她用自己的话说出来（不写记忆）"""
         self.log.info(f"[Watching] 循环结束，原因: {reason}")
-        username = config.get("username", "")
-        # 触发提示：交给 LLM 以角色身份自然回应（非硬编码）
+        meowid = config.get("meowid") or config.get("username", "")
+        title = str(config.get("window_title") or "").strip()
         if reason == "window_gone":
-            prompt = "游戏窗口关掉了，游戏结束了"
+            meaning = ("你要表达的意思是：你一直盯着看的窗口"
+                       + ("「%s」" % title if title else "")
+                       + "已经关掉了，没什么可看了，可以收工了")
+        elif reason == "timeout":
+            try:
+                minutes = int((float(config.get("duration") or 0)) // 60)
+            except Exception:
+                minutes = 0
+            meaning = ("你要表达的意思是：你陪主人看屏幕看了"
+                       + ("约 %d 分钟" % minutes if minutes else "好久")
+                       + "，已经看够了、有点看腻了，想收工了")
         else:
-            prompt = "你已经陪我看屏幕看了好久了，是不是看腻了不想看了"
-        reply = self._generate_finish_reply(prompt, username)
+            meaning = "你要表达的意思是：对屏幕的长期观察结束了，可以收工了"
+        reply = self._generate_finish_reply(meaning, meowid)
         if reply:
             self._speak(reply)
 
-    def _generate_finish_reply(self, prompt: str, username: str) -> str:
-        """用 toolbox LLM + 角色提示词生成自然结束语（不写记忆，仅 TTS）"""
+    def _generate_finish_reply(self, meaning: str, meowid: str) -> str:
+        """用角色人设 + 「要表达的意思」生成一句台词（不写成主人说的话，不写记忆）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            system_prompt = SystemPromptBridge().get_system_prompt(username, prompt)
+            system_prompt = SystemPromptBridge().get_tool_prompt(meowid, "") or ""
         except Exception:
-            self.log.exception("[Watching] 获取结束提示词失败")
+            self.log.exception("[Watching] 获取收尾提示词失败")
             system_prompt = ""
+        if not system_prompt:
+            self.log.warning("[Watching] 人设提示词为空，收尾跳过")
+            return ""
         llm = self._llm()
         if llm is None or not llm.client:
-            self.log.warning("[Watching] LLM 不可用，结束语回退原文")
-            return prompt
+            self.log.warning("[Watching] LLM 不可用，收尾跳过")
+            return ""
+        need = (f"（这是你自己的内部提示，不是主人说的话）{meaning}。"
+                "用你自己的口气把这个意思说出来，一句就够，可以说得含蓄一点；"
+                "别把它当成主人在跟你对话，别追问、别复述事件、别道歉式总结。")
         try:
             resp = llm.chat([
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
+                {"role": "user", "content": need},
             ])
             if not resp or not resp.choices:
-                return prompt
+                return ""
             content = (resp.choices[0].message.content or "").strip()
-            if not content:
-                return prompt
-            return TBVisionGetResponse.clean(content)
+            return TBVisionGetResponse.clean(content) if content else ""
         except Exception:
-            self.log.exception("[Watching] 生成结束语失败")
-            return prompt
+            self.log.exception("[Watching] 生成收尾失败")
+            return ""
 
     @staticmethod
     def _llm():

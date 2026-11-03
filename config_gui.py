@@ -1355,4 +1355,20 @@ except Exception as _catpaws_sign_e:
     print('[catpaws_sign] 注册失败:', _catpaws_sign_e)
 
 if __name__ == '__main__':
+    # 端口预检：Werkzeug 默认 SO_REUSEADDR，Windows 上允许两个实例同时监听 1801，
+    # 浏览器/接口会随机落到旧实例（表现为"改了代码不生效、界面状态互相矛盾"）。
+    # 这里直接拒绝二次启动，把原因说清楚，而不是悄悄起一个抢端口的副本。
+    def _port_busy(host, port):
+        import socket
+        try:
+            with socket.create_connection((host, port), timeout=0.4):
+                return True
+        except Exception:
+            return False
+
+    if _port_busy('127.0.0.1', 1801):
+        print('[config_gui] 1801 已被占用：已经有一个配置服务在跑'
+              '（可能是以管理员身份启动的旧窗口）。请先关掉那个窗口再启动，'
+              '否则两个实例抢同一端口，页面会随机连到旧代码。')
+        sys.exit(1)
     app.run(host='127.0.0.1', port=1801, debug=False)

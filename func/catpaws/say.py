@@ -11,7 +11,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 
 # 每类台词的字数上限（ask 不截断：问句必须完整，否则主人不知道该答什么）
-MAX_CHARS = {"ack": 16, "look": 24, "oops": 22, "done": 36, "react": 12}
+MAX_CHARS = {"ack": 16, "look": 24, "oops": 22, "done": 36, "react": 12, "ask": 40}
 
 # 台词生成失败时的兜底（只说一句，不做固定播报）
 FALLBACK = {
@@ -169,18 +169,31 @@ class CWCatPawsSay:
                          max_chars=MAX_CHARS["react"], count=False)
 
     def ask(self, question, options=(), username=""):
-        """服务端要问主人：原问题照念
+        """服务端要问主人：用角色自己的话问一遍，必须保留「要答什么」
 
-        不再让模型改写问句：改写会丢选项、把问句砍成半句，主人听不出要答什么。
-        选项由界面展示，念出来只是噪音，所以不念。
+        - 不照念原生问句：那是系统口吻，不是她在说话；
+        - 但也不许丢信息：提示词里强调保留要选什么/是否同意，不许砍成半句；
+        - 生成失败才照念原问题（动态文本，不是写死的台词），保证主人知道要答什么。
         """
-        text = clean_line(question, 0, strip_brackets=False)
+        text = str(question or "").strip()
         if not text:
+            return ""
+        opts = "、".join(str(o) for o in (options or ()) if str(o).strip())
+        need = (f"手机操作卡在需要主人拍板的地方，要问的是：「{text}」"
+                + (f"，可以答：{opts}" if opts else "")
+                + "。用你自己的话问他，必须说清要他回答什么/选哪个，"
+                  "别解释过程、别砍成半句。")
+        line = self._generate(need, self._username or username,
+                              max_chars=MAX_CHARS.get("ask", 40))
+        if not line:
+            line = clean_line(text, 0, strip_brackets=False)
+        if not line:
             return ""
         if options:
             self.log.info("[CatPaws][ask] 提问（选项 %s）：%s"
                           % ("/".join(str(o) for o in options), text))
-        return self._say(text, self._username or username, max_chars=0, count=False)
+        return self._say(line, self._username or username, max_chars=0, count=False,
+                         strip_brackets=False, dedupe=False)
 
     # ==================== 内部 ====================
     def _need(self, kind, payload):
@@ -253,11 +266,12 @@ class CWCatPawsSay:
                 out.append({"role": role, "content": content})
         return out
 
-    def _say(self, line, username, max_chars=0, count=True):
-        body = clean_line(line, max_chars)
+    def _say(self, line, username, max_chars=0, count=True,
+             strip_brackets=True, dedupe=True):
+        body = clean_line(line, max_chars, strip_brackets=strip_brackets)
         if not body:
             return ""
-        if body in self._recent[-3:]:
+        if dedupe and body in self._recent[-3:]:
             self.log.info("[CatPaws] 台词重复，跳过：%s" % body)
             return ""
         self.log.info("[CatPaws] 台词：%s" % body)
