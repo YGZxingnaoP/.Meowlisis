@@ -18,7 +18,7 @@ META_KEYWORDS = [
     "戏腔", "演唱", "发行", "出品", "母带", "编曲人", "制作", "歌手",
 ]
 
-TIME_RE = re.compile(r"\[(\d{1,2}):(\d{2})\.(\d{1,3})\]")
+TIME_RE = re.compile(r"\[(\d{1,2}):(\d{2})[:.](\d{1,3})\]")
 
 
 class MeowNeteaseMusic:
@@ -89,6 +89,8 @@ class MeowNeteaseMusic:
             with open(os.path.join(folder, f"{self._safe_name(title)}.lrc"),
                       "w", encoding="utf-8") as f:
                 f.write(cleaned)
+        else:
+            self.log.warning(f"[Netease] 歌词清洗后为空，未保存: {title}")
         return mp3_path
 
     @staticmethod

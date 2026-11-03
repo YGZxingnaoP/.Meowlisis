@@ -8,7 +8,7 @@ import time
 
 from func.log.default_log import DefaultLog
 
-TIME_RE = re.compile(r"\[(\d{2}):(\d{2})\.(\d{3})\](.*)")
+TIME_RE = re.compile(r"\[(\d{1,2}):(\d{2})[:.](\d{1,3})\](.*)")
 
 
 class MeowLyricSyncer:
@@ -93,7 +93,8 @@ class MeowLyricSyncer:
                     m = TIME_RE.match(line.strip())
                     if not m:
                         continue
-                    mm, ss, ms = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    mm, ss = int(m.group(1)), int(m.group(2))
+                    ms = int(m.group(3)) * (10 ** (3 - len(m.group(3))))
                     result.append({
                         "time": mm * 60 + ss + ms / 1000.0,
                         "text": m.group(4).strip(),

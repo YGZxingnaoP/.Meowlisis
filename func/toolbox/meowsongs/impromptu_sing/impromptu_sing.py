@@ -14,7 +14,7 @@ from func.toolbox.meowsongs.config import TBMeowSongsConfig
 
 MEOW_DIR = os.path.join("character", "songs", "meow_list")
 
-TIME_RE = re.compile(r"\[(\d{2}):(\d{2})\.(\d{3})\](.*)")
+TIME_RE = re.compile(r"\[(\d{1,2}):(\d{2})[:.](\d{1,3})\](.*)")
 
 
 @singleton
@@ -109,6 +109,8 @@ class TBImpromptuSing:
 
         lrc = self._load_lrc(title)
         if not lrc:
+            self.log.warning(f"[MeowSongs] 歌词缺失或格式不合法，跳过哼唱: "
+                             f"{os.path.join(MEOW_DIR, title, f'{title}.lrc')}")
             return f"没有找到《{title}》的歌词"
 
         start_idx, end_idx = self._resolve_range(lrc, start_lrc, end_lrc)
@@ -239,7 +241,8 @@ class TBImpromptuSing:
                     m = TIME_RE.match(line.strip())
                     if not m:
                         continue
-                    mm, ss, ms = int(m.group(1)), int(m.group(2)), int(m.group(3))
+                    mm, ss = int(m.group(1)), int(m.group(2))
+                    ms = int(m.group(3)) * (10 ** (3 - len(m.group(3))))
                     result.append({"time": mm * 60 + ss + ms / 1000.0, "text": m.group(4).strip()})
         except Exception:
             self.log.exception("[MeowSongs] 读取歌词异常")
