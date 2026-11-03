@@ -32,10 +32,10 @@ class ShortMemory:
 
     # 插播类消息：挂靠到其后第一条 llm_fast_response，随该条快回淘汰而连带删除
     ACTIVE_TYPES = ("llm_active_response", "vision_response", "hum_song", "other_talks",
-                    "toolbox_excuse")
+                    "toolbox_excuse", "toolbox_result")
 
     # 插播类各自的尾部兜底上限（未列出的取主动回复插播配置 _active_mem_limit）
-    ACTIVE_LIMITS = {"toolbox_excuse": 8}
+    ACTIVE_LIMITS = {"toolbox_excuse": 8, "toolbox_result": 8}
 
     SESSION_MARKER = "session_marker"
 

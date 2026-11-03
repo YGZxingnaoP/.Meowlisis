@@ -3,6 +3,7 @@
 # 父级 toolcalls：注册触发型工具，由 AI 决策参数与 start
 
 import json
+import re
 from typing import Dict, List
 
 from func.log.default_log import DefaultLog
@@ -207,15 +208,112 @@ class TBoxAnalysis:
                 return hit
         except Exception:
             self.log.exception("插件会话/关键词处理失败")
+        # 说「qq发消息」必然触发，但发消息 / @谁 / 指挥幻梦由角色自己选：
+        # 不再无条件派 napcat_send（那样会吞掉 mention，也永远轮不到 napcat_ask_bot）
         if self._qq_send_rule_hit(text):
-            # 强制走 napcat_send：参数只给原始文本，目标/内容由模块内部解析或追问
+            plan = self._choose_qq_tool(text)
+            if plan:
+                return plan
             if "napcat_send" in self._tools:
+                self.log.warning("QQ 工具选择没选出来，兜底 napcat_send（目标/内容交给模块内部解析）")
                 return ("napcat_send", {"request": text})
-            self.log.warning("qq发消息命中，但 napcat_send 未注册（主动发送未启用），改走常规决策")
         if self._vision_rule_hit(text):
             return ("use_vision", {"user_message": text})
         if self._paint_rule_hit(text):
             return ("flux_paint", {"request": text, "topic": "规则硬触发绘画"})
+        return None
+
+    # ==================== QQ 工具选择（必然触发 + 角色选择） ====================
+    # 只认「qq发消息」「QQ发消息」，命中后由角色在下面两个工具里二选一
+    QQ_SEND_RULE_WORDS = ("qq发消息", "QQ发消息")
+    QQ_CHOICE_TOOLS = ("napcat_send", "napcat_ask_bot")
+    QQ_CHOICE_PROMPT = (
+        "你在替角色决定「用哪个工具」满足主人这句话，只做工具选择，不要写回复正文。\n"
+        "- napcat_send：替主人发消息 / 文件 / 链接给好友或群；要 @ 谁就把名字填进 mention。\n"
+        "- napcat_ask_bot：指挥群里的机器人（如幻梦）执行指令（今日老婆 / 打卡 / 运势…）。\n"
+        "判断依据是真实目的：让群机器人做事就选 napcat_ask_bot，绝不要用 napcat_send 在群里发一句话代替；"
+        "只是把内容发给某人/某群才选 napcat_send。必须调用其中一个工具。"
+    )
+
+    def _qq_send_rule_hit(self, text: str) -> bool:
+        """本地规则硬触发判断：命中「qq发消息」即必然触发（但不在此处决定用哪个工具）"""
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        return any(w.lower() in t for w in self.QQ_SEND_RULE_WORDS)
+
+    def _known_groups(self, limit: int = 12):
+        """给工具选择用的真实群名（填 group_name 必须一字不差照抄，否则解析不到）"""
+        try:
+            from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
+            rows = TBGetGroupList().get() or []
+        except Exception:
+            self.log.exception("读取群列表失败（本次选择不带群名提示）")
+            return []
+        names = []
+        for row in rows:
+            name = str((row or {}).get("group_name") or "").strip()
+            if name and name not in names:
+                names.append(name)
+        return names[:limit]
+
+    def _qq_choice_schemas(self):
+        """参与选择的两个父级入口 schema（只取已注册的）"""
+        schemas = []
+        for name in self.QQ_CHOICE_TOOLS:
+            tool = self._tools.get(name)
+            if tool is None:
+                continue
+            try:
+                for schema in tool.build_tools():
+                    if schema.get("function", {}).get("name") == name:
+                        schemas.append(schema)
+            except Exception:
+                self.log.exception(f"读取工具定义失败: {name}")
+        return schemas
+
+    def _qq_choice_system(self) -> str:
+        """选择提示词 + 真实群名（模型照抄群名，解析才不会失败）"""
+        text = self.QQ_CHOICE_PROMPT
+        groups = self._known_groups()
+        if groups:
+            text += ("\n可用的群（group_name / target 必须从下面一字不差照抄一个，"
+                     "用户说的群名可能少了几个字）：" + "、".join(groups))
+        return text
+
+    def _choose_qq_tool(self, text: str):
+        """让角色在 napcat_send / napcat_ask_bot 里选一个，返回 (name, arguments) 或 None。
+
+        用 tool_choice="required" 强制选（模型不配合时退回 auto 再试一次），
+        参数走容错解析，mention / command 不会被畸形 JSON 吞掉。
+        """
+        llm = self._ensure_llm()
+        if llm is None or not getattr(llm, "client", None):
+            return None
+        schemas = self._qq_choice_schemas()
+        if not schemas:
+            return None
+        messages = [
+            {"role": "system", "content": self._qq_choice_system()},
+            {"role": "user", "content": str(text or "")},
+        ]
+        for tool_choice in ("required", "auto"):
+            try:
+                resp = llm.chat(messages, tools=schemas, tool_choice=tool_choice,
+                                enable_thinking=False)
+            except Exception:
+                self.log.exception(f"QQ 工具选择失败（tool_choice={tool_choice}）")
+                continue
+            choices = getattr(resp, "choices", None) if resp else None
+            message = getattr(choices[0], "message", None) if choices else None
+            for call in (getattr(message, "tool_calls", None) or []):
+                fn = getattr(call, "function", None)
+                name = str(getattr(fn, "name", "") or "")
+                if name not in self.QQ_CHOICE_TOOLS:
+                    continue
+                args = self._parse_arguments(getattr(fn, "arguments", ""))
+                self.log.info(f"QQ 工具选择: {name} {str(args)[:120]}")
+                return name, args
         return None
 
     def pre_route(self, text: str, meowid: str) -> bool:
@@ -244,7 +342,50 @@ class TBoxAnalysis:
         if context is None:
             context = {"meowid": meowid, "text": text,
                        "short_memory": self._load_short_memory(), "system_prompt": ""}
-        return self.dispatch(name, arguments, meowid, context)
+        result = self.dispatch(name, arguments, meowid, context)
+        self.log.info(f"父级 toolcalls 硬触发 {name} 结果: {str(result)[:200]}")
+        self._speak_result(name, result, meowid)
+        return result
+
+    # 这些工具在 QQ 侧执行、自己不出声：硬触发跳过主回复后，要补一句角色台词
+    SPEAK_RESULT_TOOLS = ("napcat_send", "napcat_ask_bot")
+
+    def _speak_result(self, name: str, result, meowid: str) -> str:
+        """工具执行完，让角色用自己的话说一句结果（失败就不说，不写死台词）"""
+        if name not in self.SPEAK_RESULT_TOOLS:
+            return ""
+        text = str(result or "").strip()
+        if not text:
+            return ""
+        ok = any(k in text for k in ("已向", "已发送", "发送成功", "等待它在群里回复"))
+        what = "发QQ消息" if name == "napcat_send" else "叫群里的机器人"
+        need = (f"你刚替主人办了「{what}」，{'已经办成' if ok else '没办成'}，结果是：{text[:80]}。"
+                "用你自己的口气一句话告诉主人；别念技术细节、别复述消息内容。")
+        try:
+            from func.toolbox.character_voice import TBoxCharacterVoice
+            line = TBoxCharacterVoice().line(need, meowid,
+                                             history=self._load_short_memory(4),
+                                             max_chars=24) or ""
+        except Exception:
+            self.log.exception("工具结果台词生成失败")
+            line = ""
+        if not line:
+            self.log.warning(f"工具结果台词生成失败，本次不播报：{name}")
+            return ""
+        try:
+            from func.pipeline.toolbox_tts import ToolboxTtsBridge
+            ToolboxTtsBridge().send_stream(line, source="toolbox")
+        except Exception:
+            self.log.exception("工具结果播报失败")
+            return ""
+        try:
+            from func.pipeline.short_memory import ShortMemory
+            ShortMemory().save({"role": "assistant", "content": line,
+                                "type": "toolbox_result"}, 0)
+        except Exception:
+            self.log.exception("工具结果台词写入短期记忆失败")
+        self.log.info(f"工具结果台词（{name}）: {line}")
+        return line
 
     def decide(self, text: str, meowid: str):
         """接收输入内容：先走本地规则硬触发（视觉），未命中再由 AI 决定是否调用工具。
@@ -312,14 +453,9 @@ class TBoxAnalysis:
         if not name:
             return
         arguments = calls[0].get("arguments")
-        if isinstance(arguments, str) or arguments is None:
-            try:
-                args = json.loads(arguments or "{}")
-            except Exception:
-                self.log.exception(f"解析工具参数失败: {name}")
-                args = {}
-        else:
-            args = arguments
+        args = self._parse_arguments(arguments)
+        if not args and str(arguments or "").strip() not in ("", "{}", "None"):
+            self.log.warning(f"工具参数解析为空，按空参数执行 {name}: {str(arguments)[:120]!r}")
         if context is None:
             context = {"meowid": meowid, "text": text,
                        "short_memory": self._load_short_memory(), "system_prompt": ""}
@@ -331,6 +467,38 @@ class TBoxAnalysis:
         self.log.info(f"父级 toolcalls 命中工具 {name}: {(text or '')[:20]}")
         result = self.dispatch(name, args, meowid, context)
         self.log.info(f"父级工具 {name} 执行结果: {result}")
+
+    @staticmethod
+    def _parse_arguments(raw):
+        """解析工具参数：容忍模型多吐一段 JSON / 尾随文本
+
+        小模型常见输出是 `{...}{...}` 或 `{...}` 后面再跟半句解释，直接 json.loads 会
+        报 "Extra data" 把整包参数丢成 {}（mention / target / command 全没了）。
+        """
+        if isinstance(raw, dict):
+            return raw
+        body = str(raw or "").strip()
+        if not body:
+            return {}
+        try:
+            data = json.loads(body, strict=False)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+        decoder = json.JSONDecoder(strict=False)
+        candidates = [body]
+        match = re.search(r"\{[\s\S]*\}", body)
+        if match:
+            candidates.append(match.group(0))
+        for text in candidates:
+            try:
+                data, _end = decoder.raw_decode(text)
+            except Exception:
+                continue
+            if isinstance(data, dict):
+                return data
+        return {}
 
     # ==================== 规则硬触发层 ====================
     # 视觉规则触发词表：命中即强制看屏幕（确定性高频需求，不依赖 LLM 自觉）
@@ -375,17 +543,6 @@ class TBoxAnalysis:
         if not t:
             return False
         return any(w in t for w in self.PAINT_RULE_WORDS)
-
-    # QQ 发消息规则触发词表：命中即强制走 napcat_send（与视觉/绘画同理，零 LLM）
-    # 只认「qq发消息」「QQ发消息」两种写法（大小写不敏感），不扩词，避免误伤普通闲聊。
-    QQ_SEND_RULE_WORDS = ("qq发消息", "QQ发消息")
-
-    def _qq_send_rule_hit(self, text: str) -> bool:
-        """本地规则硬触发判断：用户文本命中 qq发消息指令即返回 True（零 LLM）"""
-        t = (text or "").strip().lower()
-        if not t:
-            return False
-        return any(w.lower() in t for w in self.QQ_SEND_RULE_WORDS)
 
     def _load_short_memory(self, limit: int = 6) -> List[Dict]:
         """加载最近短期记忆（供工具分析理解上下文），返回 OpenAI messages 列表"""

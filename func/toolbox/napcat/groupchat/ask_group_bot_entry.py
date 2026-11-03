@@ -24,6 +24,7 @@ class TBAskGroupBotEntry:
         self.log = DefaultLog().getLogger()
         self.config = TBNapCatConfig()
         self.bot = TBAskGroupBot()
+        self._last_error = ""
 
     def set_meowid(self, meowid: str):
         """父级注入当前用户（本工具暂不需要，保持接口兼容）"""
@@ -72,14 +73,23 @@ class TBAskGroupBotEntry:
         }]
 
     def _resolve_group_id(self, group_name: str) -> Optional[str]:
-        """群名 → 群号：复用 QQ 链路内部子工具的解析器（纯数字直通，群名模糊匹配群列表）"""
+        """群名 → 群号：先严格解析（群号/精确/前缀/包含），再退回模糊匹配（唯一确定才用）"""
         name = str(group_name or "").strip()
         if not name:
             return None
         try:
-            from func.toolbox.napcat.active_sender.subtools import resolve_group
-            gid, _err = resolve_group(name)
-            return gid
+            from func.toolbox.napcat.active_sender import subtools
+            gid, err = subtools.resolve_group(name)
+            if gid:
+                return gid
+            self.log.warning(f"[napcat_ask_bot] 群名「{name}」严格解析失败：{err}")
+            gid, why, _cand = subtools.find_group(name)
+            if gid:
+                self.log.info(f"[napcat_ask_bot] 群名「{name}」模糊匹配到群 {gid}")
+                return gid
+            self.log.warning(f"[napcat_ask_bot] 群名「{name}」模糊匹配也没确定：{why}")
+            self._last_error = str(why or err)
+            return None
         except Exception:
             self.log.exception("解析群名失败")
             return None
@@ -92,9 +102,11 @@ class TBAskGroupBotEntry:
         group_name = str(args.get("group_name", "") or "").strip()
         command = str(args.get("command", "") or "").strip()
         if not bot_name or not group_name or not command:
+            self.log.warning(f"[napcat_ask_bot] 参数不全：{args}")
             return "缺少参数：bot_name / group_name / command"
 
         group_id = self._resolve_group_id(group_name)
         if not group_id:
-            return f"未找到群「{group_name}」，请确认群名或直接给群号"
+            self.log.warning(f"[napcat_ask_bot] 未找到群「{group_name}」：{self._last_error}")
+            return f"未找到群「{group_name}」：{self._last_error}"
         return self.bot.execute_forced(group_id, bot_name, command)

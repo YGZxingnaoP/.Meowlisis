@@ -30,6 +30,15 @@ MEM_TYPE = "toolbox_excuse"
 _RECENT_LINES = []
 
 
+def _ai_name() -> str:
+    """角色名（长期记忆里的说话人，与其他模块一致）"""
+    try:
+        from func.config.app_config import AppConfig
+        return AppConfig().ai_name or "AI"
+    except Exception:
+        return "AI"
+
+
 @singleton
 class TBoxConsent:
     """硬触发前的角色裁决器
@@ -177,10 +186,10 @@ class TBoxConsent:
 
     # ==================== 拒绝 ====================
     def _refuse(self, line: str, text: str, meowid: str) -> str:
-        """拒绝：TTS 播报 + 记入短期记忆 + 掐断本次工具"""
+        """拒绝：TTS 播报 + 写短期/长期/用户记忆 + 掐断本次工具"""
         self.log.info(f"[触发裁决] 角色拒绝执行：{line}")
         self._speak(line)
-        self._save_memory(text, line)
+        self._save_memory(text, line, meowid)
         _RECENT_LINES.append(line)
         del _RECENT_LINES[:-6]
         return line
@@ -194,12 +203,28 @@ class TBoxConsent:
         except Exception:
             DefaultLog().getLogger().exception("[触发裁决] 拒绝台词播报失败")
 
-    def _save_memory(self, text: str, line: str):
-        """把这次「请求 + 拒绝」写进短期记忆，下一轮角色自己记得刚才没答应"""
+    def _save_memory(self, text: str, line: str, meowid: str):
+        """这次「请求 + 拒绝」写进短期记忆、长期记忆与用户记忆
+
+        - 短期：挂在 toolbox 插播槽（跟随后续快回淘汰）；
+        - 长期 + 用户记忆：走 pipeline 的 llm_ltmem 桥接，和主链路同一套格式与落点。
+        """
+        body = str(text or "")
+        said = str(line or "")
         try:
             from func.pipeline.short_memory import ShortMemory
             sm = ShortMemory()
-            sm.save({"role": "user", "content": str(text or ""), "type": MEM_TYPE}, 0)
-            sm.save({"role": "assistant", "content": str(line or ""), "type": MEM_TYPE}, 0)
+            sm.save({"role": "user", "content": body, "type": MEM_TYPE}, 0)
+            sm.save({"role": "assistant", "content": said, "type": MEM_TYPE}, 0)
         except Exception:
-            self.log.exception("[触发裁决] 记录拒绝台词失败")
+            self.log.exception("[触发裁决] 记录短期记忆失败")
+        uid = str(meowid or "").strip()
+        if not uid:
+            return
+        try:
+            from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+            bridge = MeowLLMLtMemBridge()
+            bridge.record_user_message(uid, body)
+            bridge.record_ai_message(uid, _ai_name(), said)
+        except Exception:
+            self.log.exception("[触发裁决] 记录长期/用户记忆失败")
