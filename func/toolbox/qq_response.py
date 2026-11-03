@@ -798,8 +798,13 @@ class TBoxQQResponse:
             image_paths = TBImageSearch.prepare_for_vision(images, cache_dir)
         if image_paths:
             from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username) or username
+            except Exception:
+                vision_uid = username
             result = TBNapCatVisionActive().process(
-                image_paths, text, username,
+                image_paths, text, vision_uid,
                 need_description=True, write_memory=not is_bot,
                 history_messages=group_history,
             )
@@ -838,6 +843,12 @@ class TBoxQQResponse:
         if image_paths:
             # 2. 有图：视觉看图（图 + 幻梦文字），简短评价
             from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
+            try:
+                from func.pipeline.id_signup import IdSignupBridge
+                bot_uid = IdSignupBridge().meowid_of_account(
+                    "qq", str(parsed.get("user_id", "") or ""), username) or username
+            except Exception:
+                bot_uid = username
             if text:
                 user_message = (
                     f"幻梦回复：{text}\n"
@@ -847,7 +858,7 @@ class TBoxQQResponse:
                 user_message = "幻梦发来了一张图，请用你的角色口吻给出简短评价，字数严格控制在10到20字之间。"
             try:
                 result = TBNapCatVisionActive().process(
-                    image_paths, user_message, username,
+                    image_paths, user_message, bot_uid,
                     need_description=False, write_memory=False,
                 )
                 reply = (result.get("reply") or "").strip()

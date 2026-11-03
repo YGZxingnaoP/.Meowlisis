@@ -73,6 +73,12 @@ class TBNapCatEventHandler:
                 user_id = event.get("user_id") or (event.get("sender") or {}).get("user_id")
                 self_id = event.get("self_id")
                 username = str((event.get("sender") or {}).get("nickname") or user_id or "")
+                # 视觉链路按 meowid 写档案：先按 QQ 号换出编号（未绑定会建临时身份），不能拿昵称顶替
+                try:
+                    from func.pipeline.id_signup import IdSignupBridge
+                    vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username) or username
+                except Exception:
+                    vision_uid = username
                 # 图片消息自带文本 + 此前待发送的聚合文本（先文本后图片 → 合并一次性看图回复，不走 LLM）
                 # 单发图片无文本时 text 为空，不向上检索填充文本
                 image_text = TBImageSearch.text_from_segments(event.get("message"))
@@ -89,7 +95,7 @@ class TBNapCatEventHandler:
                     # 幻梦（机器人）发的图不写记忆，其余用户图正常写记忆
                     is_bot = self._is_bot_user(user_id)
                     result = TBNapCatVisionActive().process(
-                        image_paths, text, username,
+                        image_paths, text, vision_uid,
                         need_description=True, write_memory=not is_bot,
                         history_messages=short_memory,
                     )

@@ -27,9 +27,13 @@ class MeowGetUserRecord:
         """记录文件路径：绑定了编号就按编号命名，没绑定照旧按名字命名"""
         try:
             from func.pipeline.id_signup import IdSignupBridge
-            return IdSignupBridge().record_path_of(uid)
+            path = IdSignupBridge().record_path_of(uid)
+            if path:
+                return path
         except Exception:
-            return os.path.join(self.temp_dir, "unknown_record.txt")
+            self.log.exception("解析记录路径失败")
+        safe = re.sub(r'[\\/:*?"<>|\r\n\t]', "_", str(uid or "")).strip() or "unknown"
+        return os.path.join(self.temp_dir, f"{safe}_record.txt")
 
     def record_message(self, uid: str, line: str, is_user: bool):
         """记录一条消息：用户消息计数+1，达到配置轮数返回 True（触发更新）"""

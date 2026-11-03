@@ -62,5 +62,13 @@
    "source": "moegirl",
    "known": false
   }
+ },
+ "星野": {
+  "ts": 1793703366.935747,
+  "card": {
+   "name": "星野",
+   "source": "moegirl",
+   "known": false
+  }
  }
 }
