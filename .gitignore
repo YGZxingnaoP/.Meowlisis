@@ -153,4 +153,5 @@ scripts/dist
 .vendor/.CatPaws/config.yml
 # .cam 自签名证书与私钥：启动时自动生成，不入库
 .vendor/.cam/cert/
+scripts/ios-ddi
 

@@ -62,10 +62,14 @@ class TBEmoteSender:
         self.log.info(f"发送表情: {name}（target={target_type}）")
 
     def _affinity(self, username: str) -> int:
-        """读取用户档案好感度（走统一入口：绑定过编号就读编号目录）"""
+        """读取用户档案好感度（先解析成内部编号；显示名不能直接当身份键，解析不到按 0 算）"""
         try:
+            from func.pipeline.id_signup import IdSignupBridge
+            uid = IdSignupBridge().uid_of_name(username)
+            if not uid:
+                return 0
             from func.catbrain.UserMemory.load_usrmem import MeowLoadUserMemory
-            data = MeowLoadUserMemory().load(username)
+            data = MeowLoadUserMemory().load(uid)
             affinity = data.get("affinity", 0)
             if isinstance(affinity, (int, float)):
                 return int(affinity)

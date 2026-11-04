@@ -606,6 +606,16 @@ def main():
     backlog = DateBacklog()
     backlog.start()
 
+    # 唱歌状态复位：进程重启后不可能还有播放继续，清掉落盘带回来的残留 singing.active
+    # （否则唱歌/翻唱播放中被重启，状态会一直 active，所有消息都会被当成“唱歌中”吞掉）
+    try:
+        from func.meowsinger.state import MeowSingerState
+        if MeowSingerState().is_singing():
+            MeowSingerState().end_singing()
+            log.info("检测到残留唱歌状态，已复位")
+    except Exception as e:
+        log.warning(f"复位唱歌状态失败: {e}")
+
     # 注册退出清理
     import atexit
     atexit.register(mc_reader.stop)

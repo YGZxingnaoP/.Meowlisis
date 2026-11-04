@@ -227,7 +227,15 @@ class IdSignupBridge:
         """把入参解析成内部编号；查不到记 ERROR 并返回 ""（不创建身份、不用别的值顶替）。"""
         meowid = self.uid_of_name(name)
         if not meowid:
-            self.log.error(f"[id_signup] 入参不是有效身份（禁止用昵称/QQ号/裸编号占位）: {name!r}")
+            try:
+                import traceback
+                chain = " <- ".join(
+                    "%s:%d" % (str(f.filename).replace("\\", "/").rsplit("/", 1)[-1], f.lineno)
+                    for f in traceback.extract_stack()[-4:-1]
+                )
+            except Exception:
+                chain = ""
+            self.log.error(f"[id_signup] 入参不是有效身份（禁止用昵称/QQ号/裸编号占位）: {name!r} 调用链: {chain}")
         return meowid
 
     def resolve_name(self, name):
