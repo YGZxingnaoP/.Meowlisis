@@ -32,6 +32,13 @@ IMAGE_SYSTEM = (
     "只输出一个 JSON，不要任何多余文字：{\"need\": true} 或 {\"need\": false}"
 )
 
+PAINT_SYSTEM = (
+    "你是绘画意图判定器。判断用户这句话是不是在要求「画一张图 / 改一张图」。\n"
+    "要画图：画一张…／画个…／给我画…／来张…的图／把这张图改成…／照着这张画／参考这张图画／重画。\n"
+    "不是画图：这张图是什么／好看吗／帮我分析下这张图／图里写的什么／哈哈哈／晚安／在干嘛／随便聊聊。\n"
+    "只输出一个 JSON，不要任何多余文字：{\"need\": true} 或 {\"need\": false}"
+)
+
 
 @singleton
 class TBRefJudge:
@@ -48,6 +55,10 @@ class TBRefJudge:
     def needs_image_ref(self, request: str) -> bool:
         """这条作画请求是否要求参考用户刚发来的图片"""
         return self._ask(IMAGE_SYSTEM, request)
+
+    def needs_painting(self, request: str) -> bool:
+        """外层闸门：这条消息是不是在要求画图/改图（先判要不要画，再判要不要参考）"""
+        return self._ask(PAINT_SYSTEM, request)
 
     def _ask(self, system: str, request: str) -> bool:
         """一次判定调用：返回 True/False，客户端不可用或解析失败统一 False（保持文生图）"""

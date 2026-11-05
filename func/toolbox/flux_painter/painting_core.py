@@ -297,6 +297,16 @@ class TBFluxPainterCore:
             return f"qq_group_{ctx.get('target_id')}"
         return f"qq_private_{ctx.get('user_id') or ctx.get('target_id')}"
 
+    @classmethod
+    def hits_paint_keywords(cls, text):
+        """这句话是否命中绘画关键词
+
+        命中的话硬规则会直接开画（router 无权拦），所以这里可以直接当作
+        「要画图」成立，省掉一次语义判定。
+        """
+        body = str(text or "").lower()
+        return bool(body) and any(str(w).lower() in body for w in cls.PAINT_RULE_WORDS)
+
     def broadcast_status(self, channel, text):
         """向画板广播一句状态（供两条链路模块调用）"""
         self._bcast(channel, {"type": "status", "text": text})

@@ -84,6 +84,11 @@ class GroupReplyMixin:
             if self._route_img2img(text, paint_images, parsed, group_id, group_name,
                                    quote_images=paint_images):
                 return
+        # 关键词命中 + 带图（没 @）：关键词本来就会硬触发画图，这张图也要能当参考图
+        if images and not at_self and self._keyword_hit(text):
+            if self._route_img2img(text, images, parsed, group_id, group_name,
+                                   quote_images=images):
+                return
 
         # @ 触发时重置该群主动回复计数（@ 回复后主动插话重新计时，保持原行为）
         if at_self:

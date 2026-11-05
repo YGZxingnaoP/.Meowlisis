@@ -54,11 +54,11 @@ class TBFluxImg2ImgRouter:
         return self.try_handle(TBFluxPainterCore.channel_of(ctx), text, images, ctx)
 
     def try_handle(self, channel, text, images, qq_context=None):
-        """尝试把「带图 + 要求照图作画」的消息转成图生图；不命中返回 False
+        """QQ 带图消息：先判「要不要画图」，再判「要不要拿这张图当参考」
 
-        两种情况都会接管：
-          1. 本条消息本身就带图、且语义上是要照图作画；
-          2. 之前判定要参考图、已经挂起等图，现在这张图到了（用挂起时的原需求）。
+        - 不画图            → 返回 False，消息原样走普通回复 / 看图；
+        - 画图 + 不用这张图 → 直接文生图（图忽略）；
+        - 画图 + 用这张图   → 图生图；图还没到手时挂起等图。
         """
         if not self.config.enabled or not self.config.img2img_enabled or not images:
             return False
@@ -71,17 +71,8 @@ class TBFluxImg2ImgRouter:
         request = pending or str(text or "").strip()
         if not request:
             return False
-        if not pending and not TBRefJudge().needs_image_ref(request):
-            return False
         ctx = dict(qq_context or {})
         painter.set_meowid(str(ctx.get("meowid") or ""))
-        ref_image = TBRefSource().materialize(images, self.config.ref_dir)
-        if not ref_image:
-            self.log.warning("[flux_painter] 参考图落地失败")
-            if pending:                                        # 还在等图：继续挂着
-                painter.wait_reference(channel, pending, ctx)
-                return True
-            return False
         try:
             from func.toolbox.get_prompt import TBoxGetPrompt
             painter.set_context({
@@ -90,7 +81,35 @@ class TBFluxImg2ImgRouter:
                 "system_prompt": TBoxGetPrompt().get_tool_prompt(ctx.get("meowid") or "", request) or "",
             })
         except Exception:
-            self.log.exception("[flux_painter] 图生图上下文注入失败")
+            self.log.exception("[flux_painter] 绘图上下文注入失败")
+
+        # ① 外层闸门：这条消息要不要画图（等图补到的场景，前面已经确认过了）
+        if pending:
+            want_paint, want_ref = True, True
+        else:
+            # 命中绘画关键词 → 硬规则本来就会直接开画，省掉这次「要不要画图」判定
+            want_paint = (TBFluxPainterCore.hits_paint_keywords(request)
+                          or TBRefJudge().needs_painting(request))
+            if not want_paint:
+                painter.take_quote_images(channel)            # 不画图：清掉引用图缓存
+                self.log.info(f"[flux_painter] 判定为不画图，交回普通流程: {request[:30]}")
+                return False
+            # ② 内层：要不要拿这张图当参考
+            want_ref = TBRefJudge().needs_image_ref(request)
+
+        if not want_ref:
+            painter.take_quote_images(channel)
+            result = painter.open_paint(channel, {"request": request}, qq_context=ctx)
+            self.log.info(f"[flux_painter] 要画图但不用参考图 → 文生图 channel={channel} 结果={result}")
+            return True
+
+        ref_image = TBRefSource().materialize(images, self.config.ref_dir)
+        if not ref_image:
+            self.log.warning("[flux_painter] 参考图落地失败")
+            if pending:                                        # 还在等图：继续挂着
+                painter.wait_reference(channel, pending, ctx)
+                return True
+            return False
         result = TBImg2ImgChain().open_image(channel, request, ref_image, ctx)
         painter.take_quote_images(channel)      # 已经用掉了，别让后面再捡起来
         self.log.info(f"[flux_painter] QQ 图生图接管 channel={channel} 结果={result}")
