@@ -188,6 +188,25 @@ class TBNapcatAnalysis:
                 # 与 toolbox 父级一致：注入角色系统提示词（供绘画 LLM 上下文）
                 "system_prompt": TBoxGetPrompt().get_tool_prompt(meowid, str(request or "")) or "",
             })
+            # 本条消息引用了图/贴纸：分析层已经判定要画图 → 直接拿这张图当参考，不再等图
+            try:
+                channel = core.channel_of(qq_context)
+                quoted = core.take_quote_images(channel)
+                if quoted:
+                    if core.is_painting(channel):
+                        core.cache_quote_images(channel, quoted)   # 还回去，别丢
+                        self.log.info("[NapcatAnalysis] 引用图暂存：该通道正在作画")
+                        return
+                    from func.toolbox.flux_painter.config import TBFluxPainterConfig
+                    from func.toolbox.flux_painter.img2img.chain import TBImg2ImgChain
+                    from func.toolbox.flux_painter.img2img.ref_source import TBRefSource
+                    ref = TBRefSource().materialize(quoted, TBFluxPainterConfig().ref_dir)
+                    if ref:
+                        result = TBImg2ImgChain().open_image(channel, request, ref, qq_context)
+                        self.log.info(f"[NapcatAnalysis] 引用图直接当参考图开画: {result}")
+                        return
+            except Exception:
+                self.log.exception("引用图开画失败，回退到等图判定")
             # 图生图：判定要参考图、但这条消息没带图 → 挂起等用户补图，绝不先开画
             try:
                 from func.toolbox.flux_painter.img2img.ref_judge import TBRefJudge

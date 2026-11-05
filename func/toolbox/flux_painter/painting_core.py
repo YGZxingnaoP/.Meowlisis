@@ -67,6 +67,12 @@ class TBFluxPainterCore:
         # 图生图等图：channel -> {"request","qq_context","deadline","timer"}
         self._pending_ref = {}
         self._pending_lock = threading.Lock()
+        # 本条消息引用的图（一次性直通给分析层：判定要画图就直接用它当参考，不再等图）
+        self._quote_images = {}
+        self._quote_lock = threading.Lock()
+        # 排队改图：channel -> {"instruction","qq_context","uid"}（上一张还在画时暂存）
+        self._pending_edit = {}
+        self._pending_edit_lock = threading.Lock()
         # channel -> 最近说过的接单开场白（逼角色每次换说法）
         self._opener_recent = {}
         self._opener_lock = threading.Lock()
@@ -207,6 +213,17 @@ class TBFluxPainterCore:
         """
         if uid:
             self._context["meowid"] = str(uid)
+        # 上一张还在画：把这次改图排队，等它画完立刻接着改（不能静默丢掉）
+        if self.is_painting(channel):
+            with self._pending_edit_lock:
+                self._pending_edit[str(channel)] = {
+                    "instruction": str(edit_instruction or ""),
+                    "qq_context": dict(qq_context or {}),
+                    "uid": str(uid or ""),
+                }
+            self.log.info(f"[flux_painter] 正在作画，改图已排队 channel={channel}")
+            self._notify_edit_queued(channel, qq_context)
+            return "正在画，改图已排队"
         item = self.get_last_paint(channel)
         if not item:
             return "没有可续画的上一张图"
@@ -302,6 +319,7 @@ class TBFluxPainterCore:
         if not self.config.enabled:
             return "绘画模块未开启（请在工具箱-绘画配置中启用）"
         if self.is_painting(channel):
+            self.log.info(f"[flux_painter] 拒绝开画：{channel} 仍在作画中（占用={sorted(self._running)}）")
             return "正在画画呢，画完这张再点下一张吧～"
         arguments = arguments or {}
         request = str(arguments.get("request") or self._context.get("text") or "").strip()
@@ -334,7 +352,13 @@ class TBFluxPainterCore:
             self._running.add(channel)
         t = threading.Thread(target=self._run, args=(session,), daemon=True,
                              name=f"flux_painter_{channel}")
-        t.start()
+        try:
+            t.start()
+        except Exception:
+            # 线程没起来就别占着作画状态，否则这个通道会被永久判成"正在画"
+            with self._lock:
+                self._running.discard(channel)
+            raise
         if qq_context:
             # QQ 渠道：AI 按需求生成开场白（异步，不阻塞开画）
             threading.Thread(target=self._qq_opener, args=(qq_context, request, channel),
@@ -621,6 +645,13 @@ class TBFluxPainterCore:
             self._remember_paint(channel, request, elements, saved, session.get("owner_uid"),
                                  init_image=session.get("init_image"))
 
+            # 图已经出好并归档：立刻释放作画状态。
+            # 发图 / TTS / 写记忆这些收尾动作可能很慢（NapCat 超时、TTS 排队），
+            # 不能让它们把下一张画的触发挡在"正在画画呢"上。
+            with self._lock:
+                self._running.discard(channel)
+            self.log.info(f"[flux_painter] 作画状态已释放 channel={channel}")
+
             # QQ 渠道判定：私聊不审查；群聊照审（命中→群占位+图私发，分流逻辑在 _send_qq_image 内）
             _qc = session.get("qq_context") or {}
             _qq_private = bool(_qc) and str(_qc.get("message_type", "")) != "group"
@@ -659,8 +690,35 @@ class TBFluxPainterCore:
             self._say_need(channel, "画到一半出了点岔子，跟主人说一句，别道歉。")
         finally:
             with self._lock:
+                still = channel in self._running
                 self._running.discard(channel)
+            if still:
+                self.log.info(f"[flux_painter] 作画状态已释放(异常收尾) channel={channel}")
             self._clear_review(channel)
+            self._start_pending_edit(channel)
+
+    # ==================== 排队改图 ====================
+    def _notify_edit_queued(self, channel, qq_context):
+        """告诉用户改图已排队（画完就改）"""
+        need = "上一张还在画，主人又要改，说一句「画完这张就照这个改」。"
+        line = self._line_need(need, 30) or "还在画这张，画完就按你说的改。"
+        if qq_context:
+            self._qq_say_text(qq_context, line)
+        else:
+            self._say(channel, line)
+
+    def _start_pending_edit(self, channel):
+        """一张画完：如果有排队的改图，立刻接着改（用刚出图的最新提示词做底）"""
+        with self._pending_edit_lock:
+            item = self._pending_edit.pop(str(channel), None)
+        if not item:
+            return
+        try:
+            self.log.info(f"[flux_painter] 执行排队的改图 channel={channel}")
+            self.continue_paint(channel, item.get("instruction") or "",
+                                item.get("qq_context") or {}, item.get("uid") or "")
+        except Exception:
+            self.log.exception("[flux_painter] 排队改图执行失败")
 
     def _review_flow(self, session, img_url, reply):
         """审查开启：先语音不显示图，等主人按钮裁决；通过才展示"""
@@ -852,6 +910,23 @@ class TBFluxPainterCore:
 
     # ==================== 图生图等图（QQ 附图） ====================
     REF_WAIT_SECONDS = 60.0
+
+    def cache_quote_images(self, channel, images):
+        """记下本条消息引用的图（分析层判定要画图时直接取用，避免二次判定后去等图）"""
+        if not images:
+            return
+        with self._quote_lock:
+            self._quote_images[str(channel)] = {"images": list(images), "ts": time.time()}
+
+    def take_quote_images(self, channel, ttl=90.0):
+        """取走并清空本条消息的引用图；过期返回空列表（一次性）"""
+        with self._quote_lock:
+            item = self._quote_images.pop(str(channel), None)
+        if not item:
+            return []
+        if time.time() - float(item.get("ts") or 0) > float(ttl):
+            return []
+        return list(item.get("images") or [])
 
     def wait_reference(self, channel, request, qq_context, seconds=None):
         """判定要参考图但本条消息没带图：挂起等用户补图，绝不先开画

@@ -92,5 +92,6 @@ class TBFluxImg2ImgRouter:
         except Exception:
             self.log.exception("[flux_painter] 图生图上下文注入失败")
         result = TBImg2ImgChain().open_image(channel, request, ref_image, ctx)
+        painter.take_quote_images(channel)      # 已经用掉了，别让后面再捡起来
         self.log.info(f"[flux_painter] QQ 图生图接管 channel={channel} 结果={result}")
         return True

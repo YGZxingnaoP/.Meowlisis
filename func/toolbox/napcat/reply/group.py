@@ -71,10 +71,18 @@ class GroupReplyMixin:
         # 提前提取图片（供 @ 缓冲协调与后续普通图片检测复用）
         from func.toolbox.napcat.image.image_search import TBImageSearch
         images = TBImageSearch.extract_images(raw_message)
-        # 引用图片：只在「要照图作画」时当参考图，不改变原看图链路
+        # 图生图参考图允许表情/贴纸（看图链路仍按原规则排除）
+        paint_images = images or TBImageSearch.extract_images(raw_message, include_emoji=True)
+        # 引用图片：只在「被叫到（@ 或关键词）」时当图生图参考图，不改变原看图链路
         quote_images = parsed.get("quote_images") or []
-        if at_self and not images and quote_images:
-            if self._route_img2img(text, quote_images, parsed, group_id, group_name):
+        if not images and quote_images and (at_self or self._keyword_hit(text)):
+            if self._route_img2img(text, quote_images, parsed, group_id, group_name,
+                                   quote_images=quote_images):
+                return
+        # 只发了表情/贴纸（看图链路按规则排除）又被叫到：仍然可以作为图生图参考图
+        if not images and paint_images and (at_self or self._keyword_hit(text)):
+            if self._route_img2img(text, paint_images, parsed, group_id, group_name,
+                                   quote_images=paint_images):
                 return
 
         # @ 触发时重置该群主动回复计数（@ 回复后主动插话重新计时，保持原行为）
@@ -183,10 +191,15 @@ class GroupReplyMixin:
         c.set_flush_handler(self._coordinator_flush)
         return c
 
-    def _route_img2img(self, text, images, parsed, group_id, group_name):
+    def _route_img2img(self, text, images, parsed, group_id, group_name, quote_images=None):
         """带图消息先问绘画模块：是不是要以这张图作画（不是就返回 False，原样走看图）"""
         try:
             from func.toolbox.flux_painter.img2img.router import TBFluxImg2ImgRouter
+            from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
+            # 把这批图挂到一次性缓存：万一下面语义判定为「不需要参考图」，
+            # 但分析层又判定要画图，可以直接用这张图，而不是傻等用户补图。
+            if quote_images:
+                TBFluxPainterCore().cache_quote_images(f"qq_group_{group_id}", quote_images)
             return TBFluxImg2ImgRouter().try_handle_qq(text, images, parsed, group_id, group_name)
         except Exception:
             self.log.exception("图生图路由异常")

@@ -71,6 +71,7 @@ class TBNapCatEventHandler:
             # 图片检测：私聊发图必看（不再做 vision_decide 判断）
             from func.toolbox.napcat.image.image_search import TBImageSearch
             images = TBImageSearch.extract_images(event.get("message"))
+            paint_images = images or TBImageSearch.extract_images(event.get("message"), include_emoji=True)
             if images:
                 user_id = event.get("user_id") or (event.get("sender") or {}).get("user_id")
                 self_id = event.get("self_id")
@@ -127,7 +128,21 @@ class TBNapCatEventHandler:
             if not parsed or not parsed.get("text"):
                 return
             self_id = event.get("self_id")
-            self._resolve_quote(parsed, "private", parsed.get("user_id"))
+            self._resolve_quote(parsed, "private", parsed.get("user_id"),
+                                has_own_image=bool(images))
+            # 只发了表情/贴纸（看图链路排除）又说要画：表情也可以当参考图
+            if not images and paint_images:
+                try:
+                    from func.toolbox.flux_painter.img2img.router import TBFluxImg2ImgRouter
+                    if TBFluxImg2ImgRouter().try_handle_qq(
+                            str(parsed.get("text") or ""), paint_images,
+                            {"user_id": str(parsed.get("user_id") or ""),
+                             "username": str(parsed.get("username") or ""),
+                             "self_id": str(self_id or "")}):
+                        self.log.info("[NapCat] 私聊表情图生图接管")
+                        return
+                except Exception:
+                    self.log.exception("私聊表情图生图路由异常")
             # 引用图片：本条没带图但引用了图片 → 交给图生图判定（判定不中就继续走普通回复）
             if parsed.get("quote_images"):
                 try:
@@ -161,7 +176,7 @@ class TBNapCatEventHandler:
         except Exception:
             self.log.exception("处理 message_sent 异常")
 
-    def _resolve_quote(self, parsed: dict, scope: str, key):
+    def _resolve_quote(self, parsed: dict, scope: str, key, has_own_image: bool = False):
         conf = self.config.quote_conf(scope) if hasattr(self.config, "quote_conf") else {}
         if not bool(conf.get("enabled", True)):
             return
@@ -169,12 +184,14 @@ class TBNapCatEventHandler:
         if not mid:
             return
         # 引用图片：别人发的图也要能当图生图的参考图，所以先拉原消息取图片段
-        try:
-            quoted = self._fetch_quote_images(mid)
-            if quoted:
-                parsed["quote_images"] = quoted
-        except Exception:
-            self.log.exception("引用消息取图失败")
+        # （本条消息自己带图时不用拉：自己的图优先，省一次 get_msg）
+        if not has_own_image:
+            try:
+                quoted = self._fetch_quote_images(mid)
+                if quoted:
+                    parsed["quote_images"] = quoted
+            except Exception:
+                self.log.exception("引用消息取图失败")
         from func.toolbox.napcat.message.quote_store import TBSelfSentStore, TBQuoteStore
         text = TBSelfSentStore().text_of(mid)
         if not text:
@@ -183,17 +200,62 @@ class TBNapCatEventHandler:
         parsed["reply_self"] = True
 
     def _fetch_quote_images(self, mid: str):
-        """引用消息里的图片段（拉 get_msg 取原消息）；拿不到返回空列表"""
-        try:
-            ret = self.api_client.call_action_sync("get_msg", {"message_id": int(mid)})
-            data = (ret or {}).get("data") or {}
-            segments = data.get("message") or []
-            if not segments:
-                return []
-            from func.toolbox.napcat.image.image_search import TBImageSearch
-            return TBImageSearch.extract_images(segments) or []
-        except Exception:
+        """引用消息里的图片段（拉 get_msg 取原消息）；拿不到返回空列表
+
+        NapCat 的引用 id 可能是负数（如 -339125345），也可能要字符串形态，
+        所以这里 int / str 各试一次，并支持从 raw_message 的 CQ 码兜底抽图。
+        """
+        message_id = str(mid or "").strip()
+        if not message_id:
             return []
+        attempts = []
+        try:
+            attempts.append(int(message_id))
+        except (TypeError, ValueError):
+            pass
+        attempts.append(message_id)
+        for value in attempts:
+            try:
+                ret = self.api_client.call_action_sync("get_msg", {"message_id": value}) or {}
+            except Exception:
+                self.log.exception(f"[NapCat] 引用取图调用失败 id={message_id}")
+                continue
+            data = ret.get("data") or {}
+            segments = data.get("message")
+            if not isinstance(segments, list):
+                segments = []
+            # 引用取图不做「表情过滤」：用户引用的可能就是一张动画表情（sub_type=1），
+            # 但引用行为本身就说明他要拿这张当参考图。
+            images = []
+            for seg in segments:
+                if not isinstance(seg, dict) or seg.get("type") != "image":
+                    continue
+                seg_data = seg.get("data") or {}
+                if str(seg_data.get("url") or seg_data.get("file") or "").strip():
+                    images.append({"url": seg_data.get("url", ""), "file": seg_data.get("file", "")})
+            if not images:
+                images = self._cq_images(str(data.get("raw_message") or ""))
+            if images:
+                self.log.info(f"[NapCat] 引用取图成功 id={message_id} images={len(images)}")
+                return images
+            self.log.info(f"[NapCat] 引用取图未拿到图片 id={message_id} status={ret.get('status')} "
+                          f"retcode={ret.get('retcode')} data_keys={list(data.keys())[:6]}")
+        return []
+
+    @staticmethod
+    def _cq_images(raw: str):
+        """raw_message 兜底：从 CQ 码里抽图片段（[{url, file}]）"""
+        import re
+        out = []
+        for args in re.findall(r"\[CQ:image,([^\]]*)\]", raw or ""):
+            data = {}
+            for part in args.split(","):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    data[k.strip()] = v.strip().replace("&amp;", "&")
+            if data:
+                out.append({"url": data.get("url", ""), "file": data.get("file", "")})
+        return out
 
     # ==================== 戳一戳处理 ====================
     def _handle_poke(self, event: dict):
@@ -331,7 +393,13 @@ class TBNapCatEventHandler:
             parsed = self.get_group_message.parse(event)
             if not parsed:
                 return
-            self._resolve_quote(parsed, "group", parsed.get("group_id"))
+            try:
+                from func.toolbox.napcat.image.image_search import TBImageSearch
+                _own_image = TBImageSearch.has_image(event.get("message"))
+            except Exception:
+                _own_image = False
+            self._resolve_quote(parsed, "group", parsed.get("group_id"),
+                                has_own_image=_own_image)
             group_id = str(parsed.get("group_id", ""))
             group_name = self._resolve_group_name(group_id)
             parsed["group_name"] = group_name

@@ -24,14 +24,17 @@ class TBImageSearch:
         return str(data.get("subType", "") or "") in ("1", 1)
 
     @classmethod
-    def extract_images(cls, segments) -> List[Dict]:
-        """提取图片段信息，返回 [{url, file}]（排除表情 subType=1；gif 动图保留，后续抽帧）"""
+    def extract_images(cls, segments, include_emoji: bool = False) -> List[Dict]:
+        """提取图片段信息，返回 [{url, file}]（默认排除表情 subType=1；gif 动图保留，后续抽帧）
+
+        include_emoji=True 时把表情/贴纸也算进来（图生图参考图需要，看图链路不需要）。
+        """
         result: List[Dict] = []
         for seg in segments or []:
             if not isinstance(seg, dict) or seg.get("type") != "image":
                 continue
             data = seg.get("data") or {}
-            if cls._is_emoji(data):
+            if not include_emoji and cls._is_emoji(data):
                 continue
             url = str(data.get("url", "") or "").strip()
             file = str(data.get("file", "") or "").strip()

@@ -370,9 +370,13 @@ class TBPromptProducer:
             base_char = str(base_elements.get("character") or "").strip()
             base_title = str(base_elements.get("title") or "").strip()
             user_content = (
-                "【续画/改图】用户要求在上一版画作基础上做修改。请保持主体、构图、场景、光照、"
-                "镜头与整体氛围尽量不变，只修改与“本次修改指令”相关的部分（如服装/道具/颜色/姿势等），"
-                "并重出 produce_painting。\n"
+                "【续画/改图】用户要求在上一版画作基础上做修改。\n"
+                "规则：\n"
+                "1. 保持主体身份、构图、场景、光照、镜头与整体氛围不变，只改「本次修改指令」涉及的部分；\n"
+                "2. 指令要求**删除或替换**的特征，"
+                "必须从新的 positive / cinema 里彻底移除旧标签和旧描述，不能只在末尾追加新词；\n"
+                "3. 旧标签与本次指令冲突时（性别、服装、裸露程度、人数等），一律以本次指令为准，旧标签删掉；\n"
+                "4. 重出 produce_painting。\n"
                 f"上一版标题：{base_title}\n"
                 f"上一版需求：{base_request or ''}\n"
                 f"上一版 positive：{base_pos}\n"
