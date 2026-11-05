@@ -128,6 +128,19 @@ class TBNapCatEventHandler:
                 return
             self_id = event.get("self_id")
             self._resolve_quote(parsed, "private", parsed.get("user_id"))
+            # 引用图片：本条没带图但引用了图片 → 交给图生图判定（判定不中就继续走普通回复）
+            if parsed.get("quote_images"):
+                try:
+                    from func.toolbox.flux_painter.img2img.router import TBFluxImg2ImgRouter
+                    if TBFluxImg2ImgRouter().try_handle_qq(
+                            str(parsed.get("text") or ""), parsed["quote_images"],
+                            {"user_id": str(parsed.get("user_id") or ""),
+                             "username": str(parsed.get("username") or ""),
+                             "self_id": str(self_id or "")}):
+                        self.log.info("[NapCat] 私聊引用图生图接管")
+                        return
+                except Exception:
+                    self.log.exception("私聊引用图生图路由异常")
             self.buffer._buffer_message(parsed, self_id)
         except Exception:
             self.log.exception("处理私聊消息异常")
@@ -155,12 +168,32 @@ class TBNapCatEventHandler:
         mid = str(parsed.get("reply_to_id") or "").strip()
         if not mid:
             return
+        # 引用图片：别人发的图也要能当图生图的参考图，所以先拉原消息取图片段
+        try:
+            quoted = self._fetch_quote_images(mid)
+            if quoted:
+                parsed["quote_images"] = quoted
+        except Exception:
+            self.log.exception("引用消息取图失败")
         from func.toolbox.napcat.message.quote_store import TBSelfSentStore, TBQuoteStore
         text = TBSelfSentStore().text_of(mid)
         if not text:
             return
         TBQuoteStore().put(scope, key, text, parsed.get("text"))
         parsed["reply_self"] = True
+
+    def _fetch_quote_images(self, mid: str):
+        """引用消息里的图片段（拉 get_msg 取原消息）；拿不到返回空列表"""
+        try:
+            ret = self.api_client.call_action_sync("get_msg", {"message_id": int(mid)})
+            data = (ret or {}).get("data") or {}
+            segments = data.get("message") or []
+            if not segments:
+                return []
+            from func.toolbox.napcat.image.image_search import TBImageSearch
+            return TBImageSearch.extract_images(segments) or []
+        except Exception:
+            return []
 
     # ==================== 戳一戳处理 ====================
     def _handle_poke(self, event: dict):

@@ -188,6 +188,15 @@ class TBNapcatAnalysis:
                 # 与 toolbox 父级一致：注入角色系统提示词（供绘画 LLM 上下文）
                 "system_prompt": TBoxGetPrompt().get_tool_prompt(meowid, str(request or "")) or "",
             })
+            # 图生图：判定要参考图、但这条消息没带图 → 挂起等用户补图，绝不先开画
+            try:
+                from func.toolbox.flux_painter.img2img.ref_judge import TBRefJudge
+                if core.config.enabled and TBRefJudge().needs_image_ref(str(request or "")):
+                    core.wait_reference(core.channel_of(qq_context), request, qq_context)
+                    self.log.info("[NapcatAnalysis] 判定要参考图，已挂起等图（60s）")
+                    return
+            except Exception:
+                self.log.exception("图生图等图判定失败")
             result = core.dispatch_qq("flux_paint", {"request": request}, qq_context)
             self.log.info(f"[NapcatAnalysis] Flux 绘画 QQ 开局: {result}")
         except Exception:

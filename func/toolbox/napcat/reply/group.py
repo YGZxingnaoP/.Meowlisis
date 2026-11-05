@@ -71,6 +71,11 @@ class GroupReplyMixin:
         # 提前提取图片（供 @ 缓冲协调与后续普通图片检测复用）
         from func.toolbox.napcat.image.image_search import TBImageSearch
         images = TBImageSearch.extract_images(raw_message)
+        # 引用图片：只在「要照图作画」时当参考图，不改变原看图链路
+        quote_images = parsed.get("quote_images") or []
+        if at_self and not images and quote_images:
+            if self._route_img2img(text, quote_images, parsed, group_id, group_name):
+                return
 
         # @ 触发时重置该群主动回复计数（@ 回复后主动插话重新计时，保持原行为）
         if at_self:

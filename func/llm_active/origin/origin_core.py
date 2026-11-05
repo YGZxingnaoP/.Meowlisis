@@ -169,10 +169,19 @@ class AutoOriginCore:
             return []
 
     def _build_profiles(self, speakers):
-        """按说话人读取用户档案并拼接"""
+        """按说话人读取用户档案并拼接
+
+        说话人来自 `.temp/*_record.txt` 的文件名，可能是编号也可能是旧版昵称，
+        这里统一解析回内部编号再读档案（昵称进 profile_of 会被身份校验拒绝）。
+        """
+        from func.pipeline.id_signup import IdSignupBridge
         parts = []
         for name in speakers:
-            data = self.usrmem.load(name)
+            uid = IdSignupBridge().resolve_name(name)
+            if not uid:
+                self.log.debug(f"[主动回复-origin] 说话人 {name!r} 解析不到编号，跳过档案")
+                continue
+            data = self.usrmem.load(uid)
             if data:
                 parts.append(f"【{name}的档案】{json.dumps(data, ensure_ascii=False)}")
         return "\n".join(parts)

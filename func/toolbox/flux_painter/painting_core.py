@@ -2,6 +2,7 @@
 # func/toolbox/flux_painter/painting_core.py
 import os
 import re
+import shutil
 import threading
 import time
 
@@ -63,6 +64,9 @@ class TBFluxPainterCore:
         # channel -> 上一轮绘画（完整提示词缓存，供画完后 window 秒内改图续画）
         self._last_paint = {}
         self._last_lock = threading.Lock()
+        # 图生图等图：channel -> {"request","qq_context","deadline","timer"}
+        self._pending_ref = {}
+        self._pending_lock = threading.Lock()
         # channel -> 最近说过的接单开场白（逼角色每次换说法）
         self._opener_recent = {}
         self._opener_lock = threading.Lock()
@@ -102,8 +106,13 @@ class TBFluxPainterCore:
         return bool(self._running)
 
     # ==================== 改图续画（上一轮完整提示词缓存） ====================
-    def _remember_paint(self, channel, request, elements, final_image, owner_uid):
-        """出图成功后缓存本轮完整提示词与成品图（供改图续画）"""
+    def _remember_paint(self, channel, request, elements, final_image, owner_uid,
+                        init_image=""):
+        """出图成功后缓存本轮完整提示词与成品图（供改图续画）
+
+        init_image：本轮用的参考图（图生图才非空）；改图时会把这张参考图召回，
+        让“在上一张基础上改”仍然沿用原来的参考画面，而不是退回纯文生图。
+        """
         try:
             with self._last_lock:
                 self._last_paint[str(channel)] = {
@@ -118,10 +127,57 @@ class TBFluxPainterCore:
                         "reply": str((elements or {}).get("reply") or ""),
                     },
                     "final_image": str(final_image or ""),
+                    "init_image": str(init_image or ""),
                     "owner_uid": str(owner_uid or ""),
                 }
+            if init_image:
+                self._persist_reference(channel, init_image)
+            else:
+                self._drop_reference(channel)
         except Exception:
             self.log.exception("[flux_painter] 缓存上一轮绘画失败")
+
+    def _reference_path(self, channel):
+        """参考图的稳定副本路径（源图可能被清理，改图召回时用它兜底）"""
+        safe = re.sub(r'[\\/:*?"<>|]', "_", str(channel or "")) or "channel"
+        return os.path.join(self.config.ref_dir, f"last_{safe}.png")
+
+    def _persist_reference(self, channel, init_image):
+        """把本轮参考图另存一份稳定副本，供后续改图召回"""
+        try:
+            src = str(init_image or "")
+            if not src or not os.path.isfile(src):
+                return
+            dst = self._reference_path(channel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copyfile(src, dst)
+        except Exception:
+            self.log.exception("[flux_painter] 缓存参考图副本失败")
+
+    def _last_reference(self, channel):
+        """改图时可召回的参考图：只有上一轮本身就是图生图才召回
+
+        上一轮是纯文生图时返回空（否则会拿很早以前留下的参考图去改一张无参考的画）；
+        上一轮的参考图被清理了，才退回稳定副本。
+        """
+        with self._last_lock:
+            item = self._last_paint.get(str(channel)) or {}
+        init_image = str(item.get("init_image") or "")
+        if not init_image:
+            return ""
+        if os.path.isfile(init_image):
+            return init_image
+        stable = self._reference_path(channel)
+        return stable if os.path.isfile(stable) else ""
+
+    def _drop_reference(self, channel):
+        """本轮是纯文生图：清掉旧的参考图副本，避免被后续改图误召回"""
+        try:
+            path = self._reference_path(channel)
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception:
+            pass
 
     def get_last_paint(self, channel):
         """取上一轮绘画缓存；超出改图等待窗口则返回 None"""
@@ -157,9 +213,12 @@ class TBFluxPainterCore:
         base_elements = item.get("elements") or {}
         arguments = {"request": str(edit_instruction or item.get("request") or ""),
                      "topic": str(base_elements.get("title") or "改图")}
+        # 上一轮是图生图时，改图继续召回那张参考图（否则改图会退回纯文生图）
+        init_image = self._last_reference(channel)
         return self.open_paint(channel, arguments, qq_context=qq_context,
                                base_elements=base_elements,
-                               base_request=str(item.get("request") or ""))
+                               base_request=str(item.get("request") or ""),
+                               init_image=init_image)
 
     # ==================== 父级 schema ====================
     def build_tools(self):
@@ -559,7 +618,8 @@ class TBFluxPainterCore:
             session["final_image"] = saved
             session["reply"] = reply
             # 缓存本轮完整提示词（elements），供画完后窗口内的下一条消息做改图续画
-            self._remember_paint(channel, request, elements, saved, session.get("owner_uid"))
+            self._remember_paint(channel, request, elements, saved, session.get("owner_uid"),
+                                 init_image=session.get("init_image"))
 
             # QQ 渠道判定：私聊不审查；群聊照审（命中→群占位+图私发，分流逻辑在 _send_qq_image 内）
             _qc = session.get("qq_context") or {}
@@ -789,6 +849,59 @@ class TBFluxPainterCore:
     def say_need(self, channel, need, max_chars=40):
         """链路层的开口入口：让角色用自己的话问一句（屏幕没找到东西时用）"""
         return self._say_need(channel, need, max_chars)
+
+    # ==================== 图生图等图（QQ 附图） ====================
+    REF_WAIT_SECONDS = 60.0
+
+    def wait_reference(self, channel, request, qq_context, seconds=None):
+        """判定要参考图但本条消息没带图：挂起等用户补图，绝不先开画
+
+        超过时限只反问一句（见 _on_ref_timeout），不退回纯文生图。
+        """
+        secs = float(seconds or self.REF_WAIT_SECONDS)
+        with self._pending_lock:
+            old = self._pending_ref.pop(str(channel), None)
+            if old and old.get("timer"):
+                old["timer"].cancel()
+            timer = threading.Timer(secs, self._on_ref_timeout, args=(str(channel),))
+            timer.daemon = True
+            self._pending_ref[str(channel)] = {
+                "request": str(request or ""),
+                "qq_context": dict(qq_context or {}),
+                "deadline": time.time() + secs,
+                "timer": timer,
+            }
+            timer.start()
+        self.log.info(f"[flux_painter] 等 {secs:.0f}s 参考图 channel={channel}")
+        return secs
+
+    def take_pending_reference(self, channel):
+        """有挂起的等图请求就取走并返回原需求（配套「这张图到了」），没有返回空串"""
+        with self._pending_lock:
+            item = self._pending_ref.pop(str(channel), None)
+            if not item:
+                return ""
+            if item.get("timer"):
+                item["timer"].cancel()
+            if time.time() > float(item.get("deadline") or 0):
+                return ""
+        self.log.info(f"[flux_painter] 收到补的参考图 channel={channel}")
+        return str(item.get("request") or "")
+
+    def _on_ref_timeout(self, channel):
+        """等图超时：只问一句，不开画"""
+        with self._pending_lock:
+            item = self._pending_ref.pop(str(channel), None)
+        if not item:
+            return
+        need = "主人说要参考一张图，可一直没发，问一句是不是忘了、还要不要画。"
+        line = self._line_need(need, 30) or "图还没等到，你把参考图发我一下？"
+        ctx = item.get("qq_context") or {}
+        if ctx:
+            self._qq_say_text(ctx, line)
+        else:
+            self._say(str(channel), line)
+        self.log.info(f"[flux_painter] 等参考图超时，已问一句 channel={channel}")
 
     def _say(self, channel, text):
         """经 toolbox_tts 播报（type=toolbox_painting）；QQ 渠道不播 TTS，文字点评随图发出"""
