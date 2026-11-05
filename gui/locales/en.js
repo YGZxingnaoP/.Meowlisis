@@ -1092,6 +1092,17 @@ window.__LOCALES__['en'] = {
     "判定 max_tokens": "Judgment max_tokens",
     "判定温度": "Judgment Temperature",
 
+    // ===== 图生图 =====
+    "图生图（参考图）": "Image-to-Image (reference)",
+    "启用图生图": "Enable Image-to-Image",
+    "带图说「照这张画」直接走图生图；没图时由模型自己判断要不要参考当前屏幕，需要就截屏取景再画": "With a picture attached, “draw from this” goes image-to-image directly; without one the model decides whether to reference the current screen and crops a screenshot when needed.",
+    "参考强度 denoise": "Reference Strength (denoise)",
+    "越高越偏离参考图（越像重画）；0.7~0.8 适合「照这张画成某某」，0.4~0.6 适合小幅改写": "Higher drifts further from the reference (more like a redraw); 0.7-0.8 suits “draw this as …”, 0.4-0.6 suits small edits.",
+    "取景复查轮数": "Crop Review Rounds",
+    "截屏取景时模型点两个对角点定框，不满意就重给一组；默认 3 轮，上限 5 轮": "When cropping a screenshot the model marks two diagonal corners; if unsatisfied it marks another set. 3 rounds by default, 5 max.",
+    "截屏长边上限": "Screenshot Max Side",
+    "发给模型看的那张截图缩略图长边像素，越大越准也越慢": "Long side of the screenshot thumbnail sent to the model; larger is more accurate but slower.",
+
     // ===== 子球④工作流 =====
     "采样与画质": "Sampling & Quality",
     "画质档位": "Quality Tier",

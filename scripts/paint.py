@@ -67,12 +67,14 @@ def main():
         return 2
 
     core = TBFluxPainterCore()
-    core.config.quality_mode = "pro"        # 本脚本固定走 Pro 档
-    # 身份标准：必须显式给 meowid，禁止用「主人」这类昵称顶身份位
+    # 档位：默认 pro；想快速验证图生图可以传 fast（第 2 个参数）
     import sys as _sys
+    quality = str(_sys.argv[2]).strip().lower() if len(_sys.argv) > 2 else "pro"
+    core.config.quality_mode = quality if quality in ("fast", "pro") else "pro"
+    # 身份标准：必须显式给 meowid，禁止用「主人」这类昵称顶身份位
     meowid = str(_sys.argv[1]).strip() if len(_sys.argv) > 1 else ""
     if not meowid:
-        print("!! 用法: python scripts/paint.py <meowid>（例: python scripts/paint.py 000001）")
+        print("!! 用法: python scripts/paint.py <meowid> [fast|pro]（例: python scripts/paint.py 000001 fast）")
         return 2
     core.set_meowid(meowid)
 
@@ -88,7 +90,9 @@ def main():
     print("本次调用   : dispatch(%r, {\"request\": ...})" % tool_name)
     print()
     print("底模      : %s" % core.config.unet_model)
-    print("档位      : pro（模型放大 + 分块重绘 + 局部细化）")
+    print("档位      : %s%s" % (core.config.quality_mode,
+                                "（模型放大 + 分块重绘 + 局部细化）"
+                                if core.config.quality_mode == "pro" else "（单段采样）"))
     print("引擎      : %s %s:%s" % (cfg.comfy_mode, cfg.comfy_host, cfg.comfy_port))
     print("归档目录  : %s" % cfg.backup_dir)
     print("存图目录  : %s" % SAVE_DIR)

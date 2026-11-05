@@ -157,9 +157,9 @@ class TBFluxPainterCore:
         base_elements = item.get("elements") or {}
         arguments = {"request": str(edit_instruction or item.get("request") or ""),
                      "topic": str(base_elements.get("title") or "改图")}
-        return self._open(channel, arguments, qq_context=qq_context,
-                          base_elements=base_elements,
-                          base_request=str(item.get("request") or ""))
+        return self.open_paint(channel, arguments, qq_context=qq_context,
+                               base_elements=base_elements,
+                               base_request=str(item.get("request") or ""))
 
     # ==================== 父级 schema ====================
     def build_tools(self):
@@ -188,27 +188,54 @@ class TBFluxPainterCore:
 
     # ==================== 开局 ====================
     def dispatch(self, name, arguments):
-        """live 开局（父级 decide 命中 flux_paint 时调用）"""
+        """live 开局（父级 decide 命中 flux_paint 时调用）
+
+        先让图生图链路判断要不要参考屏幕，不命中再按文生图出图。
+        """
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
-        return self._open("live", arguments, qq_context=None)
+        try:
+            from func.toolbox.flux_painter.img2img.chain import TBImg2ImgChain
+            opened = TBImg2ImgChain().open_screen(arguments, channel="live")
+            if opened:
+                return opened
+        except Exception:
+            self.log.exception("[flux_painter] 屏幕参考判断失败，按文生图继续")
+        from func.toolbox.flux_painter.txt2img.chain import TBTxt2ImgChain
+        return TBTxt2ImgChain().open_live(arguments)
 
     def dispatch_qq(self, name, arguments, qq_context):
-        """QQ 开局，channel 按私聊/群聊隔离"""
+        """QQ 开局（QQ 只走文生图，图生图看附图那条路）"""
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
         if not self.config.enabled:
             return "绘画模块未开启"
-        if not qq_context:
-            return "缺少 QQ 上下文"
-        if str(qq_context.get("message_type", "")) == "group":
-            channel = f"qq_group_{qq_context.get('target_id')}"
-        else:
-            channel = f"qq_private_{qq_context.get('user_id') or qq_context.get('target_id')}"
-        return self._open(channel, arguments, qq_context=qq_context)
+        from func.toolbox.flux_painter.txt2img.chain import TBTxt2ImgChain
+        return TBTxt2ImgChain().open_qq(arguments, qq_context)
 
-    def _open(self, channel, arguments, qq_context=None, base_elements=None, base_request=""):
-        """冷却检查并起后台绘画线程（base_elements 非空时表示续画/改图）。
+    @staticmethod
+    def channel_of(qq_context):
+        """QQ 上下文 → 绘画通道名（群聊/私聊各自隔离）"""
+        ctx = qq_context or {}
+        if str(ctx.get("message_type", "")) == "group":
+            return f"qq_group_{ctx.get('target_id')}"
+        return f"qq_private_{ctx.get('user_id') or ctx.get('target_id')}"
+
+    def broadcast_status(self, channel, text):
+        """向画板广播一句状态（供两条链路模块调用）"""
+        self._bcast(channel, {"type": "status", "text": text})
+
+    def has_identity(self):
+        """当前上下文是否已注入内部编号（链路层在截图/取景前先问一下，免得白跑）"""
+        return bool(str(self._context.get("meowid") or ""))
+
+    def context_text(self):
+        """当前上下文里的用户原话（链路层做语义判断时用）"""
+        return str(self._context.get("text") or "")
+
+    def open_paint(self, channel, arguments, qq_context=None, base_elements=None,
+                   base_request="", init_image="", ref_note=""):
+        """冷却检查并起后台绘画线程（base_elements 非空=续画/改图，init_image 非空=图生图）。
 
         冷却为「按通道」判断（channel：live / qq_private_x / qq_group_y）：
         主链路（live）与 QQ 链路各自独立出图，互不阻塞（不串行）。
@@ -240,6 +267,8 @@ class TBFluxPainterCore:
                    "persona": persona, "memories": memories,
                    "qq_context": qq_context,
                    "base_elements": base_elements, "base_request": base_request,
+                   "init_image": str(init_image or ""),
+                   "ref_note": str(ref_note or ""),
                    "owner_uid": str((qq_context or {}).get("user_id") or
                                     (qq_context or {}).get("target_id") or "")}
         with self._lock:
@@ -264,12 +293,16 @@ class TBFluxPainterCore:
         channel = session["channel"]
         uid = session["meowid"]
         request = session["request"]
-        # 短期记忆 + 角色系统提示词（_open 已快照进 session，防并发串号）
+        # 短期记忆 + 角色系统提示词（open_paint 已快照进 session，防并发串号）
         memories = session.get("memories") or []
         persona = session.get("persona") or ""
 
         try:
             self._bcast(channel, {"type": "status", "text": "AI 正在构思画面…"})
+
+            # 参考图由链路层（图生图 chain）准备好后塞进 session，这里只负责用它
+            ref_image = str(session.get("init_image") or "")
+            ref_note = str(session.get("ref_note") or "")
 
             def on_stream(text):
                 self._bcast(channel, {"type": "producing", "text": text})
@@ -279,7 +312,8 @@ class TBFluxPainterCore:
                                          memory=memories,
                                          on_stream=on_stream,
                                          base_elements=session.get("base_elements"),
-                                         base_request=session.get("base_request"))
+                                         base_request=session.get("base_request"),
+                                         reference_image=ref_image or None)
             if not elements:
                 self.log.error("[flux_painter] 提示词 LLM 未产出画作要素，本次绘画提前结束")
                 self._say_need(channel, "你想了半天没想好怎么画，跟主人说一句，让他换一句试试。")
@@ -316,7 +350,8 @@ class TBFluxPainterCore:
                                 memory=memories,
                                 on_stream=on_stream, role_card=role_text,
                                 base_elements=session.get("base_elements"),
-                                base_request=session.get("base_request"))
+                                base_request=session.get("base_request"),
+                                reference_image=ref_image or None)
                             if again and again.get("positive"):
                                 elements = again
                                 positive = str(elements["positive"] or "").strip()
@@ -394,6 +429,14 @@ class TBFluxPainterCore:
             self.log.info("[flux_painter] 绘图引擎就绪")
             connector = create_connector(self.config)
             prefix = f"flux_{time.strftime('%Y%m%d_%H%M%S')}"
+            # 参考图上传到 ComfyUI（失败则本张退化为文生图）
+            ref_name = ""
+            if ref_image:
+                ref_name = connector.upload_image(ref_image)
+                if not ref_name:
+                    self.log.warning("[flux_painter] 参考图上传失败，本张按文生图继续")
+                else:
+                    self.log.info(f"[flux_painter] 参考图已上传: {ref_name}")
 
             def on_event(stage):
                 self._bcast(channel, {"type": "progress", "text": stage})
@@ -426,6 +469,10 @@ class TBFluxPainterCore:
                 else:
                     graph = connector.build_graph(final_positive, negative, w, h,
                                                   prefix=prefix, clip_type=clip_type)
+                if ref_name:
+                    # 只替换 latent 来源与 denoise，其余节点（LoRA/放大/分块/细化）全部保持原样
+                    graph = connector.with_init_image(graph, ref_name,
+                                                      self.config.img2img_denoise, w, h)
                 on_event("提交任务…")
                 sok, prompt_id, serr = connector.submit(graph, client_id=channel)
                 if not sok and pro_on:
@@ -434,6 +481,9 @@ class TBFluxPainterCore:
                     pro_on = False
                     graph = connector.build_graph(final_positive, negative, w, h,
                                                   prefix=prefix, clip_type=clip_type)
+                    if ref_name:
+                        graph = connector.with_init_image(graph, ref_name,
+                                                          self.config.img2img_denoise, w, h)
                     sok, prompt_id, serr = connector.submit(graph, client_id=channel)
                 if not sok:
                     self.log.error(f"[flux_painter] 任务提交失败 clip={clip_type}: {serr[:200]}")
@@ -495,6 +545,7 @@ class TBFluxPainterCore:
                       "positive": final_positive, "negative": negative,
                       "reply": reply, "canvas": canvas_key, "channel": channel,
                       "quality_mode": ("pro" if pro_on else "fast"),
+                      "img2img": bool(ref_name), "ref_note": ref_note,
                       "pro_params": _pro_snap})
             self.archive.prune(self.config.keep_last_sessions)
             if not aok:
@@ -734,6 +785,10 @@ class TBFluxPainterCore:
         if line:
             self._say(channel, line)
         return line
+
+    def say_need(self, channel, need, max_chars=40):
+        """链路层的开口入口：让角色用自己的话问一句（屏幕没找到东西时用）"""
+        return self._say_need(channel, need, max_chars)
 
     def _say(self, channel, text):
         """经 toolbox_tts 播报（type=toolbox_painting）；QQ 渠道不播 TTS，文字点评随图发出"""

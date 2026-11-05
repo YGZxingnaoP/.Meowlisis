@@ -19,7 +19,10 @@ class TBFluxPainterLLMBase:
     def __init__(self, config):
         self.config = config
         self.client = None
-        self._build_extra_body = lambda thinking: {}
+
+    def _build_extra_body(self, thinking):
+        """子类覆写：把思考开关写进 extra_body；基类不发任何思考控制"""
+        return {}
 
     # ============ 供子类使用的公共封装 ============
     def _mk_params(self, messages, tools=None, tool_choice=None, options=None,

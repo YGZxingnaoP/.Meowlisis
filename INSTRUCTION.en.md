@@ -417,13 +417,18 @@ Code is in func/calendar
  - Date block: holidays/solar terms/birthdays are summarized into the prompt; prompt_builder handles splicing and the first-time decision
 
 ### Drawing and Image Editing (flux_painter)
-Tool `flux_paint`, code is in func/toolbox/flux_painter
- - Generation: ComfyUI text-to-image (UNET base model, 1024x1024 / 1080x1960 canvas options); the LLM produces the title, positive tags, cinema natural language, report line and canvas spec, with character knowledge included
+Tool `flux_paint`, code is in func/toolbox/flux_painter (`painting_core` is the shared engine; `txt2img/` and `img2img/` are the two chains)
+ - Generation: ComfyUI output (UNET base model, 1024x1024 / 1080x1440 canvas options, fast / pro graphs); the LLM produces the title, positive tags, cinema natural language, report line and canvas spec, with character knowledge included
+ - Text-to-image: live and QQ both go through `txt2img/chain.py` → `painting_core.open_paint()`, text only
+ - Image-to-image: two reference sources, both converge on `img2img/chain.py` → the same `open_paint()`
+   - Screen: on live / danmaku / voice / phone the model first decides semantically whether the screen is needed; only then is the screen captured, two opposite corners are marked and the crop is re-checked (3 rounds by default, 5 max). When the subject is missing the model answers `text` (fall back to pure text-to-image) or `end` (ask the user, do not draw)
+   - QQ attachment: `img2img/router.py` decides "draw from this image"; only then it takes over, otherwise the normal image-viewing flow runs unchanged
+ - Graph injection: `with_init_image()` only swaps the latent for the reference encoding and sets denoise; LoRA / upscale / tiled redraw / detailers stay untouched, for both fast and pro
  - Review and archiving: NSFW review, artwork archiving; a review voice line is announced once the drawing is done
  - Painting-board service: HTTP 8090 serves painting_board.html plus the image/review endpoints, WS 8767 pushes by channel
  - Image editing: within the post-drawing window, the next complete @/keyword message is judged by the `edit_router` LLM to decide whether it edits the previous image, and if so it keeps drawing
  - Scenes: works on live / QQ; it cools down while drawing and never takes over for long
- - Tunable: flux_painter.*
+ - Tunable: flux_painter.* (image-to-image: img2img.enabled / denoise / focus_rounds / screen_max_side)
 
 ### Turtle Soup (turtle_soup)
 Tool `turtle_soup`, code is in func/toolbox/turtle_soup

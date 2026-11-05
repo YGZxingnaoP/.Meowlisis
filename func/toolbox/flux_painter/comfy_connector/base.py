@@ -6,6 +6,7 @@ import random
 import time
 import urllib.request
 import urllib.error
+import uuid
 
 from func.log.default_log import DefaultLog
 
@@ -63,6 +64,43 @@ class TBComfyBase:
         ok, _ = self._request("GET", "/system_stats", timeout=5)
         return ok
 
+    def upload_image(self, local_path) -> str:
+        """把本地参考图上传到 ComfyUI 的 input 目录，返回 LoadImage 可用的文件名
+
+        走官方 /upload/image（multipart），内置/外部引擎通用，不往内核目录写文件；
+        失败返回空串，由调用方决定退化为文生图。
+        """
+        path = str(local_path or "")
+        if not path or not os.path.isfile(path):
+            return ""
+        try:
+            boundary = "----meow" + uuid.uuid4().hex
+            name = "ref_" + uuid.uuid4().hex[:12] + (os.path.splitext(path)[1].lower() or ".png")
+            with open(path, "rb") as f:
+                data = f.read()
+            body = (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="image"; filename="{name}"\r\n'
+                f"Content-Type: application/octet-stream\r\n\r\n"
+            ).encode("utf-8") + data + (
+                f"\r\n--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="overwrite"\r\n\r\n'
+                f"true\r\n--{boundary}--\r\n"
+            ).encode("utf-8")
+            req = urllib.request.Request(
+                self.base_url() + "/upload/image", data=body, method="POST",
+                headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                info = json.loads(r.read().decode("utf-8", errors="ignore") or "{}")
+            sub = str((info or {}).get("subfolder") or "").strip("/")
+            name = str((info or {}).get("name") or "").strip()
+            if not name:
+                return ""
+            return f"{sub}/{name}" if sub else name
+        except Exception:
+            self.log.exception("[flux_painter] 参考图上传失败")
+            return ""
+
     def build_graph(self, positive, negative, width, height, seed=None,
                     prefix="flux", clip_type="qwen_image", steps=None,
                     cfg=None, sampler=None, scheduler=None, model_sampling_shift=None):
@@ -115,6 +153,30 @@ class TBComfyBase:
                 graph["10"]["inputs"]["model"] = model_src
             else:
                 graph["7"]["inputs"]["model"] = model_src
+        return graph
+
+    def with_init_image(self, graph, image_name, denoise, width, height):
+        """把已织好的图原地改成图生图：只替换 latent 来源与 denoise，其余节点一律不动
+
+        - 节点 6（EmptyLatentImage）→ LoadImage，新增 ImageScale/VAEEncode（高位 id 避开 pro 占用）；
+        - 基础采样节点 7 的 latent_image 指向编码结果，denoise 用参考强度；
+        - 找不到基础采样节点时原图返回（宁可退化成文生图，也不拼坏图）。
+        """
+        if not image_name or not isinstance(graph, dict):
+            return graph
+        ks = graph.get("7")
+        if not isinstance(ks, dict) or ks.get("class_type") != "KSampler":
+            self.log.warning("[flux_painter] 未找到基础采样节点，参考图未生效")
+            return graph
+        w, h = self._align16(width), self._align16(height)
+        graph["6"] = {"class_type": "LoadImage", "inputs": {"image": str(image_name)}}
+        graph["90"] = {"class_type": "ImageScale",
+                       "inputs": {"image": ["6", 0], "upscale_method": "lanczos",
+                                  "width": int(w), "height": int(h), "crop": "center"}}
+        graph["91"] = {"class_type": "VAEEncode",
+                       "inputs": {"pixels": ["90", 0], "vae": ["3", 0]}}
+        ks["inputs"]["latent_image"] = ["91", 0]
+        ks["inputs"]["denoise"] = float(denoise)
         return graph
 
     # ==================== Pro 全流程（04+05+06+07） ====================

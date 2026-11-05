@@ -719,7 +719,16 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             this._num('改图等待窗口(秒)', 'flux_painter.edit_followup.window', 120, 10, 3600, 10,
                 '画完后多少秒内视为可改图窗口') +
             this._num('判定 max_tokens', 'flux_painter.edit_followup.llm_max_tokens', 512, 64, 4096, 64) +
-            this._num('判定温度', 'flux_painter.edit_followup.llm_temperature', 0.3, 0, 2, 0.1);
+            this._num('判定温度', 'flux_painter.edit_followup.llm_temperature', 0.3, 0, 2, 0.1) +
+            this._section('图生图（参考图）') +
+            this._check('启用图生图', 'flux_painter.img2img.enabled', true,
+                '带图说「照这张画」直接走图生图；没图时由模型自己判断要不要参考当前屏幕，需要就截屏取景再画') +
+            this._num('参考强度 denoise', 'flux_painter.img2img.denoise', 0.75, 0.05, 0.95, 0.05,
+                '越高越偏离参考图（越像重画）；0.7~0.8 适合「照这张画成某某」，0.4~0.6 适合小幅改写') +
+            this._num('取景复查轮数', 'flux_painter.img2img.focus_rounds', 3, 1, 5, 1,
+                '截屏取景时模型点两个对角点定框，不满意就重给一组；默认 3 轮，上限 5 轮') +
+            this._num('截屏长边上限', 'flux_painter.img2img.screen_max_side', 1280, 320, 4096, 64,
+                '发给模型看的那张截图缩略图长边像素，越大越准也越慢');
     },
 
     // ===== 子球④工作流：采样 / 画质 / Pro 流程 / 审查 / 路径 =====

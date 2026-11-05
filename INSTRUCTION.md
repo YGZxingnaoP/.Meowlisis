@@ -417,13 +417,18 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
  - 日期块：节日/节气/生日汇总进提示词；prompt_builder 负责拼接与首次判定
 
 ### 绘画与改图（flux_painter）
-工具 `flux_paint`，代码在 func/toolbox/flux_painter
- - 生成：ComfyUI 文生图（UNET 底模、1024x1024 / 1080x1960 两档画布）；LLM 产出标题、positive tag、cinema 自然语言、汇报语、画布规格，并带角色知识
+工具 `flux_paint`，代码在 func/toolbox/flux_painter（`painting_core` 是共用引擎，`txt2img/`、`img2img/` 是两条链路）
+ - 生成：ComfyUI 出图（UNET 底模、1024x1024 / 1080x1440 两档画布，fast / pro 两档织图）；LLM 产出标题、positive tag、cinema 自然语言、汇报语、画布规格，并带角色知识
+ - 文生图：live 与 QQ 都走 `txt2img/chain.py` → `painting_core.open_paint()`，只吃文字需求
+ - 图生图：两种参考图来源，最后都汇到 `img2img/chain.py` → 同一个 `open_paint()`
+   - 屏幕：live / 弹幕 / 语音 / 手机先由模型语义判断「要不要参考屏幕」，命中才截屏；再让模型点两个对角点定框并循环复查（默认 3 轮、上限 5 轮）；屏幕上没有主体时模型给 `text`（降级纯文字画）或 `end`（反问用户、不画）
+   - QQ 附图：带图消息由 `img2img/router.py` 判断「是不是要照这张图作画」，命中才接管，否则原样走看图
+ - 织图注入：`with_init_image()` 只把 latent 换成参考图编码、改 denoise，LoRA / 放大 / 分块 / 局部细化一律不动，fast 与 pro 都适用
  - 审查与存档：NSFW 审查、画作归档；画完播报 review 语音
  - 画板服务：HTTP 8090 托管 painting_board.html + 图片/审查接口，WS 8767 按 channel 推送
  - 改图：画完 window 内、下一条完整 @/关键词消息由 `edit_router` LLM 判定是否在上一张图上改，是则续画
  - 场景：live / QQ 都能用；绘画中冷却，不长期接管
- - 可调：flux_painter.*
+ - 可调：flux_painter.*（图生图：img2img.enabled / denoise / focus_rounds / screen_max_side）
 
 ### 海龟汤（turtle_soup）
 工具 `turtle_soup`，代码在 func/toolbox/turtle_soup

@@ -309,11 +309,13 @@ class TBPromptProducer:
             asked += 1
 
     def run(self, user_text, nickname="", persona="", on_stream=None,
-            role_card=None, memory=None, base_elements=None, base_request=""):
+            role_card=None, memory=None, base_elements=None, base_request="",
+            reference_image=None):
         """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段
         persona: 角色系统提示词（上层注入的角色人设，置 system 最前）
         role_card: 点名角色的资料卡文本（char_resolver 拼好），注入后用于补全角色标签
         memory: 短期记忆消息列表（[{role, content}]），插入 user 之前作为对话语境
+        reference_image: 图生图的参考图本地路径；给出时随消息一起发给模型，按图出标签
         """
         port = self._llm()
         if port is None or not getattr(port, "client", None):
@@ -361,6 +363,7 @@ class TBPromptProducer:
                 break
             messages.append({"role": role, "content": content})
         # 改图续画：把上一轮完整提示词一起给模型，要求只改被点名的部分、其余保持不变
+        ref_part = self._reference_part(reference_image)
         if base_elements:
             base_pos = str(base_elements.get("positive") or "").strip()
             base_cin = str(base_elements.get("cinema") or "").strip()
@@ -377,9 +380,10 @@ class TBPromptProducer:
                 f"上一版 character：{base_char}\n"
                 f"本次修改指令：{user_text}"
             )
-            messages.append({"role": "user", "content": user_content})
+            messages.append({"role": "user", "content": self._user_content(user_content, ref_part)})
         else:
-            messages.append({"role": "user", "content": f"（{nickname}）：{user_text}"})
+            messages.append({"role": "user",
+                             "content": self._user_content(f"（{nickname}）：{user_text}", ref_part)})
         for attempt in (1, 2):
             try:
                 message = self._tool_loop(port, messages, on_stream=on_stream)
@@ -436,3 +440,31 @@ class TBPromptProducer:
             except Exception:
                 self.log.exception(f"[flux_painter] 提示词生成异常(第{attempt}次)")
         return None
+
+    # ==================== 参考图（图生图） ====================
+    @staticmethod
+    def _reference_part(reference_image):
+        """参考图 → 多模态消息片段；无图或读不出时返回 None"""
+        if not reference_image:
+            return None
+        try:
+            from func.toolbox.flux_painter.img2img.ref_source import image_data_url
+            url = image_data_url(str(reference_image))
+        except Exception:
+            url = ""
+        if not url:
+            return None
+        return {"type": "image_url", "image_url": {"url": url}}
+
+    @staticmethod
+    def _user_content(text, ref_part):
+        """用户消息：无参考图时就是纯文本；有图时附一段说明 + 图片本体"""
+        if not ref_part:
+            return text
+        return [
+            {"type": "text", "text": str(text or "")},
+            {"type": "text",
+             "text": "【参考图】这是用户要画的那块内容：主体、构图、配色、场景以它为准，"
+                     "positive / cinema 要能让绘画模型把这块内容画成一张完整插画。"},
+            ref_part,
+        ]

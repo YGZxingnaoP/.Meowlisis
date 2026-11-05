@@ -257,6 +257,23 @@ class TBFluxPainterConfig:
         self.memory_type = str(cfg.get("memory_type", "painting"))
         self.memory_rounds = int(cfg.get("memory_rounds", 10))
         self.tts_source = str(cfg.get("tts_source", "toolbox_painting"))
+        # ===== 图生图（参考图来源：QQ 附图 / 屏幕截图；采样与画布与文生图共用） =====
+        ii = cfg.get("img2img") or {}
+        self.img2img_enabled = bool(ii.get("enabled", True))
+        try:
+            self.img2img_denoise = min(0.95, max(0.05, float(ii.get("denoise", 0.75))))
+        except (TypeError, ValueError):
+            self.img2img_denoise = 0.75
+        try:
+            # 取景复查轮数：默认 3 轮够用，硬上限 5 轮
+            self.img2img_focus_rounds = min(5, max(1, int(ii.get("focus_rounds", 3))))
+        except (TypeError, ValueError):
+            self.img2img_focus_rounds = 3
+        try:
+            self.img2img_screen_max_side = max(320, int(ii.get("screen_max_side", 1280)))
+        except (TypeError, ValueError):
+            self.img2img_screen_max_side = 1280
+        self.ref_dir = os.path.join(self.temp_dir, "ref")
 
     def active_llm(self) -> dict:
         """当前生效绘画模型连接参数"""

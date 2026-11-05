@@ -90,6 +90,17 @@ class TBNapCatEventHandler:
                 image_text = TBImageSearch.text_from_segments(event.get("message"))
                 pending_text = self.buffer._take_pending_text(str(user_id))
                 text = "，".join(t for t in (pending_text, image_text) if t and t.strip())
+                # 图生图：带图 + 明确要求照图作画 → 交给绘画模块；否则继续走看图
+                try:
+                    from func.toolbox.flux_painter.img2img.router import TBFluxImg2ImgRouter
+                    if TBFluxImg2ImgRouter().try_handle_qq(
+                            text, images,
+                            {"user_id": str(user_id or ""), "username": username,
+                             "self_id": str(self_id or "")}):
+                        self.log.info("[NapCat] 私聊图生图接管")
+                        return
+                except Exception:
+                    self.log.exception("私聊图生图路由异常")
                 # 短期记忆（QQ 历史）作为视觉上下文传输，保证看图能结合对话背景
                 short_memory = self.get_record.fetch(str(user_id), self_id)
                 # 图片落地本地缓存区 + 动图抽帧（避免直接用带鉴权的 url）

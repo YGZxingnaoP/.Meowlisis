@@ -85,6 +85,8 @@ class GroupReplyMixin:
             pending = coord.cancel_user(group_id, user_id)
             image_text = TBImageSearch.text_from_segments(raw_message)
             merged = "，".join([t for t in (pending, image_text) if t and t.strip()])
+            if self._route_img2img(merged or text, images, parsed, group_id, group_name):
+                return
             reply = self._reply_group_image(group_id, group_name, user_id, username, merged,
                                             images, is_bot, self_id)
             self._followup_arm(group_id, group_name, self_id,
@@ -100,6 +102,8 @@ class GroupReplyMixin:
                 pending = coord.take_user(group_id, user_id)
                 image_text = TBImageSearch.text_from_segments(raw_message)
                 merged = "，".join([t for t in (pending, image_text) if t and t.strip()])
+                if self._route_img2img(merged or text, images, parsed, group_id, group_name):
+                    return
                 self._reply_group_image(group_id, group_name, user_id, username, merged,
                                         images, is_bot, self_id)
                 return
@@ -173,6 +177,15 @@ class GroupReplyMixin:
         c = TBGroupReplyCoordinator()
         c.set_flush_handler(self._coordinator_flush)
         return c
+
+    def _route_img2img(self, text, images, parsed, group_id, group_name):
+        """带图消息先问绘画模块：是不是要以这张图作画（不是就返回 False，原样走看图）"""
+        try:
+            from func.toolbox.flux_painter.img2img.router import TBFluxImg2ImgRouter
+            return TBFluxImg2ImgRouter().try_handle_qq(text, images, parsed, group_id, group_name)
+        except Exception:
+            self.log.exception("图生图路由异常")
+            return False
 
     def _coordinator_flush(self, group_id: str, merged: dict):
         """协调器窗口到期：执行一次合并回复"""
