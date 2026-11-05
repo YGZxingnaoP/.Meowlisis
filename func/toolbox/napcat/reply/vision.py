@@ -33,9 +33,13 @@ class VisionReplyMixin:
             from func.toolbox.napcat.vision_active.vision import TBNapCatVisionActive
             try:
                 from func.pipeline.id_signup import IdSignupBridge
-                vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username) or username
+                vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username)
             except Exception:
-                vision_uid = username
+                self.log.exception("群图片视觉身份解析失败")
+                vision_uid = ""
+            if not vision_uid:
+                self.log.error(f"[视觉] 群图片身份无法识别，跳过看图: {user_id}")
+                return ""
             result = TBNapCatVisionActive().process(
                 image_paths, text, vision_uid,
                 need_description=True, write_memory=not is_bot,

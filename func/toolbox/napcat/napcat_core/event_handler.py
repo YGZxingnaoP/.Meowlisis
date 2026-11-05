@@ -44,7 +44,9 @@ class TBNapCatEventHandler:
                         return
                     # 海龟汤拦截（游戏激活时全权处理，缓冲前）
                     from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-                    if TBTurtleSoupCore().route_qq_private(str(_uid or ""), _text.strip()):
+                    if TBTurtleSoupCore().route_qq_private(
+                            str(_uid or ""), _text.strip(),
+                            str((_parsed or {}).get("username", "") or "")):
                         self.log.info(f"[NapCat] 海龟汤拦截命中，消费: {_text[:20]}")
                         return
                     # 绑定指令（身份表）：命中即回结果并吃掉这条消息
@@ -76,9 +78,13 @@ class TBNapCatEventHandler:
                 # 视觉链路按 meowid 写档案：先按 QQ 号换出编号（未绑定会建临时身份），不能拿昵称顶替
                 try:
                     from func.pipeline.id_signup import IdSignupBridge
-                    vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username) or username
+                    vision_uid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), username)
                 except Exception:
-                    vision_uid = username
+                    self.log.exception("私聊图片身份解析失败")
+                    vision_uid = ""
+                if not vision_uid:
+                    self.log.error(f"[视觉] 私聊图片身份无法识别，跳过看图: {user_id}")
+                    return
                 # 图片消息自带文本 + 此前待发送的聚合文本（先文本后图片 → 合并一次性看图回复，不走 LLM）
                 # 单发图片无文本时 text 为空，不向上检索填充文本
                 image_text = TBImageSearch.text_from_segments(event.get("message"))
@@ -264,7 +270,9 @@ class TBNapCatEventHandler:
                         return
                     # 海龟汤拦截（群聊，游戏激活时全权处理，缓冲前）
                     from func.toolbox.turtle_soup.turtle_soup_core import TBTurtleSoupCore
-                    if TBTurtleSoupCore().route_qq_group(str(_gid), str(_uid), _text.strip()):
+                    if TBTurtleSoupCore().route_qq_group(
+                            str(_gid), str(_uid), _text.strip(),
+                            str((_parsed or {}).get("username", "") or "")):
                         self.log.info(f"[NapCat] 海龟汤群聊拦截命中，消费: {_text[:20]}")
                         return
             except Exception:

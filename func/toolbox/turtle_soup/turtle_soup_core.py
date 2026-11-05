@@ -27,12 +27,19 @@ class TBTurtleSoupCore:
 
     TOOL_NAME = "turtle_soup"
 
+    # QQ 合并回复：固定等待窗口（秒）与单次合并上限（与 QQ 链路缓冲同款语义）
+    QQ_MERGE_WAIT = 7.0
+    QQ_MERGE_MAX = 10
+
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = TBTurtleSoupConfig()
         self.state = TBTurtleSoupState()
-        # 用户名用 thread-local 存储，避免 QQ / live 多线程并发触发开新局时串线
+        # 编号用 thread-local 存储，避免 QQ / live 多线程并发触发开新局时串线
         self._local = threading.local()
+        # QQ 合并缓冲：session_key -> {"items", "qq_context", "count", "timer"}
+        self._merge_lock = threading.Lock()
+        self._merges = {}
         # 启动（首次实例化）时清理残留的进行中缓存，避免崩溃后残留游戏态
         self._cleanup_cache()
 
@@ -42,8 +49,8 @@ class TBTurtleSoupCore:
 
     @property
     def _meowid(self):
-        """当前线程注入的用户名（thread-local，多线程互不干扰）"""
-        return getattr(self._local, "username", "")
+        """当前线程注入的内部编号（thread-local，多线程互不干扰）"""
+        return getattr(self._local, "meowid", "")
 
     def build_tools(self) -> List[Dict]:
         return [{
@@ -100,7 +107,7 @@ class TBTurtleSoupCore:
             return None
         return self._route(key, meowid or "", text.strip(), qq_context=None)
 
-    def route_qq_private(self, user_id, text):
+    def route_qq_private(self, user_id, text, nickname=""):
         """QQ 私聊拦截：游戏激活时全权处理（零 TTS/音频），返回 True 表示已消费"""
         if not self.config.enabled or not self.config.qq_enabled:
             return False
@@ -110,10 +117,10 @@ class TBTurtleSoupCore:
         if not self.state.is_active(key):
             return False
         qq_context = {"message_type": "private", "user_id": str(user_id), "target_id": str(user_id)}
-        self._route(key, "", text.strip(), qq_context=qq_context)
+        self._merge_qq(key, self._qq_meowid(user_id, nickname), text.strip(), qq_context)
         return True
 
-    def route_qq_group(self, group_id, user_id, text):
+    def route_qq_group(self, group_id, user_id, text, nickname=""):
         """QQ 群聊拦截：游戏激活时全权处理，返回 True 表示已消费"""
         if not self.config.enabled or not self.config.qq_enabled:
             return False
@@ -128,12 +135,95 @@ class TBTurtleSoupCore:
             "user_id": str(user_id),
             "group_id": str(group_id),
         }
-        self._route(key, "", text.strip(), qq_context=qq_context)
+        self._merge_qq(key, self._qq_meowid(user_id, nickname), text.strip(), qq_context)
         return True
 
+    # ==================== QQ 合并回复 ====================
+    def _merge_qq(self, key, meowid, text, qq_context):
+        """把 QQ 消息放进该会话的合并缓冲：固定 7 秒内无新消息后统一判定并回复
+
+        合并语义与 QQ 链路缓冲一致：连发消息合并成一条，达到上限立即回复。
+        """
+        to_flush = None
+        with self._merge_lock:
+            buf = self._merges.get(key)
+            if buf is None:
+                buf = {"items": [], "qq_context": qq_context, "count": 0, "timer": None}
+                self._merges[key] = buf
+            buf["items"].append({"meowid": str(meowid or ""), "text": text})
+            buf["qq_context"] = qq_context
+            if buf["timer"] is not None:
+                buf["timer"].cancel()
+                buf["timer"] = None
+            buf["count"] += 1
+            if buf["count"] >= self.QQ_MERGE_MAX:
+                to_flush = self._merges.pop(key, None)
+                self.log.info(f"[TurtleSoup] 合并达到上限 {self.QQ_MERGE_MAX} 条，立即回复")
+            else:
+                timer = threading.Timer(self.QQ_MERGE_WAIT, self._on_merge_timeout,
+                                        args=(key, buf["count"]))
+                timer.daemon = True
+                buf["timer"] = timer
+                timer.start()
+                self.log.info(
+                    f"[TurtleSoup] 合并第 {buf['count']} 条，{self.QQ_MERGE_WAIT:.0f} 秒后无新消息则回复")
+        if to_flush:
+            self._flush_qq_merge(key, to_flush)
+
+    def _on_merge_timeout(self, key, count):
+        """合并定时器到期：期间没有新消息（count 未变）才取出回复"""
+        to_flush = None
+        with self._merge_lock:
+            buf = self._merges.get(key)
+            if buf is None or buf["count"] != count:
+                return
+            to_flush = self._merges.pop(key, None)
+        if to_flush:
+            self._flush_qq_merge(key, to_flush)
+
+    def _flush_qq_merge(self, key, buf):
+        """合并窗口到期：逐条记到各自提问者名下，再整体判定 + 回复"""
+        items = [it for it in (buf.get("items") or []) if str(it.get("text") or "").strip()]
+        if not items or not self.state.is_active(key):
+            return
+        for it in items:
+            self._save_memory("user", it["text"], it.get("meowid", ""))
+            self._save_ltmem("user", it["text"], it.get("meowid", ""))
+        text = "，".join(it["text"] for it in items)
+        # 回复归属最近一个身份可用的提问者
+        meowid = ""
+        for it in reversed(items):
+            if it.get("meowid"):
+                meowid = str(it["meowid"])
+                break
+        self.log.info(f"[TurtleSoup] 合并回复（{len(items)} 条）: {text[:30]}")
+        self._route(key, meowid, text, qq_context=buf.get("qq_context"), record_user=False)
+
+    def _clear_merge(self, key):
+        """清掉某会话挂起的合并缓冲（开局/结束时调用）"""
+        with self._merge_lock:
+            buf = self._merges.pop(key, None)
+            if buf and buf.get("timer") is not None:
+                buf["timer"].cancel()
+
+    def _qq_meowid(self, user_id, nickname=""):
+        """QQ 号 → 内部编号：身份标准统一走 meowid，昵称只用于首次建档"""
+        if not str(user_id or "").strip():
+            return ""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            return IdSignupBridge().meowid_of_account("qq", str(user_id), str(nickname or ""))
+        except Exception:
+            self.log.exception("[TurtleSoup] QQ 身份解析失败")
+            return ""
+
     # ==================== 核心路由 ====================
-    def _route(self, key, meowid, text, qq_context):
-        """判定 + 分支。voice 返回 consumed/pass；qq 内部已处理"""
+    def _route(self, key, meowid, text, qq_context, record_user=True):
+        """判定 + 分支。voice 返回 consumed/pass；qq 内部已处理
+
+        record_user：用户文本是否由本方法写记忆。QQ 合并回复已按提问者逐条写过，
+        这里传 False，避免同一条文本重复落库。
+        """
         # 关键词兜底（强退出/强重报）
         if self._is_giveup_kw(text):
             self._end_game(key, meowid, text, mode="give_up", qq_context=qq_context)
@@ -158,13 +248,14 @@ class TBTurtleSoupCore:
 
         # 普通猜测
         if qq_context is not None:
-            self._host_reply_qq(key, meowid, text, qq_context)
+            self._host_reply_qq(key, meowid, text, qq_context, record_user=record_user)
             return ROUTE_CONSUMED
         self.state.record_turn(key, "user", text)
         return ROUTE_PASS
 
     # ==================== 开始游戏 ====================
     def _start_game(self, key, meowid, difficulty, qq_context):
+        self._clear_merge(key)
         text = f"用户想玩海龟汤，难度：{difficulty or '由你决定'}"
         puzzle = generate(meowid, text, difficulty)
         if not puzzle:
@@ -217,10 +308,12 @@ class TBTurtleSoupCore:
         self._archive(key)
         self._remove_cache(key)
         self.state.end(key)
+        self._clear_merge(key)
 
     def _build_end_text(self, puzzle, meowid, mode):
+        """揭晓汤底：提示词写明是系统结算指令、必须把汤底讲出来（不做文案兜底）"""
         if not puzzle:
-            return "游戏结束啦"
+            return ""
         title = (puzzle.get("title") or "").strip()
         surface = (puzzle.get("surface") or "").strip()
         answer = (puzzle.get("answer") or "").strip()
@@ -229,13 +322,19 @@ class TBTurtleSoupCore:
             system = TBoxGetPrompt().get_system_prompt(meowid, "") or ""
             if mode == "solved":
                 instruction = (
-                    f"用户刚刚猜中了海龟汤汤底！题目「{title}」，汤面「{surface}」，汤底「{answer}」。"
-                    "请以你的角色身份祝贺用户，并公布汤底。"
+                    "【系统引导·结算】这一段不是用户发来的话，是系统下发的结算指令：本局海龟汤已经结束，用户猜中了汤底。\n"
+                    f"题目：{title}\n汤面：{surface}\n汤底（用户还没看到，必须由你亲口讲出来）：{answer}\n"
+                    "请以你的角色身份回复用户：先为ta猜中而高兴，再把汤底完整地讲给ta听。\n"
+                    "硬性要求：必须把汤底讲清楚，不能省略、不能只说「就是那样」、不能反问用户、不能只道喜不报答案；"
+                    "不要在回复里提到「系统」「指令」这些词。"
                 )
             else:
                 instruction = (
-                    f"用户放弃了这局海龟汤。题目「{title}」，汤面「{surface}」，汤底「{answer}」。"
-                    "请以你的角色身份公布汤底，语气自然。"
+                    "【系统引导·结算】这一段不是用户发来的话，是系统下发的结算指令：本局海龟汤已经结束，用户放弃并要揭晓。\n"
+                    f"题目：{title}\n汤面：{surface}\n汤底（用户还没看到，必须由你亲口讲出来）：{answer}\n"
+                    "请以你的角色身份回复用户：自然收尾，把汤底完整地讲给ta听。\n"
+                    "硬性要求：必须把汤底讲清楚，不能省略、不能只说「就是这样」、不能反问用户；"
+                    "不要在回复里提到「系统」「指令」这些词。"
                 )
             llm = self._llm()
             if llm and llm.client:
@@ -249,10 +348,10 @@ class TBTurtleSoupCore:
                         return content
         except Exception:
             self.log.exception("[TurtleSoup] 生成结束文案失败")
-        return f"题目「{title}」的汤底是：{answer}"
+        return ""
 
     # ==================== QQ 主持回答 ====================
-    def _host_reply_qq(self, key, meowid, text, qq_context):
+    def _host_reply_qq(self, key, meowid, text, qq_context, record_user=True):
         """QQ 普通猜测：napcat LLM 主持 + 发 QQ 文本（零 TTS/音频）"""
         try:
             history = self.state.get_history(key)  # 不含当前消息（当前由 reply 内部追加）
@@ -278,8 +377,9 @@ class TBTurtleSoupCore:
                     on_segment,
                 )
             self.state.record_turn(key, "user", text)
-            self._save_memory("user", text, meowid)
-            self._save_ltmem("user", text, meowid)
+            if record_user:
+                self._save_memory("user", text, meowid)
+                self._save_ltmem("user", text, meowid)
             if reply:
                 self.state.record_turn(key, "assistant", reply)
                 self._save_memory("assistant", reply, meowid)
@@ -341,6 +441,8 @@ class TBTurtleSoupCore:
 
     # ==================== 发送 ====================
     def _speak(self, text):
+        if not text:
+            return
         try:
             from func.pipeline.toolbox_tts import ToolboxTtsBridge
             ToolboxTtsBridge().send_stream(text, source="turtle_soup")
