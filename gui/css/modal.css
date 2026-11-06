@@ -375,6 +375,57 @@ body.modal-open .launcher-glow {
     margin: 8px 0;
 }
 
+/* 声纹条目里的说话/哼唱两条语音 */
+.speaker-voices {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.spk-voice-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.spk-voice-label {
+    min-width: 56px;
+    opacity: 0.75;
+}
+
+.spk-voice-state {
+    font-size: 11px;
+    padding: 0 6px;
+    border-radius: 8px;
+    white-space: nowrap;
+}
+
+.spk-voice-state.ok {
+    color: #2f8f5b;
+    background: rgba(47, 143, 91, 0.12);
+}
+
+.spk-voice-state.miss {
+    color: #b26a00;
+    background: rgba(178, 106, 0, 0.12);
+}
+
+.spk-voice-file {
+    font-size: 11px;
+    opacity: 0.5;
+    font-family: Consolas, Menlo, monospace;
+}
+
+.btn-mini {
+    padding: 2px 8px;
+    font-size: 11px;
+    border-radius: 8px;
+    line-height: 1.5;
+}
+
 /* 字典行（设定/性格） */
 .dict-row {
     border: 1px dashed var(--pink-soft);

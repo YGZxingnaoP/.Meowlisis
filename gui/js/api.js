@@ -354,16 +354,30 @@ const API = {
         return res.json();
     },
 
-    async createSpeaker(nickname, wavFile, uid) {
+    async createSpeaker(nickname, wavFile, uid, kind) {
         const formData = new FormData();
         formData.append('nickname', nickname);
         formData.append('id', uid || '');
+        formData.append('kind', kind || 'speech');
         formData.append('wav', wavFile);
         const res = await fetch('/api/speakers/create', {
             method: 'POST',
             body: formData
         });
         if (!res.ok) throw new Error('Failed to create speaker');
+        return res.json();
+    },
+
+    async uploadSpeakerAudio(name, kind, wavFile) {
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('kind', kind || 'speech');
+        formData.append('wav', wavFile);
+        const res = await fetch('/api/speakers/upload', {
+            method: 'POST',
+            body: formData
+        });
+        if (!res.ok) throw new Error('Failed to upload speaker audio');
         return res.json();
     },
 

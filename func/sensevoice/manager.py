@@ -48,6 +48,9 @@ class SenseVoiceManager:
             "language": self.config.language,
             "itn": self.config.itn,
             "mode": self.config.mode,
+            # 声纹阈值随配置下发：说话/哼唱分域比对（服务端命令行参数仅作缺省值）
+            "sv_threshold": self.config.speaker_threshold,
+            "sv_threshold_sing": self.config.speaker_hum_threshold,
         }
 
         hotwords_dict = self._parse_hotwords(self.config.hotwords)
@@ -58,6 +61,7 @@ class SenseVoiceManager:
         self.log.info(f"✅ 发送启动配置: language={self.config.language}, mode={self.config.mode}, itn={self.config.itn}")
         self.log.info(f"   热词: {list(hotwords_dict.keys())}")
         self.log.info(f"   目标说话人: {self.config.target_speakers}")
+        self.log.info(f"   声纹阈值: 说话={self.config.speaker_threshold} 哼唱={self.config.speaker_hum_threshold}")
 
     def _parse_hotwords(self, hotwords) -> dict:
         """解析热词列表为字典形式"""
@@ -73,9 +77,21 @@ class SenseVoiceManager:
         return self.port.submit_audio(data)
 
     def send_speaking(self, speaking: bool):
-        """更新本地说话状态并非阻塞提交控制消息"""
+        """更新本地说话状态并非阻塞提交控制消息（句末附带本句是否哼唱）"""
         self._speaking = speaking
-        return self.port.submit_ctrl({"is_speaking": speaking})
+        ctrl = {"is_speaking": speaking}
+        # 句末带上本源的哼唱结论，服务端据此选声纹模板（每个源各查各的）
+        if not speaking:
+            ctrl["hum"] = self._hum_flag()
+        return self.port.submit_ctrl(ctrl)
+
+    def _hum_flag(self) -> bool:
+        """本句是否判为哼唱（供服务端选声纹模板）；取不到一律按说话处理"""
+        try:
+            from func.pipeline.toolbox_audio import ToolboxAudioBridge
+            return bool(ToolboxAudioBridge().is_last_hum(self.wav_name))
+        except Exception:
+            return False
 
     def on_speech_start(self):
         """新开口：取消 merge 计时（继续累积，不发送）"""
@@ -127,8 +143,9 @@ class SenseVoiceManager:
             self.log.info(f"✅ 识别到最终文本: {text} (mode={mode}, is_final={is_final})")
             spk_name = data.get("spk_name", "未知")
             spk_score = data.get("spk_score", 0.0)
-            self.log.info(f"   说话人: {spk_name}, 置信度: {spk_score:.3f}")
-            await self._handle_result(text, spk_name, spk_score)
+            spk_tpl = data.get("spk_tpl", "")
+            self.log.info(f"   说话人: {spk_name}, 置信度: {spk_score:.3f}, 模板: {spk_tpl or '-'}")
+            await self._handle_result(text, spk_name, spk_score, spk_tpl)
 
     @staticmethod
     def speaker_allowed(spk_name, targets):
@@ -158,7 +175,7 @@ class SenseVoiceManager:
             pass
         return False
 
-    async def _handle_result(self, text: str, spk_name: str, spk_score: float):
+    async def _handle_result(self, text: str, spk_name: str, spk_score: float, spk_tpl: str = ""):
         """说话人验证并按说话人合并断句"""
         if not text.strip():
             self.log.warning("⚠️ 收到空文本，忽略")
@@ -176,11 +193,15 @@ class SenseVoiceManager:
             if not self.speaker_allowed(spk_name, self.config.target_speakers):
                 self.log.warning(f"⚠️ 说话人 '{spk_name}' 不在目标列表中 {self.config.target_speakers}，忽略")
                 return
-            if spk_score < self.config.speaker_threshold:
-                self.log.warning(f"⚠️ 说话人 '{spk_name}' 置信度 {spk_score:.3f} < 阈值 {self.config.speaker_threshold}，忽略")
+            # 哼唱句用的是哼唱模板，分数尺度与说话不同，阈值必须按模板域分别取
+            need = (self.config.speaker_hum_threshold if spk_tpl == "sing"
+                    else self.config.speaker_threshold)
+            if spk_score < need:
+                self.log.warning(f"⚠️ 说话人 '{spk_name}' 置信度 {spk_score:.3f} < 阈值 {need}"
+                                 f"（{spk_tpl or 'speech'}），忽略")
                 return
             raw = spk_name
-            self.log.info(f"✅ 通过说话人验证: {spk_name} (score={spk_score:.3f})")
+            self.log.info(f"✅ 通过说话人验证: {spk_name} ({spk_tpl or 'speech'} 分={spk_score:.3f})")
         else:
             raw = self.username
             self.log.info(f"✅ 跳过声纹验证，使用配置身份: {raw}")

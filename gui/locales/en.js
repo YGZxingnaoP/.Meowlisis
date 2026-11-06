@@ -1589,5 +1589,20 @@ window.__LOCALES__['en'] = {
     "诊断": "Diagnostics",
     "模块内部": "Module internals",
     "未分类": "Unclassified",
-    "空行": "Blank lines"
+    "空行": "Blank lines",
+
+    // ================= 声纹：说话 / 哼唱 双模板 =================
+    "说话语音": "Speech sample",
+    "哼唱语音": "Humming sample",
+    "已录入": "Ready",
+    "未录入": "Missing",
+    "上传": "Upload",
+    "重新上传": "Replace",
+    "说话语音已更新": "Speech sample updated",
+    "哼唱语音已更新": "Humming sample updated",
+    "这里录入说话语音；哼唱语音在用户条目里单独上传（xxx-sing.wav）": "This uploads the speech sample; add the humming sample separately on the user row (xxx-sing.wav)",
+    "每个用户两条语音：说话语音（xxx.wav）走说话声纹阈值；哼唱语音（xxx-sing.wav）走哼唱声纹阈值。被判为哼唱的句子只用哼唱语音比对，普通说话仍用说话语音。": "Each user keeps two samples: speech (xxx.wav) is matched with the speech threshold, humming (xxx-sing.wav) with the humming threshold. Utterances judged as humming only use the humming sample; normal speech still uses the speech sample.",
+    "哼唱声纹阈值": "Humming voiceprint threshold",
+    "说话语音的声纹阈值，比的是说话模板": "Voiceprint threshold for speech, matched against the speech sample",
+    "判为哼唱的句子改用哼唱模板，阈值要比说话高（哼唱与说话分数尺度不同，实测自己哼唱 0.73~0.92、别人歌声 ≤0.45）": "Utterances judged as humming switch to the humming sample; keep this higher than the speech threshold (scores live on a different scale: own humming 0.73~0.92, other singers ≤0.45)"
 };

@@ -34,9 +34,11 @@ class TBFluxPainterServer:
         channel = "live"
         try:
             req = getattr(websocket, "request", None)
-            if req is not None:
-                qs = getattr(req, "query_string", None)
-                q = parse_qs(qs.decode("utf-8", "ignore")) if isinstance(qs, bytes) else parse_qs(qs or "")
+            path = getattr(req, "path", None) if req is not None else None
+            if path is None:
+                path = getattr(websocket, "path", None)
+            if path:
+                q = parse_qs(urlparse(str(path)).query)
                 channel = (q.get("channel") or ["live"])[0]
         except Exception:
             channel = "live"

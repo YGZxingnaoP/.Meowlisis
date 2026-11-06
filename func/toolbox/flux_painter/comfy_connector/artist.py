@@ -37,10 +37,6 @@ def artist_src_path(config=None):
             p = os.path.join(node_dir, rel)
             if os.path.isfile(p):
                 return p
-        cfg_src = (getattr(config, "comfy", {}) or {}).get("artist_src") if isinstance(
-            getattr(config, "comfy", None), dict) else None
-        if cfg_src and os.path.isfile(str(cfg_src)):
-            return str(cfg_src)
     return ARTIST_SRC_FALLBACK
 
 

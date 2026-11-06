@@ -56,6 +56,38 @@ def extract_one(model, wav_path, name):
     return None
 
 
+def _split_name(name):
+    """声纹名分流：`000001-sing` → ('000001', 'sing')；其它 → (name, 'speech')"""
+    text = str(name or "").strip()
+    if text.lower().endswith("-sing"):
+        return text[:-5].strip(), "sing"
+    return text, "speech"
+
+
+def _put(db, name, vec):
+    """写入一条声纹向量（按文件名后缀落到 speech / sing 某一域）"""
+    uid, kind = _split_name(name)
+    if not uid:
+        return False
+    raw = db.get(uid)
+    entry = raw if isinstance(raw, dict) else ({"speech": raw} if raw is not None else {})
+    entry = dict(entry)
+    entry[kind] = vec
+    db[uid] = entry
+    return True
+
+
+def _migrate(db):
+    """把旧格式（name → 向量）迁移成新格式（name → {speech, sing}）"""
+    out = {}
+    for name, raw in db.items():
+        if isinstance(raw, dict):
+            out[name] = raw
+        elif raw is not None:
+            out[name] = {"speech": raw}
+    return out
+
+
 def main():
     parser = argparse.ArgumentParser(description="声纹提取工具")
     parser.add_argument("--model_dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "localmodels", "speech_campplus_sv_zh-cn_16k-common"))
@@ -86,16 +118,18 @@ def main():
             db = {}
 
     if args.single_name and args.single_wav:
-        # 单文件模式：追加/覆盖指定用户
+        # 单文件模式：追加/覆盖指定用户的某一域（说话 / 哼唱）
         vec = extract_one(model, args.single_wav, args.single_name)
         if vec is not None:
-            db[args.single_name] = vec
+            if not _put(db, args.single_name, vec):
+                print(f"  名称不合法: {args.single_name}", flush=True)
+                sys.exit(1)
             print(f"  完成: {args.single_name}", flush=True)
         else:
             print(f"  失败: {args.single_name}", flush=True)
             sys.exit(1)
     else:
-        # 全量模式：遍历 voices_dir/*.wav
+        # 全量模式：遍历 voices_dir/*.wav（`xxx-sing.wav` 记为哼唱模板）
         wav_files = sorted(glob.glob(os.path.join(args.voices_dir, "*.wav")))
         if not wav_files:
             print("未找到 wav 文件", flush=True)
@@ -106,10 +140,11 @@ def main():
             print(f"[{i}/{total}]", flush=True)
             vec = extract_one(model, wav_path, name)
             if vec is not None:
-                db[name] = vec
+                _put(db, name, vec)
                 print(f"  完成: {name}", flush=True)
 
-    # 写入声纹库
+    # 写入声纹库（旧格式条目顺手迁移成 speech 域）
+    db = _migrate(db)
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=2)
     print(f"声纹库已写入: {args.output}", flush=True)

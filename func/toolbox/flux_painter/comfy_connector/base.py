@@ -269,7 +269,7 @@ class TBComfyBase:
 
         # ---- LoRA 链（叠加在 UNET 之后）----
         model_src = ["1", 0]
-        for i, lora in enumerate(getattr(self.config, "lora_chain", []) or [], start=30):
+        for i, lora in enumerate(getattr(self.config, "lora_chain", []) or [], start=200):
             g[str(i)] = {"class_type": "LoraLoaderModelOnly",
                          "inputs": {"lora_name": str(lora["name"]),
                                     "strength_model": float(lora.get("strength", 0.8)),

@@ -22,6 +22,11 @@ class SenseVoiceSession:
         self.language = "auto"
         self.itn = True
         self.hotwords = {}
+        # 本句是否为哼唱（主程序在 is_speaking=false 时一并下发）
+        self.hum = False
+        # 声纹阈值（主程序按 config.yml 下发，缺省用命令行参数）
+        self.sv_threshold = None
+        self.sv_threshold_sing = None
         self._rec_lock = None  # 会话级识别串行锁：两句结果按序回传
 
     def handle_audio(self, audio_chunk: bytes):
@@ -31,6 +36,13 @@ class SenseVoiceSession:
 
     async def handle_text_message(self, message: dict):
         """处理文本消息：说话状态切换与识别参数更新"""
+        # 本句属性与阈值：必须在 is_speaking=false 之前读，识别任务才能拿到本句快照
+        if "hum" in message:
+            self.hum = bool(message.get("hum"))
+        if "sv_threshold" in message:
+            self.sv_threshold = message.get("sv_threshold")
+        if "sv_threshold_sing" in message:
+            self.sv_threshold_sing = message.get("sv_threshold_sing")
         if "is_speaking" in message:
             was = self.is_speaking
             self.is_speaking = message["is_speaking"]
@@ -42,11 +54,12 @@ class SenseVoiceSession:
                 if len(self.audio_buffer) > 0:
                     buf = bytes(self.audio_buffer)
                     self.audio_buffer.clear()   # 立即释放缓冲，识别异步执行
-                    print(f"说话结束，触发识别 ({len(buf)} bytes)")
+                    print(f"说话结束，触发识别 ({len(buf)} bytes, hum={self.hum})")
                     self.ctx.tick("user_end", f"{self.wav_name}|{len(buf)}")
                     # 不阻塞本连接消息 worker：快照交给独立识别任务排队执行，
                     # 下一句（紧跟的 start/音频/end）可立即被处理与累积
-                    asyncio.ensure_future(self._recognize_queued(buf))
+                    asyncio.ensure_future(self._recognize_queued(
+                        buf, self.hum, self.sv_threshold, self.sv_threshold_sing))
                 print("客户端结束说话")
         if "wav_name" in message:
             self.wav_name = message.get("wav_name", self.wav_name)
@@ -69,13 +82,15 @@ class SenseVoiceSession:
             self._rec_lock = asyncio.Lock()
         return self._rec_lock
 
-    async def _recognize_queued(self, buf: bytes):
+    async def _recognize_queued(self, buf: bytes, hum: bool = False,
+                                thr_speech=None, thr_sing=None):
         """识别队列任务：同连接多句按触发顺序串行执行，保证结果回传不乱序"""
         lock = await self._rec_serial_lock()
         async with lock:
-            await self._recognize_final(buf)
+            await self._recognize_final(buf, hum, thr_speech, thr_sing)
 
-    async def _recognize_final(self, buf: bytes):
+    async def _recognize_final(self, buf: bytes, hum: bool = False,
+                               thr_speech=None, thr_sing=None):
         """整段识别：ASR → 声纹 → 结果回传（buf 为句音频快照）"""
         if not buf:
             return
@@ -86,11 +101,14 @@ class SenseVoiceSession:
                                     hotwords=self.hotwords, sem=self.ctx.sem_asr)
             if res and len(res) > 0:
                 text = re.sub(r'<\|.*?\|>', '', res[0].get("text", ""))
-                spk_name, spk_score = await self._block(self.sv.verify, buf, sem=self.ctx.sem_sv)
+                spk_name, spk_score, spk_tpl = await self._block(
+                    self.sv.verify, buf, hum=hum,
+                    thr_speech=thr_speech, thr_sing=thr_sing, sem=self.ctx.sem_sv)
                 msg = {"mode": "offline", "spk_name": spk_name, "spk_score": spk_score,
-                       "text": text, "wav_name": self.wav_name, "is_final": True}
+                       "spk_tpl": spk_tpl, "text": text, "wav_name": self.wav_name,
+                       "is_final": True}
                 await self.websocket.send(json.dumps(msg, ensure_ascii=False))
-                print(f"识别结果: [{spk_name}] {text}")
+                print(f"识别结果: [{spk_name}:{spk_tpl or '-'}:{spk_score:.3f}] {text}")
                 self.ctx.tick("sv_result_sent", f"{self.wav_name}|{spk_name}|{text}")
         except Exception as e:
             print(f"识别失败: {e}")

@@ -88,6 +88,7 @@ if not exist "%PROJECT_DIR%..\..\scripts\sensevoice_latency\logs" mkdir "%PROJEC
     --concurrent_asr 4 ^
     --concurrent_sv 2 ^
     --sv_threshold 0.2 ^
+    --sv_threshold_sing 0.6 ^
     --latency_log "%LATENCY_LOG%"
 
 :: 如果服务异常退出，暂停以显示错误信息

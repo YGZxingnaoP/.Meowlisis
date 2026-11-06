@@ -18,6 +18,8 @@ class SenseVoiceConfig:
         self.itn = cfg.get('itn', True)
         self.target_speakers = cfg.get('target_speakers', [])
         self.speaker_threshold = cfg.get('speaker_threshold', 0.2)
+        # 哼唱声纹阈值：哼唱与说话是两个域，分数尺度不同，必须各用各的阈值
+        self.speaker_hum_threshold = cfg.get('speaker_hum_threshold', 0.6)
         self.energy_threshold = cfg.get('vad_energy_threshold', 400)
         self.interrupt_threshold = cfg.get('interrupt_threshold', 800)
         self.silence_threshold = cfg.get('silence_threshold', 2.0)

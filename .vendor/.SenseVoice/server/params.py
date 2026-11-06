@@ -21,7 +21,8 @@ def build_parser():
                    default=os.path.join(PROJECT_ROOT, "localmodels", "speech_campplus_sv_zh-cn_16k-common"))
     p.add_argument("--speaker_db_path", type=str,
                    default=os.path.join(PROJECT_ROOT, "voicetexture", "speaker_db.json"))
-    p.add_argument("--sv_threshold", type=float, default=0.2)
+    p.add_argument("--sv_threshold", type=float, default=0.2, help="说话声纹阈值")
+    p.add_argument("--sv_threshold_sing", type=float, default=0.6, help="哼唱声纹阈值")
     p.add_argument("--speaker_db_reload_sec", type=int, default=5)
     p.add_argument("--worker_threads", type=int, default=4)
     p.add_argument("--concurrent_asr", type=int, default=4)

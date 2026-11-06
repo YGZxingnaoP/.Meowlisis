@@ -74,8 +74,21 @@ def _nickname_of(uid):
         return ""
 
 
+def _wav_path(safe, kind="speech"):
+    """声纹音频文件路径：说话 `xxx.wav` / 哼唱 `xxx-sing.wav`"""
+    suffix = "-sing" if kind == "sing" else ""
+    return os.path.join(VOICETEXTURE_DIR, f"{safe}{suffix}.wav")
+
+
+def _entry_of(raw):
+    """声纹库条目归一：旧格式（向量）视为只有说话模板"""
+    if isinstance(raw, dict):
+        return raw
+    return {"speech": raw} if raw is not None else {}
+
+
 def list_speakers():
-    """返回声纹用户列表（编号、昵称、启用状态，默认启用）"""
+    """返回声纹用户列表（编号、昵称、启用状态、说话/哼唱两条语音是否已录入）"""
     db = _load_json(SPEAKER_DB, {})
     enabled = _load_json(SPEAKER_ENABLED, {})
     result = []
@@ -83,11 +96,18 @@ def list_speakers():
         nickname, uid = split_speaker_name(name)
         if uid and not nickname:
             nickname = _nickname_of(uid)
+        entry = _entry_of(db.get(name))
+        has_speech = entry.get("speech") is not None
+        has_sing = entry.get("sing") is not None
         result.append({
             "name": name,
             "nickname": nickname,
             "id": uid,
             "enabled": bool(enabled.get(name, True)),
+            "has_speech": has_speech,
+            "has_sing": has_sing,
+            "has_speech_wav": os.path.exists(_wav_path(name, "speech")),
+            "has_sing_wav": os.path.exists(_wav_path(name, "sing")),
         })
     return result
 
@@ -152,25 +172,12 @@ def get_build_status():
     return {"running": not done, "progress": progress}
 
 
-def create_speaker(nickname, wav_bytes, uid=""):
-    """新建用户：按「昵称(编号)」命名保存 wav 并立即提取声纹写入库"""
-    safe = compose_speaker_name(nickname, uid)
-    if not safe:
-        raise ValueError("昵称不能为空")
-    # 清洗文件名
-    safe = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(safe)).strip()
-    if not safe:
-        raise ValueError("昵称不合法")
-    wav_path = os.path.join(VOICETEXTURE_DIR, f"{safe}.wav")
-    os.makedirs(VOICETEXTURE_DIR, exist_ok=True)
-    with open(wav_path, "wb") as f:
-        f.write(wav_bytes)
-
-    # 调用声纹提取（单文件模式）
+def _run_single_extract(single_name, wav_path):
+    """调用 build_speaker_db.py 单文件模式抽一条声纹，返回 (ok, message)"""
     python = RUNTIME_PYTHON if os.path.exists(RUNTIME_PYTHON) else sys.executable
     try:
         result = subprocess.run(
-            [python, BUILD_SCRIPT, "--single_name", safe, "--single_wav", wav_path],
+            [python, BUILD_SCRIPT, "--single_name", single_name, "--single_wav", wav_path],
             cwd=SENSEVOICE_DIR,
             capture_output=True,
             text=True,
@@ -178,9 +185,52 @@ def create_speaker(nickname, wav_bytes, uid=""):
             timeout=120,
         )
         if result.returncode != 0:
-            return {"status": "error", "message": result.stdout or result.stderr}
+            return False, (result.stdout or result.stderr or "声纹提取失败")
     except subprocess.TimeoutExpired:
-        return {"status": "error", "message": "声纹提取超时"}
+        return False, "声纹提取超时"
     except Exception as e:
-        return {"status": "error", "message": str(e)}
-    return {"status": "ok", "name": safe}
+        return False, str(e)
+    return True, ""
+
+
+def create_speaker(nickname, wav_bytes, uid="", kind="speech"):
+    """新建用户：按「昵称(编号)」命名保存 wav 并立即提取声纹写入库（kind: speech/sing）"""
+    safe = compose_speaker_name(nickname, uid)
+    if not safe:
+        raise ValueError("昵称不能为空")
+    # 清洗文件名
+    safe = re.sub(r'[\\/:*?"<>|\r\n\t]', '_', str(safe)).strip()
+    if not safe:
+        raise ValueError("昵称不合法")
+    kind = "sing" if kind == "sing" else "speech"
+    wav_path = _wav_path(safe, kind)
+    os.makedirs(VOICETEXTURE_DIR, exist_ok=True)
+    with open(wav_path, "wb") as f:
+        f.write(wav_bytes)
+
+    # 调用声纹提取（单文件模式）；哼唱模板走 `-sing` 后缀分流
+    single_name = f"{safe}-sing" if kind == "sing" else safe
+    ok, message = _run_single_extract(single_name, wav_path)
+    if not ok:
+        return {"status": "error", "message": message}
+    return {"status": "ok", "name": safe, "kind": kind}
+
+
+def upload_audio(name, wav_bytes, kind="speech"):
+    """为已有声纹用户替换说话/哼唱语音，并立即重建该域向量"""
+    name = str(name or "").strip()
+    if not name:
+        raise ValueError("缺少声纹用户")
+    db = _load_json(SPEAKER_DB, {})
+    if name not in db:
+        raise ValueError("声纹用户不存在")
+    kind = "sing" if kind == "sing" else "speech"
+    wav_path = _wav_path(name, kind)
+    os.makedirs(VOICETEXTURE_DIR, exist_ok=True)
+    with open(wav_path, "wb") as f:
+        f.write(wav_bytes)
+    single_name = f"{name}-sing" if kind == "sing" else name
+    ok, message = _run_single_extract(single_name, wav_path)
+    if not ok:
+        return {"status": "error", "message": message}
+    return {"status": "ok", "name": name, "kind": kind}

@@ -819,13 +819,30 @@ def build_status_speakers():
 def create_speaker():
     nickname = request.form.get('nickname', '') or request.form.get('name', '')
     uid = request.form.get('id', '')
+    kind = request.form.get('kind', 'speech')
     file = request.files.get('wav')
     if not nickname:
         return jsonify({'status': 'error', 'message': '昵称不能为空'}), 400
     if not file:
         return jsonify({'status': 'error', 'message': '未上传 wav 文件'}), 400
     try:
-        result = speaker_db_tool.create_speaker(nickname, file.read(), uid)
+        result = speaker_db_tool.create_speaker(nickname, file.read(), uid, kind)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/speakers/upload', methods=['POST'])
+def upload_speaker_audio():
+    name = request.form.get('name', '')
+    kind = request.form.get('kind', 'speech')
+    file = request.files.get('wav')
+    if not name:
+        return jsonify({'status': 'error', 'message': '缺少声纹用户'}), 400
+    if not file:
+        return jsonify({'status': 'error', 'message': '未上传 wav 文件'}), 400
+    try:
+        result = speaker_db_tool.upload_audio(name, file.read(), kind)
         return jsonify(result)
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500

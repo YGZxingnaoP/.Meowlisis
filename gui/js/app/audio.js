@@ -147,6 +147,10 @@ Object.assign(App, {
                     <label for="spk_${this._escAttr(s.name)}">${this._esc(s.nickname || this._t('未设昵称'))}</label>
                     <div class="uid-sub">${this._t('编号')} ${this._esc(s.id || this._t('未填'))}</div>
                 </div>
+                <div class="speaker-voices">
+                    ${this._speakerVoiceRow(s, 'speech')}
+                    ${this._speakerVoiceRow(s, 'sing')}
+                </div>
             </div>
         `).join('');
         container.querySelectorAll('input[data-speaker-name]').forEach(cb => {
@@ -159,6 +163,51 @@ Object.assign(App, {
                 }
             });
         });
+        // 上传走事件委托：列表每次重渲染都不会重复绑定
+        container.onclick = (e) => {
+            const btn = e.target.closest('[data-spk-upload]');
+            if (!btn) return;
+            this._pickSpeakerWav(btn.dataset.spkUpload, btn.dataset.spkKind);
+        };
+    },
+    _speakerVoiceRow(s, kind) {
+        const has = kind === 'sing' ? s.has_sing : s.has_speech;
+        const label = kind === 'sing' ? '哼唱语音' : '说话语音';
+        const file = s.name + (kind === 'sing' ? '-sing.wav' : '.wav');
+        return `<div class="spk-voice-row">
+            <span class="spk-voice-label">${this._t(label)}</span>
+            <span class="spk-voice-state ${has ? 'ok' : 'miss'}">${has ? this._t('已录入') : this._t('未录入')}</span>
+            <button type="button" class="btn btn-secondary btn-mini" data-spk-upload="${this._escAttr(s.name)}" data-spk-kind="${kind}">${has ? this._t('重新上传') : this._t('上传')}</button>
+            <span class="spk-voice-file">${this._esc(file)}</span>
+        </div>`;
+    },
+    _pickSpeakerWav(name, kind) {
+        let inp = document.getElementById('spkVoiceFileInput');
+        if (!inp) {
+            inp = document.createElement('input');
+            inp.type = 'file';
+            inp.id = 'spkVoiceFileInput';
+            inp.accept = '.wav,audio/wav';
+            inp.style.display = 'none';
+            document.body.appendChild(inp);
+        }
+        inp.onchange = async () => {
+            const f = inp.files && inp.files[0];
+            inp.value = '';
+            if (!f) return;
+            try {
+                const r = await API.uploadSpeakerAudio(name, kind, f);
+                if (r.status === 'ok') {
+                    this.showToast(kind === 'sing' ? '哼唱语音已更新' : '说话语音已更新');
+                    await this.loadSpeakers();
+                } else {
+                    this.showToast('上传失败: ' + (r.message || ''), true);
+                }
+            } catch (e) {
+                this.showToast('上传失败: ' + e.message, true);
+            }
+        };
+        inp.click();
     },
     bindSpeakerEvents() {
         const buildBtn = document.getElementById('speakerBuildBtn');
@@ -198,6 +247,7 @@ Object.assign(App, {
                         <input type="file" id="wavFileInput" accept=".wav" style="display:none;">
                         <span id="dropZoneText">${this._t('点击或拖拽 wav 文件到此处')}</span>
                     </div>
+                    <div class="help-text">${this._t('这里录入说话语音；哼唱语音在用户条目里单独上传（xxx-sing.wav）')}</div>
                 </div>
                 <div class="speaker-actions">
                     <button class="btn btn-primary" id="submitSpeakerBtn">${this._t('提交')}</button>
@@ -237,7 +287,7 @@ Object.assign(App, {
             if (!/^\d{6}$/.test(uid)) { this.showToast('编号要填 6 位数字，例如 000001（wav 文件名用它）', true); return; }
             if (!selectedFile) { this.showToast('请选择 wav 文件', true); return; }
             try {
-                const result = await API.createSpeaker(name, selectedFile, uid);
+                const result = await API.createSpeaker(name, selectedFile, uid, 'speech');
                 if (result.status === 'ok') {
                     this.showToast('声纹用户已创建');
                     const form = document.getElementById('createSpeakerForm');

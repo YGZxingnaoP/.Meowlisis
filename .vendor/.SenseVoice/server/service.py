@@ -28,7 +28,8 @@ async def _session_worker(session, q):
 async def handle_client(websocket, ctx):
     """收消息入队；每连接一个 worker 执行推理，接收永不回堵"""
     sv = SpeakerVerification(ctx.sv_model, ctx.args.speaker_db_path,
-                             ctx.args.speaker_db_reload_sec, ctx.args.sv_threshold)
+                             ctx.args.speaker_db_reload_sec, ctx.args.sv_threshold,
+                             getattr(ctx.args, 'sv_threshold_sing', 0.6))
     session = SenseVoiceSession(websocket, sv, ctx)
     q = asyncio.Queue()
     worker = asyncio.ensure_future(_session_worker(session, q))

@@ -2,6 +2,7 @@
 # func/toolbox/meowsongs/pass_the_baton/pass_the_baton.py
 # 听歌识曲接龙工具入口：哼唱匹配 → 往后接唱 → 感想引导（不走 song_review）
 import os
+import threading
 from typing import Dict, List
 
 import soundfile as sf
@@ -29,9 +30,11 @@ class TBPassTheBaton:
         self.next_line = TBNextLine()
         self._meowid = ""
         self._last_slice_path = ""
-        # 7 秒定歌锁定的结果（段结束接唱时使用）
-        self._locked_title = None
-        self._locked_offset = 0.0
+        # 7 秒定歌锁定的结果（段结束接唱时使用）；按音频源分开存，避免多源互相覆盖
+        self._locked_title = {}
+        self._locked_offset = {}
+        # 同一时刻只让一个源接唱（两个源同时播会叠音）
+        self._busy = threading.Lock()
 
     def set_meowid(self, meowid):
         self._meowid = meowid or ""
@@ -66,8 +69,8 @@ class TBPassTheBaton:
             self._send_qq_voice(qq_context, self._last_slice_path)
         return result
 
-    def run(self, event_type=None, hum_path=None):
-        """入口：按事件类型分发（lock=7秒定歌，sing=段结束接唱）"""
+    def run(self, event_type=None, hum_path=None, sid="mic"):
+        """入口：按事件类型分发（lock=定歌，sing=段结束接唱）；sid 为音频源"""
         from func.pipeline.toolbox_audio import ToolboxAudioBridge
         bridge = ToolboxAudioBridge()
         # 身份标准：必须已有内部编号；缺身份不接唱（禁止用「用户」占位兜底）
@@ -78,20 +81,32 @@ class TBPassTheBaton:
 
         # 事件类型/路径优先用触发时绑定的值；无参数调用（LLM 工具）则回退读共享值
         if event_type is None:
-            event_type = bridge.get_hum_event_type()
+            event_type = bridge.get_hum_event_type(sid)
         if hum_path is None:
-            hum_path = bridge.consume_hum_audio()
+            hum_path = bridge.consume_hum_audio(sid)
 
-        if event_type == "lock":
-            return self._run_lock(hum_path, meowid)
-        return self._run_sing(bridge, hum_path, meowid)
+        # 另一个源正在接唱时直接跳过，避免两路声音叠在一起
+        if not self._busy.acquire(blocking=False):
+            self.log.info(f"[PassTheBaton] 已有接唱在进行，跳过本次（{sid}/{event_type}）")
+            if hum_path and os.path.exists(hum_path):
+                try:
+                    os.remove(hum_path)
+                except Exception:
+                    pass
+            return ""
+        try:
+            if event_type == "lock":
+                return self._run_lock(sid, hum_path, meowid)
+            return self._run_sing(sid, bridge, hum_path, meowid)
+        finally:
+            self._busy.release()
 
-    def _run_lock(self, hum_path, meowid):
-        """7 秒定歌：余弦粗筛 + 分差判定，锁定后不接唱"""
+    def _run_lock(self, sid, hum_path, meowid):
+        """定歌：余弦粗筛 + 分差判定，锁定后不接唱"""
         if not hum_path or not os.path.exists(hum_path):
             # 拿不到音频也要清锁定，避免残留到下一次
-            self._locked_title = None
-            self._locked_offset = 0.0
+            self._locked_title[sid] = None
+            self._locked_offset[sid] = 0.0
             return "没有检测到哼唱音频"
 
         title, offset, score, second, margin = self.match.match(hum_path)
@@ -103,30 +118,28 @@ class TBPassTheBaton:
         if (not title or score < self.config.match_threshold
                 or margin < self.config.min_margin):
             self.log.info(
-                f"[PassTheBaton] 7秒定歌未锁定：最高分 {score:.3f}"
+                f"[PassTheBaton] 定歌未锁定（{sid}）：最高分 {score:.3f}"
                 f"（阈值 {self.config.match_threshold}）"
                 f"次高 {second:.3f} 分差 {margin:.3f}（下限 {self.config.min_margin}）"
             )
-            self._locked_title = None
-            self._locked_offset = 0.0
+            self._locked_title[sid] = None
+            self._locked_offset[sid] = 0.0
             return "没有锁定这首歌"
 
-        self.log.info(f"[PassTheBaton] 7秒定歌：《{title}》 score={score:.3f} offset={offset:.1f}s")
-        self._locked_title = title
-        self._locked_offset = offset
+        self.log.info(f"[PassTheBaton] 定歌（{sid}）：《{title}》 score={score:.3f} offset={offset:.1f}s")
+        self._locked_title[sid] = title
+        self._locked_offset[sid] = offset
         return f"识别到《{title}》，等你唱完"
 
-    def _run_sing(self, bridge, hum_path, meowid):
+    def _run_sing(self, sid, bridge, hum_path, meowid):
         """段结束接唱：余弦匹配定位；未达阈值则交给角色用自己的话确认"""
-        hum_duration = bridge.get_hum_duration()
+        hum_duration = bridge.get_hum_duration(sid)
         if hum_duration <= 0:
             hum_duration = 7.0
 
-        # 取出并立即重置锁定结果（本次用完即清，避免残留到下一次）
-        locked_title = self._locked_title
-        locked_offset = self._locked_offset
-        self._locked_title = None
-        self._locked_offset = 0.0
+        # 取出并立即重置锁定结果（本次用完即清，避免残留到下一次；按源分开取）
+        locked_title = self._locked_title.pop(sid, None)
+        locked_offset = self._locked_offset.pop(sid, 0.0) or 0.0
 
         title, offset = None, 0.0
         candidate = None

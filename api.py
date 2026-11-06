@@ -501,10 +501,10 @@ def sensevoice_callback(text, meowid, source="voice"):
         meowid = ""
     if not meowid:
         return
-    # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃
+    # 哼唱丢弃：刚判定为哼唱的音频，其 SenseVoice 结果丢弃（按来源分别记账：llm / phone）
     try:
         from func.pipeline.toolbox_audio import ToolboxAudioBridge
-        if ToolboxAudioBridge().should_discard_next_asr():
+        if ToolboxAudioBridge().should_discard_next_asr(source):
             return
     except Exception:
         pass

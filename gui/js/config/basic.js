@@ -18,7 +18,10 @@ Object.assign(Config, {
                 {value:'yue',label:'yue'},{value:'ja',label:'ja'},{value:'ko',label:'ko'}
             ], 'auto') +
             this._check('启用标点与逆文本正则化', 'sensevoice.itn', true) +
-            this._num('说话人判定阈值', 'sensevoice.speaker_threshold', 0.2, 0, 1, 0.05) +
+            this._num('说话人判定阈值', 'sensevoice.speaker_threshold', 0.2, 0, 1, 0.05,
+                '说话语音的声纹阈值，比的是说话模板') +
+            this._num('哼唱声纹阈值', 'sensevoice.speaker_hum_threshold', 0.6, 0, 1, 0.05,
+                '判为哼唱的句子改用哼唱模板，阈值要比说话高（哼唱与说话分数尺度不同，实测自己哼唱 0.73~0.92、别人歌声 ≤0.45）') +
             this._list('目标说话人（逗号分隔）', 'sensevoice.target_speakers', []) +
             this._list('热词（逗号分隔，每项: 词 权重...）', 'sensevoice.hotwords', []) +
             this._num('VAD 能量阈值', 'sensevoice.vad_energy_threshold', 400, 0, 5000, 50,
@@ -127,6 +130,7 @@ Object.assign(Config, {
     // ============ 声纹管理面板 ============,
     speakerManager() {
         return `<div class="form-section"><h4>${this._t('声纹管理')}</h4></div>
+            <div class="help-text">${this._t('每个用户两条语音：说话语音（xxx.wav）走说话声纹阈值；哼唱语音（xxx-sing.wav）走哼唱声纹阈值。被判为哼唱的句子只用哼唱语音比对，普通说话仍用说话语音。')}</div>
             <div id="speakerList" class="speaker-list"><div class="help-text">${this._t('加载中...')}</div></div>
             <div class="speaker-actions">
                 <button class="btn btn-primary" id="speakerBuildBtn">${this._t('一键生成所有声纹')}</button>
