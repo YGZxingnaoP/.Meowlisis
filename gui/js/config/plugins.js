@@ -5,6 +5,7 @@
 Object.assign(Config, {
     pluginSchemas: {},
     pluginConfigs: {},
+    _spriteStamp: 0,
 
     async loadPluginSchemas() {
         try {
@@ -28,6 +29,8 @@ Object.assign(Config, {
         if (!schema) return '<div class="help-text">插件信息加载失败</div>';
         const fields = schema.fields || [];
         const backup = this.cfg;
+        this._pluginCurrentId = id;
+        this._spriteStamp = Date.now();   // 每次打开面板换一次缓存版本，面板内重绘不会重复请求
         this.cfg = this.pluginConfigs[id] || {};
         try {
             let html = this._section(schema.title || id);
@@ -56,10 +59,100 @@ Object.assign(Config, {
         if (type === 'select') return this._select(label, path, f.options || [], def, help);
         if (type === 'list') return this._list(label, path, def, help);
         if (type === 'area') return this._area(label, path, def, help);
+        if (type === 'image') return this._pluginImage(label, path, def, help);
+        if (type === 'action') return this._pluginAction(label, f, help);
         const rawText = this._baseText || this._text;
         const rawPassword = this._basePassword || this._password;
         if (type === 'password') return rawPassword.call(this, label, path, def, help);
         return rawText.call(this, label, path, def, help);
+    },
+
+    // ---------- 皮肤：图片上传 + 预览 ----------
+    _pluginAssetUrl(rel, stamp) {
+        const id = encodeURIComponent(this._pluginCurrentId || '');
+        const path = encodeURIComponent(rel);
+        return `/api/plugins/${id}/asset?path=${path}${stamp ? '&t=' + Date.now() : ''}`;
+    },
+
+    _pluginImage(label, path, def, help, asset) {
+        const key = String(asset || 'farmer_base');
+        const url = `/api/plugins/${encodeURIComponent(this._pluginCurrentId || '')}/sprite?asset=${encodeURIComponent(key)}&v=${this._spriteStamp}`;
+        return `<div class="form-group skin-field">
+            <label>${this._t(label)}</label>
+            <div class="skin-preview"><img id="sprite_preview_${key}" src="${url}" alt="${key}"
+                 data-sprite="${key}" loading="lazy" decoding="async"
+                 onerror="this.style.display='none'"></div>
+            <div class="skin-actions">
+                <input type="file" id="sprite_file_${key}" accept="image/png"
+                       onchange="Config._uploadSprite('${key}', this)">
+                <button type="button" class="skin-btn" onclick="Config._triggerSkinAction('export_sprites', this)">
+                    ${this._t('导出原版底稿')}</button>
+            </div>
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
+    },
+
+    _pluginAction(label, field, help) {
+        const action = field.action || 'export_sprites';
+        return `<div class="form-group skin-field">
+            <label>${this._t(label)}</label>
+            <div class="skin-actions">
+                <button type="button" class="skin-btn primary" onclick="Config._triggerSkinAction('${action}', this)">
+                    ${this._t(label)}</button>
+            </div>
+            <pre class="skin-log" data-skin-log></pre>
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
+    },
+
+    _skinLog(button, text) {
+        try {
+            const box = button.closest('.skin-field').querySelector('[data-skin-log]');
+            if (box) box.textContent = text;
+        } catch (e) { /* ignore */ }
+    },
+
+    async _uploadSprite(asset, inputEl) {
+        const file = inputEl && inputEl.files && inputEl.files[0];
+        if (!file) return;
+        const id = this._pluginCurrentId || '';
+        try {
+            const res = await fetch(`/api/plugins/${encodeURIComponent(id)}/sprite?asset=${encodeURIComponent(asset)}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'image/png' },
+                body: file,
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.ok !== true) throw new Error(data.reason || data.message || ('HTTP ' + res.status));
+            this._spriteStamp += 1;
+            this._refreshSpritePreviews();
+            this._skinLog(inputEl, this._t('已保存') + `：${asset}.png（${Math.round(file.size / 1024)} KB）`);
+        } catch (err) {
+            this._skinLog(inputEl, this._t('上传失败') + '：' + err.message);
+        }
+    },
+
+    _refreshSpritePreviews() {
+        const id = this._pluginCurrentId || '';
+        document.querySelectorAll('img[data-sprite]').forEach(img => {
+            const key = img.getAttribute('data-sprite');
+            img.style.display = '';
+            img.src = `/api/plugins/${id}/sprite?asset=${encodeURIComponent(key)}&v=${this._spriteStamp}`;
+        });
+    },
+
+    async _triggerSkinAction(action, button) {
+        const id = this._pluginCurrentId || '';
+        this._skinLog(button, this._t('执行中') + '……');
+        try {
+            const res = await fetch(`/api/plugins/${encodeURIComponent(id)}/action`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, slug: this._val('skin.active', 'default') || 'default' }),
+            });
+            const data = await res.json().catch(() => ({}));
+            this._skinLog(button, (data.log || data.message || JSON.stringify(data)).slice(0, 4000));
+        } catch (err) {
+            this._skinLog(button, this._t('失败') + '：' + err.message);
+        }
     },
 
     applyPluginUpdates(id, updates) {

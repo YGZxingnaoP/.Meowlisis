@@ -1,0 +1,9 @@
+{
+  "Name": "星露谷 AI 玩家执行层",
+  "Author": "Meowlisis / Darianliu23 (BlindWhaleFarmer)",
+  "Version": "0.7.0",
+  "Description": "把游戏状态转成纯文本，通过 MCP / REST 暴露 52 个动作；由 Meowlisis 主模型直接调用。",
+  "UniqueID": "Meowlisis.StardewAgent",
+  "EntryDll": "StardewAgent.dll",
+  "MinimumApiVersion": "4.0.0"
+}

@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>BlindWhaleFarmer</AssemblyName>
+    <RootNamespace>BlindWhaleFarmer</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <NoWarn>CS0618</NoWarn>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <BaseIntermediateOutputPath>C:\Users\YGZXIN~1\AppData\Local\Temp\dsh-lXAliu\refobj\</BaseIntermediateOutputPath>
+    <OutputPath>C:\Users\YGZXIN~1\AppData\Local\Temp\dsh-lXAliu\refbin\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Stardew Valley"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\Stardew Valley.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="StardewValley.GameData"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\StardewValley.GameData.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MonoGame.Framework"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\MonoGame.Framework.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="xTile"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\xTile.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="StardewModdingAPI"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\StardewModdingAPI.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>D:\.MYGames\StardewValley\X0015_v1.6.15.0\X0015\game\Stardew Valley\smapi-internal\0Harmony.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+</Project>

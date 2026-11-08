@@ -155,3 +155,16 @@ scripts/dist
 .vendor/.cam/cert/
 scripts/ios-ddi
 
+# ========== 星露谷插件（构建产物 / 本地工具链缓存，不入库）==========
+plugins/stardew_agent/dist/
+plugins/stardew_agent/game_mod/obj/
+plugins/stardew_agent/game_mod/bin/
+plugins/stardew_agent/.build-home/
+plugins/stardew_agent/.nuget/
+
+# 星露谷开发/试玩脚本的编译产物
+scripts/stardew/api_dump/obj/
+scripts/stardew/api_dump/bin/
+scripts/stardew/.build-home/
+scripts/stardew/.nuget/
+

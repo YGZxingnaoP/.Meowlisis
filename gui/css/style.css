@@ -440,3 +440,76 @@ body.plugin-more-open .launcher-glow,
 body.plugin-more-open .card-ripple {
     animation-play-state: paused;
 }
+
+/* ================= 插件皮肤：上传 / 预览 / 生成 ================= */
+.skin-field .skin-preview {
+    margin: 8px 0;
+    min-height: 96px;
+    padding: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(255, 105, 180, 0.35);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.6);
+}
+.skin-field .skin-preview img {
+    max-width: 100%;
+    max-height: 120px;
+    border-radius: 8px;
+    image-rendering: pixelated;
+    box-shadow: 0 6px 18px rgba(255, 105, 180, 0.18);
+}
+.skin-field .skin-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 6px;
+}
+.skin-field input[type="file"] {
+    font-size: 12px;
+    color: var(--text-light);
+    background: transparent;
+    border: 0;
+    padding: 0;
+    max-width: 220px;
+}
+.skin-btn {
+    font: inherit;
+    font-size: 13px;
+    padding: 7px 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    color: var(--pink-dark);
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid rgba(255, 182, 193, 0.9);
+    transition: 0.18s;
+}
+.skin-btn:hover {
+    background: var(--pink-light);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(255, 105, 180, 0.22);
+}
+.skin-btn.primary {
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--pink-main), var(--pink-deep));
+}
+.skin-field .skin-log {
+    display: none;
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    max-height: 160px;
+    overflow: auto;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 182, 193, 0.6);
+    background: rgba(255, 255, 255, 0.78);
+    color: #777;
+    font: 12px/1.5 Consolas, "Microsoft YaHei", monospace;
+    white-space: pre-wrap;
+}
+.skin-field .skin-log:not(:empty) {
+    display: block;
+}
+

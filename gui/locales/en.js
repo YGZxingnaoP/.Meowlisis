@@ -1604,5 +1604,13 @@ window.__LOCALES__['en'] = {
     "每个用户两条语音：说话语音（xxx.wav）走说话声纹阈值；哼唱语音（xxx-sing.wav）走哼唱声纹阈值。被判为哼唱的句子只用哼唱语音比对，普通说话仍用说话语音。": "Each user keeps two samples: speech (xxx.wav) is matched with the speech threshold, humming (xxx-sing.wav) with the humming threshold. Utterances judged as humming only use the humming sample; normal speech still uses the speech sample.",
     "哼唱声纹阈值": "Humming voiceprint threshold",
     "说话语音的声纹阈值，比的是说话模板": "Voiceprint threshold for speech, matched against the speech sample",
-    "判为哼唱的句子改用哼唱模板，阈值要比说话高（哼唱与说话分数尺度不同，实测自己哼唱 0.73~0.92、别人歌声 ≤0.45）": "Utterances judged as humming switch to the humming sample; keep this higher than the speech threshold (scores live on a different scale: own humming 0.73~0.92, other singers ≤0.45)"
+    "判为哼唱的句子改用哼唱模板，阈值要比说话高（哼唱与说话分数尺度不同，实测自己哼唱 0.73~0.92、别人歌声 ≤0.45）": "Utterances judged as humming switch to the humming sample; keep this higher than the speech threshold (scores live on a different scale: own humming 0.73~0.92, other singers ≤0.45)",
+
+    // ================= 插件皮肤 =================
+    "用 ComfyUI 生成": "Generate with ComfyUI",
+    "导出原版底稿": "Export vanilla sheets",
+    "已保存": "Saved",
+    "上传失败": "Upload failed",
+    "执行中": "Working",
+    "失败": "Failed"
 };

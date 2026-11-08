@@ -408,6 +408,151 @@ def post_plugin_config(plugin_id):
     return jsonify({'status': 'ok'})
 
 
+def _plugin_asset_target(plugin_id, rel):
+    """把 ?path= 解析到 plugins/<id>/assets/ 下面，挡住路径穿越。"""
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return None, None
+    root = (pdir / "assets").resolve()
+    rel = str(rel or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return None, root
+    target = (root / rel).resolve()
+    if root != target and root not in target.parents:
+        return None, root
+    return target, root
+
+
+@app.route('/api/plugins/<plugin_id>/asset', methods=['GET', 'POST'])
+def plugin_asset(plugin_id):
+    """插件静态资源（皮肤立绘/横幅等）：GET 读取，POST 上传（原始字节）。"""
+    import mimetypes
+
+    target, root = _plugin_asset_target(plugin_id, request.args.get('path'))
+    if target is None:
+        return jsonify({'status': 'error', 'message': 'invalid asset path'}), 400
+
+    if request.method == 'GET':
+        if not target.is_file():
+            return jsonify({'status': 'error', 'message': 'not found'}), 404
+        ctype = mimetypes.guess_type(str(target))[0] or 'application/octet-stream'
+        resp = send_from_directory(str(target.parent), target.name)
+        resp.headers['Content-Type'] = ctype
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+
+    data = request.get_data() or b''
+    if not data:
+        return jsonify({'status': 'error', 'message': 'empty body'}), 400
+    if len(data) > 8 * 1024 * 1024:
+        return jsonify({'status': 'error', 'message': 'file too large (max 8MB)'}), 413
+
+    # 皮肤图片走插件自己的校验/转换（PNG 直存，JPEG/GIF 转 PNG）。
+    import re
+    match = re.match(r'^skins/([a-z0-9][a-z0-9_-]{0,39})/(avatar|banner)\.png$',
+                     str(request.args.get('path') or '').replace('\\', '/'))
+    if match:
+        skins = _load_plugin_module(plugin_id, 'skins')
+        if skins is None:
+            return jsonify({'status': 'error', 'message': 'plugin has no skins module'}), 400
+        try:
+            name = skins.install_image(match.group(1), match.group(2), data)
+        except Exception as exc:
+            return jsonify({'status': 'error', 'message': str(exc)}), 400
+        return jsonify({'status': 'ok', 'path': 'skins/%s/%s' % (match.group(1), name), 'size': len(data)})
+
+    if target.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+        head = data[:8]
+        ok = head.startswith(b"\x89PNG") or head.startswith(b"\xff\xd8\xff") or head.startswith(b"GIF8") or data[:4] == b"RIFF"
+        if not ok:
+            return jsonify({'status': 'error', 'message': 'not an image'}), 400
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    return jsonify({'status': 'ok', 'path': str(target.relative_to(root)).replace("\\", "/"), 'size': len(data)})
+
+
+def _load_plugin_module(plugin_id, module_name):
+    """按文件路径加载插件里的某个 .py（插件目录不是包，不能直接 import）。"""
+    import importlib.util
+
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return None
+    path = pdir / (module_name + ".py")
+    if not path.is_file():
+        return None
+    spec = importlib.util.spec_from_file_location("meowplug_%s_%s" % (plugin_id, module_name), str(path))
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@app.route('/api/plugins/<plugin_id>/sprite', methods=['GET', 'POST'])
+def plugin_sprite(plugin_id):
+    """手绘贴图皮肤：GET 预览（转发 mod 的 /skin/file），POST 上传（转发 /skin/upload）。"""
+    import urllib.request
+
+    if not _plugin_dir(plugin_id):
+        return jsonify({'ok': False, 'reason': 'invalid plugin id'}), 400
+    asset = str(request.args.get('asset') or '').strip()
+    if not asset or any(ch not in 'abcdefghijklmnopqrstuvwxyz0123456789_' for ch in asset):
+        return jsonify({'ok': False, 'reason': 'bad asset key'}), 400
+
+    base = 'http://127.0.0.1:8756'
+    try:
+        if request.method == 'GET':
+            with urllib.request.urlopen(base + '/skin/file?key=' + asset, timeout=5) as resp:
+                data = resp.read()
+            # 前端 URL 带 v=<时间戳>，命中缓存就不要再往回代理，避免每次重绘都拉一遍大图
+            return app.response_class(data, mimetype='image/png',
+                                      headers={'Cache-Control': 'public, max-age=86400, immutable'})
+
+        payload = request.get_data() or b''
+        req = urllib.request.Request(
+            base + '/skin/upload?key=' + asset, data=payload,
+            headers={'Content-Type': 'application/octet-stream'}, method='POST')
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read().decode('utf-8', 'replace')
+        return app.response_class(body, mimetype='application/json')
+    except Exception as exc:
+        return jsonify({'ok': False, 'reason': '游戏里的 mod 没响应：%s' % exc}), 502
+
+
+@app.route('/api/plugins/<plugin_id>/action', methods=['POST'])
+def plugin_action(plugin_id):
+    """插件页上的按钮动作（目前是贴图皮肤的导出/重载/切换目录）。"""
+    pdir = _plugin_dir(plugin_id)
+    if not pdir:
+        return jsonify({'ok': False, 'log': 'invalid plugin id'}), 400
+
+    body = request.get_json(silent=True) or {}
+    action = str(body.get('action') or '').strip()
+    slug = str(body.get('slug') or 'default').strip() or 'default'
+    slug = ''.join(ch for ch in slug if ch.isalnum() or ch in '-_') or 'default'
+
+    ops = {
+        'export_sprites': {'op': 'skin_export'},
+        'reload_sprites': {'op': 'skin_reload'},
+        'set_skin': {'op': 'skin_set', 'skin': slug},
+    }
+    payload = ops.get(action)
+    if payload is None:
+        return jsonify({'ok': False, 'log': '未知动作：%s' % action})
+
+    try:
+        import urllib.request
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request('http://127.0.0.1:8756/command', data=data,
+                                     headers={'Content-Type': 'application/json'}, method='POST')
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            result = json.loads(resp.read().decode('utf-8', 'replace') or '{}')
+        return jsonify({'ok': bool(result.get('ok')), 'log': json.dumps(result, ensure_ascii=False, indent=2)})
+    except Exception as exc:
+        return jsonify({'ok': False, 'log': '游戏没开或 mod 没加载：%s' % exc})
+
+
 @app.route('/api/rewards', methods=['GET'])
 def get_rewards():
     from func.rewards.fishcake_store import FishCakeStore

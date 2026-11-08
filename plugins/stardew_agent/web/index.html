@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>星露谷 · 角色手账</title>
+<link rel="icon" href="/favicon.svg">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark">🌾</div>
+      <div>
+        <div class="brand-title">星露谷</div>
+        <div class="brand-sub">角色手账</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="today">今天</button>
+      <button class="nav-btn" data-tab="diary">日记</button>
+      <button class="nav-btn" data-tab="plans">规划</button>
+      <button class="nav-btn" data-tab="journal">日志</button>
+      <button class="nav-btn" data-tab="memory">记忆</button>
+      <button class="nav-btn" data-tab="habits">习惯</button>
+    </nav>
+    <div class="side-foot">
+      <div class="dot" id="conn-dot"></div>
+      <span id="conn-text">连接中…</span>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="top">
+      <div>
+        <h1 id="title">今天在星露谷</h1>
+        <div class="sub" id="clock">读取中…</div>
+      </div>
+      <div class="top-right">
+        <select id="save-select" class="select" title="存档"></select>
+        <select id="date-select" class="select" title="日期"></select>
+        <button class="theme-btn" id="theme-toggle" title="切换亮/暗">🌙</button>
+        <span class="pill" id="play-state">未开始</span>
+        <span class="pill ghost" id="world-key">-</span>
+      </div>
+    </header>
+
+    <!-- 操作台：真机测试用，输入会真的走主链路 API -->
+    <section class="console card">
+      <div class="card-head">
+        <h2>操作台</h2>
+        <span class="tag" id="console-state">未连接</span>
+      </div>
+      <div class="console-row">
+        <button class="btn primary" data-play="start">开始玩</button>
+        <button class="btn" data-play="stop">停下</button>
+        <button class="btn" data-play="pause">暂停</button>
+        <button class="btn" data-play="resume">继续</button>
+        <button class="btn" data-play="sleep">回家睡觉</button>
+      </div>
+      <div class="console-row">
+        <button class="btn quick" data-goal="farm_cycle">侍弄农场</button>
+        <button class="btn quick" data-goal="clear_farm">清理农场</button>
+        <button class="btn quick" data-goal="buy_seeds">买种子</button>
+        <button class="btn quick" data-goal="fish">钓鱼</button>
+        <button class="btn quick" data-goal="ship">出货</button>
+        <button class="btn quick" data-goal="visit_town">去镇上</button>
+        <button class="btn quick" data-goal="mine">下矿</button>
+        <button class="btn quick" data-goal="explore">探索</button>
+      </div>
+      <div class="advice console-input">
+        <textarea id="request-input" rows="3" maxlength="500" placeholder="直接说你想让她做什么，例如：去农场把地浇一遍，然后去镇上买点种子…"></textarea>
+        <button id="request-btn">让她去做</button>
+      </div>
+      <div class="reply console-log" id="console-log">还没有操作。</div>
+    </section>
+
+    <section class="stats">
+      <article class="card stat wide">
+        <div class="label">当前正在做</div>
+        <div class="value" id="activity">-</div>
+        <div class="hint" id="progress">-</div>
+      </article>
+      <article class="card stat">
+        <div class="label">心情</div>
+        <div class="value small" id="mood">-</div>
+        <div class="hint" id="thought">-</div>
+      </article>
+      <article class="card stat">
+        <div class="label">体力</div>
+        <div class="value small" id="energy">-</div>
+        <div class="bar"><i id="energy-bar"></i></div>
+        <div class="hint" id="money">-</div>
+      </article>
+      <article class="card stat">
+        <div class="label">位置 / 天气</div>
+        <div class="value small" id="where">-</div>
+        <div class="hint" id="weather">-</div>
+      </article>
+    </section>
+
+    <div class="grid two">
+      <section class="card">
+        <div class="card-head"><h2>背包</h2><span class="tag" id="bag-state">-</span></div>
+        <pre class="mono" id="inventory">-</pre>
+        <div class="hint" id="skills">-</div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>农场</h2><span class="tag" id="farm-loc">Farm</span></div>
+        <div class="farm-grid" id="farm-stats"></div>
+      </section>
+    </div>
+
+    <!-- 今天 -->
+    <section class="tab-panel active" id="tab-today">
+      <div class="grid two">
+        <section class="card">
+          <div class="card-head"><h2>今天的计划</h2><span class="tag" id="plan-reason">-</span></div>
+          <div class="tree" id="day-plan"><div class="empty">还没有计划</div></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>待办</h2><span class="tag" id="todo-count">0</span></div>
+          <div class="todo-list" id="todos"><div class="empty">今天没有待办</div></div>
+          <div class="advice">
+            <input id="advice-input" placeholder="给角色提一句建议…" maxlength="200">
+            <button id="advice-btn">发给她</button>
+          </div>
+          <div class="reply" id="advice-reply"></div>
+        </section>
+      </div>
+      <section class="card">
+        <div class="card-head"><h2>长线规划</h2><span class="tag">最多 4 层</span></div>
+        <div class="tree" id="long-plan"><div class="empty">还没有长线规划</div></div>
+      </section>
+    </section>
+
+    <!-- 日记 -->
+    <section class="tab-panel" id="tab-diary">
+      <div class="diary-toolbar">
+        <select id="diary-save" class="select" title="日记存档"></select>
+        <select id="diary-date" class="select" title="日记日期"></select>
+        <div class="diary-pager">
+          <button class="btn" id="diary-prev">上一页</button>
+          <span id="diary-page">-</span>
+          <button class="btn" id="diary-next">下一页</button>
+        </div>
+      </div>
+      <div class="diary-digest" id="diary-digest"></div>
+      <div class="diary-list" id="diary-list"><div class="empty">还没有日记（睡前会写）</div></div>
+    </section>
+
+    <!-- 规划 -->
+    <section class="tab-panel" id="tab-plans">
+      <section class="card">
+        <div class="card-head"><h2>长线规划图谱</h2><span class="tag" id="long-updated">-</span></div>
+        <div class="graph-wrap" id="long-graph"><div class="empty">还没有长线规划</div></div>
+        <details class="tree-details">
+          <summary>展开树状明细</summary>
+          <div class="tree big" id="long-plan-full"><div class="empty">还没有长线规划</div></div>
+        </details>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>今天的计划图谱</h2><span class="tag" id="day-updated">-</span></div>
+        <div class="graph-wrap" id="day-graph"><div class="empty">还没有今日计划</div></div>
+        <details class="tree-details">
+          <summary>展开树状明细</summary>
+          <div class="tree big" id="day-plan-full"><div class="empty">还没有今日计划</div></div>
+        </details>
+      </section>
+    </section>
+
+    <!-- 日志 -->
+    <section class="tab-panel" id="tab-journal">
+      <section class="card">
+        <div class="card-head"><h2>今天的日志</h2><span class="tag" id="journal-count">0</span></div>
+        <div class="journal" id="journal-list"><div class="empty">今天还没有记录</div></div>
+      </section>
+    </section>
+
+    <!-- 记忆 -->
+    <section class="tab-panel" id="tab-memory">
+      <section class="card">
+        <div class="card-head"><h2>今天的记忆摘要</h2><span class="tag" id="digest-date">-</span></div>
+        <div class="memory-digest" id="memory-digest"><div class="empty">还没有记忆摘要（睡前会写）</div></div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>长期记忆 tips</h2><span class="tag" id="memory-count">0</span></div>
+        <div class="memory-list" id="memory-list"><div class="empty">还没有长期记忆</div></div>
+      </section>
+    </section>
+
+    <!-- 习惯 -->
+    <section class="tab-panel" id="tab-habits">
+      <section class="card">
+        <div class="card-head"><h2>生活习惯</h2><span class="tag">每 7 天总结</span></div>
+        <div class="habit-list" id="habit-list"><div class="empty">还不到 7 天</div></div>
+      </section>
+    </section>
+  </main>
+</div>
+<script src="/app.js"></script>
+</body>
+</html>
