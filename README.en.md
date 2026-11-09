@@ -27,9 +27,9 @@ Updates come whenever they come — you can occasionally catch me in @YGZ醒脑�
 
 ## Features
 
-<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）"></a></p>
+<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="600" alt="Meowlisis workflow overview"></a></p>
 
-*⚠️ Core feature flowchart (work in progress — click the image to view it full size)*
+*⚠️ Meowlisis workflow overview (click the image to view it full size)*
 
 For the full feature, module, configuration and runtime documentation, see [Detailed module documentation](INSTRUCTION.en.md).
 

@@ -27,9 +27,9 @@
 
 ## 功能说明
 
-<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis 核心功能流程图（待完善）"></a></p>
+<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="600" alt="Meowlisis 工作流简析"></a></p>
 
-*⚠️ 核心功能流程图（待完善，点击图片查看大图）*
+*⚠️ Meowlisis 工作流简析（点击图片查看大图）*
 
 完整的功能、模块、配置与运行说明见 [项目各个模块详细说明](INSTRUCTION.md)。
 
