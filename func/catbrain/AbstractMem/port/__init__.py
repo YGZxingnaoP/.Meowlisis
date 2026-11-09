@@ -9,6 +9,7 @@ def force_tool_call(llm, messages, tools, tool_name, max_attempts=3, temperature
         extra["temperature"] = temperature
     if max_tokens is not None:
         extra["max_tokens"] = max_tokens
+    extra["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
     for _ in range(max_attempts):
         resp = llm.chat(messages, tools=tools, **extra)
         if not resp or not resp.choices:

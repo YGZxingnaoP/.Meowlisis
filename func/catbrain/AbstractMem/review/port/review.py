@@ -27,11 +27,13 @@ class MeowMemoryReviewLLM:
         else:
             from func.catbrain.AbstractMem.port.deepseek import MeowAbstractDeepSeekLLM
             llm = MeowAbstractDeepSeekLLM()
+        if self.config.model:
+            llm.model = self.config.model
+        if self.config.max_tokens:
+            llm.max_tokens = self.config.max_tokens
         if self.config.api_key:
             llm.api_key = self.config.api_key
             llm.base_url = self.config.base_url or llm.base_url
-            llm.model = self.config.model or llm.model
-            llm.max_tokens = self.config.max_tokens
             try:
                 from openai import OpenAI
                 llm.client = OpenAI(api_key=llm.api_key, base_url=llm.base_url)
