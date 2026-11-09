@@ -3,9 +3,9 @@
 # 导演表演执行器：导演激活期间所有开口（开场 / 用户回合 / 失望 / 重写）都由这里生成
 #
 # 本文件是主链路 LLmCore._ai_response 的「复制编排」：
-#   - 流式清洗/切段/水词：copied/output.py
-#   - 短期记忆组装：copied/message_builder.py
-#   - 情绪更新：copied/emotion.py
+#   - 流式清洗/切段/水词：director/output.py
+#   - 短期记忆组装：director/message_builder.py
+#   - 情绪更新：director/emotion.py
 # 纪律：不 import func/llm/llm_core.py、output.py、narration/*、message_builder.py、
 #       emotion_controller.py、state.py；跨模块一律走 func/pipeline 桥接。
 
@@ -18,10 +18,10 @@ from func.log.default_log import DefaultLog
 from func.config.app_config import AppConfig
 from func.llm.config import LLMConfig
 from func.llm_active.config import AutoActiveConfig
-from func.llm_active.director.copied.output import Output
-from func.llm_active.director.copied.message_builder import MessageBuilder
-from func.llm_active.director.copied.emotion import EmotionController
-from func.llm_active.director.tools import STEP_TOOL_NAME, step_tool
+from func.llm_active.director.output import Output
+from func.llm_active.director.message_builder import MessageBuilder
+from func.llm_active.director.emotion import EmotionController
+from func.llm_active.director.tools import ACT_TOOL_NAME, STEP_TOOL_NAME, act_tool, step_tool
 from func.pipeline.llm_timer import LLMTimerBridge
 from func.pipeline.llm_toolbox import LLMToolboxBridge, ToolCallAccumulator
 from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
@@ -138,15 +138,16 @@ class DirectorResponder:
         abort = SpeechInterruptBridge()
         token = abort.token()
 
-        # 1) 工具与合并开关（与主链路一致：合并开着才挂 toolbox 工具）
+        # 1) 工具：表演回合只挂 director_step + 白名单动作；不再把父级 schema 全量塞给模型
         tools = [step_tool()]
+        act_schema = act_tool(self.core.action_catalog())
+        if act_schema:
+            tools.append(act_schema)
         merge_on = False
         try:
             merge_on = bool(self.toolbox.merge_enabled())
         except Exception:
             merge_on = False
-        if merge_on:
-            tools = tools + self.toolbox.get_schemas()
 
         # 2) 用户侧长期记忆（与主链路顺序一致：先记用户，再判本地硬触发）
         if is_reply:
@@ -191,11 +192,6 @@ class DirectorResponder:
         if not prompt:
             self.log.warning("[导演] 系统提示词为空，放弃本次开口")
             return ""
-        if merge_on:
-            try:
-                prompt = self.toolbox.attach_tool_hint(prompt)
-            except Exception:
-                self.log.exception("[导演] 追加工具提示失败")
         prompt = f"{prompt}\n\n{self._turn_hint(kind, user_text)}"
 
         # 5) 组装消息
@@ -235,7 +231,7 @@ class DirectorResponder:
             self.log.exception("[导演] 流式生成异常")
 
         payload = acc.payload() if acc.has_calls() else []
-        step_args, other_calls = self._split_calls(payload)
+        step_args, act_calls, other_calls = self._split_calls(payload)
 
         if abort.aborted(token):
             self.log.info("[导演] 已被新的输入打断，本轮不写记忆、不推进计划")
@@ -244,8 +240,8 @@ class DirectorResponder:
                 self.ltmem.clear_memory_context()
             return ""
 
-        # 8) 只调了工具、没正文 → 去掉全部工具重生成一次
-        if not got_content and step_args is not None:
+        # 8.5) 只调了工具、没正文 → 去掉全部工具重生成一次
+        if not got_content and (step_args is not None or act_calls):
             self.log.info("[导演] 只回了 director_step，没有正文，去工具重生成")
             output = Output(cfg, source=source)
             retry_messages = [dict(m) for m in messages]
@@ -270,6 +266,8 @@ class DirectorResponder:
         final_text = output.finalize(traceid) if got_content else ""
         if not final_text.strip():
             self.log.warning("[导演] 本次没有可用正文，不写记忆")
+            if act_calls:
+                self._run_actions(act_calls, uid, user_text)
             if is_reply:
                 self.ltmem.clear_memory_context()
             return ""
@@ -287,7 +285,9 @@ class DirectorResponder:
         except Exception:
             self.log.exception("[导演] 记录长期记忆失败")
 
-        # 11) 推进计划（完成打标 / 下一步 / clear），再分发其它工具
+        # 11) 先执行本次动作，再推进计划（避免最后一步 clear 后动作被拒）
+        if act_calls:
+            self._run_actions(act_calls, uid, user_text)
         if step_args is not None:
             try:
                 self.core.apply_step(step_args)
@@ -299,10 +299,9 @@ class DirectorResponder:
             except Exception:
                 self.log.exception("[导演] 失步计数异常")
         if other_calls:
-            try:
-                self.toolbox.handle_tool_calls(other_calls, uid, user_text)
-            except Exception:
-                self.log.exception("[导演] 工具分发异常")
+            # 导演不再直接派发任意工具：只允许白名单父级入口走 director_act
+            names = [str((c.get("function") or {}).get("name") or "?") for c in other_calls]
+            self.log.warning(f"[导演] 忽略非白名单工具调用: {names}")
 
         # 12) δ-mem 追加（仅用户回合）
         if is_reply:
@@ -334,22 +333,52 @@ class DirectorResponder:
 
     def _turn_hint(self, kind: str, user_text: str) -> str:
         if kind == "reply":
-            return ("# 这一轮只做这些\n"
+            hint = ("# 这一轮只做这些\n"
                     f"他刚说的是「{user_text}」。只看导演块里的[>]这一步，别把后面几步说完；"
                     "这一步说出口就算完成；如果这一步要讲由头，就说具体那一处（画面/台词），别空着。"
                     "说完必须调用 director_step 交回进度。")
-        if kind == "idle_disappointed":
-            return ("# 这一轮只做这些\n"
+        elif kind == "idle_disappointed":
+            hint = ("# 这一轮只做这些\n"
                     "他一直没回你。你有点失望（别抱怨、别卑微），把[>]这一步换个钩子再试一次；"
                     "要改这一步的做法就填 adjust，别把刚才的话重讲一遍。"
                     "说完必须调用 director_step 交回进度。")
-        if kind == "rewrite":
-            return ("# 这一轮只做这些\n"
+        elif kind == "rewrite":
+            hint = ("# 这一轮只做这些\n"
                     "这条路走不通了，按新的走向重新开口，只走第一歩，别说后面；"
                     "说完必须调用 director_step 交回进度。")
-        return ("# 这一轮只做这些\n"
-                "现在由你先开口。只看导演块里的[>]这一步，一次只走一步，别说后面几步；"
-                "说完必须调用 director_step 交回进度。")
+        else:
+            hint = ("# 这一轮只做这些\n"
+                    "现在由你先开口。只看导演块里的[>]这一步，一次只走一步，别说后面几步；"
+                    "说完必须调用 director_step 交回进度。")
+        action = self._action_hint()
+        return f"{hint}\n{action}" if action else hint
+
+    def _action_hint(self) -> str:
+        """当前步带动作时，告诉角色怎么触发父级入口（不写死台词）"""
+        try:
+            plan = self.core.current_plan()
+        except Exception:
+            return ""
+        if not plan.get("active"):
+            return ""
+        current = None
+        for step in plan.get("steps") or []:
+            if step.get("id") == plan.get("current_id") and not step.get("done"):
+                current = step
+                break
+        if current is None:
+            for step in plan.get("steps") or []:
+                if not step.get("done"):
+                    current = step
+                    break
+        if not isinstance(current, dict):
+            return ""
+        tool = str(current.get("tool") or "").strip()
+        if not tool:
+            return ""
+        instruction = str(current.get("instruction") or "").strip() or "按这一步的目标决定要做什么"
+        return (f"如果这一句就要动手：调用 {ACT_TOOL_NAME}，tool={tool}，"
+                f"instruction 写清「{instruction}」；说完这一句再调用，不要只调工具不说话。")
 
     def _last_user_text(self) -> str:
         try:
@@ -363,8 +392,9 @@ class DirectorResponder:
     # ==================== 工具结果拆分 ====================
     @staticmethod
     def _split_calls(payload):
-        """拆出 director_step 与其它工具调用"""
+        """拆出 director_step / director_act / 其它（其它一律不派发）"""
         step_args = None
+        acts = []
         other = []
         for call in payload or []:
             fn = (call.get("function") or {}) if isinstance(call, dict) else {}
@@ -377,8 +407,35 @@ class DirectorResponder:
                 if isinstance(args, dict):
                     step_args = args
                 continue
+            if name == ACT_TOOL_NAME:
+                acts.append(call)
+                continue
             other.append(call)
-        return step_args, other
+        return step_args, acts, other
+
+    def _run_actions(self, calls, uid, user_text: str):
+        """执行 director_act：只把指令交给白名单父级入口"""
+        for call in calls or []:
+            fn = (call.get("function") or {}) if isinstance(call, dict) else {}
+            args = self._parse_args(fn.get("arguments"))
+            tool = str(args.get("tool") or "").strip()
+            instruction = str(args.get("instruction") or "").strip()
+            if not tool or not instruction:
+                self.log.warning("[导演] director_act 缺少 tool/instruction，忽略")
+                continue
+            try:
+                self.core.act.execute(tool, instruction, uid, user_text,
+                                      str(args.get("why") or ""))
+            except Exception:
+                self.log.exception("[导演] 动作触发异常")
+
+    @staticmethod
+    def _parse_args(raw):
+        try:
+            data = json.loads(raw or "{}", strict=False)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
 
     # ==================== 情绪 / 静默 ====================
     def _update_emotion_async(self, prompt: str, reply_text: str):

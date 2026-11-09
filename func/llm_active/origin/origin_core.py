@@ -106,7 +106,7 @@ class AutoOriginCore:
     def _stream_generate(self, messages):
         """流式生成并写短期记忆（origin 深度思考输出）"""
         traceid = str(uuid.uuid4())
-        output = Output(self.config, LLmState(), enable_narration=False)
+        output = Output(self.config, LLmState(), enable_narration=False, source="active")
         stream = self.llm.chat_stream(messages, options={"enable_thinking": True})
         for chunk in stream:
             if not chunk.choices:

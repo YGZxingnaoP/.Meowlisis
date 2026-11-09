@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/llm_active/director/copied/message_builder.py
+# func/llm_active/director/message_builder.py
 # 【复制件】短期记忆管理 + 消息组装
 # 来源：func/llm/message_builder.py（逐字复制，额外加 flush_all / build_context）
 # 最新2轮缓存于内存，更早轮次归档到 pipeline 的 public_short_mem.json

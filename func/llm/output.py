@@ -3,6 +3,7 @@
 # LLM 流式输出处理：剥离 think/括号并分段送入 TTS 队列
 
 import re
+import threading
 from typing import List
 
 from func.log.default_log import DefaultLog
@@ -32,6 +33,8 @@ class Output:
         self._paren_depth = 0
         self._bracket_depth = 0
         self._tag = ""
+        self._lock = threading.Lock()
+        self._closed = False
 
         # 丰富性清洗：本轮开始按上一轮平滑得分取档位，边生成边清洗
         self.narration = None
@@ -148,7 +151,10 @@ class Output:
         self.chat_status = ""
 
     def finalize(self, traceid: str) -> str:
-        """结束流式：刷出剩余内容并返回清理后的完整文本"""
+        """结束流式：刷出剩余内容并返回清理后的完整文本
+
+        深度回忆开启时先不结束 TTS 任务，由后续补充内容续说，最后统一 close。
+        """
         if self._tag:
             self._flush_tag()
         if self.cleaner is not None:
@@ -157,15 +163,21 @@ class Output:
                 if not self.temp and c in self.split_chars:
                     continue
                 self.temp += c
+        hold = self._hold_for_deep_recall()
+        end_status = "" if hold else "end"
         tail_text = self._collapse_punctuation(self.temp.strip())
         if tail_text and not self._is_punct_only(tail_text):
-            self._send(tail_text, traceid, "end")
+            self._send(tail_text, traceid, end_status)
+            if hold:
+                self.segment_idx += 1
         elif self.segment_idx == 0:
             cleaned = self.cleaner.cleaned if self.cleaner is not None else self.filtered_content
             cleaned_text = self._clean_punctuation(cleaned)
             if cleaned_text and not self._is_punct_only(cleaned_text):
-                self._send(cleaned_text, traceid, "end")
-        else:
+                self._send(cleaned_text, traceid, end_status)
+                if hold:
+                    self.segment_idx += 1
+        elif not hold:
             self.tts_bridge.send_to_answer_queue(
                 self.llm_data, "", traceid,
                 seg_index=self.segment_idx, chat_status="end", source=self.source
@@ -177,6 +189,8 @@ class Output:
             result = self._clean_punctuation(self.cleaner.cleaned)
         else:
             result = self._clean_punctuation(self.remove_analysis(self.filtered_content))
+        if self.narration is not None:
+            result = self.narration.dilute(result)
         if not result.strip() and str(self.filtered_content or "").strip():
             # 模型其实说话了，但被清洗规则整段吃掉 → 上层看到的是空回复。
             # 最常见的就是整段用括号写动作（（歪头）…）或包在【】/<think> 里：
@@ -185,10 +199,77 @@ class Output:
             self.log.warning(
                 f"[{traceid}] 回复被清洗规则吃掉：原始 {len(self.filtered_content)} 字 → 空。"
                 f"原文片段={str(self.filtered_content)[:120]!r}")
-        return "" if self._is_punct_only(result) else result
+        final_text = "" if self._is_punct_only(result) else result
+        if hold:
+            if not final_text.strip():
+                self.close(traceid)
+            else:
+                try:
+                    from func.pipeline.llm_deep_recall import LLMDeepRecallBridge
+                    LLMDeepRecallBridge().after_reply(self, traceid, final_text, self.source)
+                except Exception:
+                    self.log.exception("深度回忆挂载失败，直接收尾")
+                    self.close(traceid)
+        return final_text
+
+    def _hold_for_deep_recall(self) -> bool:
+        """主链普通回复才保留 TTS 任务；弹幕/静默/配置关闭不保留"""
+        if str(self.source or "") in ("danmaku", "active", "toolbox"):
+            return False
+        try:
+            from func.pipeline.llm_deep_recall import LLMDeepRecallBridge
+            if not LLMDeepRecallBridge().enabled():
+                return False
+            from func.pipeline.silence_state import SilenceState
+            return not bool(SilenceState().muted)
+        except Exception:
+            return False
+
+    def send_extension(self, text: str, traceid: str):
+        """把深度回忆补充内容接到同一 traceid 后面（不结束）"""
+        body = self._strip_tts_markup(self.clean_text(str(text or ""))).strip()
+        if not body:
+            return
+        if self.narration is not None:
+            body = self.narration.clean_complete(body)
+            if not body.strip():
+                return
+        segments = self.split_text(body, self.split_chars, self.split_limit) or [body]
+        with self._lock:
+            if self._closed:
+                return
+            for seg in segments:
+                cleaned = self._collapse_punctuation(str(seg or "").strip())
+                if not cleaned or self._is_punct_only(cleaned):
+                    continue
+                self._send(cleaned, traceid, "")
+                self.segment_idx += 1
+
+    @staticmethod
+    def _strip_tts_markup(text: str) -> str:
+        """补充内容送 TTS 前去掉轻量 markdown 标记（不改动全局 clean_text）"""
+        s = str(text or "")
+        s = re.sub(r"```[\s\S]*?```", "", s)
+        s = re.sub(r"`([^`]*)`", r"\1", s)
+        s = re.sub(r"\*\*([^*]+)\*\*", r"\1", s)
+        s = re.sub(r"(?m)^[ \t]{0,3}#{1,6}[ \t]*", "", s)
+        s = re.sub(r"(?m)^[ \t]{0,3}[-*+][ \t]+", "", s)
+        return s
+
+    def close(self, traceid: str):
+        """结束同一 traceid 的 TTS 任务（幂等）"""
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._send("", traceid, "end")
 
     def _send(self, text: str, traceid: str, chat_status: str):
         """通过桥接把文本片段推送到 TTS 队列"""
+        if not str(text or "").strip():
+            return
+        if self.narration is not None:
+            text = self.narration.dilute(text)
         self.tts_bridge.send_to_answer_queue(
             self.llm_data, text, traceid,
             seg_index=self.segment_idx,

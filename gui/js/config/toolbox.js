@@ -37,6 +37,36 @@ Object.assign(Config, {
             ], 'medium', 'DeepSeek/Aliyun 当前仅支持开/关，medium 及以上均开启思考') +
             this._num('回复字数', 'napcat.reply_word_count', 16, 1, 100, 1,
                 '每次回复约该字数，严格上限 = 该值 × 驳回字数系数') +
+            this._section('严肃回复模式（明确要建议/决策时）') +
+            this._check('启用严肃回复模式', 'napcat.serious_reply.enabled', false,
+                '默认关闭；只有判官判定“明确在要建议/决策/专业分析”时才临时放开字数，普通回复完全不受影响') +
+            this._num('严肃回复字数', 'napcat.serious_reply.word_count', 100, 30, 300, 10,
+                '严肃回复的目标字数；严格上限 = 该值 × 驳回字数系数') +
+            this._num('驳回字数系数', 'napcat.serious_reply.reject_ratio', 1.5, 1, 3, 0.1,
+                '严肃回复字数 > 目标字数 × 该系数即驳回；默认 1.5（100 字 → 上限 150）') +
+            this._num('最多驳回次数', 'napcat.serious_reply.reject_rounds', 3, 0, 5, 1,
+                '字数/markdown/模板话任一不合格都驳回，最多重写几次；用完强制剥净 markdown 并按句截断') +
+            this._check('群聊 @/关键词也启用', 'napcat.serious_reply.apply_group', true,
+                '关闭后只在私聊生效；冒泡插话永远不触发严肃模式') +
+            this._num('判官输出 tokens', 'napcat.serious_reply.judge_max_tokens', 160, 64, 512, 32,
+                '严肃判官只输出一个工具调用，默认 160 足够') +
+            this._section('QQ 深度回忆（快速回复后补说）') +
+            this._check('启用 QQ 深度回忆', 'napcat.deep_recall.enabled', true,
+                '只有判官认定“在问你怎么看他/你们以前/还记不记得/生日”时，才在短句回复后追加 1~2 条；默认严格判定') +
+            this._num('实际工具轮数上限', 'napcat.deep_recall.max_rounds', 12, 1, 30, 1,
+                '代码实际允许的最大工具轮数；提示词里只告诉模型 9 轮') +
+            this._num('提示词轮数', 'napcat.deep_recall.prompt_rounds', 9, 1, 20, 1) +
+            this._num('总超时(秒)', 'napcat.deep_recall.timeout_s', 20, 3, 120, 1) +
+            this._num('追加消息条数', 'napcat.deep_recall.max_messages', 2, 1, 4, 1,
+                '最多追加几条 QQ 消息；每条仍受普通/严肃字数上限约束') +
+            this._num('单条补说字数上限', 'napcat.deep_recall.max_extra_chars', 100, 40, 300, 10,
+                '每条补说最多多少字，超出优先在句号/换行处截断') +
+            this._num('记忆证据上限(字符)', 'napcat.deep_recall.max_evidence_chars', 6000, 500, 30000, 500,
+                '一次深度回忆中，agent 通过工具读到的记忆结果总字符上限；超出会截断或停止继续读。8k 上下文建议 2500~3000，32k 建议 6000') +
+            this._num('摘要条数', 'napcat.deep_recall.summary_limit', 6, 1, 20, 1,
+                '摘要优先；不够时模型可再调工具读 character/memory 原文') +
+            this._num('原文回溯天数', 'napcat.deep_recall.raw_days', 7, 1, 90, 1) +
+            this._num('原文最多条数', 'napcat.deep_recall.raw_limit', 30, 1, 200, 1) +
             this._section('回复驳回（字数 + 标点联合判定）') +
             this._num('驳回字数系数（× 回复字数）', 'napcat.reply_reject_ratio', 1.5, 1, 5, 0.1,
                 '回复字数 > 回复字数 × 该系数即驳回重写；默认 1.5') +
@@ -201,6 +231,19 @@ Object.assign(Config, {
                 '规划清单的输出上限；步数本身不设限制') +
             this._num('连续几轮没打标补判', 'llm_active.director.stall_turns', 2, 0, 10, 1,
                 '模型连续几轮没调用 director_step 就补一次小监工（0=关闭）') +
+            this._section('导演主动动作（父级工具）') +
+            this._check('允许主动触发父级工具', 'llm_active.director.tool_enabled', true,
+                '开启后角色在表演中可调用 director_act，把指令交给白名单里的父级入口（画图/唱歌/看屏幕），由子链路自己决策执行；不会直接调用内部子工具') +
+            this._wordTagEditor('动作白名单', 'llm_active.director.tool_whitelist',
+                ['flux_paint', 'impromptu_sing', 'pass_the_baton', 'use_vision'],
+                '回车添加入口名，点 × 删除；不再用逗号分隔',
+                '入口名') +
+            this._num('同一动作冷却(秒)', 'llm_active.director.tool_cooldown', 120, 0, 3600, 10,
+                '同一种父级入口两次触发之间的最小间隔，避免一场里反复画画/唱歌') +
+            this._num('本场最多动作数', 'llm_active.director.tool_max_per_plan', 2, 0, 10, 1,
+                '一场导演里最多触发几次父级动作；0 = 不限制（不建议）') +
+            this._num('保留动作结果条数', 'llm_active.director.tool_result_keep', 4, 1, 20, 1,
+                '动作执行结果保留几条给下一轮提示词参考') +
             this._check('重启后恢复导演', 'llm_active.director.resume_on_start', false,
                 '默认不恢复：避免几小时前的旧计划在重启后复活');
     },

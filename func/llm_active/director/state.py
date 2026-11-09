@@ -35,6 +35,8 @@ def normalize_steps(raw_steps) -> List[Dict]:
             "move": _text(row.get("move")),
             "expect": _text(row.get("expect")),
             "if_not": _text(row.get("if_not")),
+            "tool": _text(row.get("tool")),
+            "instruction": _text(row.get("instruction"), 200),
             "done": False,
         })
     return steps
@@ -60,6 +62,7 @@ def new_plan(kind: str, reason: str, material: Optional[Dict], raw_steps) -> Opt
         "current_id": steps[0]["id"],
         "steps": steps,
         "reactions": [],
+        "actions": [],
         "clear_reason": "",
     }
 
@@ -98,7 +101,7 @@ def _apply_adjust(plan: Dict, rows) -> bool:
                     target = step
                     break
         if target is not None:
-            for key in ("goal", "move", "expect", "if_not"):
+            for key in ("goal", "move", "expect", "if_not", "tool", "instruction"):
                 value = _text(row.get(key))
                 if value:
                     target[key] = value
@@ -112,6 +115,8 @@ def _apply_adjust(plan: Dict, rows) -> bool:
             "move": _text(row.get("move")),
             "expect": _text(row.get("expect")),
             "if_not": _text(row.get("if_not")),
+            "tool": _text(row.get("tool")),
+            "instruction": _text(row.get("instruction"), 200),
             "done": False,
         })
         next_id += 1
@@ -212,5 +217,12 @@ def render_status(plan: Dict) -> str:
     for step in plan.get("steps") or []:
         mark = "[x]" if step.get("done") else (
             "[>]" if step.get("id") == plan.get("current_id") else "[ ]")
-        lines.append(f"{mark} {step.get('id')} {step.get('goal')}")
+        tool = str(step.get("tool") or "").strip()
+        suffix = f"（动作：{tool}）" if tool else ""
+        lines.append(f"{mark} {step.get('id')} {step.get('goal')}{suffix}")
+    actions = plan.get("actions") or []
+    if actions:
+        lines.append("最近动作：")
+        for item in actions[-2:]:
+            lines.append(f"  · {item.get('tool', '')}：{str(item.get('result', ''))[:80]}")
     return "\n".join(lines)

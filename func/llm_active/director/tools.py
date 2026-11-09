@@ -5,6 +5,51 @@
 PLAN_TOOL_NAME = "director_plan"
 STEP_TOOL_NAME = "director_step"
 JUDGE_TOOL_NAME = "judge_bored"
+ACT_TOOL_NAME = "director_act"
+
+
+def act_tool(catalog=None):
+    """主动触发父级工具：只给白名单入口，instruction 交给子链路自己决策
+
+    catalog：[{"name": ..., "description": ...}]；为空时返回 None（表演回合不挂工具）。
+    """
+    rows = [row for row in (catalog or []) if row.get("name")]
+    if not rows:
+        return None
+    names = [str(row.get("name")) for row in rows]
+    hints = "\n".join(f"- {row.get('name')}：{row.get('description', '')}" for row in rows)
+    return {
+        "type": "function",
+        "function": {
+            "name": ACT_TOOL_NAME,
+            "description": (
+                "你主动想做一件事时调用：只触发父级模块入口，不直接调用它的内部子工具。\n"
+                "instruction 写清你要它做什么（例如画什么、唱什么、看屏幕时关注什么），"
+                "父级链路会自己决定具体提示词/歌曲/画面。\n"
+                "说完这一句再调用；同一场不要重复触发同一种动作。\n"
+                f"可用入口：\n{hints}"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "tool": {
+                        "type": "string",
+                        "enum": names,
+                        "description": "要触发的父级入口",
+                    },
+                    "instruction": {
+                        "type": "string",
+                        "description": "给这个入口的指令：要做什么、重点是什么（不是台词）",
+                    },
+                    "why": {
+                        "type": "string",
+                        "description": "为什么现在想做这件事（一句话）",
+                    },
+                },
+                "required": ["tool", "instruction"],
+            },
+        },
+    }
 
 
 def plan_tool():
@@ -47,6 +92,10 @@ def plan_tool():
                                            "description": "猜他会怎么接"},
                                 "if_not": {"type": "string",
                                            "description": "他没这么接时，怎么把他拉回我的思路"},
+                                "tool": {"type": "string",
+                                         "description": "这一步如果要做一件事，填父级入口名（可空）"},
+                                "instruction": {"type": "string",
+                                                "description": "给父级入口的指令，写做什么/重点是什么（可空）"},
                             },
                             "required": ["goal", "move", "expect", "if_not"],
                         },

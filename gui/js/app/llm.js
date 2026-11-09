@@ -214,29 +214,6 @@ Object.assign(App, {
         });
     },
 
-    // ============ 数据库来源站点编辑器 ============,
-    async openLlmModelPanel() {
-        try {
-            const html = Config.llm_model();
-            Modal.show('LLM 模型设置', html, async () => {
-                try {
-                    const updates = Config.collectValues();
-                    Config.applyUpdates(updates, this.config);
-                    await API.saveConfig(this.config);
-                    this.showToast('LLM 模型配置已保存');
-                } catch (e) {
-                    this.showToast('保存失败: ' + e.message, true);
-                }
-            });
-            setTimeout(() => {
-                this.bindTabs();
-                this.bindSplitFlagEditor();
-            }, 10);
-        } catch (e) {
-            console.error('Error rendering llm model panel:', e);
-            this.showToast('面板渲染失败: ' + e.message, true);
-        }
-    },
     async openLlmPromptPanel() {
         try {
             let frontData = {};

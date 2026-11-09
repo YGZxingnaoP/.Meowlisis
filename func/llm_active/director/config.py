@@ -37,3 +37,16 @@ class AutoDirectorConfig:
 
         # 重启后是否恢复上次导演（默认不恢复，避免几小时前的旧计划复活）
         self.resume_on_start = bool(d.get('resume_on_start', False))
+
+        # 主动触发父级工具（导演表演里可以顺手画/唱/看屏幕；只走父级入口）
+        self.tool_enabled = bool(d.get('tool_enabled', True))
+        raw_tools = d.get('tool_whitelist')
+        if isinstance(raw_tools, (list, tuple)):
+            self.tool_whitelist = tuple(str(x).strip() for x in raw_tools if str(x).strip())
+        elif isinstance(raw_tools, str):
+            self.tool_whitelist = tuple(x.strip() for x in raw_tools.split(',') if x.strip())
+        else:
+            self.tool_whitelist = ("flux_paint", "impromptu_sing", "pass_the_baton", "use_vision")
+        self.tool_cooldown = float(d.get('tool_cooldown', 120) or 0)
+        self.tool_max_per_plan = int(d.get('tool_max_per_plan', 2) or 2)
+        self.tool_result_keep = int(d.get('tool_result_keep', 4) or 4)

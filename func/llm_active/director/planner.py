@@ -37,9 +37,10 @@ class DirectorPlanner:
         """生成一份计划；返回 None 表示「不开始导演」（调用方回落原主动回复）"""
         cfg = AutoDirectorConfig()
         material = self.material.pick()
+        catalog = self.core.action_catalog()
         messages = [
             {"role": "system", "content": self._system()},
-            {"role": "user", "content": self._user(kind, reason, material)},
+            {"role": "user", "content": self._user(kind, reason, material, catalog)},
         ]
         tools = LLMToolboxBridge().get_memory_schemas() + [plan_tool()]
         max_rounds = max(1, int(cfg.planner_max_tool_rounds))
@@ -82,8 +83,10 @@ class DirectorPlanner:
             if not bool(plan_args.get("start")):
                 self.log.info(f"[导演] 规划器判断不开始：{str(plan_args.get('reason') or '')[:40]}")
                 return None
+            allowed = {str(row.get("name")) for row in (catalog or []) if row.get("name")}
+            steps = self._validate_steps(plan_args.get("steps"), allowed)
             plan = new_plan(kind, str(plan_args.get("reason") or reason),
-                            self._material_meta(material), plan_args.get("steps"))
+                            self._material_meta(material), steps)
             if plan is None:
                 self.log.warning("[导演] 计划没有有效步骤，放弃本次开始")
                 return None
@@ -117,14 +120,44 @@ class DirectorPlanner:
         ]
         return "\n\n".join(p for p in parts if p)
 
-    def _user(self, kind: str, reason: str, material) -> str:
+    def _user(self, kind: str, reason: str, material, catalog=None) -> str:
         parts = [
             f"【这一次的情况】{self.KIND_DESC.get(kind, self.KIND_DESC['start_idle'])}",
             f"【判断依据】{reason}" if reason else "",
             self.material.describe(material),
+            self._tools_text(catalog),
             f"想清楚这一场怎么演，然后调用 {PLAN_TOOL_NAME} 输出计划。",
         ]
         return "\n\n".join(p for p in parts if p)
+
+    @staticmethod
+    def _tools_text(catalog) -> str:
+        rows = [row for row in (catalog or []) if row.get("name")]
+        if not rows:
+            return ""
+        lines = ["【可用动作（可空）】这一步如果要做一件事，可以在 step 里填 tool + instruction；"
+                 "不确定就留空，不要为了用工具而用："]
+        for row in rows:
+            lines.append(f"- {row.get('name')}：{row.get('description', '')}")
+        lines.append("instruction 写清要它做什么（画什么/唱什么/看屏幕时关注什么），不要写台词。")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _validate_steps(raw_steps, allowed):
+        """过滤掉不在白名单里的 tool；其余字段原样保留"""
+        if not isinstance(raw_steps, (list, tuple)):
+            return []
+        rows = []
+        for row in raw_steps:
+            if not isinstance(row, dict):
+                continue
+            item = dict(row)
+            tool = str(item.get("tool") or "").strip()
+            if tool and tool not in allowed:
+                item["tool"] = ""
+                item["instruction"] = ""
+            rows.append(item)
+        return rows
 
     def _psyche_text(self) -> str:
         try:

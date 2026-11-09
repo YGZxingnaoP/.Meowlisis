@@ -320,34 +320,56 @@ class SystemPromptBridge:
         return self._append_turtle_soup(prompt, "live")
 
     def get_napcat_prompt(self, uid=None, current_message: str = "",
-                          user_id: str = "") -> str:
-        """NapCat 提示词：前置词(行为约束+QQ指令) + body + 后置词(人设+说话人)"""
+                          user_id: str = "", serious: bool = False) -> str:
+        """NapCat 提示词：前置词(行为约束+QQ指令) + body + 后置词(人设+说话人)
+
+        serious=True 时改用严肃回复块（100字/上限150/禁 markdown 与模板）。
+        """
         body = ""
         if self._builder:
             body = self._builder.build(uid, current_message, online=True)
         front = self.get_napcat_front_prompt()
         if front:
-            # QQ 指令与字数限制追加到行为约束（前置词）后
-            word_count, limit, punct_on, punct_max = 10, 15, True, 4
-            try:
-                from func.toolbox.napcat.config import TBNapCatConfig
-                _cfg = TBNapCatConfig()
-                word_count = int(_cfg.reply_word_count or 10)
-                _rej = _cfg.reject_conf("private")
-                _r = _rej.get("ratio")
-                limit = int(word_count * (float(_r) if _r is not None else 1.5))
-                punct_on = bool(_rej.get("punct_enabled", True))
-                punct_max = int(_rej.get("punct_max", 4) or 4)
-            except Exception:
-                pass
-            _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
-            _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
-            front = (
-                f"{front}\n你在QQ里回复TA的消息，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
-                f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
-                f"{_punct_line}\n"
-                f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收"
-            )
+            if serious:
+                word_count, limit = 100, 150
+                try:
+                    from func.toolbox.napcat.config import TBNapCatConfig
+                    conf = TBNapCatConfig().serious_conf("private")
+                    word_count = int(conf.get("word_count") or 100)
+                    limit = int(word_count * float(conf.get("ratio") or 1.5))
+                except Exception:
+                    pass
+                front = (
+                    f"{front}\n你在QQ里认真回复TA。可以写清楚，但仍然是平时的你，不是客服、不是助手\n"
+                    f"这次回复约{word_count}字，严格不超过{limit}字（超出会被驳回重写）\n"
+                    "禁止任何 markdown：不要标题、加粗、斜体、列表、序号、表格、代码块、引用\n"
+                    "禁止模板化输出：不要“首先/其次/最后/总之/总而言之/希望对你有帮助”这类话\n"
+                    "直接用自然的口语段落说清楚；可以用句号和换行断句，不要用序号列点\n"
+                    "保持人设、称呼和语气，不要变成说明书\n"
+                    "只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
+                )
+            else:
+                # QQ 指令与字数限制追加到行为约束（前置词）后
+                word_count, limit, punct_on, punct_max = 10, 15, True, 4
+                try:
+                    from func.toolbox.napcat.config import TBNapCatConfig
+                    _cfg = TBNapCatConfig()
+                    word_count = int(_cfg.reply_word_count or 10)
+                    _rej = _cfg.reject_conf("private")
+                    _r = _rej.get("ratio")
+                    limit = int(word_count * (float(_r) if _r is not None else 1.5))
+                    punct_on = bool(_rej.get("punct_enabled", True))
+                    punct_max = int(_rej.get("punct_max", 4) or 4)
+                except Exception:
+                    pass
+                _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
+                _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
+                front = (
+                    f"{front}\n你在QQ里回复TA的消息，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
+                    f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
+                    f"{_punct_line}\n"
+                    f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收"
+                )
         post = self.get_post_prompt()
         if post:
             post = f"{post}\n你现在在和{display_name(uid)}说话"
@@ -397,8 +419,11 @@ class SystemPromptBridge:
 
     def get_napcat_group_prompt(self, uid=None, group_name: str = "",
                                 group_info_text: str = "", current_message: str = "",
-                                group_id: str = "") -> str:
-        """NapCat 群聊提示词：前置词(行为约束+QQ群聊指令) + body(用户档案或群聊档案) + 后置词(在群内聊天)"""
+                                group_id: str = "", serious: bool = False) -> str:
+        """NapCat 群聊提示词：前置词(行为约束+QQ群聊指令) + body(用户档案或群聊档案) + 后置词(在群内聊天)
+
+        serious=True 时改用严肃回复块（100字/上限150/禁 markdown 与模板）。
+        """
         body = ""
         if self._builder and hasattr(self._builder, "build_group"):
             body = self._builder.build_group(
@@ -408,27 +433,46 @@ class SystemPromptBridge:
             body = self._builder.build(uid, current_message, online=True)
         front = self.get_napcat_front_prompt()
         if front:
-            word_count, limit, punct_on, punct_max = 10, 15, True, 4
-            try:
-                from func.toolbox.napcat.config import TBNapCatConfig
-                _cfg = TBNapCatConfig()
-                word_count = int(_cfg.group_reply_word_count or 10)
-                _rej = _cfg.reject_conf("group")
-                _r = _rej.get("ratio")
-                limit = int(word_count * (float(_r) if _r is not None else 1.5))
-                punct_on = bool(_rej.get("punct_enabled", True))
-                punct_max = int(_rej.get("punct_max", 4) or 4)
-            except Exception:
-                pass
-            _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
-            _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
-            front = (
-                f"{front}\n你在QQ群【{group_name}】里聊天，群里有多个人，你说的话全群都看得见，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
-                f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
-                f"{_punct_line}\n"
-                f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收\n"
-                f"只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
-            )
+            if serious:
+                word_count, limit = 100, 150
+                try:
+                    from func.toolbox.napcat.config import TBNapCatConfig
+                    conf = TBNapCatConfig().serious_conf("group")
+                    word_count = int(conf.get("word_count") or 100)
+                    limit = int(word_count * float(conf.get("ratio") or 1.5))
+                except Exception:
+                    pass
+                front = (
+                    f"{front}\n你在QQ群【{group_name}】里认真回复对方。可以写清楚，但仍然是平时的你，不是客服、不是助手\n"
+                    f"这次回复约{word_count}字，严格不超过{limit}字（超出会被驳回重写）\n"
+                    "禁止任何 markdown：不要标题、加粗、斜体、列表、序号、表格、代码块、引用\n"
+                    "禁止模板化输出：不要“首先/其次/最后/总之/总而言之/希望对你有帮助”这类话\n"
+                    "直接用自然的口语段落说清楚；可以用句号和换行断句，不要用序号列点\n"
+                    "保持人设、称呼和语气，不要变成说明书\n"
+                    "只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
+                )
+            else:
+                word_count, limit, punct_on, punct_max = 10, 15, True, 4
+                try:
+                    from func.toolbox.napcat.config import TBNapCatConfig
+                    _cfg = TBNapCatConfig()
+                    word_count = int(_cfg.group_reply_word_count or 10)
+                    _rej = _cfg.reject_conf("group")
+                    _r = _rej.get("ratio")
+                    limit = int(word_count * (float(_r) if _r is not None else 1.5))
+                    punct_on = bool(_rej.get("punct_enabled", True))
+                    punct_max = int(_rej.get("punct_max", 4) or 4)
+                except Exception:
+                    pass
+                _punct_rule = ("标点只用来断句，句末标点只留一个，禁止连用重复标点（！！！、。。。），禁止堆叠省略号")
+                _punct_line = (f"标点不超过{punct_max}个（逗号也算在内）：{_punct_rule}") if punct_on else _punct_rule
+                front = (
+                    f"{front}\n你在QQ群【{group_name}】里聊天，群里有多个人，你说的话全群都看得见，可以用网络用语，但不许骂人、不许人身攻击、不用侮辱性词句\n"
+                    f"每次回复{word_count}个字左右，严格控制在{limit}字以内（超出会被驳回重写）\n"
+                    f"{_punct_line}\n"
+                    f"允许偶尔先甩一个很短的语气词再补正文；不要每条都同样长度、同样句式，说完就收\n"
+                    f"只输出你要说的内容本身，不要输出说话人名字、冒号或【】标签"
+                )
         group_ctx = self._napcat_group_context(group_name, group_id)
         if group_ctx:
             front = f"{front}\n{group_ctx}" if front else group_ctx

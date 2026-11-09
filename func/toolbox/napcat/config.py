@@ -50,6 +50,14 @@ class TBNapCatConfig:
         self.thinking_level = cfg.get('thinking_level', 'medium')
         # 回复字数（默认10，严格上限 = 该值 + 10）
         self.reply_word_count = cfg.get('reply_word_count', 10)
+        # 严肃回复模式（默认关闭）：明确要建议/决策/专业分析时临时放开字数
+        _serious = cfg.get('serious_reply', {}) or {}
+        self.serious_enabled = bool(_serious.get('enabled', False))
+        self.serious_word_count = int(_serious.get('word_count', 100) or 100)
+        self.serious_reject_ratio = float(_serious.get('reject_ratio', 1.5))
+        self.serious_reject_rounds = int(_serious.get('reject_rounds', 3))
+        self.serious_judge_max_tokens = int(_serious.get('judge_max_tokens', 160) or 160)
+        self.serious_apply_group = bool(_serious.get('apply_group', True))
         self.reply_reject_ratio = float(cfg.get('reply_reject_ratio', 1.5))
         self.reply_reject_rounds = int(cfg.get('reply_reject_rounds', 3))
         _punct = cfg.get('reply_punct_check', {}) or {}
@@ -216,6 +224,17 @@ class TBNapCatConfig:
         if str(channel) == "group":
             return int(self.group_reply_word_count or 10)
         return int(self.reply_word_count or 10)
+
+    def serious_conf(self, channel: str = "private") -> dict:
+        """严肃回复参数：群聊需 apply_group 打开；私聊只看总开关"""
+        enabled = bool(self.serious_enabled)
+        if str(channel) == "group" and not self.serious_apply_group:
+            enabled = False
+        return {"enabled": enabled,
+                "word_count": int(self.serious_word_count or 100),
+                "ratio": float(self.serious_reject_ratio or 1.5),
+                "rounds": int(self.serious_reject_rounds or 3),
+                "judge_max_tokens": int(self.serious_judge_max_tokens or 160)}
 
     # ==================== 群聊逐群配置 ====================
     def group_config(self, group_id: str) -> dict:

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/llm_active/director/copied/output.py
+# func/llm_active/director/output.py
 # 【复制件】LLM 流式输出处理：剥离 think/括号、水词清洗并分段送入 TTS 队列
 # 来源：func/llm/output.py（逐字复制，仅把 llm_data 换成 pipeline 桥接推送）
 # 纪律：本文件不 import func/llm/**，主链路改动时必须两边同步。
@@ -9,7 +9,7 @@ from typing import List
 
 from func.log.default_log import DefaultLog
 from func.pipeline.llm_tts import LLMTtsBridge
-from func.llm_active.director.copied.narration import NarrationCore
+from func.llm_active.director.narration import NarrationCore
 
 
 class Output:
@@ -168,10 +168,16 @@ class Output:
             self.log.warning(
                 f"[{traceid}] 导演回复被清洗规则吃掉：原始 {len(self.filtered_content)} 字 → 空。"
                 f"原文片段={str(self.filtered_content)[:120]!r}")
+        if self.narration is not None:
+            result = self.narration.dilute(result)
         return "" if self._is_punct_only(result) else result
 
     def _send(self, text: str, traceid: str, chat_status: str):
         """通过桥接把文本片段推送到 TTS 队列"""
+        if not str(text or "").strip():
+            return
+        if self.narration is not None:
+            text = self.narration.dilute(text)
         self.tts_bridge.send_chat_segment(
             text, traceid, seg_index=self.segment_idx,
             chat_status=chat_status, source=self.source,

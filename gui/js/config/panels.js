@@ -138,6 +138,21 @@
         { type: 'number', path: 'llm.short_term_rounds', label: '短期记忆轮数', default: 5, min: 1, max: 60, step: 1 },
         { type: 'custom', render: () => Config.splitFlagEditor('llm.split_flag') },
         { type: 'number', path: 'llm.split_limit', label: '最小分段长度', default: 6, min: 1, max: 100, step: 1 },
+        { type: 'section', label: '深度回忆（简单回复后补说）' },
+        { type: 'check', path: 'llm.deep_recall.enabled', label: '启用深度回忆', default: true,
+          help: '只有当判官认定“在问你怎么看他/你们以前/还记不记得/生日”时，才在快速回复后追加回忆；默认严格判定' },
+        { type: 'number', path: 'llm.deep_recall.judge_max_tokens', label: '判官输出 tokens', default: 160, min: 64, max: 512, step: 32 },
+        { type: 'number', path: 'llm.deep_recall.max_rounds', label: '实际工具轮数上限', default: 12, min: 1, max: 30, step: 1,
+          help: '代码实际允许的最大工具轮数；提示词里只告诉模型 9 轮，留出余量' },
+        { type: 'number', path: 'llm.deep_recall.prompt_rounds', label: '提示词轮数', default: 9, min: 1, max: 20, step: 1 },
+        { type: 'number', path: 'llm.deep_recall.timeout_s', label: '总超时(秒)', default: 20, min: 3, max: 120, step: 1 },
+        { type: 'number', path: 'llm.deep_recall.max_extra_chars', label: '补充字数上限', default: 180, min: 40, max: 600, step: 20 },
+        { type: 'number', path: 'llm.deep_recall.max_evidence_chars', label: '记忆证据上限(字符)', default: 6000, min: 500, max: 30000, step: 500,
+          help: '一次深度回忆中，agent 通过工具读到的记忆结果总字符上限；超出会截断或停止继续读。8k 上下文建议 2500~3000，32k 建议 6000' },
+        { type: 'number', path: 'llm.deep_recall.summary_limit', label: '摘要条数', default: 6, min: 1, max: 20, step: 1,
+          help: '摘要优先；不够时模型可以再调工具读 character/memory 原文' },
+        { type: 'number', path: 'llm.deep_recall.raw_days', label: '原文回溯天数', default: 7, min: 1, max: 90, step: 1 },
+        { type: 'number', path: 'llm.deep_recall.raw_limit', label: '原文最多条数', default: 30, min: 1, max: 200, step: 1 },
     ] });
     panel('llm_prompt', 'LLM 提示词', '大脑', open(() => App.openLlmPromptPanel()));
     panel('llm_algorithm', 'LLM 算法', '大脑', open(() => App.openLlmAlgorithmPanel()));

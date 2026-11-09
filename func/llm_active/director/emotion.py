@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/llm_active/director/copied/emotion.py
+# func/llm_active/director/emotion.py
 # 【复制件】通过 LLM function calling 控制角色表情与性格（性格从角色卡动态读取）
 # 来源：func/llm/emotion_controller.py（逐字复制，调用端口由导演核心注入）
 # 纪律：本文件不 import func/llm/**，主链路改动时必须两边同步。

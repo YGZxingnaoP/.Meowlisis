@@ -69,12 +69,18 @@ def render_director_block(scope: str = "main") -> str:
         lines.append("他刚才的反应：")
         for text in reactions[-2:]:
             lines.append(f"  {text}")
+    actions = state.get("actions") or []
+    if actions:
+        lines.append("最近动作：")
+        for item in actions[-2:]:
+            lines.append(f"  · {item.get('tool', '')}：{str(item.get('result', ''))[:100]}")
     lines.extend([
         "规矩：",
         "  · 不许冷笑话",
         "  · 不许说「第一步第二步」，不许把这份清单念出来",
         "  · 这一步说出口就算完成；他没接，就按这一步的「他不这样就把话拉回来」改说法",
         "  · 要讲由头就讲具体那一处（画面 / 台词），别只说「一个东西」",
+        "  · 要做动作只能调用 director_act，写清 instruction；不要直接调它的内部子工具，也不要重复触发同一种动作",
         "  · 每次说完必须调用 director_step 交回进度",
         "  · 他说不要打扰 / 不想听 → clear=true 立刻收",
         "```",
@@ -89,7 +95,7 @@ def _move_tag(step: dict) -> str:
 
 
 def _detail_line(step: dict) -> str:
-    """当前步的招法/预期/兜底（都是行为指导，不是台词）"""
+    """当前步的招法/预期/兜底/动作（都是行为指导，不是台词）"""
     parts = []
     if str(step.get("move") or "").strip():
         parts.append(f"招法：{str(step.get('move')).strip()}")
@@ -97,4 +103,8 @@ def _detail_line(step: dict) -> str:
         parts.append(f"猜他会：{str(step.get('expect')).strip()}")
     if str(step.get("if_not") or "").strip():
         parts.append(f"他不这样就把话拉回来：{str(step.get('if_not')).strip()}")
+    tool = str(step.get("tool") or "").strip()
+    if tool:
+        instruction = str(step.get("instruction") or "").strip() or "按这一步的目标决定要做什么"
+        parts.append(f"动作：{tool}（{instruction}）")
     return "；".join(parts)

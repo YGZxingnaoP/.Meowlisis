@@ -7,6 +7,7 @@ from typing import List, Optional, Callable
 
 from func.log.default_log import DefaultLog
 from func.toolbox.napcat.llm.napcat_llm import TBNapCatLLM
+from func.toolbox.napcat.llm.narration import QQNarration
 from func.toolbox.napcat.message.time_split import is_marker
 
 
@@ -21,14 +22,18 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         self.log = DefaultLog().getLogger()
 
     @classmethod
-    def split_segments(cls, text: str) -> List[str]:
-        """对完整回复文本做与 message 一致的分段：按逗号/句号/问号切分并忽略标点，感叹号保留不切分"""
+    def split_segments(cls, text: str, serious: bool = False) -> List[str]:
+        """对完整回复文本做与 message 一致的分段：按逗号/句号/问号切分并忽略标点，感叹号保留不切分
+
+        serious=True 时只在句号/换行处断句，逗号与问号保留在句内。
+        """
         if not text:
             return []
+        split_chars = "。\n" if serious else cls.SPLIT_IGNORE
         segs = []
         out = ""
         for ch in text:
-            if ch in cls.SPLIT_IGNORE:
+            if ch in split_chars:
                 cleaned = cls._clean_segment(out)
                 if cleaned:
                     segs.append(cleaned)
@@ -42,17 +47,19 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def _system_prompt(self, username, group_name, group_info_text, current_message,
                        group_id: str = "", decide: bool = False, with_bot_tool: bool = False,
-                       with_director: bool = False, extra_context: str = "") -> str:
+                       with_director: bool = False, extra_context: str = "",
+                       serious: bool = False) -> str:
         """获取群聊系统提示词；decide=True 时追加回复决策指令
 
         with_director=True 时附上 QQ 导演走向块（只在 @ / 续聊回复时传，冒泡 decide 永远不传）。
+        serious=True 时改用严肃回复块（100字/上限150/禁 markdown）。
         """
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
             prompt = SystemPromptBridge().get_napcat_group_prompt(
                 uid=username, group_name=group_name,
                 group_info_text=group_info_text, current_message=current_message,
-                group_id=group_id,
+                group_id=group_id, serious=serious,
             )
             block = str(extra_context or "").strip()
             if block:
@@ -89,10 +96,11 @@ class TBNapCatGroupLLM(TBNapCatLLM):
 
     def _messages(self, username, group_name, group_info_text, text, short_memory, decide,
                   group_id: str = "", with_bot_tool: bool = False, quote: Optional[str] = None,
-                  with_director: bool = False, extra_context: str = ""):
+                  with_director: bool = False, extra_context: str = "",
+                  serious: bool = False):
         system_prompt = self._system_prompt(username, group_name, group_info_text, text,
                                            group_id, decide, with_bot_tool, with_director,
-                                           extra_context=extra_context)
+                                           extra_context=extra_context, serious=serious)
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
@@ -151,18 +159,22 @@ class TBNapCatGroupLLM(TBNapCatLLM):
               short_memory: List[dict], group_info_text: str = "",
               on_segment: Optional[Callable[[str], None]] = None,
               nsfw: bool = False, quote: Optional[str] = None,
-              with_director: bool = False, extra_context: str = "") -> str:
+              with_director: bool = False, extra_context: str = "",
+              serious: bool = False) -> str:
         """@ 触发或强制回复：生成并回传短句，返回完整回复
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
         with_director=True 时把 QQ 导演走向块附到 system 提示词（只用于 @ / 续聊）。
+        serious=True 时走严肃模式：放开字数、禁 markdown/序号/模板，只在 。 和换行断句。
         """
         self._nsfw_split = bool(nsfw)
+        self._serious = bool(serious)
         try:
             tools = self._at_tools()
             messages = self._messages(username, group_name, group_info_text, text, short_memory,
                                       decide=False, group_id=group_id, quote=quote,
-                                      with_director=with_director, extra_context=extra_context)
+                                      with_director=with_director, extra_context=extra_context,
+                                      serious=serious)
             if tools and messages and messages[0].get("role") == "system":
                 messages[0]["content"] += (
                     "\ngroup_at 是可选的：默认不要 @ 人，大多数回复直接说就行；"
@@ -172,9 +184,16 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             else:
                 raw, target = self._generate(messages), None
             final = self._clean_reply(raw)
-            final = self._rewrite_if_too_long(messages, final,
-                                              self.napcat_cfg.word_count_for("group"), channel="group")
-            segments = self.split_segments(final)
+            if serious:
+                final = self._rewrite_if_serious(messages, final, "group")
+            else:
+                final = self._rewrite_if_too_long(messages, final,
+                                                 self.napcat_cfg.word_count_for("group"), channel="group")
+            try:
+                final = QQNarration().clean(final)
+            except Exception:
+                pass
+            segments = self.split_segments(final, serious=serious)
             if target and on_segment:
                 from func.toolbox.napcat.groupchat.group_at import TBGroupAt
                 TBGroupAt().send(group_id, target, segments[0] if segments else "")
@@ -186,6 +205,7 @@ class TBNapCatGroupLLM(TBNapCatLLM):
             return final
         finally:
             self._nsfw_split = False
+            self._serious = False
 
     def decide(self, username: Optional[str], group_id: str, group_name: str, text: str,
                short_memory: List[dict], group_info_text: str = "",
@@ -247,6 +267,10 @@ class TBNapCatGroupLLM(TBNapCatLLM):
         if final and final.strip().lower() != "pass" and not final.startswith("ASK_BOT:"):
             final = self._rewrite_if_too_long(messages, final,
                                               self.napcat_cfg.word_count_for("group"), channel="group")
+        try:
+            final = QQNarration().clean(final)
+        except Exception:
+            pass
         for seg in self.split_segments(final):
             if on_segment and seg:
                 on_segment(seg)

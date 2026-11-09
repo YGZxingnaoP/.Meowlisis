@@ -4,64 +4,6 @@
  */
 
 Object.assign(Config, {
-    llm_model() {
-        const type = this._val('llm.local_llm_type', 'deepseek');
-        let h = this._section('LLM 大模型') +
-            `<div class="form-group"><label>${this._t('LLM类型')}</label>
-            <select data-path="llm.local_llm_type" onchange="Config.toggleMeowLLMLink(this)">
-                <option value="deepseek" ${type === 'deepseek' ? 'selected' : ''}>DeepSeek</option>
-                <option value="aliyun" ${type === 'aliyun' ? 'selected' : ''}>${this._t('阿里云')}</option>
-                <option value="gemini" ${type === 'gemini' ? 'selected' : ''}>Gemini</option>
-                <option value="meowllm" ${type === 'meowllm' ? 'selected' : ''}>MeowLLM</option>
-            </select>${this._mllLink(type === 'meowllm')}</div>`;
-
-        h += `<div class="modal-tabs">
-            <button class="modal-tab${type === 'deepseek' ? ' active' : ''}" data-tab="deepseek">DeepSeek</button>
-            <button class="modal-tab${type === 'aliyun' ? ' active' : ''}" data-tab="aliyun">${this._t('阿里云')}</button>
-            <button class="modal-tab${type === 'gemini' ? ' active' : ''}" data-tab="gemini">Gemini</button>
-            <button class="modal-tab${type === 'meowllm' ? ' active' : ''}" data-tab="meowllm">MeowLLM</button>
-        </div>`;
-
-        h += `<div class="tab-content${type === 'deepseek' ? ' active' : ''}" data-tab-content="deepseek">` +
-            this._password('API Key', 'llm.deepseek.api_key', '') +
-            this._text('Base URL', 'llm.deepseek.base_url', 'https://api.deepseek.com/v1') +
-            this._text('模型', 'llm.deepseek.model', 'deepseek-chat') +
-            this._num('温度', 'llm.deepseek.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.deepseek.max_tokens', 1024, 1, 8192, 16) +
-            this._num('Top P', 'llm.deepseek.top_p', 0.9, 0, 1, 0.05) +
-            this._check('启用流式输出', 'llm.deepseek.stream', true) +
-            this._check('启用思考模式', 'llm.deepseek.enable_thinking', false) +
-            `</div>`;
-
-        h += `<div class="tab-content${type === 'aliyun' ? ' active' : ''}" data-tab-content="aliyun">` +
-            this._password('API Key', 'llm.aliyun.api_key', '') +
-            this._text('Base URL', 'llm.aliyun.base_url', 'https://dashscope.aliyuncs.com/compatible-mode/v1') +
-            this._text('模型', 'llm.aliyun.model', 'qwen-plus') +
-            this._num('温度', 'llm.aliyun.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.aliyun.max_tokens', 1024, 1, 8192, 16) +
-            this._num('Top P', 'llm.aliyun.top_p', 0.9, 0, 1, 0.05) +
-            this._check('启用流式输出', 'llm.aliyun.stream', true) +
-            this._check('启用思考模式', 'llm.aliyun.enable_thinking', false) +
-            `</div>`;
-
-        h += `<div class="tab-content${type === 'gemini' ? ' active' : ''}" data-tab-content="gemini">` +
-            this._password('API Key', 'llm.gemini.api_key', '') +
-            this._text('Base URL', 'llm.gemini.base_url', 'https://generativelanguage.googleapis.com/v1beta/openai/') +
-            this._text('模型', 'llm.gemini.model', 'gemini-3.6-flash') +
-            this._num('温度', 'llm.gemini.temperature', 0.7, 0, 2, 0.1) +
-            this._num('最大输出 tokens', 'llm.gemini.max_tokens', 1024, 1, 8192, 16) +
-            this._num('Top P', 'llm.gemini.top_p', 0.9, 0, 1, 0.05) +
-            this._check('启用流式输出', 'llm.gemini.stream', true) +
-            this._check('启用思考模式', 'llm.gemini.enable_thinking', false) +
-            `</div>`;
-
-        h += this.llm_meowllmPane(type);
-
-        h += this._num('短期记忆轮数', 'llm.short_term_rounds', 5, 1, 60, 1) +
-            this.splitFlagEditor('llm.split_flag') +
-            this._num('最小分段长度', 'llm.split_limit', 6, 1, 100, 1);
-        return h;
-    },
     llm_prompt(front) {
         const f = front || {};
         const frontPrompt = f.prompt || '';

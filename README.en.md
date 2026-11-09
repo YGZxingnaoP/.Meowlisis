@@ -59,6 +59,29 @@ Idea: when an LLM reply is "watery" (all boilerplate and filler), compress it au
    - `S < part_level_lower` → delete every deletable word (ALL)
    - Character-by-character `feed`: longest Trie match, deletable words are dropped according to the tier, a matched prefix is held back for now; `flush()` finishes it off.
 4. **Punctuation tidying**: after cleanup, runs of punctuation collapse into a full stop, leftover sentence-initial punctuation is removed, and punctuation-only sentences are never sent; the text is then split at punctuation into clauses and streamed into TTS, so the pauses sound natural.
+5. **Post-training verbal-tic cleaning**: a separate replacement layer for high-frequency post-training stock phrases (e.g. “这句话稳”, “我认了”, “我不催你”, “硬撑”), applied on sight and independent of filler scoring/tiers; longer, more specific rules run first, with the generic “稳→好” as the final fallback. Rules live in `func/llm/narration/deepseek_dilute_word.json`; the QQ side keeps an independent copy under `func/toolbox/napcat/llm/narration/`.
+
+Examples:
+
+| Original | Cleaned |
+|---|---|
+| 我认了 / 我认 | 我知道了啦 |
+| 我不催你 | 没人催你，你慢慢来 |
+| 我不拦你 | 我不管你 |
+| 这句话稳 | 这句话真不错 |
+| 比之前都稳 | 比之前好一些 |
+| 硬撑 / 硬抗 / 撑着 | 逞强 |
+| 没接你的那句 | 没注意到你那句话 |
+| 跑不掉 | 没得说 |
+| 收着 / 收住 | 兜在小口袋里面 |
+| 端着 | 装逼 |
+| 稳定 | 稳定 (protected, unchanged) |
+
+More rules: `func/llm/narration/deepseek_dilute_word.json`.
+
+> For DeepSeek's verbal-tic handling, post-training tics in large models are hard to solve. For the API, I directly adopted a brute-force replacement strategy. I originally wanted to try translation, but translation also cleans out the persona — it hurts the enemy a thousand while losing eight hundred of your own; in the end, brute-force cleaning it is.
+
+Reference: Clark, Martin & Mahowald, *Why is AI-generated language so hard to understand?* ([arXiv:2610.29162](https://arxiv.org/abs/2610.29162)). The paper notes that round-trip translation normalizes output to frequent forms and strips stylistic and authorial traits; therefore translation is not used as the final rewriter here — a directly auditable brute-force replacement is used instead.
 
 Related config: `config.yml → llm.narration`.
 

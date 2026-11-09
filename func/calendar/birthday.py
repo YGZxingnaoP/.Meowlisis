@@ -28,6 +28,17 @@ class DateBirthday:
             self._cache_names = self._scan_today_names()
         return self._cache_names
 
+    def is_today(self, uid: str) -> bool:
+        """指定内部编号的用户今天是否生日（靠展示名匹配档案）"""
+        if not uid:
+            return False
+        try:
+            from func.pipeline.id_signup import display_name
+            name = display_name(uid)
+        except Exception:
+            name = str(uid)
+        return bool(name) and name in self.get_today_names()
+
     def _scan_today_names(self) -> List[str]:
         """遍历用户档案，返回今天过生日的用户名列表"""
         today = datetime.date.today()

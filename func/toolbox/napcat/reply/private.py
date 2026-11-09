@@ -81,6 +81,18 @@ class PrivateReplyMixin:
                     return
             except Exception:
                 self.log.exception("QQ 私聊意图分析异常")
+        # 0.85 QQ 严肃回复判定：明确要建议/决策/专业分析时才触发（默认关闭）
+        serious = False
+        if not is_bot:
+            try:
+                from func.toolbox.napcat.analysis.serious_judge import TBNapCatSeriousJudge
+                verdict = TBNapCatSeriousJudge().judge(
+                    text, meowid, short_memory, channel="private")
+                serious = bool(verdict.get("serious"))
+                if serious:
+                    self.log.info(f"[QQ严肃] 命中：{str(verdict.get('reason') or '')[:60]}")
+            except Exception:
+                self.log.exception("QQ 严肃回复判定异常")
         # 0.9 QQ 私聊破甲审查：命中色情则写 toolbox_rulebreak 桥接（仅真实用户消息）
         nsfw_triggered = False
         if not is_bot:
@@ -100,8 +112,9 @@ class PrivateReplyMixin:
         if not is_bot:
             self.napcat_ltmem.record_user(meowid, text, name=ext_name)
         # 2.5 QQ 导演（私聊）：只判断要不要起一段戏 / 要不要收，不碰回复链
+        # 严肃回复这一轮不接导演，避免“一次只走一步”压过认真回答
         director_session = ""
-        if not is_bot:
+        if not is_bot and not serious:
             try:
                 from func.toolbox.napcat.director.core import QQDirectorCore
                 director_session = QQDirectorCore.session_private(user_id)
@@ -116,6 +129,7 @@ class PrivateReplyMixin:
             meowid, user_id, text, short_memory,
             on_segment=lambda seg: self.napcat_core.send_private_text(user_id, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("private", user_id, text),
+            serious=serious,
         )
         # 4. 记录 AI 回复短期记忆（AI 自己说的话不加来源前缀）
         if final_text and self.napcat_config.short_mem_enabled and not is_bot:
@@ -134,8 +148,20 @@ class PrivateReplyMixin:
                 QQDirectorCore().advance(director_session)
             except Exception:
                 self.log.exception("QQ 导演私聊推进异常")
-        # 6. 表情触发（概率 = 配置概率 + 好感度）
-        if final_text:
+        # 5.6 深度回忆：快速回复后按需补充 1~2 条（摘要优先，原文次级）
+        if final_text and final_text.strip() and not is_bot:
+            try:
+                from func.pipeline.toolbox_deep_recall import ToolboxDeepRecallBridge
+                ToolboxDeepRecallBridge().after_reply(
+                    meowid, text, final_text,
+                    lambda seg: self.napcat_core.send_private_text(user_id, seg, _pace(seg)),
+                    channel="private", serious=serious,
+                    memory_type="qq_response",
+                    memory_limit=self.napcat_config.short_mem_rounds)
+            except Exception:
+                self.log.exception("QQ 深度回忆挂载异常")
+        # 6. 表情触发（概率 = 配置概率 + 好感度）；严肃回复不发表情
+        if final_text and not serious:
             self._maybe_send_emote(meowid, user_id, text, final_text, short_memory)
         # 7. 后置情绪更新（异步，与主链路一致，更新最新情绪/性格）
         if final_text:

@@ -8,6 +8,8 @@ from typing import List, Optional, Callable
 from func.log.default_log import DefaultLog
 from func.llm.config import LLMConfig
 from func.toolbox.napcat.config import TBNapCatConfig
+from func.toolbox.napcat.llm.format_guard import clean_serious, serious_reasons
+from func.toolbox.napcat.llm.narration import QQNarration
 from func.toolbox.napcat.message.time_split import is_marker
 
 
@@ -30,6 +32,8 @@ class TBNapCatLLM:
         self._max_tokens = None
         # nsfw 切割模式（本次回复是否减少切割点）
         self._nsfw_split = False
+        # 严肃回复模式（本次回复是否放开字数/禁 markdown）
+        self._serious = False
         # 流式过滤状态（与 TTS 一致的 think/括号剥离）
         self._in_think = False
         self._paren_depth = 0
@@ -57,15 +61,17 @@ class TBNapCatLLM:
         from func.toolbox.port.deepseek import TBoxDeepSeekLLM
         return TBoxDeepSeekLLM(self.cfg), self.cfg.deepseek_max_tokens
 
-    def _system_prompt(self, username: str, current_message: str, user_id: str = "") -> str:
+    def _system_prompt(self, username: str, current_message: str, user_id: str = "",
+                       serious: bool = False) -> str:
         """获取 napcat 专用系统提示词（前置词 + 你在QQ里回复 + 私聊导演走向块）"""
         try:
             from func.pipeline.system_prompt import SystemPromptBridge
-            prompt = SystemPromptBridge().get_napcat_prompt(username, current_message, user_id=user_id)
+            prompt = SystemPromptBridge().get_napcat_prompt(
+                username, current_message, user_id=user_id, serious=serious)
         except Exception:
             self.log.exception("获取 napcat 系统提示词失败")
             return ""
-        if prompt and user_id:
+        if prompt and user_id and not serious:
             try:
                 from func.toolbox.napcat.director.block import attach_block
                 prompt = attach_block(prompt, f"qq_private:{user_id}")
@@ -83,9 +89,12 @@ class TBNapCatLLM:
             self._max_tokens = max(8, int(base_max_tokens) + 128)
         self._reset_filter()
 
+        max_tokens = self._max_tokens
+        if self._serious:
+            max_tokens = max(int(max_tokens or 0), 512)
         stream = llm.chat_stream(
             messages,
-            options={"max_tokens": self._max_tokens},
+            options={"max_tokens": max_tokens},
             thinking_level=self.napcat_cfg.thinking_level,
         )
         reasoning_len = 0
@@ -160,8 +169,36 @@ class TBNapCatLLM:
             final = self._generate(messages)
         return final
 
-    def reply_stream(self, system_prompt: str, messages: List[dict],
-                     on_segment: Optional[Callable[[str], None]] = None) -> str:
+    def _rewrite_if_serious(self, messages: List[dict], final: str,
+                            channel: str = "private") -> str:
+        """严肃回复：字数 + markdown + 模板话联合驳回，最多 rounds 次，最后强制清洗"""
+        conf = self.napcat_cfg.serious_conf(channel)
+        word_count = int(conf.get("word_count") or 100)
+        limit = int(word_count * float(conf.get("ratio") or 1.5))
+        rounds = int(conf.get("rounds") or 0)
+        for _ in range(max(0, rounds)):
+            reasons = serious_reasons(final, limit)
+            if not reasons:
+                break
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"你上次的回复被驳回了（{'，'.join(reasons)}）。最高准则：\n"
+                    f"1. 这次回复约 {word_count} 字，严格不超过 {limit} 字；\n"
+                    "2. 禁止任何 markdown：不要标题、加粗、斜体、列表、序号、表格、代码块、引用；\n"
+                    "3. 禁止模板化输出：不要“首先/其次/最后/总之/总而言之/希望对你有帮助”这类话；\n"
+                    "4. 只输出自然的口语段落，保持人设，不要解释。\n"
+                    "请重新回复，只输出回复内容本身。"
+                ),
+            })
+            final = self._generate(messages)
+        cleaned = clean_serious(final, limit)
+        if serious_reasons(cleaned, limit):
+            self.log.warning(f"[NapCat严肃] 驳回 {rounds} 次后仍不合格，已强制清洗："
+                             f"{cleaned[:60]}")
+        return cleaned
+
+    def reply_stream(self, system_prompt: str, messages: List[dict],                     on_segment: Optional[Callable[[str], None]] = None) -> str:
         """通用流式回复：自定义 system prompt 与历史消息，流式过滤/切分后回传。
 
         - 返回清理后的完整回复文本；
@@ -172,6 +209,10 @@ class TBNapCatLLM:
             full_messages.append({"role": "system", "content": system_prompt})
         full_messages.extend(messages or [])
         final = self._clean_reply(self._generate(full_messages))
+        try:
+            final = QQNarration().clean(final)
+        except Exception:
+            pass
         for seg in self.split_segments(final):
             if on_segment and seg:
                 on_segment(seg)
@@ -220,14 +261,17 @@ class TBNapCatLLM:
 
     def reply(self, username: str, user_id: str, text: str, short_memory: List[dict],
               on_segment: Optional[Callable[[str], None]] = None,
-              nsfw: bool = False, quote: Optional[str] = None) -> str:
+              nsfw: bool = False, quote: Optional[str] = None,
+              serious: bool = False) -> str:
         """流式生成回复（NapCat 私聊）：组装 napcat 提示词 + 短期记忆 + 当前消息
 
         nsfw=True 时切割减小（不按逗号切），一段容纳更多内容。
+        serious=True 时走严肃模式：放开字数、禁 markdown/序号/模板，只在 。 和换行断句。
         """
         self._nsfw_split = bool(nsfw)
+        self._serious = bool(serious)
         try:
-            system_prompt = self._system_prompt(username, text, user_id)
+            system_prompt = self._system_prompt(username, text, user_id, serious=serious)
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
@@ -242,15 +286,23 @@ class TBNapCatLLM:
             else:
                 messages.append({"role": "user", "content": text})
             final = self._clean_reply(self._generate(messages))
-            final = self._rewrite_if_too_long(messages, final,
-                                             self.napcat_cfg.word_count_for("private"), channel="private")
-            for seg in self.split_segments(final):
+            if serious:
+                final = self._rewrite_if_serious(messages, final, "private")
+            else:
+                final = self._rewrite_if_too_long(messages, final,
+                                                 self.napcat_cfg.word_count_for("private"), channel="private")
+            try:
+                final = QQNarration().clean(final)
+            except Exception:
+                pass
+            for seg in self.split_segments(final, serious=serious):
                 if on_segment and seg:
                     on_segment(seg)
             self.log.info(f"[NapCat] 回复 {username}: {final[:50]}...")
             return final
         finally:
             self._nsfw_split = False
+            self._serious = False
 
     EXTRA_PAIRS = (("[", "]"), ("［", "］"), ("《", "》"), ("{", "}"), ("｛", "｝"),
                    ("〔", "〕"), ("〈", "〉"), ("〖", "〗"), ("＜", "＞"))
@@ -339,14 +391,16 @@ class TBNapCatLLM:
             self._filtered += ch
 
     @classmethod
-    def split_segments(cls, text: str) -> List[str]:
-        # 按逗号/句号/问号切分，忽略标点，感叹号保留
+    def split_segments(cls, text: str, serious: bool = False) -> List[str]:
+        # 普通：按逗号/句号/问号切分，忽略标点，感叹号保留
+        # 严肃：只在句号和换行处断句，逗号/问号/感叹号都留在句内
         if not text:
             return []
+        split_chars = "。\n" if serious else cls.SPLIT_IGNORE
         segs = []
         out = ""
         for ch in text:
-            if ch in cls.SPLIT_IGNORE:
+            if ch in split_chars:
                 cleaned = cls._clean_segment(out)
                 if cleaned:
                     segs.append(cleaned)

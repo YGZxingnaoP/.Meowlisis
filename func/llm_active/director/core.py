@@ -10,6 +10,7 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.llm_active.config import AutoActiveConfig
 from func.llm_active.director.config import AutoDirectorConfig
+from func.llm_active.director.act import DirectorAct
 from func.llm_active.director.judge import DirectorJudge
 from func.llm_active.director.planner import DirectorPlanner
 from func.llm_active.director.responder import DirectorResponder
@@ -48,6 +49,7 @@ class DirectorCore:
         self.judge = DirectorJudge(self)
         self.planner = DirectorPlanner(self)
         self.responder = DirectorResponder(self)
+        self.act = DirectorAct(self)
 
         # 进入/退出事件（宿主归档由桥接负责）
         self.bridge.subscribe(on_entered=self._on_entered, on_cleared=self._on_cleared)
@@ -103,6 +105,11 @@ class DirectorCore:
             self.responder.builder.set_max_rounds(int(LLMConfig().short_term_rounds))
         except Exception:
             self.log.exception("[导演] 同步短期记忆轮数失败")
+        try:
+            self.act.cancel()
+            self.act = DirectorAct(self)
+        except Exception:
+            self.log.exception("[导演] 重建动作执行器失败")
 
     # ==================== 查询 ====================
     def is_active(self) -> bool:
@@ -110,6 +117,14 @@ class DirectorCore:
 
     def current_plan(self) -> dict:
         return self.bridge.get("main")
+
+    def action_catalog(self):
+        """可用父级动作入口（表演回合挂 director_act 用）"""
+        try:
+            return self.act.catalog()
+        except Exception:
+            self.log.exception("[导演] 读取动作目录失败")
+            return []
 
     def cooldown_ok(self) -> bool:
         """冷却是否结束（clear / 启动后冷却，防刚结束又开）"""
@@ -190,6 +205,30 @@ class DirectorCore:
             return
         self._stall = 0
         threading.Thread(target=self._catch_up, daemon=True).start()
+
+    def note_action(self, name: str, instruction: str, result, why: str = ""):
+        """父级动作执行完：写回计划台账，供下一轮提示词参考"""
+        with self._lock:
+            plan = self.current_plan()
+            if not plan.get("active"):
+                self.log.info(
+                    "[导演] 收尾动作完成（计划已结束）：%s | %s | %s",
+                    str(name or ""), str(instruction or "")[:120], str(result or "")[:200])
+                return
+            try:
+                keep = max(1, int(AutoDirectorConfig().tool_result_keep))
+            except Exception:
+                keep = 4
+            actions = list(plan.get("actions") or [])
+            actions.append({
+                "tool": str(name or ""),
+                "instruction": str(instruction or "")[:200],
+                "result": str(result or "")[:400],
+                "why": str(why or "")[:120],
+                "at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            })
+            plan["actions"] = actions[-keep:]
+            self.bridge.set_state("main", plan)
 
     def note_utterance(self):
         """导演说过话：下一次空闲触发重新开始累计「没收到消息」"""
@@ -300,5 +339,9 @@ class DirectorCore:
             self._silent = 0
             self._stall = 0
             self._user_spoke = False
+        try:
+            self.act.cancel()
+        except Exception:
+            self.log.exception("[导演] 清理动作状态失败")
         self.set_cooldown()
         self.responder.flush_memory()

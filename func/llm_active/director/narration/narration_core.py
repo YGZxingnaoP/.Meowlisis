@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-# func/llm_active/director/copied/narration.py
-# 【复制件】AI 回复丰富性打分 + 流式水词清洗
-# 来源：func/llm/narration/narration_core.py（逐字复制，仅改路径与分数文件）
-# 纪律：本文件不 import func/llm/**，主链路改动时必须两边同步。
+# func/llm_active/director/narration/narration_core.py
+# 导演侧独立复制件：AI 回复丰富性打分 + 流式水词清洗
+# 纪律：本文件不 import func/llm/**，词表也在本目录。
 
 import os
 import json
 import datetime
+import re
 import threading
 
 from func.log.default_log import DefaultLog
@@ -34,18 +34,18 @@ class NarrationCore:
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
-        # 词表用本复制件自带的一份（不读主链路，避免改动主链路时静默漂移）
-        self.path = os.path.join("func", "llm_active", "director", "copied",
-                                 "narration", "adjunct_word.json")
-        self.score_only_path = os.path.join("func", "llm_active", "director", "copied",
-                                            "narration", "score_only_word.json")
+        base = os.path.join("func", "llm_active", "director", "narration")
+        self.path = os.path.join(base, "adjunct_word.json")
+        self.score_only_path = os.path.join(base, "score_only_word.json")
+        self.dilute_path = os.path.join(base, "deepseek_dilute_word.json")
         self.root = _Node()
+        self._dilute_rules = None
         self._load()
+        self._load_dilute()
         self._load_config()
         self.s = float(self.initial_score)
         self._lock = threading.Lock()
         self._score_lock = threading.Lock()
-        # 独立分数文件：不与主链路共用，避免两个实例并发写同一 JSON 丢更新
         self.score_path = os.path.join("character", "memory",
                                        "llm_response_score_director.json")
         self.session_key = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -70,9 +70,7 @@ class NarrationCore:
         self.score_log_enabled = bool(cfg.get("score_log_enabled", False))
 
     def _load(self):
-        # 可删除水词：参与打分，也参与过滤删除
         self._load_words(self.path, deletable=True)
-        # 只打分不删除的词（人设语气等）：计入 W，但清洗时原样保留
         self._load_words(self.score_only_path, deletable=False)
 
     def _load_words(self, path, deletable):
@@ -92,14 +90,66 @@ class NarrationCore:
                         node.cats.add(cat)
                         node.deletable = True
         except FileNotFoundError:
-            # score_only_word.json 允许不存在
             if deletable:
                 self.log.exception("加载水词清单失败：%s", path)
         except Exception:
             self.log.exception("加载水词清单失败：%s", path)
 
+    def _load_dilute(self):
+        rules = []
+        try:
+            with open(self.dilute_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in (data.get("rules") or []):
+                pattern = str(item.get("pattern") or "")
+                replacement = str(item.get("replacement") or "")
+                if not pattern:
+                    continue
+                rules.append({
+                    "rx": re.compile(pattern) if item.get("regex") else None,
+                    "pattern": pattern,
+                    "replacement": replacement,
+                    "last": bool(item.get("last")),
+                })
+        except FileNotFoundError:
+            self.log.warning("密度稀释清单不存在：%s", self.dilute_path)
+        except Exception:
+            self.log.exception("加载密度稀释清单失败：%s", self.dilute_path)
+
+        def _weight(item):
+            if item.get("last"):
+                return -1
+            pattern = item["pattern"]
+            if item["rx"] is not None:
+                m = re.search(r"[\(\[\{\*\+\?\^\$\|\\]", pattern)
+                return len(pattern[:m.start()]) if m else len(pattern)
+            return len(pattern)
+
+        rules.sort(key=_weight, reverse=True)
+        self._dilute_rules = rules
+
+    def dilute(self, text: str) -> str:
+        s = str(text or "")
+        if not s or not self._dilute_rules:
+            return s
+        for rule in self._dilute_rules:
+            if rule["rx"] is not None:
+                s = rule["rx"].sub(rule["replacement"], s)
+            else:
+                s = s.replace(rule["pattern"], rule["replacement"])
+        return s
+
+    def clean_complete(self, text: str) -> str:
+        s = str(text or "")
+        if not s:
+            return s
+        cleaner = self.build_cleaner(self.current_level())
+        for ch in s:
+            cleaner.feed(ch)
+        cleaner.flush()
+        return str(cleaner.cleaned or "").strip()
+
     def current_level(self):
-        """读取当前平滑得分对应的清洗档位（本轮开始调用）"""
         with self._lock:
             s = self.s
         if s >= self.part_level_upper:
@@ -112,7 +162,6 @@ class NarrationCore:
         return NarrationCleaner(self.root, level)
 
     def update(self, raw_text):
-        """本轮结束：用源文本计算 Raw 并更新平滑得分 S"""
         raw, L, W = self._raw_score(raw_text)
         with self._lock:
             prev = self.s
@@ -133,7 +182,6 @@ class NarrationCore:
         return raw, new_s
 
     def _log_score(self, raw: float, smooth: float):
-        """把本轮原始/平滑得分追加到当前启动分组的分数记录文件"""
         try:
             os.makedirs(os.path.dirname(self.score_path), exist_ok=True)
             with self._score_lock:

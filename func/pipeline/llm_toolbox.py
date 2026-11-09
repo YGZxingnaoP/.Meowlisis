@@ -136,3 +136,44 @@ class LLMToolboxBridge:
                              "name": name,
                              "arguments": fn.get("arguments", c.get("arguments"))})
         return self._analysis().handle_tool_calls(norm, username, text)
+
+    # ==================== 父级动作入口（导演主动触发用） ====================
+    def entry_catalog(self):
+        """父级动作入口目录（name + 一句说明）；只含模块级入口，不含子工具"""
+        rows = []
+        try:
+            for schema in self.get_schemas():
+                fn = schema.get("function") or {}
+                name = str(fn.get("name") or "")
+                if not name:
+                    continue
+                desc = str(fn.get("description") or "").strip().replace("\n", " ")
+                rows.append({"name": name, "description": desc[:180]})
+        except Exception:
+            self.log.exception("获取父级入口目录失败")
+        return rows
+
+    def dispatch_entry(self, name: str, arguments, username: str, text: str = ""):
+        """按父级入口名派发（导演主动触发）：只走模块级 dispatch，不碰子工具"""
+        try:
+            analysis = self._analysis()
+            analysis.current_meowid = username
+            short_memory = []
+            try:
+                from func.pipeline.short_memory import ShortMemory
+                rows = ShortMemory().load()[-8:]
+                short_memory = [{"role": m.get("role"), "content": m.get("content")}
+                                for m in rows if m.get("content")]
+            except Exception:
+                short_memory = []
+            try:
+                from func.toolbox.get_prompt import TBoxGetPrompt
+                system_prompt = TBoxGetPrompt().get_tool_prompt(username, text) or ""
+            except Exception:
+                system_prompt = ""
+            context = {"meowid": username, "text": text,
+                       "short_memory": short_memory, "system_prompt": system_prompt}
+            return analysis.dispatch(name, arguments or {}, username, context)
+        except Exception:
+            self.log.exception(f"父级入口派发失败: {name}")
+            return f"错误：工具执行异常 {name}"

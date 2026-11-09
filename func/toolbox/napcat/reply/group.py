@@ -363,6 +363,20 @@ class GroupReplyMixin:
         except Exception:
             self.log.exception("群聊意图分析异常")
 
+        # 严肃回复判定：只在 @ / 关键词触发时判断；冒泡与续聊都不触发（默认关闭）
+        serious = False
+        if trigger in ("@", "关键词"):
+            try:
+                from func.toolbox.napcat.analysis.serious_judge import TBNapCatSeriousJudge
+                verdict = TBNapCatSeriousJudge().judge(
+                    plain_text, reply_meowid, short_memory, channel="group",
+                    group_name=group_name)
+                serious = bool(verdict.get("serious"))
+                if serious:
+                    self.log.info(f"[QQ严肃] 群聊命中：{str(verdict.get('reason') or '')[:60]}")
+            except Exception:
+                self.log.exception("QQ 群聊严肃回复判定异常")
+
         # 破甲审查
         nsfw_triggered = False
         try:
@@ -374,8 +388,9 @@ class GroupReplyMixin:
 
         # QQ 导演（简化版）：@ / 关键词 / 续聊都参与；冒泡不参与
         # 放在意图分析之后：工具类消息已被消费、不会走回复，不该在这里起戏。
+        # 严肃回复这一轮不接导演，避免“一次只走一步”压过认真回答。
         director_session = ""
-        director_on = trigger in ("@", "关键词", "followup")
+        director_on = trigger in ("@", "关键词", "followup") and not serious
         if director_on:
             try:
                 from func.toolbox.napcat.director.core import QQDirectorCore
@@ -392,13 +407,25 @@ class GroupReplyMixin:
             reply_meowid, gid, group_name, merged_text, short_memory, group_info_text,
             on_segment=lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
             nsfw=nsfw_triggered, quote=self._take_quote("group", gid, merged_text),
-            with_director=director_on,
+            with_director=director_on, serious=serious,
         )
         if final and final.strip().lower() != "pass":
             parsed = {"group_id": gid, "group_name": group_name, "user_id": primary_ext_account,
                       "username": primary_ext_name, "at_self": not followup}
             self._after_group_reply(parsed, final, not followup)
-            self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
+            try:
+                from func.pipeline.toolbox_deep_recall import ToolboxDeepRecallBridge
+                ToolboxDeepRecallBridge().after_reply(
+                    reply_meowid, plain_text, final,
+                    lambda seg: self.napcat_core.send_group_text(gid, seg, _pace(seg)),
+                    channel="group", group_name=group_name, serious=serious,
+                    memory_type=("qq_groupchat" if followup else "qq_response"),
+                    memory_limit=(self.napcat_config.group_memory_limit if followup
+                                  else self.napcat_config.short_mem_rounds))
+            except Exception:
+                self.log.exception("QQ 群聊深度回忆挂载异常")
+            if not serious:
+                self._maybe_send_group_emote(parsed, merged_text, final, short_memory)
             if director_on and director_session:
                 try:
                     from func.toolbox.napcat.director.core import QQDirectorCore

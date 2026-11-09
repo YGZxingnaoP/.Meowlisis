@@ -5,6 +5,7 @@
 import os
 import json
 import datetime
+import re
 import threading
 
 from func.log.default_log import DefaultLog
@@ -34,8 +35,11 @@ class NarrationCore:
         self.log = DefaultLog().getLogger()
         self.path = os.path.join("func", "llm", "narration", "adjunct_word.json")
         self.score_only_path = os.path.join("func", "llm", "narration", "score_only_word.json")
+        self.dilute_path = os.path.join("func", "llm", "narration", "deepseek_dilute_word.json")
         self.root = _Node()
+        self._dilute_rules = None
         self._load()
+        self._load_dilute()
         self._load_config()
         self.s = float(self.initial_score)
         self._lock = threading.Lock()
@@ -90,6 +94,62 @@ class NarrationCore:
                 self.log.exception("加载水词清单失败：%s", path)
         except Exception:
             self.log.exception("加载水词清单失败：%s", path)
+
+    def _load_dilute(self):
+        """加载“露头就换”的密度稀释规则（独立于水词删除）"""
+        rules = []
+        try:
+            with open(self.dilute_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            for item in (data.get("rules") or []):
+                pattern = str(item.get("pattern") or "")
+                replacement = str(item.get("replacement") or "")
+                if not pattern:
+                    continue
+                rules.append({
+                    "rx": re.compile(pattern) if item.get("regex") else None,
+                    "pattern": pattern,
+                    "replacement": replacement,
+                    "last": bool(item.get("last")),
+                })
+        except FileNotFoundError:
+            self.log.warning("密度稀释清单不存在：%s", self.dilute_path)
+        except Exception:
+            self.log.exception("加载密度稀释清单失败：%s", self.dilute_path)
+        # 越长越具体优先；正则按第一个元字符前的字面长度算
+        def _weight(item):
+            if item.get("last"):
+                return -1
+            pattern = item["pattern"]
+            if item["rx"] is not None:
+                m = re.search(r"[\(\[\{\*\+\?\^\$\|\\]", pattern)
+                return len(pattern[:m.start()]) if m else len(pattern)
+            return len(pattern)
+        rules.sort(key=_weight, reverse=True)
+        self._dilute_rules = rules
+
+    def dilute(self, text: str) -> str:
+        """密度稀释：出现即替换，不参与水词打分/档位"""
+        s = str(text or "")
+        if not s or not self._dilute_rules:
+            return s
+        for rule in self._dilute_rules:
+            if rule["rx"] is not None:
+                s = rule["rx"].sub(rule["replacement"], s)
+            else:
+                s = s.replace(rule["pattern"], rule["replacement"])
+        return s
+
+    def clean_complete(self, text: str) -> str:
+        """对完整文本跑一遍水词清洗（QQ 等非流式链路用）"""
+        s = str(text or "")
+        if not s:
+            return s
+        cleaner = self.build_cleaner(self.current_level())
+        for ch in s:
+            cleaner.feed(ch)
+        cleaner.flush()
+        return str(cleaner.cleaned or "").strip()
 
     def current_level(self):
         """读取当前平滑得分对应的清洗档位（本轮开始调用）"""
