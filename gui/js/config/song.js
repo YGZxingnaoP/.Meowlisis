@@ -172,6 +172,19 @@ Object.assign(Config, {
         return this._section('即兴哼唱（触发型工具）') +
             this._check('启用即兴哼唱', 'meowsongs.enabled', true,
                 'AI 根据用户消息判断是否即兴哼唱已学歌曲片段（不带伴奏，只播放翻唱人声）') +
+            this._section('清唱静音压缩') +
+            this._check('启用清唱静音压缩', 'meowsongs.squeeze.enabled', true,
+                '清唱时把长于阈值的伴奏空档压掉，只保留换气间隔（不改动曲库文件）') +
+            this._num('最短切割间隔（秒）', 'meowsongs.squeeze.min_gap_sec', 4.8, 2, 30, 0.1,
+                '连续静音超过该秒数才切，避免把正常换气或小声唱当成空档') +
+            this._num('切口前保留（秒）', 'meowsongs.squeeze.head_keep_sec', 0.9, 0, 5, 0.1,
+                '切开后，前一段人声末尾保留的呼吸时长') +
+            this._num('切口后保留（秒）', 'meowsongs.squeeze.tail_keep_sec', 1.1, 0, 5, 0.1,
+                '切开后，后一段人声开头保留的呼吸时长') +
+            this._num('静音判定阈值（低于峰值 dB）', 'meowsongs.squeeze.rel_db', 45, 20, 80, 1,
+                '帧电平低于参考电平该分贝数才判静音，数值越大越保守，小声唱越不容易被误切') +
+            this._num('静音绝对下限（dBFS）', 'meowsongs.squeeze.abs_db', -60, -90, -20, 1,
+                '低于该电平才可能判为静音，曲库底噪偏高时可适当上调') +
             this._section('听歌识曲接龙') +
             this._humDetectFormula() +
             this._check('启用听歌识曲接龙', 'meowsongs.pass_the_baton.enabled', false,

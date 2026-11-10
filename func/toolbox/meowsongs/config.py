@@ -28,3 +28,16 @@ class TBMeowSongsConfig:
         self.hum_collect_sec = float(pbt.get('hum_collect_sec', 7.0) or 7.0)
         self.f0_unique_notes = int(pbt.get('f0_unique_notes', 3) or 3)
         self.feeling_prompt = pbt.get('feeling_prompt', '') or ''
+
+        # 清唱静音压缩：只切长静音段，切口保留呼吸间隔
+        sq = cfg.get('squeeze', {}) or {}
+        self.sq_enabled = bool(sq.get('enabled', True))
+        # 连续静音超过该秒数才切，避免把正常换气或小声唱当空档
+        self.sq_min_gap_sec = float(sq.get('min_gap_sec', 4.8) or 4.8)
+        # 切口两侧保留的呼吸时长（合计 2 秒）
+        self.sq_head_keep_sec = float(sq.get('head_keep_sec', 0.9) or 0.0)
+        self.sq_tail_keep_sec = float(sq.get('tail_keep_sec', 1.1) or 0.0)
+        # 静音阈值：低于峰值参考电平该分贝数才判静音，越大越保守（不易误切小声唱）
+        self.sq_rel_db = float(sq.get('rel_db', 45) or 45.0)
+        # 静音绝对下限（dBFS），防止把底噪当静音
+        self.sq_abs_db = float(sq.get('abs_db', -60) or -60.0)

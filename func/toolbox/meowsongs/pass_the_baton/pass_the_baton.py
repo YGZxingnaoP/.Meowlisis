@@ -12,6 +12,7 @@ from func.tools.singleton_mode import singleton
 from func.toolbox.meowsongs.config import TBMeowSongsConfig
 from func.toolbox.meowsongs.pass_the_baton.hum_match import TBHumMatch
 from func.toolbox.meowsongs.pass_the_baton.next_line import TBNextLine
+from func.toolbox.meowsongs.vocal_squeeze import TBVocalSqueeze
 from func.config.app_config import AppConfig
 
 MEOW_DIR = os.path.join("character", "songs", "meow_list")
@@ -205,12 +206,18 @@ class TBPassTheBaton:
         try:
             safe = self._safe_name(title)
             vocal = os.path.join(MEOW_DIR, safe, f"{safe}_vocal.wav")
-            data, sr = sf.read(vocal, dtype="float32")
-            start_sample = int(start_sec * sr)
-            end_sample = int(end_sec * sr) if end_sec else len(data)
+            info = sf.info(vocal)
+            sr = int(info.samplerate or 1)
+            total = int(info.frames or 0)
+            start_sample = min(max(0, int(start_sec * sr)), total)
+            end_sample = min(int(end_sec * sr), total) if end_sec else total
             if end_sample <= start_sample:
-                end_sample = len(data)
-            audio = data[start_sample:end_sample]
+                end_sample = total
+            audio, sr = sf.read(vocal, dtype="float32", start=start_sample,
+                                frames=max(0, end_sample - start_sample))
+
+            # 清唱无伴奏：人声轨里的间奏/尾奏都是长静音，压缩后再播
+            audio, _ = TBVocalSqueeze().squeeze(audio, sr)
 
             # 落盘临时文件供 NapCat 语音发送
             tmp_path = os.path.join(".temp", "meowsongs_baton.wav")

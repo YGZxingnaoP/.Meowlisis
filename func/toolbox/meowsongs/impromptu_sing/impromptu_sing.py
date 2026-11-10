@@ -11,6 +11,7 @@ import soundfile as sf
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.meowsongs.config import TBMeowSongsConfig
+from func.toolbox.meowsongs.vocal_squeeze import TBVocalSqueeze
 
 MEOW_DIR = os.path.join("character", "songs", "meow_list")
 
@@ -157,15 +158,26 @@ class TBImpromptuSing:
             vocal_path = os.path.join(MEOW_DIR, title, f"{title}_vocal.wav")
             if not os.path.exists(vocal_path):
                 return
-            data, sr = sf.read(vocal_path, dtype="float32")
+            info = sf.info(vocal_path)
+            sr = int(info.samplerate or 1)
+            total = int(info.frames or 0)
             start_sec = lrc[start_idx]["time"]
             end_sec = lrc[end_idx]["time"] + max(2.0, self._line_duration(lrc, end_idx))
-            end_sec = min(end_sec, len(data) / sr)
-            start_sample = int(start_sec * sr)
-            end_sample = int(end_sec * sr)
+            end_sec = min(end_sec, total / sr)
+            start_sample = min(int(start_sec * sr), total)
+            end_sample = min(int(end_sec * sr), total)
             if end_sample <= start_sample:
-                end_sample = min(start_sample + int(3 * sr), len(data))
-            audio = data[start_sample:end_sample]
+                end_sample = min(start_sample + int(3 * sr), total)
+            audio, sr = sf.read(vocal_path, dtype="float32", start=start_sample,
+                                frames=max(0, end_sample - start_sample))
+
+            # 清唱无伴奏：压缩长静音段，歌词时间戳按切口表重排
+            audio, cuts = TBVocalSqueeze().squeeze(audio, sr)
+            lyric_lines = None
+            if with_lyric:
+                lyric_lines = TBVocalSqueeze().map_lyrics(
+                    lrc[start_idx:end_idx + 1], start_sec, cuts)
+
             tmp_path = os.path.join(".temp", "meowsongs_latest.wav")
             os.makedirs(os.path.dirname(tmp_path), exist_ok=True)
             sf.write(tmp_path, audio, sr)
@@ -174,9 +186,9 @@ class TBImpromptuSing:
                 from func.pipeline.toolbox_tts import ToolboxTtsBridge
                 ToolboxTtsBridge().play_audio(
                     audio, sr, source="meowsongs",
-                    lyric_lines=lrc if with_lyric else None,
-                    lyric_start_idx=start_idx,
-                    lyric_end_idx=end_idx,
+                    lyric_lines=lyric_lines,
+                    lyric_start_idx=0,
+                    lyric_end_idx=(len(lyric_lines) - 1) if lyric_lines else None,
                 )
         except Exception:
             self.log.exception("[MeowSongs] 片段播放异常")
