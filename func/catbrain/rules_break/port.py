@@ -28,7 +28,9 @@ class TBRulesBreakPort:
             self.log.error("rules_break DeepSeek API Key 未配置，审查不可用（默认不注入）")
             return
         try:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # 审查卡在网络上会直接拖住回复线程：限 8 秒、不自动重试
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url,
+                                 timeout=8, max_retries=0)
         except Exception as e:
             self.log.error(f"初始化 rules_break DeepSeek 客户端失败: {e}")
 

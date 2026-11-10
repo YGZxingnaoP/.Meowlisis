@@ -2,13 +2,21 @@
 """摘要独立 LLM 端口与强制工具调用辅助"""
 
 
-def force_tool_call(llm, messages, tools, tool_name, max_attempts=3, temperature=None, max_tokens=None):
-    """开思考循环强制调用指定工具，返回首次出现 tool_calls 的响应"""
+def force_tool_call(llm, messages, tools, tool_name, max_attempts=3, temperature=None, max_tokens=None,
+                    timeout=None):
+    """开思考循环强制调用指定工具，返回首次出现 tool_calls 的响应
+
+    timeout: 单次请求超时（秒）；仅端口支持时才透传，避免主链无界等待。
+    """
     extra = {}
     if temperature is not None:
         extra["temperature"] = temperature
     if max_tokens is not None:
         extra["max_tokens"] = max_tokens
+    if timeout is not None:
+        code = getattr(getattr(llm, "chat", None), "__code__", None)
+        if code is not None and "timeout" in code.co_varnames:
+            extra["timeout"] = timeout
     extra["tool_choice"] = {"type": "function", "function": {"name": tool_name}}
     for _ in range(max_attempts):
         resp = llm.chat(messages, tools=tools, **extra)

@@ -262,14 +262,40 @@ class SystemPromptBridge:
                 "主人要你操作手机时，系统会接管手机去执行；你只要用平常的语气应一声。"
                 "不许说自己做不到、不许说自己只会某个 App、不许让主人自己动手。执行结果会另外告诉你。")
 
+    def prepare_recall(self, current_message: str, uid=None):
+        """并行调度用：提前算好回忆判定（结果由 get_system_prompt 的 recall 传回）
+
+        返回 None 表示这次没拿到结论（异常/网络失败），调用方沿用上一次的结果。
+        """
+        try:
+            if self._builder is not None and hasattr(self._builder, "decide_recall"):
+                return self._builder.decide_recall(current_message, uid)
+        except Exception:
+            self.log.exception("回忆判定预热失败")
+        return None
+
+    def prepare_topic(self):
+        """并行调度用：预热话题缓存"""
+        try:
+            if self._builder is not None and hasattr(self._builder, "warm_topic"):
+                return self._builder.warm_topic()
+        except Exception:
+            self.log.exception("话题预热失败")
+        return ""
+
     def get_system_prompt(self, uid=None, current_message: str = "",
-                          mark_first: bool = True) -> str:
+                          mark_first: bool = True, recall: dict = None,
+                          explicit: bool = None, topic: str = None) -> str:
         """主链路提示词：前置词(行为约束) + body + 后置词(人设+说话人)
         mark_first=False 时日期块不占用「当天首次说话」祝福判定。
+        recall: 外部预先算好的回忆判定；None 时由构建器现场判定。
+        explicit: 外部限时判定得到的破甲结论；None 时读 msg_rulebreak 桥接（原有行为）。
+        topic: 外部算好的话题；None 时由构建器现场判定。
         """
         body = ""
         if self._builder:
-            body = self._builder.build(uid, current_message, mark_first=mark_first)
+            body = self._builder.build(uid, current_message, mark_first=mark_first,
+                                       recall=recall, topic_override=topic)
         front = self.get_front_prompt()
         if front:
             front = front.replace("{display_name(uid)}", display_name(uid))
@@ -281,14 +307,18 @@ class SystemPromptBridge:
         phone = self._phone_block()
         parts = [p for p in (front, psyche, phone, body, post) if p]
         prompt = "\n\n".join(parts)
-        # 破甲原则词注入（主线程）：读 msg_rulebreak 桥接，读后即清
+        # 破甲原则词注入：显式传入时直接用；否则读 msg_rulebreak 桥接（读后即清）
         try:
-            from func.pipeline.msg_rulebreak import MsgRuleBreakBridge
-            bridge = MsgRuleBreakBridge()
-            if bridge.is_explicit():
+            if explicit is None:
+                from func.pipeline.msg_rulebreak import MsgRuleBreakBridge
+                bridge = MsgRuleBreakBridge()
+                if bridge.is_explicit():
+                    prompt = self._inject_armor_piercing(prompt, self._read_armor_piercing("prompt"))
+                    prompt = self._apply_nsfw_settings(prompt)
+                bridge.reset()
+            elif explicit:
                 prompt = self._inject_armor_piercing(prompt, self._read_armor_piercing("prompt"))
                 prompt = self._apply_nsfw_settings(prompt)
-            bridge.reset()
         except Exception:
             pass
         return self._append_turtle_soup(prompt, "live")

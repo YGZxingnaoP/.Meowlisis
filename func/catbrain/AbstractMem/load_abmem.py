@@ -5,7 +5,7 @@ import json
 import time
 import datetime
 import threading
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from func.log.default_log import DefaultLog
 from func.config.app_config import AppConfig
@@ -35,19 +35,20 @@ class MeowLoadAbstractMemory:
         self._lock = threading.Lock()
 
     def _ensure_llm(self):
-        if self._llm is None:
-            if self.config.abstract_llm_type == "meowllm":
-                from func.catbrain.AbstractMem.port.meowllm import MeowAbstractMeowLLM
-                self._llm = MeowAbstractMeowLLM()
-            elif self.config.abstract_llm_type == "gemini":
-                from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
-                self._llm = MeowAbstractGeminiLLM()
-            elif self.config.abstract_llm_type == "aliyun":
-                from func.catbrain.AbstractMem.port.aliyun import MeowAbstractAliyunLLM
-                self._llm = MeowAbstractAliyunLLM()
-            else:
-                from func.catbrain.AbstractMem.port.deepseek import MeowAbstractDeepSeekLLM
-                self._llm = MeowAbstractDeepSeekLLM()
+        with self._lock:
+            if self._llm is None:
+                if self.config.abstract_llm_type == "meowllm":
+                    from func.catbrain.AbstractMem.port.meowllm import MeowAbstractMeowLLM
+                    self._llm = MeowAbstractMeowLLM()
+                elif self.config.abstract_llm_type == "gemini":
+                    from func.catbrain.AbstractMem.port.gemini import MeowAbstractGeminiLLM
+                    self._llm = MeowAbstractGeminiLLM()
+                elif self.config.abstract_llm_type == "aliyun":
+                    from func.catbrain.AbstractMem.port.aliyun import MeowAbstractAliyunLLM
+                    self._llm = MeowAbstractAliyunLLM()
+                else:
+                    from func.catbrain.AbstractMem.port.deepseek import MeowAbstractDeepSeekLLM
+                    self._llm = MeowAbstractDeepSeekLLM()
         return self._llm
 
     @staticmethod
@@ -139,6 +140,21 @@ class MeowLoadAbstractMemory:
         self._save_topic(fallback)
         return fallback
 
+    def warm_topic(self) -> str:
+        """预热当前话题（与其它判定并行调用；build_prompt 随后直接读缓存）
+
+        没有摘要数据时直接返回：build_prompt 在这种情况下本来就会提前返回，
+        不能因为预热而多打一次模型。
+        """
+        try:
+            data = self.load()
+            if not data:
+                return ""
+            return self._current_topic(data)
+        except Exception:
+            self.log.exception("话题预热失败")
+            return ""
+
     def _save_topic(self, topic: str):
         if not topic or topic == self._saved_topic:
             return
@@ -166,7 +182,8 @@ class MeowLoadAbstractMemory:
             {"role": "system", "content": "根据以下最近对话内容，判断当前对话的话题。"},
             {"role": "user", "content": content},
         ]
-        resp = force_tool_call(llm, messages, self.summary_tool.build_topic_tool(), "decide_topic")
+        resp = force_tool_call(llm, messages, self.summary_tool.build_topic_tool(), "decide_topic",
+                               timeout=8)
         if not resp or not resp.choices:
             return ""
         msg = resp.choices[0].message
@@ -178,7 +195,8 @@ class MeowLoadAbstractMemory:
                     return topic
         return ""
 
-    def decide_recall(self, message: str = "", uid: str = "") -> Dict:
+    def decide_recall(self, message: str = "", uid: str = "") -> Optional[Dict]:
+        """返回 None 表示这次判定没拿到结果（网络/模型失败），调用方沿用上一次的结论"""
         empty = {"need_recall": False, "months": [], "label": ""}
         if not self.config.abmem_recall_enabled:
             return empty
@@ -187,7 +205,7 @@ class MeowLoadAbstractMemory:
             return empty
         llm = self._ensure_llm()
         if llm is None or not llm.client:
-            return empty
+            return None
         try:
             limit = max(0, int(self.config.abmem_recall_months_limit))
         except (TypeError, ValueError):
@@ -202,9 +220,9 @@ class MeowLoadAbstractMemory:
             {"role": "user", "content": f"当前时间：{now.strftime('%Y-%m-%d %H:%M')} {weekday}\n用户消息：{text}"},
         ]
         resp = force_tool_call(llm, messages, self.summary_tool.build_recall_tool(),
-                               self.summary_tool.RECALL_TOOL_NAME)
+                               self.summary_tool.RECALL_TOOL_NAME, timeout=8)
         if not resp or not resp.choices:
-            return empty
+            return None
         for tc in (resp.choices[0].message.tool_calls or []):
             if tc.function.name != self.summary_tool.RECALL_TOOL_NAME:
                 continue
@@ -214,7 +232,7 @@ class MeowLoadAbstractMemory:
             months = self._normalize_months(args.get("months"), limit)
             need = bool(args.get("need_recall")) and bool(months)
             return {"need_recall": need, "months": months, "label": str(args.get("label") or "")}
-        return empty
+        return None
 
     @staticmethod
     def _normalize_months(months, limit) -> List[str]:
@@ -258,7 +276,8 @@ class MeowLoadAbstractMemory:
         return f"- [{meta}] {item.get('event', '')}"
 
     def build_prompt(self, current_message: str = "", uid: str = "", limit: int = None,
-                     topic_override: str = "", need_recall: bool = False, time_hint=None) -> str:
+                     topic_override: Optional[str] = None, need_recall: bool = False, time_hint=None) -> str:
+        """topic_override：None=现场判定；""=本轮无话题（不判定）；其它=直接使用"""
         data = self.load()
         if not data:
             return ""
@@ -274,7 +293,7 @@ class MeowLoadAbstractMemory:
                 if len(month) == 7 and month not in months:
                     months.append(month)
 
-        topic = topic_override or self._current_topic(data)
+        topic = self._current_topic(data) if topic_override is None else topic_override
         picked = index.recall(current_message, months, gate_ratio, topic=topic)
         if not picked:
             return ""

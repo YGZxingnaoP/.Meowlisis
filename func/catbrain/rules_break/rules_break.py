@@ -158,19 +158,26 @@ class TBRulesBreak:
         self._write_emotion_file(".temp/latest_emotion.json", "love")
 
     # ==================== 入口：审查 + 写桥接 ====================
+    def check_msg(self, uid: str, content: str, short_memory: List[dict] = None) -> bool:
+        """只判定并触发情绪覆盖，不写桥接（主链限时并行路径用，结果由调用方显式传下去）"""
+        if not self.config.enabled_msg or not self._allow(uid):
+            return False
+        explicit = self.check(content, short_memory)
+        if explicit:
+            self.log.info(
+                f"[原则词触发] 主线程命中色情/露骨，用户={display_name(uid)}，内容={str(content)[:40]}"
+            )
+            self._force_love_emotion()
+        return explicit
+
     def check_and_store_msg(self, uid: str, content: str, short_memory: List[dict] = None) -> bool:
         """主线程审查：写 MsgRuleBreakBridge（开关关闭或好感度不足时显式清零，避免残留）"""
         from func.pipeline.msg_rulebreak import MsgRuleBreakBridge
         if not self.config.enabled_msg or not self._allow(uid):
             MsgRuleBreakBridge().set_explicit(False)
             return False
-        explicit = self.check(content, short_memory)
+        explicit = self.check_msg(uid, content, short_memory)
         MsgRuleBreakBridge().set_explicit(explicit)
-        if explicit:
-            self.log.info(
-                f"[原则词触发] 主线程命中色情/露骨，用户={display_name(uid)}，内容={str(content)[:40]}"
-            )
-            self._force_love_emotion()
         return explicit
 
     def check_and_store_qq(self, session_key: str, uid: str, content: str, short_memory: List[dict] = None) -> bool:

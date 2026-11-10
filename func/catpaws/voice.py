@@ -16,10 +16,21 @@ class CWCatPawsVoice:
         self.config = config or CWCatPawsConfig()
 
     def speak(self, text, source="catpaws"):
-        """把一段文本交给 TTS（分段流式）"""
+        """把一段文本交给 TTS（分段流式）
+
+        台词不走主链的 Output，所以这里自己过一遍本模块的 narration 副本：
+        先做密度稀释/关联词替换，再删水词，保证手机端听到的和主链一个口径。
+        """
         body = str(text or "").strip()
         if not body:
             return False
+        try:
+            from func.catpaws.narration import CatPawsNarration
+            body = str(CatPawsNarration().clean(body) or "").strip()
+            if not body:
+                return False
+        except Exception:
+            self.log.exception("[CatPaws] 台词 narration 处理失败")
         try:
             from func.pipeline.toolbox_tts import ToolboxTtsBridge
             ToolboxTtsBridge().send_stream(body, source=source)

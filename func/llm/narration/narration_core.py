@@ -10,6 +10,7 @@ import threading
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
+from .contrast import rewrite_contrast
 
 
 class _Node:
@@ -109,6 +110,7 @@ class NarrationCore:
                 rules.append({
                     "rx": re.compile(pattern) if item.get("regex") else None,
                     "pattern": pattern,
+                    "head": NarrationCore._literal_head(pattern),
                     "replacement": replacement,
                     "last": bool(item.get("last")),
                 })
@@ -130,7 +132,7 @@ class NarrationCore:
 
     def dilute(self, text: str) -> str:
         """密度稀释：出现即替换，不参与水词打分/档位"""
-        s = str(text or "")
+        s = rewrite_contrast(str(text or ""))
         if not s or not self._dilute_rules:
             return s
         for rule in self._dilute_rules:
@@ -139,6 +141,47 @@ class NarrationCore:
             else:
                 s = s.replace(rule["pattern"], rule["replacement"])
         return s
+
+    # 正则元字符：字面前缀到此为止
+    _META = set(r".^$*+?{}[]\|()")
+
+    @staticmethod
+    def _literal_head(pattern: str) -> str:
+        """取规则模式开头的字面部分（遇到元字符即止），用于判断"前半段是否已命中" """
+        out = []
+        for ch in pattern:
+            if ch == "\\" or ch in NarrationCore._META:
+                break
+            out.append(ch)
+        return "".join(out)
+
+    def needs_next(self, text: str) -> bool:
+        """本段末尾是否是某条替换规则的前半截（要接下一段才可能替换成功）
+
+        只用于 TTS 分段发送：命中时先扣住本段，等下一段拼起来再整体替换。
+        """
+        if not text or not self._dilute_rules:
+            return False
+        for rule in self._dilute_rules:
+            head = rule.get("head") or ""
+            rx = rule["rx"]
+            # 变长尾巴的正则（.{0,8} 之类）可能把句读一起吃掉，匹配贴到末尾就等下一段
+            if rx is not None and ".{" in rule["pattern"]:
+                m = rx.search(text)
+                if m and m.end() >= len(text):
+                    return True
+            if len(head) < 3:
+                continue
+            literal_done = (rx is None and head == rule["pattern"])
+            if literal_done and text.endswith(head):
+                continue
+            need = max(2, len(head) // 2)
+            for k in range(len(head) - 1, need - 1, -1):
+                if text.endswith(head[:k]):
+                    return True
+            if rx is not None and text.endswith(head) and "(?" in rule["pattern"]:
+                return True
+        return False
 
     def clean_complete(self, text: str) -> str:
         """对完整文本跑一遍水词清洗（QQ 等非流式链路用）"""

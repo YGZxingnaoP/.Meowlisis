@@ -28,7 +28,9 @@ class MeowAbstractDeepSeekLLM:
             self.log.error("摘要 DeepSeek API Key 未配置")
             return
         try:
-            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            # 关掉 SDK 自动重试：超时/失败要立刻降级，不能 3 倍放大主链等待
+            self.client = OpenAI(api_key=self.api_key, base_url=self.base_url,
+                                 timeout=60, max_retries=0)
         except Exception as e:
             self.log.error(f"初始化摘要 DeepSeek 客户端失败: {e}")
 
@@ -45,8 +47,11 @@ class MeowAbstractDeepSeekLLM:
         return resp
 
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
-             tool_choice=None, temperature=None, max_tokens=None):
-        """非流式对话，返回完整响应对象"""
+             tool_choice=None, temperature=None, max_tokens=None, timeout=None):
+        """非流式对话，返回完整响应对象
+
+        timeout: 单次请求超时（秒）。判官调用传短超时，摘要沿用客户端默认值。
+        """
         if not self.client:
             return None
         params = {
@@ -54,14 +59,16 @@ class MeowAbstractDeepSeekLLM:
             "messages": messages,
             "max_tokens": self.max_tokens if max_tokens is None else max_tokens,
         }
+        if timeout is not None:
+            params["timeout"] = timeout
         if temperature is not None:
             params["temperature"] = temperature
         if tools:
             params["tools"] = tools
         if tool_choice:
             params["tool_choice"] = tool_choice
-        params["extra_body"] = {"thinking": {"type": "enabled"}}
-        params["reasoning_effort"] = "high"
+        # 强制 tool_choice 与思考模式互斥（API 直接 400），摘要判定必须关思考
+        params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             resp = self.client.chat.completions.create(**params)
             return self._clean_resp_content(resp)

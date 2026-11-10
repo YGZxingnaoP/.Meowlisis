@@ -35,6 +35,9 @@ class Output:
         self._tag = ""
         self._lock = threading.Lock()
         self._closed = False
+        # 跨句替换：本段尾部可能是规则前半截时先扣住，等下一段拼起来再发
+        self._tts_pending = ""
+        self._tts_pending_status = ""
 
         # 丰富性清洗：本轮开始按上一轮平滑得分取档位，边生成边清洗
         self.narration = None
@@ -146,9 +149,9 @@ class Output:
         send_text = self._collapse_punctuation(send_text)
         if self._is_punct_only(send_text):
             return
-        self._send(send_text, traceid, self.chat_status)
-        self.segment_idx += 1
-        self.chat_status = ""
+        if self._send(send_text, traceid, self.chat_status):
+            self.segment_idx += 1
+            self.chat_status = ""
 
     def finalize(self, traceid: str) -> str:
         """结束流式：刷出剩余内容并返回清理后的完整文本
@@ -166,16 +169,19 @@ class Output:
         hold = self._hold_for_deep_recall()
         end_status = "" if hold else "end"
         tail_text = self._collapse_punctuation(self.temp.strip())
+        # 被扣住等下一段的文本，收尾时并进尾段一起放行
+        if self._tts_pending:
+            tail_text = self._tts_pending + tail_text
+            self._tts_pending = ""
+            self._tts_pending_status = ""
         if tail_text and not self._is_punct_only(tail_text):
-            self._send(tail_text, traceid, end_status)
-            if hold:
+            if self._send(tail_text, traceid, end_status, final=not hold) and hold:
                 self.segment_idx += 1
         elif self.segment_idx == 0:
             cleaned = self.cleaner.cleaned if self.cleaner is not None else self.filtered_content
             cleaned_text = self._clean_punctuation(cleaned)
             if cleaned_text and not self._is_punct_only(cleaned_text):
-                self._send(cleaned_text, traceid, end_status)
-                if hold:
+                if self._send(cleaned_text, traceid, end_status, final=not hold) and hold:
                     self.segment_idx += 1
         elif not hold:
             self.tts_bridge.send_to_answer_queue(
@@ -242,8 +248,8 @@ class Output:
                 cleaned = self._collapse_punctuation(str(seg or "").strip())
                 if not cleaned or self._is_punct_only(cleaned):
                     continue
-                self._send(cleaned, traceid, "")
-                self.segment_idx += 1
+                if self._send(cleaned, traceid, ""):
+                    self.segment_idx += 1
 
     @staticmethod
     def _strip_tts_markup(text: str) -> str:
@@ -262,20 +268,58 @@ class Output:
             if self._closed:
                 return
             self._closed = True
+            self._flush_pending(traceid, "end")
             self._send("", traceid, "end")
 
-    def _send(self, text: str, traceid: str, chat_status: str):
-        """通过桥接把文本片段推送到 TTS 队列"""
-        if not str(text or "").strip():
-            return
+    def _send(self, text: str, traceid: str, chat_status: str, final: bool = False) -> bool:
+        """把一段文本推给 TTS
+
+        跨句替换规则（如"你说的对，但是"）需要下一段才能命中：本段尾部若可能
+        是规则前半截，先扣住不发，等下一段拼起来再整体替换并放行。
+        final=True 表示本轮最后一段，不再扣留。
+        返回 True 表示真的入队了（调用方据此决定 seg_index 是否递增）。
+        """
+        body = str(text or "")
+        if not body.strip():
+            return False
+        if self._tts_pending:
+            # 已经扣过一段：拼上后无论能不能替换都放行，避免无限等待
+            body = self._tts_pending + body
+            chat_status = self._tts_pending_status or chat_status
+            self._tts_pending = ""
+            self._tts_pending_status = ""
+        elif not final and self.narration is not None and self.narration.needs_next(body):
+            self._tts_pending = body
+            self._tts_pending_status = chat_status
+            return False
         if self.narration is not None:
-            text = self.narration.dilute(text)
+            body = self.narration.dilute(body)
         self.tts_bridge.send_to_answer_queue(
-            self.llm_data, text, traceid,
+            self.llm_data, body, traceid,
             seg_index=self.segment_idx,
             chat_status=chat_status,
             source=self.source,
         )
+        return True
+
+    def _flush_pending(self, traceid: str, chat_status: str = "end") -> bool:
+        """把扣住的那段原样放行（收尾/关闭时调用）"""
+        if not self._tts_pending:
+            return False
+        body, self._tts_pending = self._tts_pending, ""
+        # 收尾时必须发 end，不能被被扣那段原本的 start 顶掉，否则 TTS 任务收不了口
+        status = chat_status if chat_status == "end" else (self._tts_pending_status or chat_status)
+        self._tts_pending_status = ""
+        if self.narration is not None:
+            body = self.narration.dilute(body)
+        self.tts_bridge.send_to_answer_queue(
+            self.llm_data, body, traceid,
+            seg_index=self.segment_idx,
+            chat_status=status,
+            source=self.source,
+        )
+        self.segment_idx += 1
+        return True
 
     @staticmethod
     def remove_analysis(text: str) -> str:

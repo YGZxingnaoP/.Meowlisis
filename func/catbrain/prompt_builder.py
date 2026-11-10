@@ -72,12 +72,33 @@ class MeowPromptBuilder:
         """构建当前情绪提示词（仅次于角色卡放置）"""
         return f"现在{AppConfig().ai_name}的情绪：{self._current_emotion()}"
 
+    def decide_recall(self, current_message: str, uid=None) -> dict:
+        """供并行调度：提前算好回忆判定，build() 直接复用（uid 解析规则与 build 一致）"""
+        if not uid:
+            try:
+                from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
+                uid = MeowLLMLtMemBridge().last_uid
+            except Exception:
+                uid = None
+        return self._decide_recall(current_message, uid)
+
+    def warm_topic(self) -> str:
+        """供并行调度：预热话题缓存，build() 内不再现场调模型"""
+        try:
+            return self.abmem.warm_topic()
+        except Exception:
+            self.log.exception("话题预热失败")
+            return ""
+
     def build(self, uid=None, current_message: str = "", online: bool = False,
-              mark_first: bool = True) -> str:
+              mark_first: bool = True, recall: dict = None,
+              topic_override: str = None) -> str:
         """构建完整系统提示词（顺序：角色卡→情绪→价值观→用户记忆→日期→记忆摘要）
 
         online=True 时，角色卡使用 napcat 在线情绪/性格数据源。
         mark_first=False 时日期块不占用「当天首次说话」祝福判定。
+        recall: 外部并行算好的回忆判定结果；None 时现场判定（原有行为）。
+        topic_override: 外部算好的话题；None 时现场判定（原有行为），"" 表示本轮无话题。
         """
         # 当前用户优先取传入参数，缺失时从 llm_ltmem 桥接获取最近用户
         if not uid:
@@ -86,7 +107,8 @@ class MeowPromptBuilder:
                 uid = MeowLLMLtMemBridge().last_uid
             except Exception:
                 uid = None
-        recall = self._decide_recall(current_message, uid)
+        if recall is None:
+            recall = self._decide_recall(current_message, uid) or {}
         parts = [
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
@@ -95,7 +117,8 @@ class MeowPromptBuilder:
             self._build_now(),
             self.calendar.build(uid, mark_first=mark_first),  # 日期块（节日/节气/生日）
             self.abmem.build_prompt(current_message, uid,
-                                    need_recall=recall.get("need_recall", False), time_hint=recall),
+                                    need_recall=recall.get("need_recall", False), time_hint=recall,
+                                    topic_override=topic_override),
             self.ltmem.build(uid),  # 原文兜底（默认关闭）
         ]
         return "\n\n".join([p for p in parts if p])
@@ -114,7 +137,7 @@ class MeowPromptBuilder:
         else:
             user_block = group_info_text or ""
             calendar_block = self.calendar.build_no_user()  # 群聊无特定用户：不检查生日
-        recall = self._decide_recall(current_message, uid)
+        recall = self._decide_recall(current_message, uid) or {}
         parts = [
             self.character_prompt.build(online=online),  # 角色卡（已含当前情绪）
             self.values.build(),
@@ -160,7 +183,7 @@ class MeowPromptBuilder:
             f"# 现在已经{cold_time}秒没人跟你说话了",
             self._build_now(),
             self.calendar.build_no_user(),  # 日期块（仅节日/节气，不获取 uid）
-            self.abmem.build_prompt(current_message, None, topic_override=topic_override),
+            self.abmem.build_prompt(current_message, None, topic_override=topic_override or None),
         ]
         return "\n\n".join([p for p in parts if p])
 

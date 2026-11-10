@@ -33,6 +33,9 @@ class Output:
         self._paren_depth = 0
         self._bracket_depth = 0
         self._tag = ""
+        # 跨句替换：本段尾部可能是规则前半截时先扣住，等下一段拼起来再发
+        self._tts_pending = ""
+        self._tts_pending_status = ""
 
         # 丰富性清洗：本轮开始按上一轮平滑得分取档位，边生成边清洗
         self.narration = None
@@ -130,9 +133,9 @@ class Output:
         send_text = self._collapse_punctuation(send_text)
         if self._is_punct_only(send_text):
             return
-        self._send(send_text, traceid, self.chat_status)
-        self.segment_idx += 1
-        self.chat_status = ""
+        if self._send(send_text, traceid, self.chat_status):
+            self.segment_idx += 1
+            self.chat_status = ""
 
     def finalize(self, traceid: str) -> str:
         """结束流式：刷出剩余内容并返回清理后的完整文本"""
@@ -145,13 +148,17 @@ class Output:
                     continue
                 self.temp += c
         tail_text = self._collapse_punctuation(self.temp.strip())
+        if self._tts_pending:
+            tail_text = self._tts_pending + tail_text
+            self._tts_pending = ""
+            self._tts_pending_status = ""
         if tail_text and not self._is_punct_only(tail_text):
-            self._send(tail_text, traceid, "end")
+            self._send(tail_text, traceid, "end", final=True)
         elif self.segment_idx == 0:
             cleaned = self.cleaner.cleaned if self.cleaner is not None else self.filtered_content
             cleaned_text = self._clean_punctuation(cleaned)
             if cleaned_text and not self._is_punct_only(cleaned_text):
-                self._send(cleaned_text, traceid, "end")
+                self._send(cleaned_text, traceid, "end", final=True)
         else:
             self.tts_bridge.send_chat_segment(
                 "", traceid, seg_index=self.segment_idx, chat_status="end",
@@ -172,16 +179,30 @@ class Output:
             result = self.narration.dilute(result)
         return "" if self._is_punct_only(result) else result
 
-    def _send(self, text: str, traceid: str, chat_status: str):
-        """通过桥接把文本片段推送到 TTS 队列"""
-        if not str(text or "").strip():
-            return
+    def _send(self, text: str, traceid: str, chat_status: str, final: bool = False) -> bool:
+        """推送到 TTS；跨句替换规则命中时先扣住本段，等下一段拼起来再发
+
+        返回 True 表示真的入队（调用方据此决定 seg_index 是否递增）。
+        """
+        body = str(text or "")
+        if not body.strip():
+            return False
+        if self._tts_pending:
+            body = self._tts_pending + body
+            chat_status = self._tts_pending_status or chat_status
+            self._tts_pending = ""
+            self._tts_pending_status = ""
+        elif not final and self.narration is not None and self.narration.needs_next(body):
+            self._tts_pending = body
+            self._tts_pending_status = chat_status
+            return False
         if self.narration is not None:
-            text = self.narration.dilute(text)
+            body = self.narration.dilute(body)
         self.tts_bridge.send_chat_segment(
-            text, traceid, seg_index=self.segment_idx,
+            body, traceid, seg_index=self.segment_idx,
             chat_status=chat_status, source=self.source,
         )
+        return True
 
     @staticmethod
     def remove_analysis(text: str) -> str:

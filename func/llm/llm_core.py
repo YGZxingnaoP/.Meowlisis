@@ -3,6 +3,8 @@
 # LLM 编排入口 + 队列调度
 
 from threading import Thread
+from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
@@ -21,6 +23,59 @@ from func.llm.output import Output
 from func.llm.emotion_controller import EmotionController
 from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
 from func.pipeline.short_memory import ShortMemory
+
+# 前置判定（破甲审查 / 回忆判定 / 话题判定）全部丢后台，主回复不等它们：
+# 判定结果按轮次单调落地，从下一轮开始生效，各自有 8 秒网络超时兜底。
+
+# 跨消息复用的判定线程池：不能每轮新建，否则超时未完成的任务会卡住线程池关闭
+_PRE_JUDGE_POOL = None
+_PRE_JUDGE_POOL_LOCK = threading.Lock()
+
+
+def _pre_judge_pool() -> ThreadPoolExecutor:
+    global _PRE_JUDGE_POOL
+    with _PRE_JUDGE_POOL_LOCK:
+        if _PRE_JUDGE_POOL is None:
+            _PRE_JUDGE_POOL = ThreadPoolExecutor(max_workers=6, thread_name_prefix="llm-pre")
+    return _PRE_JUDGE_POOL
+
+
+class _PreJudgeState:
+    """前置判定的跨轮状态：按轮次单调生效，失败不覆盖，结论跨轮保留。
+
+    - 本轮限时内完成 → 立即写入，并被本轮使用；
+    - 没完成 / 失败 → 不写入，本轮沿用上一次的有效结论，下一轮继续可用；
+    - 迟到的结论带自己的轮次号，只被更新的轮次覆盖，不会反过来盖掉新一轮。
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._seq = 0
+        self._turn = {"rule": 0, "recall": 0, "topic": 0}
+        self._value = {"rule": False, "recall": {}, "topic": ""}
+
+    def begin_turn(self) -> int:
+        """领取本轮轮次号"""
+        with self._lock:
+            self._seq += 1
+            return self._seq
+
+    def update(self, kind: str, turn: int, value) -> None:
+        """写入结论：只有更新的轮次才能覆盖"""
+        with self._lock:
+            if turn > self._turn[kind]:
+                self._turn[kind] = turn
+                self._value[kind] = value
+
+    def snapshot(self):
+        """取当前有效结论（可能来自本轮，也可能来自上一轮）"""
+        with self._lock:
+            recall = self._value["recall"]
+            recall = dict(recall) if isinstance(recall, dict) else {}
+            return self._value["rule"], recall, self._value["topic"]
+
+
+_PRE_JUDGE_STATE = _PreJudgeState()
 
 
 @singleton
@@ -197,6 +252,36 @@ class LLmCore:
             self.log.exception("【ai_response】异常：")
             self.llmData.is_ai_ready = True
 
+    def _judge_rule(self, uid: str, prompt: str, hist: list, turn: int):
+        """破甲审查：只回结论、不写桥接；拿到结果才写入跨轮状态"""
+        try:
+            from func.catbrain.rules_break.rules_break import TBRulesBreak
+            value = bool(TBRulesBreak().check_msg(uid, prompt, hist))
+        except Exception:
+            self.log.exception("主线程破甲审查异常")
+            return
+        _PRE_JUDGE_STATE.update("rule", turn, value)
+
+    def _judge_recall(self, prompt: str, display_name: str, turn: int):
+        """回忆判定：None 表示这次没拿到结论，不覆盖上一次"""
+        try:
+            value = self.prompt_get.prepare_recall(prompt, display_name)
+        except Exception:
+            self.log.exception("回忆判定异常")
+            return
+        if value is not None:
+            _PRE_JUDGE_STATE.update("recall", turn, value)
+
+    def _judge_topic(self, turn: int):
+        """话题判定：空结果不覆盖上一次"""
+        try:
+            value = self.prompt_get.prepare_topic()
+        except Exception:
+            self.log.exception("话题判定异常")
+            return
+        if value:
+            _PRE_JUDGE_STATE.update("topic", turn, value)
+
     def _ai_response(self):
         """核心处理流程：取消息 → 记录长期记忆 → 流式生成正文 → 后置情绪/性格工具更新 → 输出"""
         question_data = self.llmData.QuestionList.get()
@@ -265,13 +350,18 @@ class LLmCore:
         if is_danmaku:
             system_prompt = self.prompt_get.get_danmaku_prompt(display_name, prompt, multi_user)
         else:
-            # 主线程破甲审查：命中色情则写 msg_rulebreak 桥接，构建提示词时注入原则词
-            try:
-                from func.catbrain.rules_break.rules_break import TBRulesBreak
-                TBRulesBreak().check_and_store_msg(uid, prompt, ShortMemory().load())
-            except Exception:
-                self.log.exception("主线程破甲审查异常")
-            system_prompt = self.prompt_get.get_system_prompt(display_name, prompt)
+            # 三条前置判定只在后台跑，主回复一秒都不等它们：
+            # 本轮直接用已经落地的结论（可能是上一轮的），本轮算完的从下一轮开始生效。
+            hist = ShortMemory().load()
+            turn = _PRE_JUDGE_STATE.begin_turn()
+            pool = _pre_judge_pool()
+            pool.submit(self._judge_rule, uid, prompt, hist, turn)
+            pool.submit(self._judge_recall, prompt, display_name, turn)
+            pool.submit(self._judge_topic, turn)
+
+            explicit, recall, topic = _PRE_JUDGE_STATE.snapshot()
+            system_prompt = self.prompt_get.get_system_prompt(
+                display_name, prompt, recall=recall, explicit=explicit, topic=topic)
 
         if merge_on and tools:
             system_prompt = tb.attach_tool_hint(system_prompt)

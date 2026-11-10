@@ -9,6 +9,7 @@ import re
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
+from .contrast import rewrite_contrast
 
 
 class _Node:
@@ -160,7 +161,7 @@ class SingerNarration:
         self._dilute_rules = rules
 
     def dilute(self, text: str) -> str:
-        s = str(text or "")
+        s = rewrite_contrast(str(text or ""))
         for rule in self._dilute_rules:
             if rule["rx"] is not None:
                 s = rule["rx"].sub(rule["replacement"], s)
