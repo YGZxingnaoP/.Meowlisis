@@ -140,6 +140,12 @@ class LLMDeepRecallBridge:
     def _emit(output, traceid, text, abort, token):
         if abort.aborted(token):
             return
+        try:
+            text = DeepRecallNarration().clean(text)
+        except Exception:
+            pass
+        if not str(text or "").strip():
+            return
         output.send_extension(text, traceid)
 
     def _remember(self, uid: str, text: str):

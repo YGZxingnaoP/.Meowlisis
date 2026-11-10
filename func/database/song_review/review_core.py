@@ -29,6 +29,7 @@ class MeowSongReview:
         self._ready = threading.Event()
         self._feeling_text = ""
         self._feeling_segments = []
+        self._uid = ""
 
     def _reset(self):
         """每次唱歌开始前重置状态"""
@@ -37,14 +38,16 @@ class MeowSongReview:
         self._feeling_text = ""
         self._feeling_segments = []
 
-    def start_search(self, song_title, mode="song"):
+    def start_search(self, song_title, mode="song", uid=""):
         """唱歌开始：触发歌曲搜索，并后台预生成感想"""
         self._reset()
+        self._uid = str(uid or "")
         from func.database.song_review.get_song import MeowSongGetSong
         MeowSongGetSong().receive(song_title)
-        Thread(target=self._prepare_feeling, args=(song_title, mode), daemon=True).start()
+        Thread(target=self._prepare_feeling,
+               args=(song_title, mode, self._uid), daemon=True).start()
 
-    def _prepare_feeling(self, song_title, mode):
+    def _prepare_feeling(self, song_title, mode, uid=""):
         """后台预生成感想：等搜索结果 → 读歌词 → 构建引导词 → LLM 生成（不播报）"""
         try:
             search_result = self._wait_and_take_result()
@@ -73,7 +76,8 @@ class MeowSongReview:
                 return
 
             from func.pipeline.database_llm import DatabaseLLMBridge
-            cleaned_content, segments = DatabaseLLMBridge().generate(guide)
+            cleaned_content, segments = DatabaseLLMBridge().generate(
+                guide, song_title=song_title, mode=mode, uid=uid or self._uid)
             if self._cancelled.is_set():
                 return
             if segments:
@@ -83,10 +87,11 @@ class MeowSongReview:
         except Exception:
             self.log.exception("[SongReview] 感想预生成异常")
 
-    def song_end(self, song_title, mode):
-        Thread(target=self._song_end_async, args=(song_title, mode), daemon=True).start()
+    def song_end(self, song_title, mode, uid=""):
+        Thread(target=self._song_end_async,
+               args=(song_title, mode, uid or self._uid), daemon=True).start()
 
-    def _song_end_async(self, song_title, mode):
+    def _song_end_async(self, song_title, mode, uid=""):
         try:
             from func.database.song_review.store_song import MeowSongStore
             MeowSongStore().store(song_title)
@@ -107,7 +112,8 @@ class MeowSongReview:
 
         try:
             from func.pipeline.database_llm import DatabaseLLMBridge
-            DatabaseLLMBridge().broadcast(feeling_text, feeling_segments)
+            DatabaseLLMBridge().broadcast(
+                feeling_text, feeling_segments, song_title=song_title, mode=mode, uid=uid)
         except Exception:
             self.log.exception("[SongReview] 感想播报异常")
 
@@ -117,6 +123,7 @@ class MeowSongReview:
         self._ready.clear()
         self._feeling_text = ""
         self._feeling_segments = []
+        self._uid = ""
         self._take_result()
 
     def _wait_and_take_result(self):

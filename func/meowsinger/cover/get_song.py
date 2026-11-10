@@ -103,7 +103,7 @@ class MeowCoverSong:
 
         from func.pipeline.singing_state import SingingStateBridge
         SingingStateBridge().start_singing("cover", title)
-        self._send_start_signal(title)
+        self._send_start_signal(title, username)
 
         from func.meowsinger.subtitle.lyric_syncer import MeowLyricSyncer
         syncer = MeowLyricSyncer()
@@ -115,7 +115,7 @@ class MeowCoverSong:
         syncer.stop()
         SingingStateBridge().end_singing()
         if finished:
-            self._send_end_signal(title)
+            self._send_end_signal(title, username)
         self.log.info(f"[翻唱] 播放结束: {title} finished={finished}")
 
     def _download_raw(self, title, artist=""):
@@ -159,17 +159,17 @@ class MeowCoverSong:
         except Exception:
             pass
 
-    def _send_start_signal(self, title):
+    def _send_start_signal(self, title, username=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().start_search(title, "cover")
+            SingerDatabaseBridge().start_search(title, "cover", uid=username)
         except Exception:
             self.log.exception("[翻唱] 开始信号异常")
 
-    def _send_end_signal(self, title):
+    def _send_end_signal(self, title, username=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().song_end(title, "cover")
+            SingerDatabaseBridge().song_end(title, "cover", uid=username)
         except Exception:
             self.log.exception("[翻唱] 结束信号异常")
 

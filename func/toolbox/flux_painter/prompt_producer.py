@@ -24,7 +24,7 @@ PRODUCE_TOOL = {
                 "canvas": {"type": "string", "description": "画布规格",
                            "enum": ["1024x1024", "1080x1960"]},
                 "cinema": {"type": "string",
-                           "description": "自然语言主描述（**最重要**，Anima3 最吃这段）：3-6 句英文，200-400 字符。依次写：主体与动作/姿态 → 表情与情绪 → 场景环境 → 光照（必写） → 镜头角度/构图与相机距离 → 氛围；用完整短句、具体可感（谁·在哪·做什么·什么光·哪个角度）。禁止剧情结局/心理活动/画外音；禁写实摄影词(photo/realistic/real skin/camera lens)。"},
+                           "description": "自然语言主描述（**最重要**，Anima3 最吃这段）：3-6 句英文，200-400 字符。依次写：主体与动作/姿态 → 表情与情绪 → 场景环境 → 光照（必写） → 视角/构图与观看距离（用 viewpoint 描述，不写 camera/lens 实体；只有需求明确需要相机/镜头时才写） → 氛围；用完整短句、具体可感（谁·在哪·做什么·什么光·哪个角度）。禁止剧情结局/心理活动/画外音；不要写 camera/lens/photo/dslr 等摄影实体词（需求明确需要相机/镜头时除外）；不要默认新增台灯/灯具，只有需求明确需要时才写。"},
                 "character": {"type": "string",
                               "description": "若主人点名了具体动漫/游戏角色，填该角色中文常用名（如 阿尔托莉雅、初音未来）；未点名则省略"},
                 "character_known": {"type": "boolean",
@@ -100,9 +100,10 @@ SYSTEM_RULES = (
     "最后补一个景别(portrait / upper body / cowboy shot / full body / close-up 五选一)。"
     "动作/姿态/情绪/镜头细节一律不要塞这里，交给 cinema。\n"
     "② cinema = 自然语言主描述（最重要，Anima3 最吃这段）：3-6 句英文，200-400 字符。"
-    "依次写清：主体与其动作/姿态 → 表情与情绪 → 场景环境 → 光照（必写） → 镜头角度/构图与相机距离 → 氛围。"
+    "依次写清：主体与其动作/姿态 → 表情与情绪 → 场景环境 → 光照（必写） → 视角/构图与观看距离（用 viewpoint 描述，不写 camera/lens 实体） → 氛围。"
     "用完整短句、具体可感（谁、在哪、做什么、什么光、从哪个角度看）。"
-    "禁止剧情结局/心理活动/画外音；禁写实摄影词(photo/realistic/real skin/camera lens)。\n"
+    "禁止剧情结局/心理活动/画外音；不要写 camera/lens/photo/dslr 等摄影实体词（需求明确需要相机/镜头时除外）；"
+    "不要默认新增台灯/灯具，只有需求明确需要灯具时才写。\n"
     "【tag 写法全局规范】**多词标签一律用空格分隔**（正确：kasumigaoka utaha / artoria pendragon；"
     "错误：kasumigaoka_utaha），禁止下划线与连接符拼接；**禁止凭直觉生造标签**——拿不准的写法"
     "就换成法典里出现过的形式，或改用自然语言写进 cinema。同一标签不要重复两次。\n"
@@ -112,17 +113,19 @@ SYSTEM_RULES = (
     "配额与互斥看 §3.1 / §4.2。**检索最多 5-6 轮**，信息够用就立刻 produce_painting，不要为查而查。\n"
     "【硬性红线】① 画面必须有明确主体，禁止无人像或纯器官构图；"
     "② 不要把人体两个部分写成不同焦段（如“脚高清 + 脸失焦”），否则必糊；"
-    "③ cinema 必须写清光照（写在自然语言里，光源与整体明暗各一句，写什么由题材决定）；"
-    "④ cinema 不得与 positive 的角色特征矛盾（发色/瞳色/服装以 positive 为准）。\n"
+    "③ cinema 必须写清光照（写在自然语言里，光源与整体明暗各一句，写什么由题材决定；优先写自然光源与方向，"
+    "不要默认新增台灯/灯具，只有需求明确需要时才写）；"
+    "④ cinema 不得与 positive 的角色特征矛盾（发色/瞳色/服装以 positive 为准）；"
+    "⑤ 不要凭空添加相机、镜头、台灯、灯具；只有需求明确需要时才画。\n"
     "【正例（照这个标准写）】\n"
-    "需求：霞之丘诗羽，黑丝袜，教室，脚踩镜头，从人的45度前方拍\n"
+    "需求：霞之丘诗羽，黑丝袜，教室，从低角度拍\n"
     "positive: 1girl, solo, kasumigaoka utaha, saenai heroine no sodatekata, long black hair, purple eyes, "
     "school uniform, black pantyhose, hairband, classroom, full body\n"
     "cinema: Utaha sits on a chair at the back of an empty classroom, one leg lifted so her black-stockinged "
-    "sole presses toward the lens. She looks at the viewer with a small teasing smile, cheeks faintly flushed. "
+    "sole is close to the foreground. She looks at the viewer with a small teasing smile, cheeks faintly flushed. "
     "Desks and the blackboard blur softly behind her. Warm late-afternoon light comes through the tall windows "
-    "and reaches the whole room. The camera sits low in front of her at a 45-degree angle, her foot near the "
-    "lens while her head and face stay clearly readable above it.\n"
+    "and reaches the whole room. A low-angle view from in front of her keeps her foot near the foreground "
+    "while her head and face stay clearly readable above it.\n"
     "【反例（禁止这样写）】\n"
     "需求：同上\n"
     "positive: 1girl, solo, kasumigaoka_utaha, long black hair, purple eyes, school uniform, black pantyhose, "
@@ -343,7 +346,7 @@ class TBPromptProducer:
                    "① positive 只放 8-16 个 tag 锚点，且必须覆盖：主体/作品出处/发型/瞳色/服装/标志物/场景/景别；"
                    "动作与构图细节一律写进 cinema，tag 用空格分词、禁下划线、禁生造；"
                    "② cinema 每张必写 3-6 句英文自然语言主描述（主体动作→表情情绪→场景环境→光照→"
-                   "镜头角度与构图→氛围）；"
+                   "视角/构图与观看距离→氛围）；"
                    "③ cinema 必须含一处光照/曝光描写（写在自然语言里，不做明暗倾向规定）；"
                    "④ 景别(portrait/upper body/cowboy shot/full body/close-up)为 positive 必填锚点。")
         messages = [{"role": "system", "content": system}]
@@ -372,7 +375,7 @@ class TBPromptProducer:
             user_content = (
                 "【续画/改图】用户要求在上一版画作基础上做修改。\n"
                 "规则：\n"
-                "1. 保持主体身份、构图、场景、光照、镜头与整体氛围不变，只改「本次修改指令」涉及的部分；\n"
+                "1. 保持主体身份、构图、场景、光照、视角与整体氛围不变，只改「本次修改指令」涉及的部分；\n"
                 "2. 指令要求**删除或替换**的特征，"
                 "必须从新的 positive / cinema 里彻底移除旧标签和旧描述，不能只在末尾追加新词；\n"
                 "3. 旧标签与本次指令冲突时（性别、服装、裸露程度、人数等），一律以本次指令为准，旧标签删掉；\n"
@@ -414,7 +417,7 @@ class TBPromptProducer:
                     self.log.warning("[flux_painter] 首轮缺自然语言镜头段(cinema)，重试第2次")
                     messages.append({"role": "user",
                                      "content": "（系统纠正）cinema 字段为空：请补 3-6 句英文自然语言主描述"
-                                                "（主体动作/表情情绪/场景环境/光照/镜头角度与构图/氛围），"
+                                                "（主体动作/表情情绪/场景环境/光照/视角与构图/氛围），"
                                                 "与 positive 一起重出。"})
                     continue
                 if attempt == 1 and not LIGHT_RE.search(cinema):

@@ -32,6 +32,13 @@ class MeowSingerCore:
         if not username:
             self.log.error("[meowsinger] 缺少身份编号，不接管本条")
             return False
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            if not IdSignupBridge.is_internal_uid(username):
+                self.log.error(f"[meowsinger] 非标准 meowid，不接管：{username!r}")
+                return False
+        except Exception:
+            self.log.exception("[meowsinger] meowid 校验异常")
 
         # 唱歌中：停止词则掐断，否则进汇总池并拦截
         if self.state.is_singing():
@@ -113,9 +120,11 @@ class MeowSingerCore:
         if not messages:
             return
         lines = "\n".join(f"{m.get('username', '观众')}说：{m.get('text', '')}" for m in messages)
+        uid = next((str(m.get("username") or "").strip() for m in messages
+                    if str(m.get("username") or "").strip()), "")
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_summary(lines)
+            SingerLLMBridge().send_summary(lines, uid=uid)
         except Exception:
             self.log.exception("[MeowSinger] 唱歌汇总回复异常")
 

@@ -7,6 +7,7 @@ from func.pipeline.toolbox_tts import ToolboxTtsBridge
 from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
 from func.pipeline.short_memory import ShortMemory
 from func.config.app_config import AppConfig
+from func.meowsinger.narration import SingerNarration
 
 
 class SingerLLMBridge:
@@ -46,6 +47,10 @@ class SingerLLMBridge:
                 content = (resp.choices[0].message.content or "").strip()
             if not content:
                 return ""
+            try:
+                content = SingerNarration().clean(content)
+            except Exception:
+                pass
             from func.llm.output import clean_and_split
             cleaned_content, segments = clean_and_split(content)
             if not segments:
@@ -64,7 +69,7 @@ class SingerLLMBridge:
             self.log.exception("[SingerLLM] 回复合成异常")
             return ""
 
-    def send_summary(self, lines):
+    def send_summary(self, lines, uid=""):
         """把唱歌期间汇总的观众消息交给 LLM 统一回复，播报并记录记忆"""
         if not lines or not lines.strip():
             return ""
@@ -90,6 +95,10 @@ class SingerLLMBridge:
                 content = (resp.choices[0].message.content or "").strip()
             if not content:
                 return ""
+            try:
+                content = SingerNarration().clean(content)
+            except Exception:
+                pass
             from func.llm.output import clean_and_split
             cleaned_content, segments = clean_and_split(content)
             if not segments:
@@ -102,33 +111,55 @@ class SingerLLMBridge:
                     seg, traceid=traceid, seg_index=i,
                     chat_status=chat_status, source="meowsinger_summary",
                 )
-            self._record_ai_public(cleaned_content)
+            self._record_ai_public(cleaned_content, uid)
             return content
         except Exception:
             self.log.exception("[SingerLLM] 汇总回复合成异常")
             return ""
 
     @staticmethod
+    def _valid_uid(uid):
+        uid = str(uid or "").strip()
+        if not uid:
+            return ""
+        try:
+            from func.pipeline.id_signup import IdSignupBridge
+            return uid if IdSignupBridge.is_internal_uid(uid) else ""
+        except Exception:
+            return ""
+
+    @staticmethod
     def _record_memory(uid, content):
         try:
-            ShortMemory().save({"role": "assistant", "content": content, "type": "llm_fast_response"},
-                               40, trim_mode="rounds")
+            ShortMemory().save({"role": "assistant", "content": content, "type": "singer_thought"},
+                               0, trim_mode="rounds")
         except Exception:
             pass
         try:
-            MeowLLMLtMemBridge().record_ai_message(uid, AppConfig().ai_name, content)
+            bridge = MeowLLMLtMemBridge()
+            uid = SingerLLMBridge._valid_uid(uid)
+            if uid:
+                bridge.record_ai_message(uid, AppConfig().ai_name, content)
+            else:
+                bridge.record_ltmem_only(AppConfig().ai_name, content)
         except Exception:
             pass
 
     @staticmethod
-    def _record_ai_public(content):
-        """AI 面向大家的回复：只记长期记忆与摘要，不记用户记忆"""
+    def _record_ai_public(content, uid=""):
+        """唱歌汇总：短期 + 长期 + 摘要缓存 + 用户记忆（有 meowid 时）"""
+        text = f"【唱歌】{content}"
         try:
-            ShortMemory().save({"role": "assistant", "content": content, "type": "llm_fast_response"},
-                               40, trim_mode="rounds")
+            ShortMemory().save({"role": "assistant", "content": text, "type": "singer_thought"},
+                               0, trim_mode="rounds")
         except Exception:
             pass
         try:
-            MeowLLMLtMemBridge().record_ltmem_only(AppConfig().ai_name, content)
+            bridge = MeowLLMLtMemBridge()
+            uid = SingerLLMBridge._valid_uid(uid)
+            if uid:
+                bridge.record_ai_message(uid, AppConfig().ai_name, text)
+            else:
+                bridge.record_ltmem_only(AppConfig().ai_name, text)
         except Exception:
             pass
