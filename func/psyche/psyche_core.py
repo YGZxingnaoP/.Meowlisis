@@ -15,6 +15,10 @@ class MeowPsycheCore:
     SCOPE = "main"
     MEM_TYPE = "llm_fast_response"
     SHORT_PATH = os.path.join(".temp", "public_short_mem.json")
+    BAD_CONTENT = re.compile(
+        r"(再别一会儿|保持距离|看他反应|给他.*空间|给她.*空间|"
+        r"等他软下来|等她软下来|等主人软下来)")
+    GUESS_USER = re.compile(r"(主人|你)(肯定|一定|其实|心里|是不是|想要|想)")
 
     def __init__(self):
         """心理生成核心：轮询短期记忆，角色每次回复后总结一次当前心理"""
@@ -171,12 +175,29 @@ class MeowPsycheCore:
         content_raw = data.get("content", [])
         if isinstance(content_raw, str):
             content_raw = content_raw.split("\n")
+        narration = None
+        try:
+            from func.psyche.narration import PsycheNarration
+            narration = PsycheNarration()
+        except Exception:
+            self.log.exception("[Psyche] 加载心理 narration 失败")
+        if narration is not None:
+            theme = narration.clean(theme).strip()
         content = []
         for line in content_raw or []:
             line = re.sub(r"^\s*(?:[-*·•]|\d+\s*[.、)])\s*", "", str(line)).strip()
-            if line:
-                content.append(line[:100])
-        content = content[:8]
+            if not line:
+                continue
+            if narration is not None:
+                line = narration.clean(line).strip()
+            if not line:
+                continue
+            if self.BAD_CONTENT.search(line):
+                continue
+            if self.GUESS_USER.search(line):
+                continue
+            content.append(line[:100])
+        content = content[:3]
         if not theme:
             # 说不出"在干的事"：清空，别让上一件事的内容挂在心里
             LLMPsycheBridge().set_psyche(self.SCOPE, {})
