@@ -22,9 +22,9 @@ class MeowCoverSong:
         self.core = MeowCoverCore()
         self.player = MeowSingerPlayer()
 
-    def cover(self, title, artist="", username=""):
+    def cover(self, title, artist="", meowid=""):
         """翻唱入口：异步执行判断与播放/学习"""
-        Thread(target=self._cover_async, args=(title, artist, username), daemon=True).start()
+        Thread(target=self._cover_async, args=(title, artist, meowid), daemon=True).start()
 
     def _end_singing(self):
         # 失败路径兜底清除唱歌占用
@@ -34,15 +34,15 @@ class MeowCoverSong:
         except Exception:
             pass
 
-    def _cover_async(self, title, artist, username):
+    def _cover_async(self, title, artist, meowid):
         if not title or not title.strip():
-            self._reply_no_title(username)
+            self._reply_no_title(meowid)
             self._end_singing()
             return
         title = title.strip()
 
         if self.core.has_learned(title):
-            self._play_learned(title)
+            self._play_learned(title, meowid)
             return
 
         # 未学过：确保 raw_list 有原曲
@@ -50,7 +50,7 @@ class MeowCoverSong:
         if not os.path.exists(mp3_path):
             mp3_path, title = self._download_raw(title, artist)
         if not mp3_path or not os.path.exists(mp3_path):
-            self._reply_fail(title, username)
+            self._reply_fail(title, meowid)
             self._end_singing()
             return
 
@@ -59,20 +59,20 @@ class MeowCoverSong:
             success = self.core.learn_song(title, mp3_path)
             self.state.set_learning(False)
             if success:
-                self._play_learned(title)
+                self._play_learned(title, meowid)
             else:
-                self._reply_learn_fail(title, username)
+                self._reply_learn_fail(title, meowid)
                 self._end_singing()
         else:
             self.state.add_rvc_task({"title": title, "mp3_path": mp3_path})
-            self._reply_need_learn(title, username)
+            self._reply_need_learn(title, meowid)
             self._end_singing()
 
-    def start_learn(self, username):
+    def start_learn(self, meowid):
         """学歌指令触发：依次串行执行 rvc 队列，不中断"""
-        Thread(target=self._learn_queue, args=(username,), daemon=True).start()
+        Thread(target=self._learn_queue, args=(meowid,), daemon=True).start()
 
-    def _learn_queue(self, username):
+    def _learn_queue(self, meowid):
         self.state.set_learning(True)
         try:
             while self.state.has_rvc_task():
@@ -81,12 +81,12 @@ class MeowCoverSong:
                 mp3_path = task.get("mp3_path", "")
                 self.log.info(f"[学歌] 开始学习: {title}")
                 success = self.core.learn_song(title, mp3_path)
-                self._notify_learn_done(title, success, username)
+                self._notify_learn_done(title, success, meowid)
                 time.sleep(0.5)
         finally:
             self.state.set_learning(False)
 
-    def _play_learned(self, title):
+    def _play_learned(self, title, meowid=""):
         folder = os.path.join("character", "songs", "meow_list", self._safe_name(title))
         vocal = os.path.join(folder, f"{self._safe_name(title)}_vocal.wav")
         accomp = os.path.join(folder, f"{self._safe_name(title)}_accomp.wav")
@@ -103,7 +103,7 @@ class MeowCoverSong:
 
         from func.pipeline.singing_state import SingingStateBridge
         SingingStateBridge().start_singing("cover", title)
-        self._send_start_signal(title, username)
+        self._send_start_signal(title, meowid)
 
         from func.meowsinger.subtitle.lyric_syncer import MeowLyricSyncer
         syncer = MeowLyricSyncer()
@@ -115,7 +115,7 @@ class MeowCoverSong:
         syncer.stop()
         SingingStateBridge().end_singing()
         if finished:
-            self._send_end_signal(title, username)
+            self._send_end_signal(title, meowid)
         self.log.info(f"[翻唱] 播放结束: {title} finished={finished}")
 
     def _download_raw(self, title, artist=""):
@@ -159,55 +159,55 @@ class MeowCoverSong:
         except Exception:
             pass
 
-    def _send_start_signal(self, title, username=""):
+    def _send_start_signal(self, title, meowid=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().start_search(title, "cover", uid=username)
+            SingerDatabaseBridge().start_search(title, "cover", uid=meowid)
         except Exception:
             self.log.exception("[翻唱] 开始信号异常")
 
-    def _send_end_signal(self, title, username=""):
+    def _send_end_signal(self, title, meowid=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().song_end(title, "cover", uid=username)
+            SingerDatabaseBridge().song_end(title, "cover", uid=meowid)
         except Exception:
             self.log.exception("[翻唱] 结束信号异常")
 
-    def _notify_learn_done(self, title, success, username):
+    def _notify_learn_done(self, title, success, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
             if success:
-                SingerLLMBridge().send_reply(f"已经学会《{title}》啦", username)
+                SingerLLMBridge().send_reply(f"已经学会《{title}》啦", meowid)
             else:
-                SingerLLMBridge().send_reply(f"学习《{title}》失败了", username)
+                SingerLLMBridge().send_reply(f"学习《{title}》失败了", meowid)
         except Exception:
             self.log.exception("[翻唱] 学习结果通知异常")
 
-    def _reply_no_title(self, username):
+    def _reply_no_title(self, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply("没有相关的歌名", username)
+            SingerLLMBridge().send_reply("没有相关的歌名", meowid)
         except Exception:
             self.log.exception("[翻唱] 回复无歌名异常")
 
-    def _reply_fail(self, title, username):
+    def _reply_fail(self, title, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", username)
+            SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", meowid)
         except Exception:
             self.log.exception("[翻唱] 回复失败异常")
 
-    def _reply_need_learn(self, title, username):
+    def _reply_need_learn(self, title, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply(f"《{title}》还没有学过，下次再唱给你听", username)
+            SingerLLMBridge().send_reply(f"《{title}》还没有学过，下次再唱给你听", meowid)
         except Exception:
             self.log.exception("[翻唱] 回复需学习异常")
 
-    def _reply_learn_fail(self, title, username):
+    def _reply_learn_fail(self, title, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply(f"《{title}》学习失败了", username)
+            SingerLLMBridge().send_reply(f"《{title}》学习失败了", meowid)
         except Exception:
             self.log.exception("[翻唱] 回复学习失败异常")
 

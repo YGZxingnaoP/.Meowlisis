@@ -29,7 +29,12 @@ class MeowSingerState:
                 data = json.load(f)
             if not isinstance(data, dict):
                 return self._default()
-            return self._merge_default(data)
+            data = self._merge_default(data)
+            # 旧版落盘字段名 username 迁移为 meowid
+            for item in data.get("pending_messages") or []:
+                if isinstance(item, dict) and "username" in item:
+                    item.setdefault("meowid", item.pop("username"))
+            return data
         except Exception:
             return self._default()
 
@@ -94,10 +99,10 @@ class MeowSingerState:
         with self._lock:
             return bool(self._data.get("rvc_queue"))
 
-    def add_pending_message(self, username, text, source):
+    def add_pending_message(self, meowid, text, source):
         with self._lock:
             self._data.setdefault("pending_messages", []).append({
-                "username": username,
+                "meowid": meowid,
                 "text": text,
                 "source": source,
                 "time": time.strftime("%H:%M:%S"),

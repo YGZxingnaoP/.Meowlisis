@@ -37,14 +37,14 @@ class MeowIfStart:
                     f"禁止填昵称或 QQ 号：{item!r} 已忽略")
         return uids
 
-    def decide(self, text, username=""):
+    def decide(self, text, meowid=""):
         """判断消息是否命中点歌/翻唱/学歌，返回 (mode, title, artist, original_text)"""
         if not text or not text.strip():
             return None, "", "", text or ""
         text = text.strip()
 
         # 学歌指令：仅空闲学习模式启用，指定用户精确全等匹配
-        if self.config.learn_mode == "idle" and self._match_learn(text, username):
+        if self.config.learn_mode == "idle" and self._match_learn(text, meowid):
             return self.MODE_LEARN, "", "", text
 
         # 点歌前缀触发（大小写敏感，必须在最前）
@@ -81,9 +81,9 @@ class MeowIfStart:
 
         return None, "", "", text
 
-    def _match_learn(self, text, username):
+    def _match_learn(self, text, meowid):
         # 入参就是 meowid（见 func/pipeline/id_signup.py），只做 meowid 全等比对
-        if str(username or "").strip() not in self.learn_uids:
+        if str(meowid or "").strip() not in self.learn_uids:
             return False
         return text == self.config.learn_trigger.strip()
 

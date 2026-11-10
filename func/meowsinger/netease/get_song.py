@@ -20,9 +20,9 @@ class MeowNeteaseSong:
         self.ncm = MeowNeteaseMusic()
         self.player = MeowSingerPlayer()
 
-    def play(self, title, artist="", username=""):
+    def play(self, title, artist="", meowid=""):
         """点歌入口：异步执行下载与播放"""
-        Thread(target=self._play_async, args=(title, artist, username), daemon=True).start()
+        Thread(target=self._play_async, args=(title, artist, meowid), daemon=True).start()
 
     def _end_singing(self):
         # 失败路径兜底清除唱歌占用
@@ -32,16 +32,16 @@ class MeowNeteaseSong:
         except Exception:
             pass
 
-    def _play_async(self, title, artist, username):
+    def _play_async(self, title, artist, meowid):
         if not title or not title.strip():
-            self._reply_no_title(username)
+            self._reply_no_title(meowid)
             self._end_singing()
             return
         title = title.strip()
 
         info = self.ncm.search_and_download(title, artist)
         if not info:
-            self._reply_fail(title, username)
+            self._reply_fail(title, meowid)
             self._end_singing()
             return
         mp3_path = self.ncm.save_song(info.get("songname", title), info)
@@ -51,7 +51,7 @@ class MeowNeteaseSong:
 
         from func.pipeline.singing_state import SingingStateBridge
         SingingStateBridge().start_singing("song", info.get("songname", title))
-        self._send_start_signal(info.get("songname", title), username)
+        self._send_start_signal(info.get("songname", title), meowid)
 
         from func.meowsinger.subtitle.lyric_syncer import MeowLyricSyncer
         syncer = MeowLyricSyncer()
@@ -64,7 +64,7 @@ class MeowNeteaseSong:
         SingingStateBridge().end_singing()
         self._subtitle_done()
         if finished:
-            self._send_end_signal(info.get("songname", title), username)
+            self._send_end_signal(info.get("songname", title), meowid)
         self.log.info(f"[点歌] 播放结束: {title} finished={finished}")
 
     def _announce(self, songname):
@@ -86,33 +86,33 @@ class MeowNeteaseSong:
         except Exception:
             pass
 
-    def _send_start_signal(self, title, username=""):
+    def _send_start_signal(self, title, meowid=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().start_search(title, "song", uid=username)
+            SingerDatabaseBridge().start_search(title, "song", uid=meowid)
         except Exception:
             self.log.exception("[点歌] 开始信号异常")
 
-    def _send_end_signal(self, title, username=""):
+    def _send_end_signal(self, title, meowid=""):
         try:
             from func.pipeline.singer_database import SingerDatabaseBridge
-            SingerDatabaseBridge().song_end(title, "song", uid=username)
+            SingerDatabaseBridge().song_end(title, "song", uid=meowid)
         except Exception:
             self.log.exception("[点歌] 结束信号异常")
 
     def _subtitle_done(self):
         pass
 
-    def _reply_no_title(self, username):
+    def _reply_no_title(self, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply("没有相关的歌名", username)
+            SingerLLMBridge().send_reply("没有相关的歌名", meowid)
         except Exception:
             self.log.exception("[点歌] 回复无歌名异常")
 
-    def _reply_fail(self, title, username):
+    def _reply_fail(self, title, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", username)
+            SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", meowid)
         except Exception:
             self.log.exception("[点歌] 回复失败异常")
