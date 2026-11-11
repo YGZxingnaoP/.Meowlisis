@@ -2,6 +2,7 @@ import io
 import threading
 import time
 
+from cw import textonce
 from cw.geometry import CWScreen
 from cw.guard import CWGuardError
 from cw.protocol import (CWErrorCode, CWProtocolError, describe, distance, normalize_delay,
@@ -161,12 +162,12 @@ class CWOperator:
             prepared.append(step)
         return prepared
 
-    def single(self, step):
+    def single(self, step, dedupe=True):
         prepared = self.prepare([normalize_step(step)])[0]
         self._last_step = prepared
-        return self._execute([prepared], None, "single")
+        return self._execute([prepared], None, "single", dedupe=dedupe)
 
-    def sequence(self, steps, delay_ms=None):
+    def sequence(self, steps, delay_ms=None, dedupe=True):
         normalized = [normalize_step(step) for step in (steps or [])]
         if not normalized:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "steps 不能为空")
@@ -174,7 +175,7 @@ class CWOperator:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST,
                                   "连续操作最多 %d 步" % self.config.sequence_steps)
         prepared = self.prepare(normalized)
-        return self._execute(prepared, normalize_delay(delay_ms), "sequence")
+        return self._execute(prepared, normalize_delay(delay_ms), "sequence", dedupe=dedupe)
 
     def action(self, action_id, params=None):
         if self.action_runner is None:
@@ -203,8 +204,19 @@ class CWOperator:
             raise CWGuardError("用户否决了敏感操作（%s）" % word)
         return True
 
-    def _execute(self, steps, delay_ms, kind, action_id=None, snapshot=True, confirm=True):
+    def _execute(self, steps, delay_ms, kind, action_id=None, snapshot=True, confirm=True,
+                 dedupe=True):
         self._check_session()
+        skipped = 0
+        pending = []
+        if dedupe:
+            steps, skipped, pending = textonce.filter_steps(steps)
+            if skipped:
+                entry = self.journal.record("dedupe", source=kind, skipped=skipped,
+                                            steps=[describe(step) for step in steps][:5])
+                if not steps:
+                    return {"ok": True, "executed": 0, "elapsed_ms": 0, "skipped": skipped,
+                            "deduped": True, "entry": entry}
         self.guard.check_batch(steps)
         self.guard.check_rate()
         self.guard.check_app_steps(steps)
@@ -227,6 +239,8 @@ class CWOperator:
                                 action_id=action_id)
             raise
         self.guard.commit(len(steps))
+        if not result.get("cancelled"):
+            textonce.mark_many(pending)
         elapsed = int((time.time() - started) * 1000)
         entry = self.journal.record(kind,
                                     action=describe(steps[0]) if len(steps) == 1 else "",

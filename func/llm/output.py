@@ -206,6 +206,12 @@ class Output:
                 f"[{traceid}] 回复被清洗规则吃掉：原始 {len(self.filtered_content)} 字 → 空。"
                 f"原文片段={str(self.filtered_content)[:120]!r}")
         final_text = "" if self._is_punct_only(result) else result
+        if not final_text.strip() and self.segment_idx == 0 and not self._closed:
+            # 空输出兜底：模型一个正文字都没吐（thinking 吃满 max_tokens 时 finish_reason=length），
+            # 或整段被清洗/只剩标点。只在这一轮"确实什么都没发出去"时补一句叫声，
+            # 模型还在生成时不会走到这里（finalize 只在流结束后调用），不会误触发。
+            result = final_text = "喵——喵喵喵"
+            self._send(result, traceid, end_status, final=True)
         if hold:
             if not final_text.strip():
                 self.close(traceid)

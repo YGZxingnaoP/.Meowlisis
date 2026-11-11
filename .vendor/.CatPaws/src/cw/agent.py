@@ -3,6 +3,7 @@ import os
 import threading
 import time
 
+from cw import textonce
 from cw.guard import CWGuardError
 from cw.llm_client import CWLLMClient, CWLLMError
 from cw.protocol import CWErrorCode, CWProtocolError
@@ -18,7 +19,8 @@ CW_TOOL_RULES = (
     "返回上一级先点左上角返回按钮，没有就用 cw_back（走左缘右滑）。\n"
     "4. 能一步做完就别拆：点文字 cw_tap_text、返回 cw_back、开 App cw_open_app、"
     "已知整条路径 cw_sequence。拆成「观察→点」两轮会慢一倍。\n"
-    "5. 输入文字用 cw_type_cn（中文自动走粘贴→拼音→求助）；只想点键盘时用 cw_keys，先点输入框弹出键盘。\n"
+    "5. 输入文字用 cw_type_cn（粘贴一次为准）；粘贴报错就换 cw_paste 长按菜单兜底，再不行用 "
+    "cw_ask_user 请主人代打；只想点键盘时用 cw_keys，先点输入框弹出键盘。\n"
     "6. 能靠点击、滑动、输入、看图做到的就必须做到：不许说自己做不到，不许让主人自己动手。\n"
     "7. 别乱跳界面：不要主动回桌面，任务结束也不回桌面；开 App 一律从桌面/搜索里点图标进去，"
     "不要用 launch_app / activate_app 直接拉起。\n"
@@ -28,7 +30,9 @@ CW_TOOL_RULES = (
     "10. 全部做完、确认主人没有别的要求后才 cw_task_done；调用前用你自己的话说一句收尾，"
     "结尾自然问一句还有没有别的事，不要用固定句式。\n"
     "11. 任何时候都不自己发起付款、转账、输入密码或验证码、泄露隐私的操作。\n"
-    "12. 拿回 E_DEVICE_LOCKED 说明锁屏了：系统会喊主人解锁并等你，这期间不要连着硬重点。"
+    "12. 拿回 E_DEVICE_LOCKED 说明锁屏了：系统会喊主人解锁并等你，这期间不要连着硬重点。\n"
+    "13. 同一段文字只输入一次：已经输入过的不要再输第二遍，要重打先自己清空或换界面；"
+    "收到「跳过重复输入」就停手，不要换个输入工具再写一次。"
 )
 
 CW_REFLECT_RULES = (
@@ -306,6 +310,7 @@ class CWAgent:
         self._role_prompt = str(request.get("system_prompt") or "").strip()
         self.session.begin(goal)
         self.operator.guard.begin_session()
+        textonce.reset()
         if not self._wake_device():
             self.session.end(self.session.finish_reason or "device_locked")
             self.operator.clear_stop()

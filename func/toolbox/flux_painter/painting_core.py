@@ -346,6 +346,13 @@ class TBFluxPainterCore:
                    "ref_note": str(ref_note or ""),
                    "owner_uid": str((qq_context or {}).get("user_id") or
                                     (qq_context or {}).get("target_id") or "")}
+        # 只记通道不记轮号：记忆以"用户真正看到这张图的那一刻"为准，
+        # 写记忆时再取当时的当前轮（画图要几分钟，提前捕获的轮可能早过去了）。
+        try:
+            from func.pipeline.short_memory import ShortMemory
+            session["memory_scope"] = ShortMemory.scope_of_channel(channel)
+        except Exception:
+            session["memory_scope"] = "main"
         with self._lock:
             self._running.add(channel)
         t = threading.Thread(target=self._run, args=(session,), daemon=True,
@@ -684,7 +691,7 @@ class TBFluxPainterCore:
             #   私聊     → 不审查，直接发
             if session.get("qq_context"):
                 self._send_qq_image(session, saved)
-            self._save_memory(uid, request, reply)
+            self._save_memory(uid, request, reply, session.get("memory_scope"))
         except Exception:
             self.log.exception(f"[flux_painter] 绘画异常 key={channel}")
             self._say_need(channel, "画到一半出了点岔子，跟主人说一句，别道歉。")
@@ -967,11 +974,8 @@ class TBFluxPainterCore:
         except Exception:
             self.log.exception("[flux_painter] TTS 播报失败")
 
-    def _save_memory(self, uid, user_text, reply):
-        """记录需求与回复至短期/长期/用户记忆（提示词不入记忆）
-
-        身份标准：uid 必须是内部编号；拿不到就**不写记忆**（禁止用「主人」等默认身份兜底）。
-        """
+    def _save_memory(self, uid, user_text, reply, scope=None):
+        """记录到短期/长期/用户记忆（uid 缺失就不写；只传通道，轮号取写入时刻的当前轮）。"""
         if not uid:
             self.log.error("[flux_painter] 无身份编号，跳过记忆写入")
             return
@@ -981,10 +985,10 @@ class TBFluxPainterCore:
             from func.pipeline.short_memory import ShortMemory
             ShortMemory().save({"role": "user", "content": f"【绘画】{user_text}",
                                 "type": self.config.memory_type}, self.config.memory_rounds,
-                               trim_mode="rounds")
+                               trim_mode="rounds", scope=scope)
             ShortMemory().save({"role": "assistant", "content": f"【绘画】{reply}",
                                 "type": self.config.memory_type}, self.config.memory_rounds,
-                               trim_mode="rounds")
+                               trim_mode="rounds", scope=scope)
         except Exception:
             pass
         try:

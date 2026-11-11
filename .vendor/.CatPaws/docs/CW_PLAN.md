@@ -117,6 +117,9 @@ Windows
 * 中文：优先 `paste_text`（剪贴板 + 长按粘贴），最稳。
 * 需要"逐字键入"时（如某些输入框不接受粘贴）：PC 侧把中文转拼音 → `cw_sequence` 逐字母 `type_text` + 点候选词；转换失败就 `cw_ask_user` 请用户代打。
 * 允许回退：`press_key delete` 连按 = 删字；`cw_single` 的 `count` 支持 1..3，更长用 `cw_sequence`。
+* 现状（已实现）：`cw_type_cn` 只看"粘贴动作是否成功"，不再用全屏 OCR 判断是否打进去；`cw_paste` 的
+  长按菜单兜底保留，但先用 WDA 元素 `value` 回读确认，框里已有这段就不再补第二次；同一段文字由
+  `cw/textonce.py` 在一轮链路内只写一次（清空 / 发送 / 换 App 后重新放行）。
 
 ---
 

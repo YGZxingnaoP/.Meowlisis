@@ -5,6 +5,7 @@
 import random
 from threading import Thread
 from func.pipeline.id_signup import display_name
+from func.pipeline.short_memory import set_current_scope
 
 class PrivateReplyMixin:
     """QQ 私聊回复链路"""
@@ -19,6 +20,9 @@ class PrivateReplyMixin:
         # 0. 私聊回复开关
         if not self.napcat_config.private_reply_enabled:
             return
+        # 本线程之后写的记忆都归这条 QQ 私聊（含同步调用的画图/天气等）。
+        scope = f"qq_private:{user_id}"
+        set_current_scope(scope)
         # 0.2 qq 通道：外部账号（QQ号）→ 反查 meowid；查不到就建档（建档时用 QQ 显示名填一次 nickname）
         from func.pipeline.id_signup import IdSignupBridge
         meowid = IdSignupBridge().meowid_of_account("qq", str(user_id or ""), str(ext_name or ""))
@@ -107,7 +111,7 @@ class PrivateReplyMixin:
                 "role": "user",
                 "content": f"【来自QQ，{mem_name}的消息】{text}",
                 "type": "qq_response",
-            }, self.napcat_config.short_mem_rounds)
+            }, self.napcat_config.short_mem_rounds, scope=scope)
         # 2. 记录用户消息长期记忆（默认关闭）
         if not is_bot:
             self.napcat_ltmem.record_user(meowid, text, name=ext_name)
@@ -137,7 +141,7 @@ class PrivateReplyMixin:
                 "role": "assistant",
                 "content": final_text,
                 "type": "qq_response",
-            }, self.napcat_config.short_mem_rounds)
+            }, self.napcat_config.short_mem_rounds, scope=scope)
         # 5. 记录 AI 回复长期记忆（默认关闭）
         if final_text and not is_bot:
             self.napcat_ltmem.record_ai(meowid, final_text, name=ext_name)

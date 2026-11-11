@@ -321,20 +321,20 @@ class TBNapCatEventHandler:
             if not complain_text:
                 return
 
-            # 写记忆（assistant 身份）
+            # 写记忆（assistant 身份，挂该会话当前的轮）
             from func.pipeline.short_memory import ShortMemory
             if message_type == "group":
                 ShortMemory().save({
                     "role": "assistant",
                     "content": f"【来自QQ，{self._resolve_group_name(session_id)}的群消息】{complain_text}",
                     "type": "qq_groupchat",
-                }, self.config.group_memory_limit)
+                }, self.config.group_memory_limit, scope=f"qq_group:{session_id}")
             else:
                 ShortMemory().save({
                     "role": "assistant",
                     "content": f"【来自QQ，{self._poke_qq_name(event)}的消息】{complain_text}",
                     "type": "qq_response",
-                }, self.config.short_mem_rounds)
+                }, self.config.short_mem_rounds, scope=f"qq_private:{session_id}")
             self.log.info(f"[戳一戳] 已发牢骚: {complain_text[:30]}")
         except Exception:
             self.log.exception("戳一戳发牢骚失败")

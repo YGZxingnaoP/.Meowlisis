@@ -2,6 +2,7 @@ import io
 import json
 import re
 
+from cw import textonce
 from cw.protocol import CWErrorCode, CWProtocolError, describe
 from cw.wda import CWWDA, CWWDAError
 
@@ -203,7 +204,8 @@ def _schemas():
         "type": "function",
         "function": {
             "name": "cw_input",
-            "description": "直接把文字写进当前界面的输入框，支持中文；不经过剪贴板、不点键盘。界面上没有可写输入框时会明确报错。",
+            "description": "直接把文字写进当前界面的输入框，支持中文；不经过剪贴板、不点键盘。"
+                           "同一段文字一轮里只写一次，重复调用会被跳过；界面上没有可写输入框时会明确报错。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -217,7 +219,8 @@ def _schemas():
         "type": "function",
         "function": {
             "name": "cw_paste",
-            "description": "长按输入框弹出菜单，再点「粘贴」把剪贴板内容贴进去（paste_text 失败时用它兜底）。",
+            "description": "兜底粘贴：先把文字写进剪贴板贴一次，框里确认不到这段再长按输入框、点「粘贴」"
+                           "菜单补一次（不同 App 的输入框只认其中一种）。框里已经有这段就不会再贴第二遍。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -233,8 +236,9 @@ def _schemas():
         "type": "function",
         "function": {
             "name": "cw_type_cn",
-            "description": "把一段文字输进当前输入框（中文也行）：先试粘贴，不行就自动转拼音点键盘、"
-                           "点候选词，都失败会自己回退并请主人代打。打字前先点一下输入框让键盘弹出。",
+            "description": "把一段文字输进当前输入框（中文也行）：粘贴动作成功即结束，不再自动转拼音重打；"
+                           "粘贴报错就改用 cw_paste 长按菜单兜底，再不行用 cw_ask_user 请主人代打。"
+                           "同一段文字一轮里只输一次。打字前先点一下输入框让键盘弹出。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -459,29 +463,18 @@ class CWAgentTools:
         if self.apps is not None and args.get("action") in ("launch_app", "activate_app",
                                                             "terminate_app"):
             args["bundle_id"] = self.apps.resolve(args.get("bundle_id"))
+        text = str(args.get("text") or "")
         result = self.operator.single(args)
-        text = "已执行 %s（%sms）。" % (describe(self.operator.last_step()),
-                                       result.get("elapsed_ms", 0))
-        if (args or {}).get("action") in ("paste_text", "type_text"):
-            text += self._verify_text(str((args or {}).get("text") or ""))
-        return {"text": text}
-
-    def _verify_text(self, body):
-        probe = re.sub(r"\s+", "", str(body or ""))
-        if not probe:
-            return ""
-        try:
-            texts = self.operator.observe("ocr").get("texts") or []
-        except Exception as exc:
-            return "（无法确认有没有输入进去：%s）" % exc
-        seen = re.sub(r"\s+", "", "".join(str(item.get("text") or "") for item in texts))
-        for size in (len(probe), max(1, len(probe) // 2), 6):
-            if size and probe[:size] in seen:
-                return "屏幕上已经出现这段文字，输入成功。"
-        return "但屏幕上看不到这段文字，可能没进入输入框。"
+        if result.get("deduped"):
+            return {"text": "「%s」刚刚已经输入过一遍，跳过重复输入（确实要重输先清空或发送）。"
+                            % text[:20]}
+        return {"text": "已执行 %s（%sms）。" % (describe(self.operator.last_step()),
+                                                result.get("elapsed_ms", 0))}
 
     def _do_cw_sequence(self, args):
         result = self.operator.sequence(args.get("steps") or [], args.get("delay_ms"))
+        if result.get("deduped"):
+            return {"text": "这段文字刚刚已经输入过一遍，跳过重复输入（确实要重输先清空或发送）。"}
         return {"text": "已执行 %d 步（%sms）。" % (result.get("executed", 0),
                                                    result.get("elapsed_ms", 0))}
 
@@ -494,18 +487,49 @@ class CWAgentTools:
             action_id, manifest.get("title", ""), state, result.get("elapsed_ms", 0),
             result.get("message", ""))}
 
+    def _field_state(self, text):
+        """输入框里是不是已经有这段文字（读元素 value，比 OCR 可靠）
+
+        返回 True（已有）/ False（确定没有）/ None（读不到，交给时间窗兜底）。
+        """
+        probe = re.sub(r"\s+", "", str(text or ""))
+        if not probe:
+            return False
+        try:
+            fields = self.wda.fields()
+        except Exception:
+            return None
+        if not fields:
+            return None
+        for item in fields:
+            value = re.sub(r"\s+", "", str(item.get("value") or ""))
+            if value and value.endswith(probe):
+                return True
+        return False
+
     def _do_cw_input(self, args):
         text = str(args.get("text") or "")
         if not text:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "text 不能为空")
+        holds = self._field_state(text)
+        if holds is True:
+            return {"text": "输入框里已经有「%s」，不再写第二遍。" % text[:20]}
+        if textonce.seen(text):
+            return {"text": "「%s」刚刚已经输入过一遍，跳过重复写入（确实要重输先清空或发送）。"
+                            % text[:20]}
         try:
             ok, info = self.wda.set_text(text)
         except CWWDAError as exc:
-            return {"text": "没写进去：%s" % exc, "error": True}
+            return {"text": "没写进去：%s。先截图确认输入框是不是空的，不要直接重打。" % exc,
+                    "error": True}
+        confirmed = info.get("confirmed", True)
+        if confirmed:
+            textonce.mark(text)
         rect = info.get("rect") or {}
-        return {"text": "已写入输入框（y=%s，%sx%s）：%s"
+        note = "" if confirmed else "（回读没确认到，先截图看一眼，不要重复写）"
+        return {"text": "已写入输入框（y=%s，%sx%s）：%s%s"
                         % (rect.get("y"), rect.get("width"), rect.get("height"),
-                           str(info.get("value"))[:40])}
+                           str(info.get("value"))[:40], note)}
 
     def _key_map(self):
         """OCR 出虚拟键盘的字母键位置（只认 a-z 0-9）"""
@@ -544,108 +568,51 @@ class CWAgentTools:
             note = "；跳过了 %s" % "".join(sorted(set(missing)))[:20]
         return {"text": "敲了 %d 个键：%s%s" % (len(steps), text[:40], note)}
 
-    @staticmethod
-    def _to_pinyin(text):
-        """中文转无声调拼音字母串（只保留 a-z 0-9）"""
-        try:
-            from pypinyin import lazy_pinyin
-        except Exception:
-            return ""
-        parts = []
-        for char in str(text or ""):
-            if char.isascii() and char.isalnum():
-                parts.append(char.lower())
-                continue
-            if not ("\u4e00" <= char <= "\u9fff"):
-                continue
-            parts.append("".join(lazy_pinyin(char)).lower())
-        return "".join(ch for ch in "".join(parts) if ch.isascii() and ch.isalnum())
-
-    def _candidate_center(self, text):
-        """在候选词栏里找目标文字，返回点击中心"""
-        target = str(text or "").strip()
-        if not target:
-            return None
-        try:
-            texts = self.operator.observe("ocr").get("texts") or []
-        except Exception:
-            return None
-        for item in texts:
-            label = str(item.get("text") or "").strip()
-            if not label:
-                continue
-            if label == target or (len(target) >= 2 and target in label):
-                box = item.get("box") or [0, 0, 0, 0]
-                try:
-                    return [int(box[0] + box[2] / 2), int(box[1] + box[3] / 2)]
-                except (TypeError, IndexError):
-                    continue
-        return None
-
-    def _clear_input(self, count):
-        """回退：把刚才打进去的拼音逐字删掉（最多 40 个）"""
-        steps = [{"action": "press_key", "key": "delete"} for _ in range(min(int(count), 40))]
-        if not steps:
-            return
-        try:
-            self.operator.sequence(steps, 90)
-        except CWProtocolError:
-            pass
-
     def _do_cw_type_cn(self, args):
-        """中文输入：粘贴优先，不行转拼音点候选，再不行回退并请主人代打"""
+        """中文输入：粘贴一次为准；粘贴动作本身成功就结束，不再靠 OCR 判断重打"""
         text = str(args.get("text") or "")
         if not text:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "text 不能为空")
+        holds = self._field_state(text)
+        if holds is True:
+            return {"text": "输入框里已经有「%s」，不再重复输入。" % text[:20]}
         if text.isascii():
-            self.operator.single({"action": "type_text", "text": text})
-            return {"text": "已用键盘输入 ASCII：%s%s" % (text[:30], self._verify_text(text))}
-        tried = []
+            result = self.operator.single({"action": "type_text", "text": text})
+            if result.get("deduped"):
+                return {"text": "「%s」刚刚已经输入过一遍，跳过重复输入（确实要重输先清空或发送）。"
+                                % text[:20]}
+            return {"text": "已用键盘输入 ASCII：%s。不要再重复输入这段。" % text[:30]}
         try:
-            self.operator.single({"action": "paste_text", "text": text})
-            check = self._verify_text(text)
-            if "出现这段文字" in check:
-                return {"text": "已粘贴输入：%s（%s）" % (text[:30], check)}
-            tried.append("粘贴没确认到")
+            result = self.operator.single({"action": "paste_text", "text": text})
         except CWProtocolError as exc:
-            tried.append("粘贴失败 %s" % exc.code)
-        pinyin = self._to_pinyin(text)
-        keys = self._key_map() if pinyin else {}
-        missing = [ch for ch in pinyin if ch not in keys]
-        if len(keys) >= 10 and pinyin and not missing:
-            steps = [{"action": "tap", "x": keys[ch][0], "y": keys[ch][1]} for ch in pinyin]
-            self.operator.sequence(steps, 90)
-            candidate = self._candidate_center(text)
-            if candidate:
-                self.operator.single({"action": "tap", "x": candidate[0], "y": candidate[1]})
-                check = self._verify_text(text)
-                if "出现这段文字" in check:
-                    return {"text": "拼音输入成功：%s（按 %s）" % (text[:30], pinyin)}
-                tried.append("拼音候选点完没确认")
-            else:
-                tried.append("没看到候选词")
-        elif pinyin:
-            tried.append("键盘不可用或缺字母")
-        else:
-            tried.append("没有拼音转换器")
-        self._clear_input(len(pinyin))
-        answer = self.session.ask("这句我打不进去（%s），主人帮我打一下好吗？" % text,
-                                  ["打好了", "不用了"])
-        if answer and "打好" in str(answer):
-            return {"text": "主人帮忙打好了：%s" % text[:30]}
-        return {"text": "没打进去：%s" % "；".join(tried), "error": True}
+            return {"text": "粘贴没能完成（%s）。先截图看输入框里有没有内容；没有就改用 cw_paste"
+                            "（长按菜单）或 cw_ask_user，不要直接重打同一段。" % exc.code,
+                    "error": True, "code": exc.code}
+        if result.get("deduped"):
+            return {"text": "「%s」刚刚已经粘贴过一遍，跳过重复输入（确实要重输先清空或发送）。"
+                            % text[:20]}
+        return {"text": "已粘贴输入：%s。不要再重复输入这段。" % text[:30]}
 
     def _do_cw_paste(self, args):
+        """兜底粘贴：先 paste_text 贴一次；框里确认不到这段，再长按 + 点「粘贴」补一次"""
         text = str(args.get("text") or "")
         if not text:
             raise CWProtocolError(CWErrorCode.BAD_REQUEST, "text 不能为空")
         x = int(args.get("x") or 0)
         y = int(args.get("y") or 0)
+        holds = self._field_state(text)
+        if holds is True:
+            return {"text": "输入框里已经有「%s」，不再重复粘贴。" % text[:20]}
         copied = True
         try:
-            self.operator.single({"action": "paste_text", "text": text})
+            result = self.operator.single({"action": "paste_text", "text": text})
+            if result.get("deduped"):
+                return {"text": "「%s」刚刚已经输入过，跳过重复粘贴（确实要重输先清空或发送）。"
+                                % text[:20]}
         except CWProtocolError:
             copied = False
+        if copied and self._field_state(text) is True:
+            return {"text": "已粘贴：%s（输入框里已经有这段，不再长按补第二次）。" % text[:30]}
         self.operator.single({"action": "long_press", "x": x, "y": y, "duration_ms": 800})
         texts = self.operator.observe("ocr").get("texts") or []
         target = None
@@ -656,10 +623,11 @@ class CWAgentTools:
                 target = [int(box[0] + box[2] / 2), int(box[1] + box[3] / 2)]
                 break
         if target is None:
-            return {"text": "剪贴板%s，但屏幕上没出现「粘贴」菜单项。"
+            return {"text": "剪贴板%s，输入框里没确认到这段，屏幕上也没出现「粘贴」菜单项；"
+                            "先截图确认，不要直接重打这段。"
                             % ("已写入" if copied else "没写入"), "error": True}
         self.operator.single({"action": "tap", "x": target[0], "y": target[1]})
-        return {"text": "已点「粘贴」菜单，内容应该进去了。"}
+        return {"text": "已点「粘贴」菜单补了一次：%s。不要再重复输入这段。" % text[:30]}
 
     def _do_cw_ask_user(self, args):
         question = str(args.get("question") or "")

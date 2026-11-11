@@ -82,11 +82,35 @@ class CWWDA:
                               "value": self._attribute(element_id, "value")})
         return found
 
+    @staticmethod
+    def _same_text(got, text):
+        """回读比较：去空白后相等，或框里是「旧内容 + 这段」"""
+        left = "".join(str(got or "").split())
+        right = "".join(str(text or "").split())
+        if left == right:
+            return True
+        if not right:
+            return not left
+        return left.endswith(right)
+
+    def _focused_index(self, fields, limit=4):
+        """键盘焦点在哪个输入框（问到就用它，问不到返回 -1）"""
+        for index, item in enumerate(fields[:limit]):
+            flag = self._attribute(item["id"], "hasKeyboardFocus").strip().lower()
+            if flag in ("1", "true", "yes"):
+                return index
+        return -1
+
     def set_text(self, text, lowest=True):
+        """只写最可能的那一个控件：写入成功就收手，绝不因为回读不相等再写第二个"""
         fields = self.fields()
         if not fields:
             raise CWWDAError("这个界面没有可写的输入控件（应用没把输入框暴露给无障碍）")
         fields.sort(key=lambda item: item["rect"].get("y", 0), reverse=lowest)
+        if len(fields) > 1:
+            focus = self._focused_index(fields)
+            if focus > 0:
+                fields.insert(0, fields.pop(focus))
         sid = self._session()
         errors = []
         for item in fields[:4]:
@@ -101,7 +125,6 @@ class CWWDA:
                 errors.append("写入返回 %s" % response.status_code)
                 continue
             got = self._attribute(item["id"], "value")
-            if got == text or (text == "" and not got):
-                return True, {"rect": item["rect"], "value": got, "errors": errors}
-            errors.append("写入后读回是 %r" % got[:20])
+            return True, {"rect": item["rect"], "value": got,
+                          "confirmed": self._same_text(got, text), "errors": errors}
         raise CWWDAError("写入没成功：%s" % "；".join(errors[:3]))

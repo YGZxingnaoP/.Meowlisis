@@ -58,13 +58,14 @@ class MessageBuilder:
         return datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
 
     def add_user_message(self, username: str, content: str):
-        """记录一条用户消息到内存缓存（含说话人与时间），并尝试归档旧轮次"""
+        """记录用户消息并尝试归档旧轮次；先占一个轮号，让本轮记录共享同一 turn。"""
         self.history.append({
             "role": "user",
             "content": content,
             "speaker": username,
             "time": self._now(),
             "type": "llm_fast_response",
+            "turn": self.short_memory.begin_turn(),
         })
         self._flush()
 
@@ -76,8 +77,16 @@ class MessageBuilder:
             "speaker": ai_name,
             "time": self._now(),
             "type": "llm_fast_response",
+            "turn": self._pending_turn(),
         })
         self._flush()
+
+    def _pending_turn(self):
+        """取最近一条 user 缓存记下的轮号（本轮回复与它同一轮）"""
+        for item in reversed(self.history):
+            if item.get("role") == "user":
+                return item.get("turn")
+        return self.short_memory.current_turn()
 
     def _flush(self):
         """内存缓存超出2轮时，将最旧完整轮次格式化后归档到 pipeline 短期记忆
@@ -107,13 +116,13 @@ class MessageBuilder:
         return True
 
     def _archive_item(self, item: Dict):
-        """把一条内存缓存格式化后写入 json 短期记忆"""
+        """把一条内存缓存格式化后写入 json 短期记忆（带上缓存时记下的轮号）"""
         formatted = self._format_item(item)
         self.short_memory.save({
             "role": item["role"],
             "content": formatted,
             "type": item.get("type", "llm_fast_response"),
-        }, self.json_max_rounds)
+        }, self.json_max_rounds, turn=item.get("turn"))
 
     @staticmethod
     def format_user_content(username: str, content: str) -> str:

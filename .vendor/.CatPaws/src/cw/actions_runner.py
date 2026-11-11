@@ -142,9 +142,9 @@ class CWActionRunner:
             try:
                 if payload.get("steps") is not None:
                     result = self.operator.sequence(payload.get("steps") or [],
-                                                    payload.get("delay_ms"))
+                                                    payload.get("delay_ms"), dedupe=False)
                 else:
-                    result = self.operator.single(payload.get("step") or {})
+                    result = self.operator.single(payload.get("step") or {}, dedupe=False)
                 self._reply(proc, {"ok": True, "executed": result.get("executed", 1)})
             except CWProtocolError as exc:
                 self._reply(proc, {"ok": False, "code": exc.code, "message": exc.message})

@@ -4,6 +4,7 @@
 
 import random
 from func.pipeline.id_signup import display_name
+from func.pipeline.short_memory import set_current_scope
 
 class GroupReplyMixin:
     """QQ 群聊回复链路（@ / 关键词 / 主动 / 收尾）"""
@@ -18,6 +19,9 @@ class GroupReplyMixin:
         group_id = str(parsed.get("group_id", ""))
         group_name = str(parsed.get("group_name", "") or "")
         user_id = str(parsed.get("user_id", ""))
+        # 本线程之后写的记忆都归这个群（含同步调用的画图/天气等）。
+        scope = f"qq_group:{group_id}"
+        set_current_scope(scope)
         username = str(parsed.get("username", "") or "")
         text = str(parsed.get("text", "") or "").strip()
         self_id = str(parsed.get("self_id", "") or "")
@@ -279,6 +283,9 @@ class GroupReplyMixin:
 
         trigger：「@」/「关键词」/「followup」；QQ 导演只在 @ 与续聊时参与。
         """
+        # 本线程之后写的记忆都归这个群（含同步调用的工具结果）。
+        scope = f"qq_group:{gid}"
+        set_current_scope(scope)
         primary = (at_users[0] if at_users else (participants[0] if participants else {})) or {}
         primary_ext_account = str(primary.get("user_id", "") or "")
         primary_ext_name = str(primary.get("username", "") or "")
@@ -346,7 +353,7 @@ class GroupReplyMixin:
                     "content": f"【来自QQ，{group_name}的群消息】{ptext}",
                     "type": "qq_groupchat" if followup else "qq_response",
                 }, self.napcat_config.group_memory_limit if followup
-                    else self.napcat_config.short_mem_rounds)
+                    else self.napcat_config.short_mem_rounds, scope=scope)
 
         # 参与者记完，把当前说话人恢复成主发言人
         IdSignupBridge().set_current("qq", str(primary_ext_account or ""))
@@ -437,6 +444,9 @@ class GroupReplyMixin:
     def _reply_group_active(self, gid: str, group_name: str, self_id: str, merged_text: str,
                             participants: list, force: bool):
         """主动插话合并回复：force 直接回复；否则幻梦概率触发 + AI decide（可 pass）"""
+        # 主动插话里同步调用的工具也要归到这个群。
+        scope = f"qq_group:{gid}"
+        set_current_scope(scope)
         from func.toolbox.napcat.groupchat.napcat_active import TBNapCatActive
         from func.toolbox.napcat.groupchat.get_group_record import TBGetGroupRecord
         from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
@@ -558,6 +568,8 @@ class GroupReplyMixin:
         """群聊回复后：记录 AI 回复短期记忆，并累计群性质概括计数（机器人消息不写记忆）"""
         group_id = str(parsed.get("group_id", ""))
         group_name = str(parsed.get("group_name", "") or "")
+        scope = f"qq_group:{group_id}"
+        set_current_scope(scope)
         is_bot = self._is_bot(parsed.get("user_id", ""))
         if final and self.napcat_config.short_mem_enabled and not is_bot:
             if at_self:
@@ -565,13 +577,13 @@ class GroupReplyMixin:
                     "role": "assistant",
                     "content": final,
                     "type": "qq_response",
-                }, self.napcat_config.short_mem_rounds)
+                }, self.napcat_config.short_mem_rounds, scope=scope)
             else:
                 self.short_memory.save({
                     "role": "assistant",
                     "content": final,
                     "type": "qq_groupchat",
-                }, self.napcat_config.group_memory_limit)
+                }, self.napcat_config.group_memory_limit, scope=scope)
         # 群性质概括计数
         try:
             from func.toolbox.napcat.groupchat.group_info import TBGroupInfo
