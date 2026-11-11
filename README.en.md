@@ -6,7 +6,13 @@
 
 > This project is open source under the [MIT License](LICENSE).
 
-<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
+<p align="center">
+  <img src="gui/MiaoWuFace.png" alt="MiaoWuCat legacy icon (March 2026)" width="200" height="200">
+  &emsp;&emsp;&emsp;&emsp;
+  <img src="Meowlisis.ico" alt="Meowlisis new icon (November 2026)" width="200" height="200">
+  <br>
+  <sub>a goofy little cat from March 2026&emsp;→&emsp;a bit smarter by November 2026 (?)</sub>
+</p>
 
 ```
 I started coding because I wanted someone to chat with while I make animations.
@@ -27,7 +33,7 @@ Updates come whenever they come — you can occasionally catch me in @YGZ醒脑�
 
 ## Features
 
-<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="600" alt="Meowlisis workflow overview"></a></p>
+<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="100%" alt="Meowlisis workflow overview"></a></p>
 
 *⚠️ Meowlisis workflow overview (click the image to view it full size)*
 
@@ -129,7 +135,7 @@ Related config: `config.yml → llm_active.director`, `napcat.director_qq`.
 
 A screen recording of the actual UI (orbit cards / 3D press feedback / fan-out / wallpaper peek / advanced settings). 
 - The image below is the **full 29.7 s silent looping animation** (720×450 · 12fps · 2.0 MB) 
-<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="Frontend demo" width="720"></p>
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="Frontend demo" width="100%"></p>
 
 ## To do list
 1. Configure matching reference audio for each prompt

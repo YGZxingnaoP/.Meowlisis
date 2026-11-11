@@ -6,7 +6,13 @@
 
 > 本项目采用 [MIT 许可证](LICENSE) 开源。
 
-<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
+<p align="center">
+  <img src="gui/MiaoWuFace.png" alt="MiaoWuCat 旧版图标（26年3月）" width="200" height="200">
+  &emsp;&emsp;&emsp;&emsp;
+  <img src="Meowlisis.ico" alt="Meowlisis 新版图标（26年11月）" width="200" height="200">
+  <br>
+  <sub>26年3月的笨蛋小猫&emsp;→&emsp;26年11月，变聪明了一些（？）</sub>
+</p>
 
 ```
 写代码的初衷是希望自己做动画的时候有个人陪我聊天
@@ -27,7 +33,7 @@
 
 ## 功能说明
 
-<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="600" alt="Meowlisis 工作流简析"></a></p>
+<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="100%" alt="Meowlisis 工作流简析"></a></p>
 
 *⚠️ Meowlisis 工作流简析（点击图片查看大图）*
 
@@ -130,7 +136,7 @@ func/pipeline/msg_director.py
 主界面的实际录屏（轨道卡片 / 3D 压感 / 扇形展开 / 看壁纸 / 高级设置）
 - 下面是部分展示（720×450 · 12fps · 2.0MB）：
 
-<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="720"></p>
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="100%"></p>
 
 
 ## To do list

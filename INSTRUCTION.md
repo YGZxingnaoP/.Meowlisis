@@ -6,7 +6,13 @@
 
 > 本项目采用 [MIT 许可证](LICENSE) 开源。
 
-<p align="center"><img src="Meowlisis.ico" alt="Meowlisis" width="200" height="200"></p>
+<p align="center">
+  <img src="gui/MiaoWuFace.png" alt="MiaoWuCat 旧版图标（26年3月）" width="200" height="200">
+  &emsp;&emsp;&emsp;&emsp;
+  <img src="Meowlisis.ico" alt="Meowlisis 新版图标（26年11月）" width="200" height="200">
+  <br>
+  <sub>26年3月的笨蛋小猫&emsp;→&emsp;26年11月，变聪明了一些（？）</sub>
+</p>
 
 ```
 写代码的初衷是希望自己做动画的时候有个人陪我聊天
@@ -97,9 +103,9 @@ func/pipeline/toolbox_audio.py
 
 
 ## 接下来是一些功能介绍
-<p align="center"><a href="工作流程解析/【待完善】meowlisis工作流程.webp"><img src="工作流程解析/【待完善】meowlisis工作流程.webp" width="600" alt="Meowlisis core feature flowchart (work in progress)"></a></p>
+<p align="center"><a href="工作流程解析/Meowlisis工作流简析.webp"><img src="工作流程解析/Meowlisis工作流简析.webp" width="100%" alt="Meowlisis 核心功能流程图"></a></p>
 
-*⚠️ 核心功能流程图（待完善，点击图片查看大图）*
+*⚠️ 核心功能流程图（点击图片查看大图）*
 
 ### 运行环境
 ```
@@ -521,7 +527,7 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
 主界面的实际录屏（轨道卡片 / 3D 压感 / 扇形展开 / 看壁纸 / 高级设置）。
 - 下面是部分展示（720×450 · 12fps · 2.0MB）
 
-<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="720"></p>
+<p align="center"><img src="工作流程解析/media/frontend_demo.webp" alt="前端展示" width="100%"></p>
 
 
 ## To do list
