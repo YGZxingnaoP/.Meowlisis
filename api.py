@@ -227,11 +227,18 @@ def http_audio_send():
 
 @app.route("/audio/end", methods=["POST"])
 def http_audio_end():
-    """按住说话结束：清空 inject 缓冲并通知会话立即判停识别"""
+    """按住说话结束：封存在途帧并通知会话「发完再收句」"""
     if asr_core is None or getattr(asr_core, "hub", None) is None:
         return jsonify({"status": "error", "message": "SenseVoice 未启动"}), 400
-    asr_core.hub.flush('inject')
-    asr_core.hub.notify('inject', 'ptt_end')
+    if getattr(asr_core, "enabled", False) and asr_core.hub.is_enabled('inject'):
+        # 会话在跑：松手瞬间的在途帧（含不足一帧的尾残）先封存进事件，
+        # 由会话发完它们再发 is_speaking=false；这里绝不能先 flush
+        tail = asr_core.hub.seal_tail('inject')
+        asr_core.hub.notify('inject', ('ptt_end', tail))
+    else:
+        # 没有会话消费事件：清掉缓冲，避免下次启用把陈旧音频当新句
+        asr_core.hub.flush('inject')
+        asr_core.hub.notify('inject', 'ptt_end')
     return jsonify({"status": "ok"})
 
 # http人物表情输出

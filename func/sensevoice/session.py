@@ -130,6 +130,9 @@ class SenseVoiceSession:
         # 下一句不会触发 started，服务端会当成"还没开始说话"把音频丢掉
         self.interrupt.reset_speaking()
         self.hub.flush(self.source_id)
+        # 旧连接遗留的事件（如未消费的 ptt_end）一起丢掉：重连后是新的音频边界
+        while self.hub.poll_event(self.source_id) is not None:
+            pass
         # 采集缓冲已丢弃，哼唱检测器的半截缓冲也要一起丢，保证两边看的是同一段音频
         try:
             from func.pipeline.toolbox_audio import ToolboxAudioBridge
@@ -171,10 +174,13 @@ class SenseVoiceSession:
             except Exception:
                 pass
 
-        # 哼唱旁路：每个音频源各自喂（检测器内部按源分状态），互不干扰
+        # 哼唱旁路：每个音频源各自喂（检测器内部按源分状态），互不干扰。
+        # 一次取到的多帧都要喂：只喂最后一帧，会让采集卡顿期间的中途音频从哼唱判定里消失
         try:
             from func.pipeline.toolbox_audio import ToolboxAudioBridge
-            ToolboxAudioBridge().dispatch_frame(latest, self.source_id)
+            bridge = ToolboxAudioBridge()
+            for frame in (frames or [latest]):
+                bridge.dispatch_frame(frame, self.source_id)
         except Exception:
             pass
 
@@ -208,12 +214,21 @@ class SenseVoiceSession:
         """
         self._apply_current_user()
         ev = self.hub.poll_event(self.source_id)
-        if ev == 'ptt_end':
+        tail = None
+        if isinstance(ev, tuple) and ev and ev[0] == 'ptt_end':
+            # /audio/end 已把松手瞬间的在途帧封存好（含不足一帧的尾残）
+            tail = list(ev[1] or ())
+        elif ev == 'ptt_end':
+            tail = self.hub.seal_tail(self.source_id)
+        if tail is not None:
+            # 先发完松手前的在途帧，再收句：否则句尾（可能正是最后一个字）会被丢掉
             if self._ptt_speaking:
+                for frame in tail:
+                    self.manager.send_audio(frame)
                 self._ptt_speaking = False
                 self.manager.send_speaking(False)
                 self.manager.on_speech_end()
-            # 丢弃在途残帧，避免句尾残留被当成新句发送
+            # 松手后才陆续到达的残帧仍然丢掉，避免被当成新句
             self.hub.flush(self.source_id)
             # VAD 状态也要复位，否则下一句开头不会触发 started
             self.interrupt.reset_speaking()

@@ -144,7 +144,11 @@ class ToolboxAudioBridge:
             return p
 
     def _dump_hum_audio(self, sid):
-        """落盘指定源当前段哼唱音频并触发匹配；接唱事件无音频也触发"""
+        """检测到新哼唱事件：同步记账（丢弃标志），落盘与匹配丢到线程
+
+        只有「丢弃下一条 ASR」必须同步置位——ASR final 可能在落盘线程完成前回来。
+        写 .temp/user_audio/*.wav 是同步 IO，不能留在事件循环里（与 pyin 同一条喂帧路径）。
+        """
         try:
             from func.toolbox.meowsongs.hum_detect.hum_detect import TBHumDetect
             detect = TBHumDetect()
@@ -158,29 +162,32 @@ class ToolboxAudioBridge:
                 with self._lock:
                     self._discard_next_asr[_src_key(sid)] = True
 
-            path = None
-            if audio is not None and audio.size > 0:
-                try:
-                    os.makedirs(os.path.join(".temp", "user_audio"), exist_ok=True)
-                    path = os.path.join(".temp", "user_audio",
-                                        f"hum_{sid}_{int(time.time() * 1000)}.wav")
-                    with wave.open(path, "wb") as wf:
-                        wf.setnchannels(1)
-                        wf.setsampwidth(2)
-                        wf.setframerate(SAMPLE_RATE)
-                        wf.writeframes((np.clip(audio, -32768, 32767).astype(np.int16)).tobytes())
-                    with self._hum_end_lock:
-                        self._last_hum_audio[sid] = path
-                    self.log.info(f"[ToolboxAudio] 哼唱音频已落盘({sid}): {path}")
-                except Exception:
-                    path = None
-                    self.log.exception(f"[ToolboxAudio] 哼唱落盘失败({sid})，改用无音频兜底")
-
-            # 事件类型与音频路径在触发时绑定，避免异步线程读共享变量被覆盖
             from threading import Thread
-            Thread(target=self._trigger_baton, args=(sid, event_type, path), daemon=True).start()
+            Thread(target=self._write_and_trigger,
+                   args=(sid, event_type, audio), daemon=True).start()
         except Exception:
             self.log.exception(f"[ToolboxAudio] 落盘哼唱音频异常 sid={sid}")
+
+    def _write_and_trigger(self, sid, event_type, audio):
+        """线程任务：落盘哼唱音频（无音频则传 None）后触发接唱匹配"""
+        path = None
+        if audio is not None and audio.size > 0:
+            try:
+                os.makedirs(os.path.join(".temp", "user_audio"), exist_ok=True)
+                path = os.path.join(".temp", "user_audio",
+                                    f"hum_{sid}_{int(time.time() * 1000)}.wav")
+                with wave.open(path, "wb") as wf:
+                    wf.setnchannels(1)
+                    wf.setsampwidth(2)
+                    wf.setframerate(SAMPLE_RATE)
+                    wf.writeframes((np.clip(audio, -32768, 32767).astype(np.int16)).tobytes())
+                with self._hum_end_lock:
+                    self._last_hum_audio[sid] = path
+                self.log.info(f"[ToolboxAudio] 哼唱音频已落盘({sid}): {path}")
+            except Exception:
+                path = None
+                self.log.exception(f"[ToolboxAudio] 哼唱落盘失败({sid})，改用无音频兜底")
+        self._trigger_baton(sid, event_type, path)
 
     def _trigger_baton(self, sid, event_type, path):
         """落盘后异步触发听歌识曲接龙匹配（来源/事件类型/路径已绑定）"""

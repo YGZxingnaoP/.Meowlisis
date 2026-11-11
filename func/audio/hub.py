@@ -129,6 +129,21 @@ class AudioHub:
             buf.clear()
             return frames
 
+    def seal_tail(self, sid):
+        """收句封装：取出该源在途帧（缓冲 + 源内尾残补零），按先旧后新返回。
+
+        用于「按住说话」松手瞬间：此时队列里可能还有 0~1 整帧、以及不足一帧的尾残，
+        直接 flush 会把句尾吞掉；先封存再交给会话发送，才能保证信息完整。
+        """
+        frames = self.pop_frames(sid)
+        source = self._sources.get(sid)
+        if source is not None and hasattr(source, 'seal'):
+            try:
+                frames.extend(source.seal())
+            except Exception:
+                self.log.exception(f"封存音频源 {sid} 尾帧失败")
+        return frames
+
     # ---------- 生命周期 ----------
     def close(self):
         for sid in list(self._sources.keys()):

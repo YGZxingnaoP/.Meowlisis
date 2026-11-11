@@ -57,6 +57,7 @@ Object.assign(Config, {
         if (type === 'check') return this._check(label, path, def, help);
         if (type === 'num') return this._num(label, path, def, f.min, f.max, f.step, help);
         if (type === 'select') return this._select(label, path, f.options || [], def, help);
+        if (type === 'tags') return this._wordTagEditor(label, path, def, help, f.placeholder || '输入后回车添加');
         if (type === 'list') return this._list(label, path, def, help);
         if (type === 'area') return this._area(label, path, def, help);
         if (type === 'image') return this._pluginImage(label, path, def, help);
@@ -156,8 +157,19 @@ Object.assign(Config, {
     },
 
     applyPluginUpdates(id, updates) {
+        const schema = this.pluginSchemas[id] || {};
+        const tagPaths = new Set((schema.fields || [])
+            .filter(f => (f.type || '') === 'tags')
+            .map(f => String(f.key)));
+        const fixed = (updates || []).map(item => {
+            if (!tagPaths.has(String(item.path)) || typeof item.value !== 'string') return item;
+            let value;
+            try { value = JSON.parse(item.value); } catch (e) { value = []; }
+            if (!Array.isArray(value)) value = [];
+            return { path: item.path, value: value };
+        });
         const cfg = this.pluginConfigs[id] || (this.pluginConfigs[id] = {});
-        this.applyUpdates(updates, cfg);
+        this.applyUpdates(fixed, cfg);
         return cfg;
     },
 });

@@ -50,9 +50,27 @@ class InjectSource(BaseAudioSource):
             self._pending.clear()
             self._queue.clear()
 
+    def seal(self):
+        """收句封装：把不足一帧的尾残补零成整帧，连同队列里未消费的帧一起取出。
+
+        与中途补零不同，这里补的是**流末尾**：只增加一小段尾部静音，
+        不会稀释语音；丢掉尾残才会让句尾最后一个字永久消失。
+        """
+        frame_bytes = self._frame_bytes
+        with self._lock:
+            frames = list(self._queue)
+            self._queue.clear()
+            if self._pending:
+                data = bytes(self._pending)
+                self._pending.clear()
+                if len(data) < frame_bytes:
+                    data += b'\x00' * (frame_bytes - len(data))
+                frames.append(data[:frame_bytes])
+            return frames
+
     def read(self):
         """取一帧；不够一帧就继续累积（不补零稀释语音），等凑满整帧再出；
-        尾残由 ptt_end/flush 清理。"""
+        收句时的尾残由 seal() 补零成整帧取出，不再丢弃。"""
         with self._lock:
             if self._queue:
                 return self._queue.popleft()

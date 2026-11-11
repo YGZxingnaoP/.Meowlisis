@@ -5,6 +5,7 @@
 import time
 import threading
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
@@ -31,7 +32,7 @@ class _SourceState:
         "buffer", "buf_samples", "buf_seconds", "speech_start", "last_sound",
         "hum_event_seq", "last_hum_audio", "checked_at_collect", "segment_triggered",
         "last_hum_duration", "last_event_type", "need_discard", "last_metrics",
-        "last_segment_hum",
+        "last_segment_hum", "epoch", "segment_end_ts",
     )
 
     def __init__(self):
@@ -59,6 +60,10 @@ class _SourceState:
         self.last_metrics = {}
         # 最近一段是否判为哼唱（供声纹按域选模板；段结束后仍保留）
         self.last_segment_hum = False
+        # 段世代：每开一段 +1；异步判定回来时用它确认结论仍属于当前段
+        self.epoch = 0
+        # 本段结束时刻（0=段进行中）：异步判定据此判断结论是否赶在 ASR final 之前
+        self.segment_end_ts = 0.0
 
 
 @singleton
@@ -71,6 +76,20 @@ class TBHumDetect:
         self.sv_config = SenseVoiceConfig()
         self._lock = threading.RLock()
         self._states = {}
+        # pyin 判定只在这个单线程池里跑：喂帧主链（事件循环）不再被长音频阻塞，
+        # 单线程同时保证同一源的判定按提交顺序完成。
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="hum-judge")
+        self._pending = {}   # sid -> (epoch, Future)：最近一次提交的判定
+        # 按源单调递增的世代号：段开始/状态被重置都会 +1。
+        # 放在单例上而不是 state 里，是为了 reset 后新建的 state 也不会复用旧世代，
+        # 否则线程池里上一段的判定可能误写进重建后的同号 state。
+        self._gen = {}       # sid -> int
+        # 收句读结论时最多等判定这么久（只有 ≥hum_collect_sec 的长段才可能有未完成判定）
+        self.HUM_VERDICT_WAIT = 0.12
+        # 收句判定落地窗口：只有赶在本句 ASR final（≈段结束后 0.2~1.0s）之前落地的
+        # 「丢弃本句 ASR」才有效。晚于窗口说明本句已经送出去了，此时再置位只会
+        # 把下一句的识别结果丢掉，所以宁可不置位。
+        self.DISCARD_WINDOW = 1.2
 
     def _state(self, sid: str) -> _SourceState:
         """取（或建）指定音频源的状态（内部加锁，可重入）"""
@@ -79,6 +98,7 @@ class TBHumDetect:
             st = self._states.get(sid)
             if st is None:
                 st = _SourceState()
+                st.epoch = self._gen.get(sid, 0)
                 self._states[sid] = st
             return st
 
@@ -100,6 +120,11 @@ class TBHumDetect:
                         # 新段开始：先按"非哼唱"算，判定通过后再置位，
                         # 避免上一段的结论残留到这一段（说话被拿去比哼唱模板）
                         st.last_segment_hum = False
+                        # 段世代 +1：上一段还在线程池里的判定回来会被丢弃
+                        self._gen[sid] = self._gen.get(sid, 0) + 1
+                        st.epoch = self._gen[sid]
+                        st.segment_end_ts = 0.0
+                        self._pending.pop(sid, None)
                     st.last_sound = now
                 else:
                     # 静音超过 SenseVoice silence_threshold → 段结束，分析并清空重来
@@ -109,6 +134,7 @@ class TBHumDetect:
                         st.last_segment_hum = st.segment_triggered
                         st.speech_start = 0.0
                         st.last_sound = 0.0
+                        st.segment_end_ts = now
                         # 段结束清空缓冲，保证下一段分析的只有当前语音
                         st.buffer.clear()
                         st.buf_samples = 0
@@ -124,15 +150,12 @@ class TBHumDetect:
                     st.buf_samples += arr.size
                     st.buf_seconds = st.buf_samples / SAMPLE_RATE
                     # 满 hum_collect_sec 立即判定 + 定歌（不等静音段结束），只判一次
+                    # 判定本身（pyin）丢线程池：锁内只做一次快照拷贝，不阻塞喂帧
                     if (not st.checked_at_collect
                             and st.buf_seconds >= self.config.hum_collect_sec):
                         st.checked_at_collect = True
-                        if self._analyze_buffer(sid):
-                            st.segment_triggered = True
-                            st.need_discard = True
-                            st.last_event_type = "lock"
-                            st.last_segment_hum = True
-                            self._trigger_lock(sid)
+                        self._submit_judge(sid, np.concatenate(list(st.buffer)),
+                                           st.epoch, "lock", st.buf_seconds)
         except Exception:
             self.log.exception(f"[HumDetect] 喂帧异常 sid={sid}")
 
@@ -149,23 +172,74 @@ class TBHumDetect:
             st.last_event_type = "sing"
             self._trigger_sing(sid, need_match=True)
             return
-        # 满 hum_collect_sec 未通过 → 段结束兜底判定 + 接唱（无锁定结果，需匹配）
-        if self._analyze_buffer(sid):
-            st.segment_triggered = True
-            st.need_discard = True
-            st.last_event_type = "sing"
-            self._trigger_sing(sid, need_match=True)
+        # 满 hum_collect_sec 的定歌判定还在线程池里跑：等它回来即可，不再重复跑一次 pyin
+        pending = self._pending.get(sid)
+        if pending is not None and pending[0] == st.epoch and not pending[1].done():
+            return
+        # 满 hum_collect_sec 未通过 → 段结束兜底判定 + 接唱（判定同样丢线程池，不阻塞喂帧）
+        self._submit_judge(sid, np.concatenate(list(st.buffer)),
+                           st.epoch, "sing", st.buf_seconds)
 
-    def _analyze_buffer(self, sid: str):
-        """判定当前累积缓冲是否为哼唱（pyin fl1024），返回 bool，不触发匹配"""
+    def _submit_judge(self, sid: str, audio, epoch: int, kind: str, duration: float):
+        """把一次 pyin 判定提交到单线程池（保序）；结果回写前校验段世代"""
         try:
+            fut = self._executor.submit(self._judge, sid, audio, epoch, kind, duration)
+        except Exception:
+            self.log.exception(f"[HumDetect] 提交判定失败 sid={sid}")
+            return
+        self._pending[sid] = (epoch, fut)
+
+    def _judge(self, sid: str, audio, epoch: int, kind: str, duration: float) -> bool:
+        """线程池任务：跑 pyin 判定并回写状态（段已更换则只返回结论、不写状态）"""
+        try:
+            ok, metrics = self._analyze_audio(audio)
+        except Exception:
+            self.log.exception(f"[HumDetect] 完整分析异常 sid={sid}")
+            return False
+        with self._lock:
             st = self._state(sid)
-            with self._lock:
-                if st.buf_seconds < self.config.hum_collect_sec:
-                    return False
-                audio = np.concatenate(list(st.buffer))
-            if audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
+            if st.epoch != epoch:
+                return ok
+            st.last_metrics = metrics
+            if not ok:
                 return False
+            st.last_segment_hum = True
+            st.last_hum_audio = audio
+            st.last_hum_duration = duration
+            # 只有赶在本句 ASR final 之前落地的结论才记「丢弃本句 ASR」；
+            # 晚了就不再置位，否则会把下一句的识别结果吃掉
+            if self._discard_in_time(st):
+                st.need_discard = True
+            # 段已结束才回来的定歌判定：段已收句，直接按接唱事件落地，
+            # 但不能写 segment_triggered（会把「已定歌」漏进下一段）
+            if kind == "lock" and st.speech_start <= 0.0:
+                st.last_event_type = "sing"
+                st.hum_event_seq += 1
+                return ok
+            if kind == "lock":
+                st.segment_triggered = True
+                st.last_event_type = "lock"
+            else:
+                st.last_event_type = "sing"
+            st.hum_event_seq += 1
+        return ok
+
+    def _discard_in_time(self, st) -> bool:
+        """判定结论是否仍赶在本句 ASR final 之前（段结束后超过窗口就不算）"""
+        if st.segment_end_ts <= 0.0:
+            return True     # 段还在进行中（7s 定歌），结论本来就早于 final
+        return (time.time() - st.segment_end_ts) <= self.DISCARD_WINDOW
+
+    def _analyze_audio(self, audio):
+        """纯判定一段音频是否为哼唱（pyin fl1024），返回 (ok, metrics)。
+
+        不读写任何状态，可安全地在线程池里执行；调用方负责把 metrics 写回状态。
+        """
+        empty = {"ratio": 0.0, "stable_ratio": 0.0, "unique_notes": 0,
+                 "voiced_frames": 0, "total_frames": 0}
+        try:
+            if audio is None or audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
+                return False, empty
             import librosa
             f0, voiced_flag, voiced_prob = librosa.pyin(
                 audio.astype(np.float32) / 32768.0,
@@ -176,12 +250,9 @@ class TBHumDetect:
             weight = np.clip((voiced_prob - 0.30) / 0.50, 0.0, 1.0)
             voiced = voiced_flag & (weight > 0.05)
             if int(voiced.sum()) < 3:
-                with self._lock:
-                    st.last_metrics = {
-                        "ratio": 0.0, "stable_ratio": 0.0, "unique_notes": 0,
-                        "voiced_frames": int(voiced.sum()), "total_frames": int(f0.size),
-                    }
-                return False
+                metrics = dict(empty, voiced_frames=int(voiced.sum()),
+                               total_frames=int(f0.size))
+                return False, metrics
             ratio = float(voiced.mean())
             midi = 12.0 * np.log2(f0[voiced] / 440.0) + 69.0
             # 稳定帧占比：相邻帧音高差 < 阈值半音的帧占比
@@ -189,33 +260,22 @@ class TBHumDetect:
             abs_diff = np.abs(np.diff(midi))
             stable_ratio = float(np.mean(abs_diff < self.config.f0_stable_half_step))
             unique_notes = len(np.unique(np.round(midi).astype(int)))
-            with self._lock:
-                st.last_metrics = {
-                    "ratio": round(ratio, 3),
-                    "stable_ratio": round(stable_ratio, 3),
-                    "unique_notes": unique_notes,
-                    "voiced_frames": int(voiced.sum()),
-                    "total_frames": int(f0.size),
-                }
-            return (
+            metrics = {
+                "ratio": round(ratio, 3),
+                "stable_ratio": round(stable_ratio, 3),
+                "unique_notes": unique_notes,
+                "voiced_frames": int(voiced.sum()),
+                "total_frames": int(f0.size),
+            }
+            ok = (
                 ratio >= self.config.f0_voiced_ratio
                 and stable_ratio >= self.config.f0_stable_ratio
                 and unique_notes >= self.config.f0_unique_notes
             )
+            return ok, metrics
         except Exception:
-            self.log.exception(f"[HumDetect] 完整分析异常 sid={sid}")
-            return False
-
-    def _trigger_lock(self, sid: str):
-        """定歌：用 hum_collect_sec 快照触发匹配事件（供 toolbox_audio 落盘匹配）"""
-        st = self._state(sid)
-        with self._lock:
-            audio = np.concatenate(list(st.buffer))
-            if audio.size < int(SAMPLE_RATE * self.config.hum_collect_sec):
-                return
-            st.last_hum_audio = audio
-            st.last_hum_duration = st.buf_seconds
-            st.hum_event_seq += 1
+            self.log.exception("[HumDetect] 完整分析异常")
+            return False, empty
 
     def _trigger_sing(self, sid: str, need_match=False):
         """段结束接唱：触发接唱事件（need_match=True 时携带完整音频供兜底匹配）"""
@@ -254,7 +314,21 @@ class TBHumDetect:
             return self._state(sid).last_event_type
 
     def is_last_segment_hum(self, sid: str = DEFAULT_SOURCE):
-        """返回指定源最近一段是否判定为哼唱（供声纹按域选模板）"""
+        """返回指定源最近一段是否判定为哼唱（供声纹按域选模板）
+
+        pyin 已在线程池里跑：若本段结论还在计算中（只有 ≥hum_collect_sec 的长段会这样），
+        最多等 HUM_VERDICT_WAIT 秒，避免收到段尾时结论还没回来而误用说话模板。
+        """
+        sid = sid or DEFAULT_SOURCE
+        with self._lock:
+            st = self._state(sid)
+            epoch = st.epoch
+            pending = self._pending.get(sid)
+        if pending is not None and pending[0] == epoch and not pending[1].done():
+            try:
+                pending[1].result(timeout=self.HUM_VERDICT_WAIT)
+            except Exception:
+                pass
         with self._lock:
             return bool(self._state(sid).last_segment_hum)
 
@@ -273,5 +347,9 @@ class TBHumDetect:
 
     def reset(self, sid: str):
         """丢弃指定源的全部状态（源被关闭/会话重建时调用）"""
+        sid = sid or DEFAULT_SOURCE
         with self._lock:
-            self._states.pop(sid or DEFAULT_SOURCE, None)
+            # 世代继续递增：重建后的 state 不会与线程池里旧判定同号
+            self._gen[sid] = self._gen.get(sid, 0) + 1
+            self._pending.pop(sid, None)
+            self._states.pop(sid, None)
