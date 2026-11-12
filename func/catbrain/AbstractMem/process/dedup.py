@@ -14,6 +14,10 @@ class MeowDedup:
     # 同一事件被模型用不同措辞写两遍时（如“陪他”/“陪着”），
     # 归一化文本仍会差一个字，稳定主键不同，需要近似文本兜底。
     NEAR_DUP_RATIO = 0.92
+    # 同一分钟写入、标签高度重合的，允许更低的文本相似度（同一次概括里的改写）
+    SAME_TIME_RATIO = 0.62
+    SAME_TIME_TAG_JACCARD = 0.5
+    SAME_TIME_LEN_RATIO = 0.6
 
     def __init__(self):
         """加载配置与证据函数"""
@@ -31,14 +35,27 @@ class MeowDedup:
         raw = f"{self._norm_text(event.get('event', ''))}|{owner}"
         return "mem_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
 
+    @staticmethod
+    def _tags(item):
+        """标签集合（用于同分钟改写的辅助判定）"""
+        return {str(t).strip() for t in (item.get("tags") or []) if str(t).strip()}
+
     def find_near(self, event, candidates):
-        """找同一天、同类型、同参与者的近似重复事件；没有则返回 None"""
+        """找同一天、同类型、同参与者的近似重复事件；没有则返回 None
+
+        两级判定：
+        - 文本相似度 >= 0.92：直接视为同一事件；
+        - 同一分钟 + 标签 Jaccard >= 0.5 + 长度接近 + 相似度 >= 0.62：
+          同一次概括里被改写成不同说法的同一件事。
+        """
         text = self._norm_text(event.get("event", ""))
         if not text:
             return None
         kind = event.get("kind")
         owner = joint_util.owner(event)
         day = str(event.get("time") or "")[:10]
+        stamp = str(event.get("time") or "")
+        tags_a = self._tags(event)
         best, best_ratio = None, 0.0
         for item in candidates or []:
             if not isinstance(item, dict):
@@ -53,9 +70,18 @@ class MeowDedup:
             if not other:
                 continue
             ratio = difflib.SequenceMatcher(None, text, other).ratio()
-            if ratio > best_ratio:
+            accept = ratio >= self.NEAR_DUP_RATIO
+            if not accept and stamp and stamp == str(item.get("time") or ""):
+                tags_b = self._tags(item)
+                union = tags_a | tags_b
+                jaccard = (len(tags_a & tags_b) / len(union)) if union else 0.0
+                length_ratio = min(len(text), len(other)) / max(len(text), len(other))
+                accept = (ratio >= self.SAME_TIME_RATIO
+                          and jaccard >= self.SAME_TIME_TAG_JACCARD
+                          and length_ratio >= self.SAME_TIME_LEN_RATIO)
+            if accept and ratio > best_ratio:
                 best, best_ratio = item, ratio
-        return best if best is not None and best_ratio >= self.NEAR_DUP_RATIO else None
+        return best
 
     @staticmethod
     def _merge_list(item, key, values):

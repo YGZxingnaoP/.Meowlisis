@@ -496,6 +496,17 @@ class MeowUpdateAbstractMemory:
                 self.log.info(f"记忆审查丢弃 {len(dropped)} 条")
         for event in new_events:
             self._dedup._init_evidence(event, now_iso)
+        # 同批兜底：审查放行的候选里如果还有同义改写，合并成一条再写
+        unique = []
+        for event in new_events:
+            near = self._dedup.find_near(event, unique)
+            if near is not None:
+                self._dedup._apply_same(near, event, now_iso,
+                                        delta=self.config.evidence_same_recite_delta,
+                                        accuracy_step=0)
+            else:
+                unique.append(event)
+        new_events = unique
         skip_ids = {event.get("id") for event in events if event.get("id")}
         boosted = self._reinforce_cooccur(data, new_events, now_iso, skip_ids)
         if boosted:

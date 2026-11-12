@@ -20,6 +20,10 @@ class MeowDupCleanup:
     PUNCT_PATTERN = r"[\s。，！？、,.!?;；:：~～·…—\-—_\"'“”‘’（）()【】\[\]]+"
     # 同一事件被模型换了措辞（如“陪他”/“陪着”）时，归一化文本仍差一个字
     NEAR_RATIO = 0.92
+    # 同一分钟、标签高度重合的改写，允许更低的文本相似度
+    SAME_TIME_RATIO = 0.62
+    SAME_TIME_TAG_JACCARD = 0.5
+    SAME_TIME_LEN_RATIO = 0.6
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -44,6 +48,11 @@ class MeowDupCleanup:
             return str(first)
         return ""
 
+    @staticmethod
+    def _tags(item) -> set:
+        """标签集合"""
+        return {str(t).strip() for t in (item.get("tags") or []) if str(t).strip()}
+
     @classmethod
     def _near(cls, a, b) -> bool:
         """同类型、同参与者、同一天，且文本高度相似才视为同一条"""
@@ -59,7 +68,18 @@ class MeowDupCleanup:
         key_a, key_b = cls._key(a), cls._key(b)
         if not key_a or not key_b:
             return False
-        return difflib.SequenceMatcher(None, key_a, key_b).ratio() >= cls.NEAR_RATIO
+        ratio = difflib.SequenceMatcher(None, key_a, key_b).ratio()
+        if ratio >= cls.NEAR_RATIO:
+            return True
+        if str(a.get("time") or "") and str(a.get("time") or "") == str(b.get("time") or ""):
+            tags_a, tags_b = cls._tags(a), cls._tags(b)
+            union = tags_a | tags_b
+            jaccard = (len(tags_a & tags_b) / len(union)) if union else 0.0
+            length_ratio = min(len(key_a), len(key_b)) / max(len(key_a), len(key_b))
+            return (ratio >= cls.SAME_TIME_RATIO
+                    and jaccard >= cls.SAME_TIME_TAG_JACCARD
+                    and length_ratio >= cls.SAME_TIME_LEN_RATIO)
+        return False
 
     @staticmethod
     def _merge_list(a, b) -> list:

@@ -91,7 +91,9 @@ if /i "%PACK_MODE%"=="full" (
 ) else (
   rem share package: drop secrets, configs, runtime data and personal content
 set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
-  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.DataBase\*" -x".vendor\.NapCat\*" -x".vendor\.NeteaseMusic\*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.DataBase\*" -x".vendor\.NapCat\*""
+  rem Netease: keep the module + DLLs, drop login cookie / QR / song cache
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.NeteaseMusic\server\ncm_cookie.json" -x".vendor\.NeteaseMusic\server\ncm_qr.png" -x".vendor\.NeteaseMusic\server\songs_cache\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.cam\cert\*" -x".vendor\.cam\mode.txt""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.desktopet\config.json" -x".vendor\.desktopet\.run.log""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.CatPaws\config.yml" -x".vendor\.CatPaws\catpaws-launcher\run\*""
