@@ -22,6 +22,10 @@ class InterruptDetector:
 
     def __init__(self, config):
         self.energy_threshold = config.energy_threshold
+        # 起句仍用高阈值防噪声；句内保活用更低的阈值，
+        # 否则一句话中途音量掉到 650 以下就被当成静音，1.3 秒后截成 0.5 秒碎片，
+        # 声纹（CAM++）在碎片上必然匹配失败，表现为“语音没反应”。
+        self.keep_threshold = max(250.0, float(self.energy_threshold) * 0.7)
         self.interrupt_threshold = getattr(config, 'interrupt_threshold', config.energy_threshold)
         self.silence_threshold = config.silence_threshold
         # 说话状态（VAD）
@@ -46,8 +50,9 @@ class InterruptDetector:
         return self._update_interrupt(energy, now)
 
     def _update_speaking(self, energy: float, now: float) -> Optional[str]:
-        """说话状态（VAD）：energy >= energy_threshold"""
-        is_speech = energy >= self.energy_threshold
+        """说话状态（VAD）：起句用高阈值，句内保活用低阈值（迟滞）"""
+        threshold = self.keep_threshold if self.is_speaking else self.energy_threshold
+        is_speech = energy >= threshold
         event = None
         if is_speech:
             self._silence_start_time = None

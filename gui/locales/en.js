@@ -1677,5 +1677,15 @@ window.__LOCALES__['en'] = {
     "回车添加入口名，点 × 删除；不再用逗号分隔": "Press Enter to add an entry; click × to remove. No comma separation.",
     "入口名": "Entry name",
     "记忆证据上限(字符)": "Memory Evidence Cap (chars)",
-    "一次深度回忆中，agent 通过工具读到的记忆结果总字符上限；超出会截断或停止继续读。8k 上下文建议 2500~3000，32k 建议 6000": "Total character cap for memory results the agent reads through tools in one deep-recall run; excess is truncated or reading stops. Use 2500–3000 for 8k context, 6000 for 32k."
+    "一次深度回忆中，agent 通过工具读到的记忆结果总字符上限；超出会截断或停止继续读。8k 上下文建议 2500~3000，32k 建议 6000": "Total character cap for memory results the agent reads through tools in one deep-recall run; excess is truncated or reading stops. Use 2500–3000 for 8k context, 6000 for 32k.",
+    "合成引擎": "Synthesis Engine",
+    "GPT-SoVITS 原版（兼容性最好）": "GPT-SoVITS Base (best compatibility)",
+    "GSV-Lite 加速（CUDA Graph）": "GSV-Lite (CUDA Graph)",
+    "Lite 只支持 v2 系权重；切换后重启 SoVITS 服务生效": "Lite supports v2-family weights only; restart the SoVITS service after switching.",
+    "GSV-Lite 服务地址": "GSV-Lite Service URL",
+    "{n} 行日志": "{n} log lines",
+    "原始日志": "Raw Logs",
+    "事件视图": "Event View",
+    "这段时间日志为空": "No log lines in this period",
+    "这段时间只有技术日志（{n} 行，已折叠）· 点上方「原始日志」查看全部": "Only technical logs here ({n} lines, folded) · click Raw Logs above to view all"
 };

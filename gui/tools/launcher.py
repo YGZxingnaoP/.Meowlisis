@@ -186,17 +186,23 @@ def set_base(base):
 
 
 def _sovits_host_port(base: Path):
-    """从 config.yml 的 tts.gpt-sovits.gpt_sovits_url 解析监听地址/端口"""
+    """按 tts.engine 解析监听地址/端口：base 用 gpt_sovits_url，lite 用 gsv_lite_url"""
     try:
         import yaml
         cfg_path = Path(base) / 'config.yml'
         if cfg_path.exists():
             with open(cfg_path, 'r', encoding='utf-8') as f:
                 cfg = yaml.safe_load(f) or {}
-            url = ((cfg.get('tts') or {}).get('gpt-sovits') or {}).get(
-                'gpt_sovits_url', 'http://127.0.0.1:9880')
+            tts = cfg.get('tts') or {}
+            if str(tts.get('engine', 'base')).lower() == 'lite':
+                url = tts.get('gsv_lite_url', 'http://127.0.0.1:9881')
+                default_port = 9881
+            else:
+                url = (tts.get('gpt-sovits') or {}).get(
+                    'gpt_sovits_url', 'http://127.0.0.1:9880')
+                default_port = 9880
             p = urlparse(str(url))
-            return (p.hostname or '127.0.0.1'), (p.port or 9880)
+            return (p.hostname or '127.0.0.1'), (p.port or default_port)
     except Exception:
         pass
     return '127.0.0.1', 9880
@@ -244,7 +250,10 @@ def service_port(key: str, base):
     if key == 'painting':
         return int(((cfg.get('flux_painter') or {}).get('comfy') or {}).get('port') or 8188)
     if key == 'sovits':
-        return _url_port(((cfg.get('tts') or {}).get('gpt-sovits') or {}).get('gpt_sovits_url'), 9880)
+        tts = cfg.get('tts') or {}
+        if str(tts.get('engine', 'base')).lower() == 'lite':
+            return _url_port(tts.get('gsv_lite_url'), 9881)
+        return _url_port((tts.get('gpt-sovits') or {}).get('gpt_sovits_url'), 9880)
     if key == 'napcat':
         return _url_port((cfg.get('napcat') or {}).get('ws_url'), 3001)
     if key == 'sensevoice':
@@ -258,6 +267,25 @@ def service_port(key: str, base):
     if key == 'rvc':
         return 7865          # .vendor/.RVC/cover_server.py: RVC_PORT 默认 7865
     return None
+
+
+def _lite_missing_models(lite_dir: Path):
+    """GSV-Lite 启动前检查底座（缺 g2p/hubert/sv 时直接报错，别让用户等两分钟）"""
+    cfg = {}
+    try:
+        import yaml
+        p = lite_dir / 'config.yaml'
+        if p.exists():
+            cfg = yaml.safe_load(p.read_text(encoding='utf-8')) or {}
+    except Exception:
+        cfg = {}
+    models = Path(cfg.get('models_dir') or 'models')
+    if not models.is_absolute():
+        models = lite_dir / models
+    need = ['chinese-hubert-base', 'g2p', 'sv']
+    if bool(cfg.get('use_bert', True)):
+        need.append('chinese-roberta-wwm-ext-large')
+    return [n for n in need if not (models / n).exists()]
 
 
 def build_command(key: str, base):
@@ -297,6 +325,20 @@ def build_command(key: str, base):
         return [python_exe(base), str(script)], cwd, env
 
     if kind == 'sovits':
+        tts = (load_config(base) or {}).get('tts') or {}
+        if str(tts.get('engine', 'base')).lower() == 'lite':
+            d = base / '.vendor' / '.gsvlite'
+            server_py = d / 'server.py'
+            if not server_py.exists():
+                return None, '.gsvlite/server.py not found'
+            missing = _lite_missing_models(d)
+            if missing:
+                return None, ('GSV-Lite 底座未就绪（缺 %s）：先运行 '
+                              '.vendor/.gsvlite/download_models.py' % ', '.join(missing))
+            host, port = _sovits_host_port(base)
+            args = [python_exe(base), str(server_py),
+                    '--host', str(host), '--port', str(port)]
+            return args, d, env
         d = base / '.vendor' / '.Sovits'
         api_path = d / 'api_v2.py'
         if not api_path.exists():
@@ -311,6 +353,23 @@ def build_command(key: str, base):
         return args, d, env
 
     return None, '未配置启动方式'
+
+
+def engine_marker(key: str, base):
+    """当前引擎对应的命令行关键字（状态/停止兜底用）"""
+    if key != 'sovits':
+        return None
+    tts = (load_config(base) or {}).get('tts') or {}
+    return '.gsvlite' if str(tts.get('engine', 'base')).lower() == 'lite' else '.Sovits'
+
+
+def cmdline_keys(key: str, base, all_engines: bool = False):
+    """状态/停止用的命令行关键字；all_engines=True 时同时匹配两个引擎"""
+    if key == 'sovits':
+        if all_engines:
+            return ['.Sovits', '.gsvlite']
+        return [engine_marker(key, base)]
+    return [x for x in (SERVICES.get(key, {}).get('cmdline') or []) if x]
 
 
 def start(key: str, base):

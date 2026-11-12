@@ -341,6 +341,14 @@ class MeowUpdateAbstractMemory:
                             event["action"] = "origin"
                             replies.append("该事件与已有记忆完全一致，已加强")
                             continue
+                        near = self._dedup.find_near(event, pending) or self._dedup.find_near(event, data)
+                        if near is not None:
+                            self._dedup._apply_same(near, event, now_iso,
+                                                    delta=self.config.evidence_same_recite_delta,
+                                                    accuracy_step=0)
+                            event["action"] = "origin"
+                            replies.append("该事件与已有记忆高度相似，已合并加强")
+                            continue
                         scope = self._scope(event, data + pending)
                         pending.append(event)
                         lookup[event["id"]] = event

@@ -9,10 +9,19 @@ import numpy as np
 import torch
 from scipy.spatial.distance import cosine
 
-from audio import save_audio_to_wav
-
 DEFAULT_THRESHOLD_SPEECH = 0.2
 DEFAULT_THRESHOLD_SING = 0.6
+
+
+def _to_float(audio):
+    """PCM bytes / ndarray → float32[-1,1]（FunASR 的 embedding 接口两者都吃）"""
+    if isinstance(audio, np.ndarray):
+        a = audio
+        if a.dtype == np.int16:
+            return a.astype(np.float32) / 32768.0
+        return a.astype(np.float32)
+    a = np.frombuffer(audio, dtype=np.int16)
+    return a.astype(np.float32) / 32768.0
 
 
 class SpeakerVerification:
@@ -79,12 +88,13 @@ class SpeakerVerification:
         return self._cache
 
     # ==================== 嵌入抽取 ====================
-    def extract_embedding(self, audio_bytes: bytes):
-        """抽取单段音频的说话人嵌入向量"""
-        tmp_path = None
+    def extract_embedding(self, audio):
+        """抽取单段音频的说话人嵌入向量（直接吃 bytes/ndarray，不落盘）"""
         try:
-            tmp_path = save_audio_to_wav(audio_bytes)
-            result = self.model.generate(input=tmp_path, embedding=True)
+            a = _to_float(audio)
+            if a.size == 0:
+                return None
+            result = self.model.generate(input=a, embedding=True)
             if result and len(result) > 0:
                 emb = result[0].get("spk_embedding")
                 if emb is not None:
@@ -101,9 +111,6 @@ class SpeakerVerification:
         except Exception as e:
             print(f"声纹提取失败: {e}")
             return None
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                os.unlink(tmp_path)
 
     # ==================== 验证 ====================
     def verify(self, audio_bytes: bytes, hum: bool = False,

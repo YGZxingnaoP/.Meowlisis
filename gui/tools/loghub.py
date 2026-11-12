@@ -331,13 +331,15 @@ def _svc_state(key):
     }
 
 
-def _cmdline_pids(key):
+def _cmdline_pids(key, all_engines=False):
     """按命令行关键字反查进程 —— 停止/状态的兜底手段。
 
     为什么需要：进程可能不是从本界面启动的（比如你手动开着、或打补丁之前就起着），
     这时内存句柄和 pid 标记文件都没有，只查这两处的话"停止"就是完全没反应。
+
+    all_engines=True 用于停止：切换引擎后旧引擎可能还在跑，必须两个都匹配。
     """
-    keys = [k for k in (SERVICES.get(key, {}).get('cmdline') or []) if k]
+    keys = [k for k in launcher.cmdline_keys(key, _base(), all_engines) if k]
     if not keys:
         return []
     rx = '|'.join(re.escape(k) for k in keys)
@@ -374,7 +376,7 @@ def _cmdline_pids(key):
 _scan = {'ts': 0.0, 'pids': {}, 'busy': False, 'err': ''}
 
 
-def _scan_all_cmdlines():
+def _scan_all_cmdlines(all_engines=False):
     """一次遍历进程表，同时算出每个服务匹配到的 pid。
 
     原来是对 9 个服务各起一个 powershell（每个 ~400ms，合计 3.6s，还各自全表扫描），
@@ -383,9 +385,9 @@ def _scan_all_cmdlines():
     found = {k: [] for k in ORDER}
     if _psutil is None:
         for key in ORDER:
-            found[key] = _cmdline_pids(key)
+            found[key] = _cmdline_pids(key, all_engines)
         return found
-    pats = {k: [x for x in (SERVICES.get(k, {}).get('cmdline') or []) if x] for k in ORDER}
+    pats = {k: launcher.cmdline_keys(k, _base(), all_engines) for k in ORDER}
     me = os.getpid()
     try:
         ppid = os.getppid()
@@ -434,14 +436,14 @@ def _scan_pids(key):
     return list(_scan['pids'].get(key) or [])
 
 
-def _live_pids(key):
+def _live_pids(key, all_engines=False):
     """现场扫一次该服务的进程（不吃缓存）—— 启停前判断"是不是已经有实例在外面跑" """
     try:
-        found = _scan_all_cmdlines()
+        found = _scan_all_cmdlines(all_engines)
         return [x for x in found.get(key, []) if _pid_alive(x)]
     except Exception:
         try:
-            return [x for x in _cmdline_pids(key) if _pid_alive(x)]
+            return [x for x in _cmdline_pids(key, all_engines) if _pid_alive(x)]
         except Exception:
             return []
 
@@ -489,7 +491,7 @@ def _all_pids(key):
     pid = _read_pid(key)
     if pid and _pid_alive(pid) and pid not in pids:
         pids.append(pid)
-    for x in _cmdline_pids(key):          # 兜底：现场查一次，不用缓存
+    for x in _cmdline_pids(key, all_engines=True):   # 兜底：两个引擎都查，现场扫一次
         if x not in pids:
             pids.append(x)
     return pids
@@ -644,12 +646,13 @@ def _reclassify_block(rec):
 
 
 def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None,
-              include_bg=False):
+              include_bg=False, verbatim=False):
     """按字节偏移读日志。
 
     since=None 首次读：只取文件尾部 first_bytes，避免几十 MB 老日志拖死浏览器。
     since 有值：只读 since 之后的新内容（增量轮询用，几乎零成本）。
     include_bg=True：把"后台层"也返回（前端展开后台时才要）。
+    verbatim=True：原始日志视图，不合并堆栈/重复行，逐行返回。
     返回 (lines, offset, size, noise)——noise 是本次被折叠的行按类别计数。
     """
     path = _log_path(key, day)
@@ -691,6 +694,11 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None,
             ln = ln.replace(p, '')
         if not ln.strip():
             continue
+        if verbatim:
+            rec = _make_record(ln)
+            rec['n'] = 1
+            out.append(rec)
+            continue
         # 多行异常堆栈：Traceback 起的那条 + 后续续行，归并成一条（前端折叠展开）
         if pending is not None and _is_traceback_cont(ln, pending):
             pending['txt'] += '\n' + ln
@@ -715,7 +723,7 @@ def read_tail(key, since=None, limit=1500, first_bytes=192 * 1024, day=None,
         out.append(rec)
     if pending is not None:
         _reclassify_block(pending)
-    if len(out) > 1:
+    if len(out) > 1 and not verbatim:
         freq = {}
         for r in out:
             freq[r['_k']] = freq.get(r['_k'], 0) + 1
@@ -795,6 +803,13 @@ def _launch(key):
         return False, {'status': 'error', 'running': True, 'pid': others[0],
                        'message': '已经有实例在跑（pid %s），先点停止再启动；'
                                   '重复启动会让两个进程抢同一个端口' % others[0]}
+    # 合成引擎切换：旧引擎还在跑时不能直接再起一个，否则显存/端口都会打架
+    if key == 'sovits':
+        other_engine = _live_pids(key, all_engines=True)
+        if other_engine:
+            return False, {'status': 'error', 'running': True, 'pid': other_engine[0],
+                           'message': '另一个合成引擎还在运行（pid %s），先点停止再切换引擎'
+                                      % other_engine[0]}
 
     ok, msg, proc = launcher.start(key, _base())
     if not ok:
@@ -900,7 +915,7 @@ def stop(key):
             pass
         pids = [x for x in _scan_pids(key) if _pid_alive(x)]
     if not pids and _psutil is None:
-        pids = [x for x in _cmdline_pids(key) if _pid_alive(x)]
+        pids = [x for x in _cmdline_pids(key, all_engines=True) if _pid_alive(x)]
 
     # 端口占用者一起结束：手动起的实例可能不在进程扫描结果里，但端口是硬的
     try:
@@ -937,7 +952,7 @@ def stop(key):
     # （快路径只杀"记录里的 pid"，外部起的实例、或被杀进程拉起的子进程会漏网，
     #  端口就会一直被占着，表现为"已停止"但下次启动失败/手机连到旧进程）
     time.sleep(0.15)
-    stale = [x for x in _live_pids(key) if x not in killed]
+    stale = [x for x in _live_pids(key, all_engines=True) if x not in killed]
     if stale:
         msgs.append('还有残留进程没结束: ' + ','.join(str(x) for x in stale) + '（可再点一次停止）')
         leftover = sorted(set(list(leftover) + stale))
@@ -1228,7 +1243,9 @@ def register(app, base_dir=None, gui_dir=None):
             limit = 1500
         day = request.args.get('date') or None
         show_bg = request.args.get('bg') not in (None, '', '0', 'false')
-        lines, offset, size, noise = read_tail(key, since, limit, day=day, include_bg=show_bg)
+        verbatim = request.args.get('raw') not in (None, '', '0', 'false')
+        lines, offset, size, noise = read_tail(
+            key, since, limit, day=day, include_bg=show_bg or verbatim, verbatim=verbatim)
         st = _svc_state(key)
         return jsonify({'status': 'ok', 'key': key, 'lines': lines,
                         'offset': offset, 'size': size, 'noise': noise,

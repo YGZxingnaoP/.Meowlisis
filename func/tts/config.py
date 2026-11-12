@@ -17,6 +17,11 @@ class TTSConfig:
         gpt = tts_cfg.get("gpt-sovits", {})
         self.gpt_sovits_url = gpt.get("gpt_sovits_url", "http://127.0.0.1:9880")
 
+        # ===== 合成引擎（base=原版 GPT-SoVITS，lite=GSV-TTS-Lite 加速版）=====
+        self.engine = str(tts_cfg.get("engine", "base")).lower()
+        self.gsv_lite_url = tts_cfg.get("gsv_lite_url", "http://127.0.0.1:9881")
+        self.lite_boost_first_chunk = bool(tts_cfg.get("lite_boost_first_chunk", True))
+
         # ===== 流式合成配置 =====
         # streaming_mode: 2=按静音点智能切分(听感最连贯) 3=定长切分(响应更快)
         self.streaming_mode = int(gpt.get("streaming_mode", 2))

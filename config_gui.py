@@ -618,12 +618,16 @@ def start_main():
 @app.route('/api/start_sovits', methods=['POST'])
 def start_sovits():
     try:
+        cfg = load_config()
+        tts_cfg = cfg.get('tts', {}) or {}
+        engine = str(tts_cfg.get('engine', 'base')).lower()
+        if engine == 'lite':
+            return _start_gsv_lite(tts_cfg)
         sovits_dir = BASE_DIR / ".vendor/.Sovits"
         api_path = sovits_dir / "api_v2.py"
         if not api_path.exists():
             return jsonify({'status': 'error', 'message': 'api_v2.py not found'}), 400
-        cfg = load_config()
-        gpt_sovits_url = cfg.get('tts', {}).get('gpt-sovits', {}).get('gpt_sovits_url', 'http://127.0.0.1:9880')
+        gpt_sovits_url = tts_cfg.get('gpt-sovits', {}).get('gpt_sovits_url', 'http://127.0.0.1:9880')
         parsed = urlparse(gpt_sovits_url)
         host = parsed.hostname or '127.0.0.1'
         port = parsed.port or 9880
@@ -639,9 +643,29 @@ def start_sovits():
             subprocess.Popen(args, cwd=str(sovits_dir), creationflags=subprocess.CREATE_NEW_CONSOLE, env=env)
         else:
             subprocess.Popen(args, cwd=str(sovits_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env)
-        return jsonify({'status': 'ok'})
+        return jsonify({'status': 'ok', 'engine': 'base'})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+def _start_gsv_lite(tts_cfg: dict):
+    """启动 GSV-TTS-Lite 精简服务（.vendor/.gsvlite）"""
+    lite_dir = BASE_DIR / ".vendor/.gsvlite"
+    server_py = lite_dir / "server.py"
+    if not server_py.exists():
+        return jsonify({'status': 'error', 'message': 'GSV-Lite 未安装（缺少 .vendor/.gsvlite/server.py）'}), 400
+    url = tts_cfg.get('gsv_lite_url', 'http://127.0.0.1:9881')
+    parsed = urlparse(url)
+    host = parsed.hostname or '127.0.0.1'
+    port = parsed.port or 9881
+    runtime_python = BASE_DIR / "runtime" / "311" / "python.exe"
+    python = str(runtime_python) if runtime_python.exists() else sys.executable
+    args = [python, str(server_py), "--host", host, "--port", str(port)]
+    if sys.platform == "win32":
+        subprocess.Popen(args, cwd=str(lite_dir), creationflags=subprocess.CREATE_NEW_CONSOLE)
+    else:
+        subprocess.Popen(args, cwd=str(lite_dir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return jsonify({'status': 'ok', 'engine': 'lite', 'port': port})
 
 
 @app.route('/api/start_sensevoice', methods=['POST'])

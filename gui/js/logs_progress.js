@@ -86,6 +86,13 @@
     }
 
     var failN = 0;
+    var elProg = document.getElementById('prog');
+
+    function setVisible(paint, tts) {
+        if (!elProg) return;
+        var idle = (!paint || paint.state === 'idle') && (!tts || tts.state === 'idle');
+        elProg.hidden = idle;      // 都空闲时收起两张空卡片，别占日志区
+    }
 
     function tick() {
         var wait = 1000;
@@ -98,10 +105,12 @@
                 failN = 0;
                 renderPaint(j.paint);
                 renderTts(j.tts);
+                setVisible(j.paint, j.tts);
             })
             .catch(function (e) {
                 failN++;
                 wait = failN > 3 ? 30000 : (failN > 1 ? 5000 : 1000);
+                if (elProg) elProg.hidden = false;
                 if (failN === 1) {
                     var m = '<div class="pg-empty">进度接口取不到（' + esc(e.message) +
                             '）：后端进程还没重启，重启 config_gui 后自动恢复</div>';

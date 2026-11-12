@@ -74,6 +74,7 @@
     var scene = '';                // 当前场景页签
     var onlyProblems = false;      // 只看问题
     var bgShown = false;           // 是否展开后台层
+    var rawMode = false;           // 原始日志视图：不做折叠/合并，直接看每一行
     var noiseTotals = {};          // 折叠统计（本次会话累计）
     var counts = { story: 0, warn: 0, error: 0, bg: 0 };
     var lastRec = null;            // 上一条事件的 DOM/时间去重合并用
@@ -154,7 +155,8 @@
     }
 
     function lineOk(rec) {
-        if (onlyProblems && rec.tier !== 'error') return false;
+        if (rawMode) return true;      // 原始日志视图：不过滤层级/场景
+        if (onlyProblems && !(rec.tier === 'warn' || rec.tier === 'error' || rec.fault)) return false;
         if (scene && rec.scene !== scene) return false;
         var re = filterRe();
         if (!re) return true;
@@ -163,26 +165,44 @@
 
     // ---------------- 计数 / 折叠预算 ----------------
     function updateCounts() {
-        elStatLines.textContent = _t('{n} 条事件', { n: counts.story + counts.warn + counts.error });
+        var visible = counts.story + counts.warn + counts.error;
+        elStatLines.textContent = _t('{n} 条事件', { n: rawMode ? visible + counts.bg : visible });
         if (elStatBg) {
             var hidden = 0;
             Object.keys(noiseTotals).forEach(function (k) { hidden += noiseTotals[k]; });
-            counts.bg = hidden;
-            elStatBg.textContent = _t('后台 {n} 行', { n: hidden });
+            if (!rawMode) counts.bg = hidden;
+            elStatBg.textContent = rawMode
+                ? _t('{n} 行日志', { n: counts.bg })
+                : _t('后台 {n} 行', { n: hidden });
         }
         renderBudget();
     }
 
+    var _budgetSig = '';
     function renderBudget() {
         if (!elBudget) return;
+        if (rawMode) {
+            if (_budgetSig !== 'raw') {
+                _budgetSig = 'raw';
+                elBudget.innerHTML = '';
+                elBudget.hidden = true;
+            }
+            return;
+        }
         var keys = Object.keys(noiseTotals).sort(function (a, b) { return noiseTotals[b] - noiseTotals[a]; });
         var total = 0;
         keys.forEach(function (k) { total += noiseTotals[k]; });
         if (!total) {
-            elBudget.innerHTML = '';
-            elBudget.hidden = true;
+            if (_budgetSig !== '') {
+                _budgetSig = '';
+                elBudget.innerHTML = '';
+                elBudget.hidden = true;
+            }
             return;
         }
+        var sig = keys.map(function (k) { return k + ':' + noiseTotals[k]; }).join('|') + '|' + (bgShown ? 1 : 0);
+        if (sig === _budgetSig) return;      // 每秒轮询不重建 DOM，避免闪烁/点不中
+        _budgetSig = sig;
         elBudget.hidden = false;
         var detail = keys.slice(0, 5).map(function (k) {
             return esc(_t(NOISE_LABEL[k] || k)) + ' ' + noiseTotals[k];
@@ -192,8 +212,6 @@
             '<span class="budget-d">' + detail + (keys.length > 5 ? ' …' : '') + '</span>' +
             '<button class="lh-btn budget-btn" id="btnBg">' +
             esc(bgShown ? _t('收起后台') : _t('展开后台')) + '</button>';
-        var b = $('btnBg');
-        if (b) b.addEventListener('click', function () { toggleBg(); });
     }
 
     function addNoise(noise) {
@@ -207,6 +225,7 @@
         counts = { story: 0, warn: 0, error: 0, bg: 0 };
         noiseTotals = {};
         lastRec = null;
+        _budgetSig = '';
         updateCounts();
     }
 
@@ -261,7 +280,7 @@
         if (rec.more) html += '<span class="n more">+' + rec.more + '</span>';
         html += '<span class="tm">' + esc(hhmm(rec.ts)) + '</span>';
         d.innerHTML = html;
-        d.title = _t('点开看原文');
+        d.title = text + '\n' + _t('点开看原文');
         d.addEventListener('click', function () { openDrawer(rec); });
         return d;
     }
@@ -291,9 +310,9 @@
         var keep = elAuto.checked ? atBottom() : false;
         var frag = document.createDocumentFragment(), added = 0;
         records.forEach(function (rec) {
+            if (!lineOk(rec)) return;            // 先过滤再计数，页脚与可见行一致
             counts[rec.tier] = (counts[rec.tier] || 0) + 1;
-            if (!lineOk(rec)) return;
-            if (mergeInto(rec)) return;
+            if (!rawMode && mergeInto(rec)) return;   // 原始视图不合并，保持逐行
             var el = lineNode(rec);
             frag.appendChild(el);
             lastRec = {
@@ -325,9 +344,13 @@
             elEmpty.style.display = '';
             var hidden = 0;
             Object.keys(noiseTotals).forEach(function (k) { hidden += noiseTotals[k]; });
-            elEmpty.textContent = hidden
-                ? _t('这段时间只有技术日志（{n} 行，已折叠）· 点上面「展开后台」查看', { n: hidden })
-                : _t('这段时间没有事件');
+            if (rawMode) {
+                elEmpty.textContent = _t('这段时间日志为空');
+            } else {
+                elEmpty.textContent = hidden
+                    ? _t('这段时间只有技术日志（{n} 行，已折叠）· 点上方「原始日志」查看全部', { n: hidden })
+                    : _t('这段时间没有事件');
+            }
         }
     }
 
@@ -343,11 +366,33 @@
         loadOnce(true);
     }
 
+    function applyRawUi() {
+        if (elLines) elLines.classList.toggle('raw-mode', rawMode);
+        if (elScenes) elScenes.style.display = rawMode ? 'none' : '';
+        if (elOnlyProb) elOnlyProb.style.display = rawMode ? 'none' : '';
+        var b = $('btnRaw');
+        if (b) {
+            b.classList.toggle('lh-btn-primary', rawMode);
+            var key = rawMode ? '事件视图' : '原始日志';
+            b.setAttribute('data-i18n', key);
+            b.textContent = _t(key);
+        }
+    }
+
+    function toggleRaw() {
+        rawMode = !rawMode;
+        if (rawMode) bgShown = true;
+        offset = null;
+        applyRawUi();
+        loadOnce(true);
+    }
+
     // ---------------- 拉日志 ----------------
     function loadOnce(reset) {
         var q = '/api/logs/tail?svc=' + encodeURIComponent(cur) + '&limit=1500';
         if (offset !== null && !reset) q += '&since=' + offset;
-        if (bgShown) q += '&bg=1';
+        if (bgShown || rawMode) q += '&bg=1';
+        if (rawMode) q += '&raw=1';
         return api(q).then(function (j) {
             offset = j.offset;
             elStatSize.textContent = _t('文件 {size}', { size: fmtSize(j.size) });
@@ -434,53 +479,77 @@
     // ---------------- 服务列表 ----------------
     var lastList = null;
 
+    function rowSub(it) {
+        var portTxt = it.port ? String(it.port) : ((it.ports || []).join(',') || '');
+        if (it.running) {
+            return _t('运行中 · {ports}', { ports: portTxt || '—' }) +
+                   (it.pid ? ' · pid ' + it.pid : '');
+        }
+        if (it.state === 'starting') {
+            return _t('启动中（端口 {ports} 未监听）', { ports: portTxt || '?' }) +
+                   (it.proc_pid ? ' · pid ' + it.proc_pid : '');
+        }
+        return (it.log_exists ? fmtSize(it.size) + ' · ' : '') + _t('未运行');
+    }
+
+    function buildRow(it) {
+        var row = document.createElement('div');
+        row.className = 'lh-item';
+        row.dataset.key = it.key;
+        row.innerHTML =
+            '<span class="lh-dot"></span>' +
+            '<span class="lh-meta">' +
+                '<span class="lh-name"></span>' +
+                '<span class="lh-sub"></span>' +
+            '</span>' +
+            '<span class="lh-acts">' +
+                '<button class="lh-act start" data-i18n-title="启动">▶</button>' +
+                '<button class="lh-act stop" data-i18n-title="停止">■</button>' +
+            '</span>';
+        row.addEventListener('click', function (ev) {
+            if (ev.target.closest('.lh-act')) return;
+            select(it.key);
+        });
+        row.querySelector('.lh-act.start').addEventListener('click', function (ev) {
+            ev.stopPropagation(); act('start', it.key);
+        });
+        row.querySelector('.lh-act.stop').addEventListener('click', function (ev) {
+            ev.stopPropagation(); act('stop', it.key);
+        });
+        return row;
+    }
+
+    function updateRow(row, it) {
+        row.classList.toggle('on', it.key === cur);
+        row.dataset.running = it.running ? '1' : '0';
+        var dot = row.querySelector('.lh-dot');
+        if (dot) dot.className = 'lh-dot' + (it.running ? ' run' : '');
+        var name = row.querySelector('.lh-name');
+        var nameTxt = _t(it.name);
+        if (name && name.textContent !== nameTxt) name.textContent = nameTxt;
+        var sub = row.querySelector('.lh-sub');
+        var subTxt = rowSub(it);
+        if (sub && sub.textContent !== subTxt) sub.textContent = subTxt;
+        var s = row.querySelector('.lh-act.start');
+        var t = row.querySelector('.lh-act.stop');
+        if (s && !s.querySelector('.lh-spin')) s.disabled = it.running || it.state === 'starting';
+        if (t && !t.querySelector('.lh-spin')) t.disabled = false;
+    }
+
     function renderList(items) {
         lastList = items;
-        elList.innerHTML = '';
+        var seen = {};
         items.forEach(function (it) {
-            var row = document.createElement('div');
-            row.className = 'lh-item' + (it.key === cur ? ' on' : '');
-            row.dataset.key = it.key;
-            row.dataset.running = it.running ? '1' : '0';
-            var portTxt = it.port ? String(it.port) : ((it.ports || []).join(',') || '');
-            var sub;
-            if (it.running) {
-                sub = _t('运行中 · {ports}', { ports: portTxt || '—' }) +
-                      (it.pid ? ' · pid ' + it.pid : '');
-            } else if (it.state === 'starting') {
-                sub = _t('启动中（端口 {ports} 未监听）', { ports: portTxt || '?' }) +
-                      (it.proc_pid ? ' · pid ' + it.proc_pid : '');
-            } else {
-                sub = (it.log_exists ? fmtSize(it.size) + ' · ' : '') + _t('未运行');
+            seen[it.key] = 1;
+            var row = elList.querySelector('.lh-item[data-key="' + it.key + '"]');
+            if (!row) {
+                row = buildRow(it);
+                elList.appendChild(row);
             }
-            row.innerHTML =
-                '<span class="lh-dot' + (it.running ? ' run' : '') + '"></span>' +
-                '<span class="lh-meta">' +
-                    '<span class="lh-name">' + esc(_t(it.name)) + '</span>' +
-                    '<span class="lh-sub">' + esc(sub) + '</span>' +
-                '</span>' +
-                '<span class="lh-acts">' +
-                    '<button class="lh-act start" data-i18n-title="启动">▶</button>' +
-                    '<button class="lh-act stop" data-i18n-title="停止">■</button>' +
-                '</span>';
-            // 按钮状态与端口绑定：端口在监听=运行中（启动置灰）；
-            // 进程在但端口没起来=启动中（也置灰，避免重复启动抢端口）
-            row.querySelector('.lh-act.start').disabled =
-                it.running || it.state === 'starting';
-            // ■ 停止永不置灰：状态可能因"服务是手动启动的"而显示未运行，
-            // 但后端会按端口占用者和命令行反查真的去找进程，所以必须让它点得动
-            row.querySelector('.lh-act.stop').disabled = false;
-            row.addEventListener('click', function (ev) {
-                if (ev.target.closest('.lh-act')) return;
-                select(it.key);
-            });
-            row.querySelector('.lh-act.start').addEventListener('click', function (ev) {
-                ev.stopPropagation(); act('start', it.key);
-            });
-            row.querySelector('.lh-act.stop').addEventListener('click', function (ev) {
-                ev.stopPropagation(); act('stop', it.key);
-            });
-            elList.appendChild(row);
+            updateRow(row, it);
+        });
+        Array.prototype.slice.call(elList.children).forEach(function (row) {
+            if (!seen[row.dataset.key]) elList.removeChild(row);
         });
         if (window.I18n && I18n.applyStatic) I18n.applyStatic(elList);
         elTs.textContent = _t('更新 {time}', { time: fmtTime(new Date()) });
@@ -550,6 +619,7 @@
         bgShown = false;
         closeDrawer();
         applyScenes();
+        applyRawUi();
         resetCounts();
         elStatLines.textContent = _t('{n} 条事件', { n: 0 });
         elStatRate.textContent = '—';
@@ -678,6 +748,14 @@
         elEmpty.textContent = _t('选择左侧服务查看事件');
         buildScenes();
         applyScenes();
+        applyRawUi();
+
+        // 折叠预算按钮常驻重建会被每秒轮询替换，改用事件委托
+        if (elBudget) {
+            elBudget.addEventListener('click', function (e) {
+                if (e.target && e.target.closest && e.target.closest('#btnBg')) toggleBg();
+            });
+        }
 
         if (elFilter) elFilter.setAttribute('autocomplete', 'off');
         elFilter.addEventListener('input', function () {
@@ -706,6 +784,7 @@
             this.textContent = _t(paused ? '继续' : '暂停');
             this.classList.toggle('lh-btn-primary', paused);
         });
+        if ($('btnRaw')) $('btnRaw').addEventListener('click', toggleRaw);
         $('btnClear').addEventListener('click', function () {
             if (!confirm(_t('清空「{name}」的日志文件？', { name: elCurName.textContent }))) return;
             api('/api/logs/clear?svc=' + encodeURIComponent(cur), { method: 'POST' })

@@ -27,6 +27,10 @@ Object.assign(Config, {
         const ckpts = (models && models.ckpt) || [];
         const pths = (models && models.pth) || [];
         let h = `<div id="refAudioPanel"></div>`;
+        h += this._select('合成引擎', 'tts.engine', [
+            { value: 'base', label: 'GPT-SoVITS 原版（兼容性最好）' },
+            { value: 'lite', label: 'GSV-Lite 加速（CUDA Graph）' }
+        ], 'base', 'Lite 只支持 v2 系权重；切换后重启 SoVITS 服务生效');
         h += this.emotionParamsPanel();
         h += this._section('GPT-SoVITS 模型权重 (tts_infer.yaml)');
         h += `<div class="form-group"><label>${this._t('版本')}</label>
@@ -112,7 +116,12 @@ Object.assign(Config, {
             this._num('打断轮询间隔(秒)', 'tts.interrupt.poll_interval', 0.1, 0.01, 1, 0.01) +
             this._section('服务与引擎') +
             this._select('语音合成引擎', 'tts.select', [{ value: 'gpt-sovits', label: 'GPT-SoVITS' }], 'gpt-sovits') +
+            this._select('合成引擎', 'tts.engine', [
+                { value: 'base', label: 'GPT-SoVITS 原版（兼容性最好）' },
+                { value: 'lite', label: 'GSV-Lite 加速（CUDA Graph）' }
+            ], 'base', 'Lite 只支持 v2 系权重；切换后重启 SoVITS 服务生效') +
             this._text('GPT-SoVITS 服务地址', 'tts.gpt-sovits.gpt_sovits_url', 'http://127.0.0.1:9880') +
+            this._text('GSV-Lite 服务地址', 'tts.gsv_lite_url', 'http://127.0.0.1:9881') +
             this._text('输出目录', 'tts.output_dir', './output');
     },
 
@@ -209,7 +218,11 @@ Object.assign(Config, {
         const c = data || {};
         const ckpts = (models && models.ckpt) || [];
         const pths = (models && models.pth) || [];
-        let h = this._section('GPT-SoVITS 模型配置 (tts_infer.yaml)');
+        let h = this._select('合成引擎', 'tts.engine', [
+            { value: 'base', label: 'GPT-SoVITS 原版（兼容性最好）' },
+            { value: 'lite', label: 'GSV-Lite 加速（CUDA Graph）' }
+        ], 'base', 'Lite 只支持 v2 系权重；切换后重启 SoVITS 服务生效');
+        h += this._section('GPT-SoVITS 模型配置 (tts_infer.yaml)');
         h += `<div class="form-group"><label>${this._t('版本')}</label>
             <select data-tts-model="version">
                 <option value="v2" ${c.version === 'v2' ? 'selected' : ''}>v2</option>

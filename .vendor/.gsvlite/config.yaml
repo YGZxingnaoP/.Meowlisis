@@ -1,0 +1,17 @@
+# GSV-TTS-Lite 运行配置（精简版）
+# 角色权重留空时自动读 ../.Sovits/tts_infer.yaml（前端「TTS 模型」卡片改的就是它）
+models_dir: models
+device: cuda
+dtype: float16
+use_bert: true
+warmup: true
+# 注意力后端：efficient 实测新句首次 0.1s 级；cudnn 会按 shape 规划，新长度首句 1.5s+
+sdpa: efficient
+gpt_weights: ""
+sovits_weights: ""
+# CUDA Graph bucket：按实际片段长度配置，超出会回退普通路径
+gpt_cache:
+  - [1, 512]
+  - [1, 768]
+  - [1, 1024]
+sovits_cache: [50, 100, 150, 200, 300]

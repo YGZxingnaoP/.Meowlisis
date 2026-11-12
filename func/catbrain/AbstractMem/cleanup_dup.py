@@ -5,6 +5,7 @@
 import os
 import re
 import json
+import difflib
 import datetime
 
 from func.log.default_log import DefaultLog
@@ -17,6 +18,8 @@ class MeowDupCleanup:
 
     # 归一化时需要剔除的空白与标点
     PUNCT_PATTERN = r"[\s。，！？、,.!?;；:：~～·…—\-—_\"'“”‘’（）()【】\[\]]+"
+    # 同一事件被模型换了措辞（如“陪他”/“陪着”）时，归一化文本仍差一个字
+    NEAR_RATIO = 0.92
 
     def __init__(self):
         self.log = DefaultLog().getLogger()
@@ -29,6 +32,34 @@ class MeowDupCleanup:
     def _key(cls, item) -> str:
         """条目归一化键（去空白与标点）"""
         return re.sub(cls.PUNCT_PATTERN, "", str(item.get("event") or ""))
+
+    @staticmethod
+    def _owner(item) -> str:
+        """取首个参与用户编号，用于限制近似合并范围"""
+        joint = item.get("joint") or []
+        if isinstance(joint, list) and joint:
+            first = joint[0]
+            if isinstance(first, dict):
+                return str(first.get("meowid") or "")
+            return str(first)
+        return ""
+
+    @classmethod
+    def _near(cls, a, b) -> bool:
+        """同类型、同参与者、同一天，且文本高度相似才视为同一条"""
+        if str(a.get("kind") or "") != str(b.get("kind") or ""):
+            return False
+        day_a = str(a.get("time") or "")[:10]
+        day_b = str(b.get("time") or "")[:10]
+        if day_a and day_b and day_a != day_b:
+            return False
+        owner_a, owner_b = cls._owner(a), cls._owner(b)
+        if owner_a and owner_b and owner_a != owner_b:
+            return False
+        key_a, key_b = cls._key(a), cls._key(b)
+        if not key_a or not key_b:
+            return False
+        return difflib.SequenceMatcher(None, key_a, key_b).ratio() >= cls.NEAR_RATIO
 
     @staticmethod
     def _merge_list(a, b) -> list:
@@ -78,7 +109,7 @@ class MeowDupCleanup:
         """
         data = self.loader.load()
         if not data:
-            return {"before": 0, "after": 0, "merged": 0, "dropped": 0}
+            return {"before": 0, "after": 0, "merged": 0, "near_merged": 0, "dropped": 0}
         self._backup(data)
         groups = {}
         others = []
@@ -93,6 +124,25 @@ class MeowDupCleanup:
             groups.setdefault(key, []).append(item)
         merged = [self._merge(items) for items in groups.values()] + others
         exact_merged = len(data) - len(merged)
+
+        # 近似重复：措辞只差一两个字、同类型/同参与者/同一天，也合并掉
+        near_merged = 0
+        collapsed = []
+        for item in merged:
+            if not isinstance(item, dict):
+                collapsed.append(item)
+                continue
+            target = None
+            for kept in collapsed:
+                if isinstance(kept, dict) and self._near(item, kept):
+                    target = kept
+                    break
+            if target is None:
+                collapsed.append(item)
+            else:
+                collapsed[collapsed.index(target)] = self._merge([target, item])
+                near_merged += 1
+        merged = collapsed
 
         dropped = 0
         if min_importance is not None:
@@ -117,7 +167,7 @@ class MeowDupCleanup:
         self._clear_files()
         self.loader.save(merged)
         result = {"before": len(data), "after": len(merged),
-                  "merged": exact_merged, "dropped": dropped}
+                  "merged": exact_merged, "near_merged": near_merged, "dropped": dropped}
         self.log.info(f"摘要清洗完成: {result}")
         return result
 

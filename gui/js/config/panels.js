@@ -48,6 +48,8 @@
         { type: 'section', label: '服务与引擎' },
         { type: 'select', path: 'tts.select', label: '语音合成引擎', default: 'gpt-sovits',
           options: [{ value: 'gpt-sovits', label: 'GPT-SoVITS' }] },
+        { type: 'select', path: 'tts.engine', label: '合成引擎', default: 'base',
+          options: [{ value: 'base', label: 'GPT-SoVITS 原版（兼容性最好）' }, { value: 'lite', label: 'GSV-Lite 加速（CUDA Graph）' }] },
         { type: 'text', path: 'tts.gpt-sovits.gpt_sovits_url', label: 'GPT-SoVITS 服务地址', default: 'http://127.0.0.1:9880' },
         { type: 'text', path: 'tts.output_dir', label: '输出目录', default: './output' },
     ] });

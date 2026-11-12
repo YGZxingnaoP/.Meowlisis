@@ -267,7 +267,8 @@ class SenseVoiceSession:
             self._dry_frames = 0
         elif self._ptt_speaking:
             self._dry_frames += 1
-            if self._dry_frames >= 2:
+            # 按时间折算：100ms 帧下 2 拍只有 200ms，会误切断手机上传
+            if self._dry_frames >= max(2, int(round(0.6 / max(0.01, self.hub.frame_duration)))):
                 # 断流兜底：还没等到 ptt_end 就没帧了，按断流收句
                 self._ptt_speaking = False
                 self.manager.send_speaking(False)

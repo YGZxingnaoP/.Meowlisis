@@ -48,6 +48,28 @@ class GptSovits:
         }
         return build_sampling_params(emotion, intensity, base, self.config.emotion_params)
 
+    def _build_payload(self, text: str, ref_audio_path: str, prompt_text: str, prompt_lang: str,
+                       params: dict, emotion: str = "neutral", intensity: float = 3.0) -> dict:
+        """构造 api_v2 请求体（子类可覆写以追加引擎专属字段）"""
+        return {
+            "text": text,
+            "text_lang": self._resolve_text_lang(text),
+            "ref_audio_path": ref_audio_path,
+            "prompt_text": prompt_text,
+            "prompt_lang": prompt_lang,
+            "media_type": self.config.media_type,
+            "streaming_mode": self.config.streaming_mode,
+            "fragment_interval": self.config.fragment_interval,
+            "min_chunk_length": self.config.min_chunk_length,
+            "overlap_length": self.config.overlap_length,
+            "top_k": params["top_k"],
+            "top_p": params["top_p"],
+            "temperature": params["temperature"],
+            "repetition_penalty": params["repetition_penalty"],
+            "noise_scale": params["noise_scale"],
+            "speed_factor": params["speed"],
+        }
+
     def get_sovits_stream(self, text: str, ref_audio_config: dict = None,
                           emotion: str = "neutral", intensity: float = 3.0):
         """流式合成，返回 (生成器, 取消函数)。
@@ -72,25 +94,9 @@ class GptSovits:
         ref_audio_path = os.path.abspath(ref_audio_path)
 
         params = self._sampling_params(emotion, intensity)
-
-        payload = {
-            "text": text,
-            "text_lang": self._resolve_text_lang(text),
-            "ref_audio_path": ref_audio_path,
-            "prompt_text": prompt_text,
-            "prompt_lang": prompt_lang,
-            "media_type": self.config.media_type,
-            "streaming_mode": self.config.streaming_mode,
-            "fragment_interval": self.config.fragment_interval,
-            "min_chunk_length": self.config.min_chunk_length,
-            "overlap_length": self.config.overlap_length,
-            "top_k": params["top_k"],
-            "top_p": params["top_p"],
-            "temperature": params["temperature"],
-            "repetition_penalty": params["repetition_penalty"],
-            "noise_scale": params["noise_scale"],
-            "speed_factor": params["speed"],
-        }
+        payload = self._build_payload(
+            text, ref_audio_path, prompt_text, prompt_lang, params, emotion, intensity
+        )
 
         try:
             # stream=True 建立连接后即返回，body 由生成器惰性读取

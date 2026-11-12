@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import difflib
 import re
 import hashlib
 
@@ -9,6 +10,10 @@ from func.catbrain.AbstractMem import joint_util
 
 class MeowDedup:
     """摘要记忆更新类"""
+
+    # 同一事件被模型用不同措辞写两遍时（如“陪他”/“陪着”），
+    # 归一化文本仍会差一个字，稳定主键不同，需要近似文本兜底。
+    NEAR_DUP_RATIO = 0.92
 
     def __init__(self):
         """加载配置与证据函数"""
@@ -25,6 +30,32 @@ class MeowDedup:
         owner = joint_util.owner(event)
         raw = f"{self._norm_text(event.get('event', ''))}|{owner}"
         return "mem_" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:12]
+
+    def find_near(self, event, candidates):
+        """找同一天、同类型、同参与者的近似重复事件；没有则返回 None"""
+        text = self._norm_text(event.get("event", ""))
+        if not text:
+            return None
+        kind = event.get("kind")
+        owner = joint_util.owner(event)
+        day = str(event.get("time") or "")[:10]
+        best, best_ratio = None, 0.0
+        for item in candidates or []:
+            if not isinstance(item, dict):
+                continue
+            if kind and item.get("kind") and item.get("kind") != kind:
+                continue
+            if owner and joint_util.owner(item) and joint_util.owner(item) != owner:
+                continue
+            if day and str(item.get("time") or "")[:10] != day:
+                continue
+            other = self._norm_text(item.get("event", ""))
+            if not other:
+                continue
+            ratio = difflib.SequenceMatcher(None, text, other).ratio()
+            if ratio > best_ratio:
+                best, best_ratio = item, ratio
+        return best if best is not None and best_ratio >= self.NEAR_DUP_RATIO else None
 
     @staticmethod
     def _merge_list(item, key, values):

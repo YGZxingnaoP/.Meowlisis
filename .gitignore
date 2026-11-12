@@ -35,6 +35,14 @@ config.yml
 .vendor/.Sovits/GPT_weights_v2Pro/*.ckpt
 .vendor/.Sovits/SoVITS_weights_v2Pro/*.pth
 
+#内置 GSV-TTS-Lite（源码入库；预训练底座/权重/运行缓存不入库）
+# 底座可用 .vendor/.gsvlite/download_models.py 重建（目录联接或直链下载）
+.vendor/.gsvlite/models/
+.vendor/.gsvlite/logs/
+.vendor/.gsvlite/output/
+.vendor/.gsvlite/**/__pycache__/
+.vendor/.gsvlite/*.pyc
+
 #内置SenseVoice
 .vendor/.SenseVoice/localmodels
 .vendor/.SenseVoice/env

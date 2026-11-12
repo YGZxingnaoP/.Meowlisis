@@ -6,7 +6,34 @@ import json
 import os
 import re
 
-from audio import save_audio_to_wav
+import numpy as np
+
+SAMPLE_RATE = 16000
+# 首尾静音裁剪：10ms 一帧，RMS 低于该值视为静音，保留 100ms 余量
+TRIM_RMS = 300.0
+TRIM_HOP = 160
+TRIM_MARGIN = 1600
+
+
+def trim_silence(buf: bytes):
+    """裁掉首尾静音并转 float32；返回 (float32 音频, 时长秒)"""
+    a = np.frombuffer(buf, dtype=np.int16)
+    if a.size == 0:
+        return np.zeros(0, dtype=np.float32), 0.0
+    n = a.size // TRIM_HOP
+    if n <= 0:
+        return a.astype(np.float32) / 32768.0, a.size / SAMPLE_RATE
+    frames = a[:n * TRIM_HOP].reshape(n, TRIM_HOP).astype(np.float32)
+    rms = np.sqrt(np.mean(frames * frames, axis=1))
+    idx = np.where(rms >= TRIM_RMS)[0]
+    if idx.size == 0:
+        return a.astype(np.float32) / 32768.0, a.size / SAMPLE_RATE
+    start = max(0, int(idx[0]) * TRIM_HOP - TRIM_MARGIN)
+    end = min(a.size, (int(idx[-1]) + 1) * TRIM_HOP + TRIM_MARGIN)
+    if end - start < int(SAMPLE_RATE * 0.3):
+        start, end = 0, a.size
+    cut = a[start:end]
+    return cut.astype(np.float32) / 32768.0, cut.size / SAMPLE_RATE
 
 
 class SenseVoiceSession:
@@ -91,30 +118,31 @@ class SenseVoiceSession:
 
     async def _recognize_final(self, buf: bytes, hum: bool = False,
                                thr_speech=None, thr_sing=None):
-        """整段识别：ASR → 声纹 → 结果回传（buf 为句音频快照）"""
+        """整段识别：裁首尾静音 → ASR 与声纹并行 → 结果回传"""
         if not buf:
             return
-        tmp_path = save_audio_to_wav(buf)
         try:
-            res = await self._block(self.ctx.asr.generate, input=tmp_path,
-                                    language=self.language, use_itn=self.itn,
-                                    hotwords=self.hotwords, sem=self.ctx.sem_asr)
+            audio, seconds = trim_silence(buf)
+            if audio.size == 0:
+                return
+            # 两路并行：声纹 ~0.22s 藏到 ASR 后面，串行改并行约省 0.2s
+            asr_coro = self._block(self.ctx.asr.generate, input=audio,
+                                   language=self.language, use_itn=self.itn,
+                                   hotwords=self.hotwords, sem=self.ctx.sem_asr)
+            sv_coro = self._block(self.sv.verify, audio, hum=hum,
+                                  thr_speech=thr_speech, thr_sing=thr_sing,
+                                  sem=self.ctx.sem_sv)
+            res, (spk_name, spk_score, spk_tpl) = await asyncio.gather(asr_coro, sv_coro)
             if res and len(res) > 0:
                 text = re.sub(r'<\|.*?\|>', '', res[0].get("text", ""))
-                spk_name, spk_score, spk_tpl = await self._block(
-                    self.sv.verify, buf, hum=hum,
-                    thr_speech=thr_speech, thr_sing=thr_sing, sem=self.ctx.sem_sv)
                 msg = {"mode": "offline", "spk_name": spk_name, "spk_score": spk_score,
                        "spk_tpl": spk_tpl, "text": text, "wav_name": self.wav_name,
                        "is_final": True}
                 await self.websocket.send(json.dumps(msg, ensure_ascii=False))
-                print(f"识别结果: [{spk_name}:{spk_tpl or '-'}:{spk_score:.3f}] {text}")
+                print(f"识别结果: [{spk_name}:{spk_tpl or '-'}:{spk_score:.3f}] {text} ({seconds:.1f}s)")
                 self.ctx.tick("sv_result_sent", f"{self.wav_name}|{spk_name}|{text}")
         except Exception as e:
             print(f"识别失败: {e}")
-        finally:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
 
     async def _block(self, fn, *args, sem=None, **kwargs):
         """在线程池执行阻塞推理，受并发信号量约束"""

@@ -35,6 +35,13 @@ class AudioHub:
 
         self._setup()
 
+    def _buffer_maxlen(self):
+        """按帧长折算缓冲：固定保留约 20 秒，帧越短容量越大"""
+        try:
+            return max(64, int(round(20.0 / max(0.01, self.frame_duration))))
+        except Exception:
+            return 64
+
     def _setup(self):
         for sid, scfg in self.config.sources.items():
             stype = scfg.get('type', 'mic')
@@ -47,7 +54,7 @@ class AudioHub:
                 source = MicrophoneSource(self.config, self.log, device_index=device_index)
             self._sources[sid] = source
             self._enabled[sid] = bool(scfg.get('enabled', False))
-            self._buffers[sid] = deque(maxlen=64)
+            self._buffers[sid] = deque(maxlen=self._buffer_maxlen())
             self._events[sid] = deque(maxlen=8)
             self._threads[sid] = None
             self._running[sid] = False

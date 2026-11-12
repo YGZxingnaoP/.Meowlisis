@@ -118,7 +118,7 @@ class TTsCore:
         self.sensevoice_tts = SenseVoiceTtsBridge()
 
         # 引擎、播放器
-        self.sovits = GptSovits()
+        self.sovits = self._make_sovits()
         self.player = AudioPlayer()
 
         # 字幕独立线程
@@ -181,8 +181,23 @@ class TTsCore:
         self.subtitle.start()
         self.interrupt.start()
 
+    def _make_sovits(self):
+        """按 tts.engine 选择合成引擎：base=原版，lite=GSV-TTS-Lite（CUDA Graph）"""
+        if str(getattr(self.config, "engine", "base")).lower() == "lite":
+            from func.tts.gsv_lite import GsvLite
+            return GsvLite()
+        return GptSovits()
+
     def rebuild(self):
-        """配置热重载：刷新 GPT-SoVITS 地址与打断设置（模型权重在 .vendor 侧，需重启引擎）"""
+        """配置热重载：刷新引擎类型/地址与打断设置（模型权重在 .vendor 侧，需重启引擎）"""
+        try:
+            want = str(getattr(self.config, "engine", "base")).lower()
+            cur = "lite" if self.sovits.__class__.__name__ == "GsvLite" else "base"
+            if want != cur:
+                self.sovits = self._make_sovits()
+                self.log.info(f"[热重载] 语音合成引擎切换: {cur} -> {want}")
+        except Exception:
+            self.log.exception("[热重载] 切换 TTS 引擎失败")
         try:
             self.sovits.rebuild()
         except Exception:
