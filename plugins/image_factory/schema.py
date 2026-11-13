@@ -4,7 +4,8 @@
 FIELDS = [
     {"key": "enabled", "label": "启用插件", "type": "check", "default": True},
     {"key": "trigger", "label": "触发词", "type": "text", "default": "Meowlisis蔚蓝色图",
-     "help": "用法：<触发词> [角色] [张数]，例如 Meowlisis蔚蓝色图 未花 2"},
+     "help": "用法：<触发词> [角色] [张数] [safemode]；safemode/保守 = 不露点但很色。"
+             "例：Meowlisis蔚蓝色图 未花 2 safemode"},
     {"key": "default_images", "label": "默认张数", "type": "num", "default": 1,
      "min": 1, "max": 9, "step": 1},
     {"key": "max_images", "label": "单次上限", "type": "num", "default": 9,

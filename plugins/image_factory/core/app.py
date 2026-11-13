@@ -40,7 +40,7 @@ class BlueArchiveApp:
 
     # ==================== 解析 ====================
     def parse(self, text):
-        """返回 (角色名 or "", 张数)"""
+        """返回 (角色名, 张数, 是否保守模式)；非本插件消息返回 None。"""
         body = str(text or "").strip()
         prefix = self.cfg.trigger
         idx = body.lower().find(prefix.lower())
@@ -51,13 +51,17 @@ class BlueArchiveApp:
         tokens = [t for t in re.split(r"[\s,，、]+", rest) if t]
         count = None
         char = ""
+        safe = False
         for t in tokens:
-            if re.fullmatch(r"\d+", t):
+            low = t.lower()
+            if low in ("safemode", "safe", "保守", "安全", "sfw"):
+                safe = True
+            elif re.fullmatch(r"\d+", t):
                 count = int(t)
             elif not char:
                 char = t
         count = max(1, min(self.cfg.max_images or 9, count or self.cfg.default_images))
-        return (theme.canonical(char) if char else "", count)
+        return (theme.canonical(char) if char else "", count, safe)
 
     # ==================== 入口 ====================
     def handle(self, text, qq_context):
@@ -65,7 +69,7 @@ class BlueArchiveApp:
         parsed = self.parse(text)
         if parsed is None:
             return False
-        char, count = parsed
+        char, count, safe = parsed
         if self._busy:
             self._say(qq_context, "上一批还在画喵，等它出完~")
             return True
@@ -76,7 +80,7 @@ class BlueArchiveApp:
         self._busy = True
         self._last = time.time()
         try:
-            self._work(char, count, qq_context)
+            self._work(char, count, qq_context, safe=safe)
         except Exception:
             self.log.exception("[image_factory] 出图流程异常")
             self._say(qq_context, "工厂里着火了喵（内部异常），看日志…")
@@ -94,14 +98,15 @@ class BlueArchiveApp:
         return random.sample(pool, min(int(count or 1), len(pool)))
 
     # ==================== 主流程 ====================
-    def _work(self, char, count, qq_context):
+    def _work(self, char, count, qq_context, safe=False):
         """主流程：选角色 → 提示词 → 出图 → 归档 → 合并转发。"""
         t0 = time.time()
         if char and theme.char_tag(char) == "":
             self._say(qq_context, "「%s」不在蔚蓝档案名单里喵，换个名字试试~" % char)
             return
         chosen = self._pick(char, count)
-        self.log.info("[image_factory] 角色=%s 张数=%d" % (chosen, len(chosen)))
+        self.log.info("[image_factory] 角色=%s 张数=%d 模式=%s"
+                      % (chosen, len(chosen), "保守" if safe else "R-18"))
 
         ok, msg = self.comfy.ensure_engine()
         if not ok:
@@ -115,7 +120,8 @@ class BlueArchiveApp:
         for i, name in enumerate(chosen):
             tag = self.tags.resolve(name, theme.en_name(name)) or theme.char_tag(name)
             appearance = self.appear.get("蔚蓝档案", name) or ""
-            prompt = self.writer.write(name, appearance, i, len(chosen), char_tag=tag)
+            prompt = self.writer.write(name, appearance, i, len(chosen),
+                                       char_tag=tag, safe=safe)
             if not prompt:
                 notes.append("%s: 提示词为空" % name)
                 continue

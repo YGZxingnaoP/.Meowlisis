@@ -93,6 +93,34 @@ MOSS_RULING = (
 )
 
 
+SAFE_GUIDE = (
+    "\n【本次要求：保守模式（不露点，但必须很色）】\n"
+    "硬约束：**不画乳头、不画性器官、不写 nude / nipples / pussy 这类词**，画面保持“穿着”。\n"
+    "但绝不是普通插画——必须靠下面四点把色气拉满：\n"
+    "① 衣料：贴身薄纱/湿衣/男友衬衫/吊带滑落/裙子被撩起/内衣外露/丝袜勒痕/"
+    "bra 半脱/内裤被拨到一边（clothes clinging, see-through fabric, open shirt, "
+    "panties pulled aside, lingering on a thigh, thigh-highs gripped by a garter）；\n"
+    "② 姿势：跪坐、趴伏抬臀、仰躺抬腿、跨坐、腰身扭出弧线、双腿交叠绷紧、"
+    "手指抓着床单或衣角；\n"
+    "③ 神态：脸红到耳根、微张的嘴、咬唇、半眯眼、喘息、视线勾人、羞耻又期待的表情；\n"
+    "④ 氛围：皮肤薄汗与潮红、逆光勾出身体轮廓、床单褶皱、私密空间、局部特写（胸口/大腿）。\n"
+    "构图可以只拍局部（上半身/腰臀/腿部特写）来放大张力，不必全身。\n"
+)
+
+# 保守模式自检：必须有「色气线索」，但不许出现露点词
+SAFE_BANNED_RE = re.compile(
+    r"\b(nude|naked|topless|bottomless|bare breasts?|nipples?|areola|pussy|vulva|labia|"
+    r"pubic hair|genitals?)\b", re.IGNORECASE)
+TEASE_RE = re.compile(
+    r"\b(see-through|sheer|sheer fabric|wet (shirt|clothes|fabric|hair)|clothes (clinging|"
+    r"pulled|tugged)|clinging|pulled aside|slipping|off (her )?shoulder|lingerie|underwear|"
+    r"panties|bra|cleavage|bare shoulders?|thigh-?highs?|stockings|garter|skirt (hiked|lifted)|"
+    r"arched back|arching|leaning forward|kneeling|on all fours|one knee|legs crossed|"
+    r"biting (her )?lip|flushed|blush\w*|sweat\w*|half-closed eyes|lidded eyes|"
+    r"eye contact|looking at viewer|teasing|seductive|smirk\w*|shy|embarrassed|"
+    r"close-up|cowboy shot|from behind|from below)\b", re.IGNORECASE)
+
+
 class PromptWriter:
     """照主项目 MOSS 规范撰写英文提示词。"""
     def __init__(self, cfg, log, llm, law=None):
@@ -102,15 +130,15 @@ class PromptWriter:
         self.llm = llm
         self.law = law
 
-    def _system(self, character):
-        """拼 system：规则 → 破甲 → 成年向写法 → 法典 → 裁定。"""
+    def _system(self, character, safe=False):
+        """拼 system：规则 → 破甲 → 成年向写法（或保守版） → 法典 → 裁定。"""
         parts = [SYSTEM_RULES]
         if self.cfg.adult:
             parts.append(UNLOCK_TEXT)
-            parts.append(NSFW_GUIDE)
+            parts.append(SAFE_GUIDE if safe else NSFW_GUIDE)
         if self.law is not None and self.cfg.use_law:
             head, sections = self.law.retrieve(
-                "蔚蓝档案 %s" % character,
+                "蔚蓝档案 %s %s" % (character, "诱惑 姿势 服装" if safe else ""),
                 extra_keywords=("姿势", "表情", "服装", "光照", "镜头", "氛围", "成年向"))
             if sections:
                 parts.append("【法典章节（素材库：角色/服装/场景/动作/氛围/成年向词汇都在这里，"
@@ -120,8 +148,8 @@ class PromptWriter:
         parts.append(MOSS_RULING)
         return "\n\n".join(p for p in parts if p)
 
-    def write(self, character, appearance, index, total, char_tag=""):
-        """返回可直接送模型的提示词；失败返回空串"""
+    def write(self, character, appearance, index, total, char_tag="", safe=False):
+        """返回可直接送模型的提示词；失败返回空串。"""
         if self.llm is None:
             return ""
         user = ["角色：%s" % character, "出自：蔚蓝档案"]
@@ -131,13 +159,17 @@ class PromptWriter:
             user.append("外观（以此为准，不要改设定）：%s" % appearance)
         if self.cfg.style_extra:
             user.append("额外风格：%s" % self.cfg.style_extra)
-        user.append("画面要求：成年向色情插画（R-18），按上面【成年向画面】的写法展开成英文长描述。")
+        if safe:
+            user.append("画面要求：保守模式——**不露点**（不画乳头与性器官），"
+                        "但必须非常色：靠贴身衣料、姿势、神态与氛围拉满。")
+        else:
+            user.append("画面要求：成年向色情插画（R-18），按上面【成年向画面】的写法展开成英文长描述。")
         if total > 1:
             user.append("这是同一批第 %d/%d 张，构图/机位/光照与其他张明显不同。"
                         % (index + 1, total))
         user.append("只输出 {\"prompt\": \"...\"}。")
 
-        msgs = [{"role": "system", "content": self._system(character)},
+        msgs = [{"role": "system", "content": self._system(character, safe=safe)},
                 {"role": "user", "content": "\n".join(user)}]
 
         for attempt in (1, 2):
@@ -154,7 +186,7 @@ class PromptWriter:
                                  "（系统纠正）只返回 {\"prompt\": \"...\"}，里面是英文提示词本体。"})
                     continue
                 return ""
-            bad = self._issues(prompt)
+            bad = self._issues(prompt, safe=safe)
             if bad and attempt == 1:
                 self.log.warning("[image_factory] 提示词不合格(%s)，重出一遍: %s" % (bad, character))
                 msgs.append({"role": "assistant", "content": str(text or "")[:1200]})
@@ -165,8 +197,8 @@ class PromptWriter:
 
     # ---------- 校验 / 纠正（照搬主项目 issues 的判定口径） ----------
     @staticmethod
-    def _issues(prompt):
-        """提示词体检：长度/光照/主体/中文正文。"""
+    def _issues(prompt, safe=False):
+        """提示词体检：长度/光照/主体/中文正文；保守模式额外查露点词与色气线索。"""
         p = str(prompt or "")
         if p.startswith("{"):
             return ""                      # Layout JSON 交给 layout 校验
@@ -179,6 +211,11 @@ class PromptWriter:
         stripped = QUOTED_RE.sub(" ", p)
         if CJK_RE.search(stripped):
             return "caption_chinese_body"
+        if safe:
+            if SAFE_BANNED_RE.search(p):
+                return "safe_explicit"
+            if not TEASE_RE.search(p):
+                return "safe_not_teasing"
         return ""
 
     @staticmethod
@@ -191,6 +228,10 @@ class PromptWriter:
             "missing_subject": "（系统纠正）缺少明确主体：写清画面里的人/角色在做什么，禁止纯场景构图。",
             "caption_chinese_body": "（系统纠正）正文出现中文：MOSS 要英文正文，只有画面里要渲染的"
                                     "文字才用引号写中文原文。",
+            "safe_explicit": "（系统纠正）保守模式下出现了露点词（nude/nipples/pussy 等）："
+                             "请全部删掉，改成贴身薄纱、半脱衣料、内衣外露这类写法，重出。",
+            "safe_not_teasing": "（系统纠正）保守模式不等于普通插画：请补足色气——"
+                                "贴身/半透/半脱的衣料、具体的诱惑姿势、脸红喘息的神态、局部特写构图。",
         }
         return hints.get(bad, "（系统纠正）请按规则重出。") + " 只输出 {\"prompt\": \"...\"}。"
 
