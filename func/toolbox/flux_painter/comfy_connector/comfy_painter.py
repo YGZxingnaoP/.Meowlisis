@@ -77,7 +77,9 @@ class TBComfyPainter(TBComfyBase):
         # 设为 false 即回到"插件全禁"的纯净内核（对应快速档）。
         if not bool((getattr(self.config, "pro", {}) or {}).get("allow_custom_nodes", True)):
             base.append("--disable-all-custom-nodes")
-        base += ["--disable-assets-autoscan", "--log-stdout"]
+        # 注意：0.45 起已没有 --disable-assets-autoscan（会被 argparse 拒绝），
+        # 需要关资源扫描就用 --disable-assets
+        base += ["--disable-assets", "--log-stdout"]
         if self._cfg().get("junction"):
             return base
         extra = self._cfg().get("extra_yaml") or self._fallback_yaml()
