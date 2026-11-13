@@ -177,10 +177,10 @@ class TBPromptProducer:
             if name == "law_search":
                 q = str((args or {}).get("query") or "").strip()
                 try:
-                    top = int((args or {}).get("top") or 4)
+                    top = int((args or {}).get("top") or 3)
                 except Exception:
-                    top = 4
-                return self.knowledge.search(q, top=max(1, min(top, 8)))
+                    top = 3
+                return self.knowledge.search(q, top=max(1, min(top, 3)), per_limit=800)
             if name == "law_read":
                 return self.knowledge.read(str((args or {}).get("section") or "").strip())
         except Exception:

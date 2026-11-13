@@ -71,7 +71,7 @@ class DanbooruTags:
                 self.log.warning("[image_factory] tag 缓存写入失败")
 
     # ---------- 查询 ----------
-    def search(self, en_name, series_hint="", limit=20):
+    def search(self, en_name, series_hint="", limit=10):
         """en_name 是英文名（如 chiz / mika）；返回候选 tag 列表"""
         q = urllib.parse.urlencode({
             "search[name_matches]": "%s*" % str(en_name).strip(),

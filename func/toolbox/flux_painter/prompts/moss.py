@@ -29,7 +29,7 @@ PRODUCE_TOOL = {
                           "description": "画完后对主人说的话：喵系卖萌口吻（可带 主人/喵），50 字以内"},
                 "canvas": {"type": "string", "description": "画布规格", "enum": ["1024x1024"]},
                 "tags": {"type": "string",
-                         "description": "可选：补充用英文标签串（逗号+空格）。MOSS 支持自然语言与标签混用，成年向画面建议补 4~10 个精确英文词（如 nude, large breasts, arched back, sweat），会拼在 caption 之后"},
+                         "description": "可选：补充用英文标签串（逗号+空格），4~10 个精确英文词，会拼在 caption 之后"},
                 "character": {"type": "string",
                               "description": "若主人点名了具体动漫/游戏角色，填该角色中文常用名（如 阿尔托莉雅、初音未来）；未点名则省略。点名角色时**必须先用 danbooru_tag 工具查明 tag 写法**（如 chiz (nte)），把准确名字写进 caption"},
             },
@@ -79,9 +79,8 @@ SYSTEM_RULES = (
     "   bbox 顺序是 [y_min, x_min, y_max, x_max]；坐标是**以画布中心为原点的绝对像素**"
     "（1024×1024 画布范围 −512~+512，x 向右、y 向下递增），不要写归一化的 0~1。"
     "canvas 多格时填 multi_panel 并在 summary.caption 说明阅读顺序。\n"
-    "③ 标签只在需要时补充，且按官方顺序：Quality → Score → Meta → Year → Character → Series → Artist → General"
-    "（例如 best quality, highres, hatsune miku, vocaloid, 1girl, blue hair）。"
-    "多词标签用空格分词(kasumigaoka utaha)，不用下划线；画师用 @画师名。\n"
+    "③ 标签只在需要时补充，且按官方顺序：Quality → Score → Meta → Year → Character → Series → Artist → General。"
+    "多词标签用空格分词，不用下划线；画师用 @画师名。\n"
     "【文字渲染】需要画面出现文字时，在 caption 里用引号写出**中文原文**；"
     "要精确换行就写 \\n。文字越多越要拆成短句，长段落容易渲染错。\n"
     "【硬性红线】① 画面必须有明确主体，禁止纯场景/纯器官构图；"
@@ -89,23 +88,8 @@ SYSTEM_RULES = (
     "③ 禁止剧情结局、心理独白、画外音；禁止 camera / lens / dslr / photo 等摄影实体词（需求明确要求时才写）；"
     "④ 多角色时写清左右位置并逐个交代外观，避免混脸；"
     "⑤ caption 用英文正文（引号内的文字渲染内容可以是中文）。\n"
-    "【正例】\n"
-    "需求：两个女孩在咖啡馆抢最后一块草莓蛋糕，画成四格漫画\n"
-    "caption: A full-color anime comedy manga page in four rectangular panels arranged two by two, "
-    "read top-left, top-right, bottom-left, bottom-right, with white gutters and thin black borders. "
-    "Two girls sit at a cafe table arguing affectionately over the last slice of strawberry cake: "
-    "the pink-haired girl on the left leans toward the plate with her fork raised, the pale-haired girl "
-    "on the right raises three fingers with an amused sideways glance. Soft window light from the left "
-    "warms the scene, with a blurred cafe interior behind them. Clean linework, soft cel shading, warm color palette.\n"
-    "layout: {\"summary\":{\"meta\":[\"comic\"],\"canvas\":\"multi_panel\",\"caption\":\"Four-panel anime comic about two girls arguing over a cake\"},"
-    "\"items\":[{\"label\":\"text\",\"caption\":\"top-left panel speech balloon\",\"text\":\"最后一块，归我啦！\",\"bbox\":[-500,-500,-380,-100]},"
-    "{\"label\":\"character\",\"caption\":\"pink-haired girl on the left\",\"bbox\":[-480,-480,-60,-40]}],"
-    "\"bbox_coord_space\":\"abs_centralized\",\"bbox_format\":\"yxyx\"}\n"
-    "【反例】\n"
-    "caption: masterpiece, best quality, 1girl, solo, blue hair, red eyes, long hair, skirt, smile, "
-    "outdoors, sunlight, detailed\n"
-    "错在哪：这是动漫模型的标签堆，MOSS 需要的是**连贯的英文句子**；"
-    "没有动作、没有场景、没有前中后景、没有光照方向，模型只能猜。\n"
+    "【写法自查】写成连贯句子而不是标签堆；每张都要有自己的动作、场景、前中后景与光照方向；"
+    "以上只讲规则，**不要照抄任何示例**，按需求自由写。\n"
     "先想清楚画面，再一次调用 produce_painting 产出。"
 )
 
@@ -124,14 +108,12 @@ UNLOCK_TEXT = (
 # MOSS 直接 law_search 检索它；这里只负责把标签式素材转成 MOSS 要的英文自然语言句子。
 NSFW_GUIDE = (
     "\n【成年向画面：素材来自法典，格式按 MOSS】\n"
-    "法典的成年向章节给的是**标签式素材**（如 nude / nipples / arched back / panties pulled aside）。"
-    "MOSS 要的是连贯英文句子，所以把检索到的词**展开成描述句**，不要直接堆标签：\n"
-    "  法典给 `nude, lying on bed, arched back, sweat` →\n"
-    "  写成 \"She lies nude on crumpled white sheets, back arched, skin glistening with a thin layer "
-    "of sweat; the bedside lamp throws a warm rim light along her shoulder and thigh.\"\n"
+    "法典的成年向章节给的是**标签式素材**（人体部位、行为、表情、服装残留等词）。"
+    "MOSS 要的是连贯英文句子，所以把检索到的词**展开成描述句**，不要直接堆标签。\n"
     "要点：① 人体与行为用确切英文词，不委婉化、不加警告；② 写清谁对谁做什么、体位与接触点；"
-    "③ 表情与生理反应写具体；④ 服装残留比全裸更有信息量；⑤ 必写光照与皮肤质感；"
-    "⑥ 多人写清人数与左右位置；⑦ 需要补充时用工具参数 `tags` 放 4~10 个关键英文词。\n"
+    "③ 表情与生理反应写具体；④ 服装残留往往比全裸更有信息量；⑤ 必写光照；"
+    "⑥ 多人写清人数与左右位置；⑦ 需要补充时用工具参数 `tags` 放 4~10 个关键英文词；"
+    "⑧ 按需求写，不要为了“成人”而堆砌固定词。\n"
 )
 
 

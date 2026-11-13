@@ -48,6 +48,8 @@ FIELDS = [
     {"key": "prompt.adult", "label": "成年向内容", "type": "check", "default": True},
     {"key": "prompt.unlock", "label": "破甲提示", "type": "check", "default": True},
     {"key": "prompt.use_law", "label": "检索法典", "type": "check", "default": True},
+    {"key": "prompt.law_as_tool", "label": "法典由模型自检索", "type": "check", "default": True,
+     "help": "开 = 模型自己调 law_index/law_search/law_read 查素材；关 = 代码预先检索塞进提示词"},
     {"key": "prompt.law_file", "label": "法典文件", "type": "text",
      "default": ".vendor/.ComfyNode/prompt_reference/ANIMA3_prompt_law.md"},
     {"key": "prompt.appear_file", "label": "人工外观表", "type": "text",

@@ -80,6 +80,8 @@ class Settings:
         self.adult = bool(_get(self.raw, "prompt.adult", True))
         self.unlock = bool(_get(self.raw, "prompt.unlock", True))
         self.use_law = bool(_get(self.raw, "prompt.use_law", True))
+        # 法典检索方式：true = 模型自己调工具查（默认），false = 代码预先检索塞进 system
+        self.law_as_tool = bool(_get(self.raw, "prompt.law_as_tool", True))
         self.law_file = self._path(_get(self.raw, "prompt.law_file",
                                         ".vendor/.ComfyNode/prompt_reference/ANIMA3_prompt_law.md"))
         self.law_budget = max(2000, int(_get(self.raw, "prompt.law_budget", 24000) or 24000))

@@ -230,8 +230,8 @@ class TBAnimaKnowledge:
             total += len(txt)
         return "\n\n".join(out)
 
-    def search(self, query, top=4, per_limit=2000):
-        """关键词检索（与 retrieve 同一套打分），返回最相关章节片段"""
+    def search(self, query, top=3, per_limit=800):
+        """关键词检索（与 retrieve 同一套打分），返回最相关章节片段（省 token：默认 3 章×800 字）。"""
         self._read()
         words = self._words(query)
         if not words:
@@ -251,10 +251,10 @@ class TBAnimaKnowledge:
         if not scored:
             return f"（未命中「{query}」；可换词，或用 law_index 按目录挑章节）"
         scored.sort(key=lambda x: (-x[0], x[1]))
-        parts, total = [], 0
+        parts, total, cap = [], 0, per_limit * top
         for _, _, s in scored[:top]:
             txt = f"### [{s['title']}]\n" + "\n".join(s["text"])[:per_limit]
-            if total and total + len(txt) > per_limit * top:
+            if total and total + len(txt) > cap:
                 break
             parts.append(txt)
             total += len(txt)

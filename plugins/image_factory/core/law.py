@@ -134,3 +134,41 @@ class PromptLaw:
         """取规则区开头部分。"""
         self._load()
         return self._head
+
+    # ---------- 供 LLM 工具使用 ----------
+    def index_text(self, keyword=""):
+        """章节目录（可按标题关键词过滤）。"""
+        self._load()
+        lines = [s["title"] for s in self._sections]
+        kw = str(keyword or "").strip()
+        if kw:
+            hit = [t for t in lines if kw in t]
+            if hit:
+                lines = hit
+        return "\n".join(lines)[:6000] or "（法典为空）"
+
+    def search(self, query, top=3):
+        """按查询词取章节正文（省 token：默认 3 章 × 800 字，总长 ≤2400）。"""
+        self._load()
+        _, sections = self.retrieve(query)
+        if not sections:
+            return "（没有匹配的章节，换关键词再试）"
+        blocks = [b for b in sections.split("\n\n### ") if b.strip()]
+        picked, total = [], 0
+        for i, block in enumerate(blocks[:3]):
+            body = block if block.startswith("### ") else "### " + block
+            body = body[:800]
+            if total and total + len(body) > 2400:
+                break
+            picked.append(body)
+            total += len(body)
+        return "\n\n".join(picked)[:2400]
+
+    def read_section(self, title):
+        """按标题精读一章。"""
+        self._load()
+        key = str(title or "").strip()
+        for sec in self._sections:
+            if sec["title"] == key or (key and key in sec["title"]):
+                return ("### [%s]\n%s" % (sec["title"], "\n".join(sec["text"])))[:6000]
+        return "（没有这一章；先用 law_index 看目录）"

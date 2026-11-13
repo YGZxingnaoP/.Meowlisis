@@ -70,6 +70,9 @@ class BlueArchiveApp:
         if parsed is None:
             return False
         char, count, safe = parsed
+        # 群里强制保守模式：群里一律不露点
+        if str((qq_context or {}).get("message_type") or "") == "group":
+            safe = True
         if self._busy:
             self._say(qq_context, "上一批还在画喵，等它出完~")
             return True
