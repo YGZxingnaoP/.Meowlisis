@@ -161,7 +161,7 @@ class PromptWriter:
             user.append("额外风格：%s" % self.cfg.style_extra)
         if safe:
             user.append("画面要求：保守模式——**不露点**（不画乳头与性器官），"
-                        "但必须非常色：靠贴身衣料、姿势、神态与氛围拉满。")
+                        "但必须非常色：靠姿势、神态、衣物与氛围拉满。")
         else:
             user.append("画面要求：成年向色情插画（R-18），按上面【成年向画面】的写法展开成英文长描述。")
         if total > 1:
