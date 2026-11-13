@@ -20,6 +20,7 @@ class TBComfyPainter(TBComfyBase):
     """内置模式：引导 .ComfyNode/ComfyUI 精简内核，子进程启动/停止，提交任务并检测进度"""
 
     def __init__(self, config):
+        """初始化。"""
         super().__init__(config)
         self._proc = None
         self._tail = []
@@ -102,6 +103,7 @@ class TBComfyPainter(TBComfyBase):
             return 0, ""
 
     def _write_pid(self, pid):
+        """写入内核 PID 文件。"""
         try:
             with open(self._pid_file(), "w", encoding="utf-8") as f:
                 json.dump({"pid": int(pid), "mode": "internal",
@@ -112,6 +114,7 @@ class TBComfyPainter(TBComfyBase):
             self.log.warning(f"[flux_painter] 写引擎 pid 标记失败: {e}")
 
     def _clear_pid(self):
+        """删除内核 PID 文件。"""
         try:
             if os.path.exists(self._pid_file()):
                 os.remove(self._pid_file())

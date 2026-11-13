@@ -51,6 +51,7 @@ class TBFluxPainterCore:
     )
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
         self.archive = TBPainterArchive(self.config.backup_dir)
@@ -95,6 +96,7 @@ class TBFluxPainterCore:
             self._context["meowid"] = uid
 
     def set_context(self, context):
+        """写入框架上下文（说话人编号/QQ 上下文）。"""
         if context:
             self._context.update(context or {})
 
@@ -394,6 +396,7 @@ class TBFluxPainterCore:
             ref_note = str(session.get("ref_note") or "")
 
             def on_stream(text):
+                """流式回调：把提示词片段推给界面。"""
                 self._bcast(channel, {"type": "producing", "text": text})
 
             elements = self.producer.run(request, nickname=display_name(uid),
@@ -416,10 +419,12 @@ class TBFluxPainterCore:
                           f"canvas={canvas_key} request={request[:60]!r}")
 
             # —— 点名角色解析：词典/缓存命中→注入标签；模型不了解才出网查证→重出一次 ——
+            # 只对 anima 生效：anima 吃 danbooru tag，可把词典标签直接拼进 positive；
+            # MOSS 吃自然语言，拼标签反而污染 caption，角色外观由 caption 自己写。
             character = str(elements.get("character") or "").strip()
             ck = elements.get("character_known")
             char_known = True if ck is None else bool(ck)
-            if character and not char_known:
+            if character and not char_known and self.config.family == "anima":
                 try:
                     from func.toolbox.flux_painter.char_resolver import TBRoleResolver
                     resolver = TBRoleResolver(self.config)
@@ -498,11 +503,27 @@ class TBFluxPainterCore:
             else:
                 # 默认：不加任何画师 tag（画师只在点名或要求风格化时出现）
                 artist_tags = ""
-            quality = self.config.quality_prefix
+            quality = self.config.active_quality()
             final_positive = ((artist_tags + quality + ", " + positive)
                               if artist_tags else
                               ((quality + ", " + positive) if quality else positive))
-            negative = self.config.negative_prompt or DEFAULT_NEGATIVE
+            # 方言挂的额外 LoRA 自带触发词（如 MOSS 2.5D 的 wangzhe）：拼在质量词之后
+            try:
+                _dial = getattr(self.config, "family", "anima")
+                _trig = []
+                _hook = getattr(connector.dialect(), "trigger_words", None)
+                if callable(_hook):
+                    _trig = [t for t in (_hook(connector) or []) if t]
+                if _trig:
+                    _prefix = ", ".join(_trig) + ", "
+                    if artist_tags:
+                        final_positive = artist_tags + _prefix + final_positive
+                    else:
+                        final_positive = _prefix + final_positive
+                    self.log.info(f"[flux_painter] 追加 LoRA 触发词: {', '.join(_trig)}")
+            except Exception:
+                pass
+            negative = self.config.active_negative() or DEFAULT_NEGATIVE
             w, h = self._canvas_size(canvas_key)
 
             self._bcast(channel, {"type": "prompt",
@@ -528,14 +549,20 @@ class TBFluxPainterCore:
                     self.log.info(f"[flux_painter] 参考图已上传: {ref_name}")
 
             def on_event(stage):
+                """事件回调：把阶段/进度推给界面。"""
                 self._bcast(channel, {"type": "progress", "text": stage})
 
             ok_done = False
             images, wmsg = [], ""
-            # ===== 画质档位：fast 快速（现状单段采样）/ pro 清晰（04→05→06→07 全流程）=====
+            # ===== 画质档位（语义由方言决定）=====
+            # anima：fast=单段采样 / pro=04→05→06→07 全流程
+            # moss ：fast=8 步 DMD / pro=50 步 SFT + 跳层
+            dialect = connector.dialect()
             mode = str(getattr(self.config, "quality_mode", "fast") or "fast").lower()
+            if mode not in dialect.quality_modes:
+                mode = dialect.quality_modes[0]
             pro_p = getattr(self.config, "pro", {}) or {}
-            pro_on = bool(mode == "pro" and pro_p.get("enabled", True))
+            pro_on = bool(mode == "pro" and (dialect.family != "anima" or pro_p.get("enabled", True)))
             if pro_on:
                 try:
                     missing = connector.missing_pro_nodes()
@@ -546,11 +573,15 @@ class TBFluxPainterCore:
                                      "（检查自定义节点是否已安装/加载）")
                     pro_on = False
                 else:
-                    self.log.info("[flux_painter] 画质档位=pro（04 基础→05 放大→06 分块→07 细化）")
+                    self.log.info(f"[flux_painter] 画质档位=pro（{dialect.family} / "
+                                  f"{dialect.quality_labels.get('pro', 'pro')}）")
+            else:
+                self.log.info(f"[flux_painter] 画质档位=fast（{dialect.family} / "
+                              f"{dialect.quality_labels.get('fast', 'fast')}）")
             # 实时进度开关（画板显示阶段/百分比/步进）+ 历史耗时参考（ETA）
             progress_on = bool(getattr(self.config, "progress_detail", True))
             last_eta = self._last_paint_time(pro_on)
-            for clip_type in ("qwen_image", "stable_diffusion", "flux2"):
+            for clip_type in connector.clip_types():
                 if pro_on:
                     graph = connector.build_pro_graph(final_positive, negative, w, h,
                                                       prefix=prefix, clip_type=clip_type,
@@ -561,7 +592,7 @@ class TBFluxPainterCore:
                 if ref_name:
                     # 只替换 latent 来源与 denoise，其余节点（LoRA/放大/分块/细化）全部保持原样
                     graph = connector.with_init_image(graph, ref_name,
-                                                      self.config.img2img_denoise, w, h)
+                                                      self.config.img2img_denoise_for(dialect.family), w, h)
                 on_event("提交任务…")
                 sok, prompt_id, serr = connector.submit(graph, client_id=channel)
                 if not sok and pro_on:
@@ -572,7 +603,7 @@ class TBFluxPainterCore:
                                                   prefix=prefix, clip_type=clip_type)
                     if ref_name:
                         graph = connector.with_init_image(graph, ref_name,
-                                                          self.config.img2img_denoise, w, h)
+                                                          self.config.img2img_denoise_for(dialect.family), w, h)
                     sok, prompt_id, serr = connector.submit(graph, client_id=channel)
                 if not sok:
                     self.log.error(f"[flux_painter] 任务提交失败 clip={clip_type}: {serr[:200]}")
@@ -737,24 +768,30 @@ class TBFluxPainterCore:
         return True
 
     def _nsfw_check(self, image_path):
-        """敏感/裸露判定（NudeNet onnx，与 QQ 群聊共用同一模型与阈值）。
+        """敏感/裸露判定（NudeNet onnx，与 QQ 群聊共用同一模型；阈值按底模家族取）。
 
         返回 (nsfw, detail)：
-        - nsfw_check.enabled=false → 直接放行（safe(未开启)）
-        - 模型不可用/推理异常 → 按 nsfw_check.fail_action 处理（dm=保守视为命中，pass=放行）
+        - enabled=false → 直接放行（safe(未开启)）
+        - 模型不可用/推理异常 → 按 fail_action 处理（dm=保守视为命中，pass=放行）
+        MOSS 与 anima 的出图风格差异大（DMD 档细节少、构图更散），阈值分开配。
         """
-        if not self.config.nsfw_enabled:
+        ns = self.config.moss_nsfw() if self.config.is_moss else {
+            "enabled": self.config.nsfw_enabled,
+            "threshold": self.config.nsfw_threshold,
+            "fail_action": self.config.nsfw_fail,
+        }
+        if not ns.get("enabled"):
             return False, "safe(未开启)"
         try:
             from func.toolbox.flux_painter.nsfw_judge import TBNsfwJudge
             j = TBNsfwJudge(self.config)
             okm, mmsg = j.ensure_model()
             if okm:
-                return j.judge(image_path)
-            nsfw = self.config.nsfw_fail == "dm"
+                return j.judge(image_path, threshold=ns.get("threshold"))
+            nsfw = ns.get("fail_action") == "dm"
             return nsfw, "model:" + str(mmsg)
         except Exception as e:
-            nsfw = self.config.nsfw_fail == "dm"
+            nsfw = ns.get("fail_action") == "dm"
             return nsfw, f"judge_error:{e}"
 
     # ==================== 进度 / 耗时统计 ====================
@@ -763,6 +800,7 @@ class TBFluxPainterCore:
         return os.path.join(self.config.comfy_node_dir, "paint_stats.json")
 
     def _paint_stats(self):
+        """累计出图耗时统计。"""
         import json
         try:
             with open(self._paint_stats_path(), "r", encoding="utf-8") as f:
@@ -1061,6 +1099,7 @@ class TBFluxPainterCore:
 
     @staticmethod
     def _qq_send_ok(resp):
+        """QQ 发送是否成功。"""
         if not isinstance(resp, dict):
             return False
         if str(resp.get("status", "")).lower() == "ok":
@@ -1068,6 +1107,7 @@ class TBFluxPainterCore:
         return str(resp.get("retcode", "")).strip() in ("0",)
 
     def _qq_private_send(self, ncore, user_id, group_id, message):
+        """私聊发图。"""
         uid = int(user_id)
         if self._qq_send_ok(ncore.call_action_sync(
                 "send_private_msg", {"user_id": uid, "message": message})):

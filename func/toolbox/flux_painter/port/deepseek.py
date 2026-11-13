@@ -15,6 +15,7 @@ class TBFluxPainterDeepSeekLLM(TBFluxPainterLLMBase):
     provider = "deepseek"
 
     def __init__(self, config):
+        """初始化。"""
         super().__init__(config)
         self.log = DefaultLog().getLogger()
         conn = config.active_llm()
@@ -35,6 +36,7 @@ class TBFluxPainterDeepSeekLLM(TBFluxPainterLLMBase):
             self.log.error(f"[flux_painter] 初始化 DeepSeek 绘画客户端失败: {e}")
 
     def _build_extra_body(self, thinking):
+        """构造思考开关的 extra_body。"""
         if not thinking:
             return {"thinking": {"type": "disabled"}}
         return {"thinking": {"type": "enabled"}}

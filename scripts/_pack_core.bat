@@ -99,6 +99,15 @@ set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.CatPaws\config.yml" -x".vendor\.CatPaws\catpaws-launcher\run\*""
   rem plugin config.yml files hold sk- keys (plugins fall back to built-in defaults)
   set "EXCLUSIVE=!EXCLUSIVE! -x"plugins\*\config.yml""
+  rem MOSS 相关模型体积太大（底模 9.7G / 编码器 5.8G / DMD 1.1G / 风格 LoRA），分享包不带；
+  rem 代码与工作流 JSON 保留，对方自行放模型即可
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\diffusion_models\moss_image_*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\text_encoders\qwen3.5_9b_*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\vae\flux2-vae.safetensors""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\loras\MOSS-Image-*""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\loras\age slider.safetensors""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\loras\wangzhe_moss.safetensors""
+  set "EXCLUSIVE=!EXCLUSIVE! -x".vendor\.ComfyNode\models\loras\maliker_moss_base_style_v3_e40.safetensors""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\memory\*" -x"character\abstract_memory\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\info\users_info\*" -x"character\info\values\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"character\backlog\*" -x"character\turtle_soup\*""

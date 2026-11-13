@@ -40,6 +40,11 @@ class SenseVoiceManager:
         self._merge_task = None        # merge_delay 计时任务
         self._expecting_final = False  # 静音后等待 final
 
+    @property
+    def merge_enabled(self) -> bool:
+        """断句合并开关（默认关）：关=每句 final 直接送出，开=按 VAD 收句后等宽限期合并"""
+        return bool(getattr(self.config, 'merge_delay_enabled', False))
+
     async def send_config(self):
         """发送 SenseVoice 启动配置"""
         cfg = {
@@ -231,7 +236,14 @@ class SenseVoiceManager:
             self.log.exception("写入最后声纹说话人失败")
 
         key = meowid
-        # 只累积文本，不因 final 到达而重置计时
+        # 合并关闭（默认）：本句 final 直接送出，不累积、不计时
+        if not self.merge_enabled:
+            self.pending_texts.pop(key, None)
+            self._expecting_final = False
+            asyncio.create_task(self._deliver(text, key))
+            return
+
+        # 合并开启：只累积文本，不因 final 到达而重置计时
         if key in self.pending_texts:
             self.pending_texts[key] = self.pending_texts[key] + " " + text
         else:
@@ -254,25 +266,31 @@ class SenseVoiceManager:
             await asyncio.sleep(self.config.merge_delay)
             full_text = self.pending_texts.pop(key, "").strip()
             if full_text:
-                full_text = self.optimizer.optimize(full_text)
-                # 静默/唤醒词检测（合并+优化后的完整句；静默词优先于唤醒词）
-                try:
-                    from func.pipeline.silence_state import SilenceState
-                    silence = SilenceState()
-                    if silence.enabled:
-                        if silence.hit_mute(full_text):
-                            silence.mute()
-                        elif silence.hit_wake(full_text):
-                            silence.unmute()
-                except Exception:
-                    self.log.exception("静默状态检测异常")
-                await self._send_to_llm(full_text, key)
+                await self._deliver(full_text, key)
         except asyncio.CancelledError:
             pass
         finally:
             # 仅当仍是当前计时任务时才清理
             if self._merge_task is asyncio.current_task():
                 self._merge_task = None
+
+    async def _deliver(self, text: str, key: str):
+        """优化文本 → 静默/唤醒词检测 → 送入 AI 核心（合并开/关共用这一步）"""
+        full_text = self.optimizer.optimize(text).strip()
+        if not full_text:
+            return
+        # 静默/唤醒词检测（整句；静默词优先于唤醒词）
+        try:
+            from func.pipeline.silence_state import SilenceState
+            silence = SilenceState()
+            if silence.enabled:
+                if silence.hit_mute(full_text):
+                    silence.mute()
+                elif silence.hit_wake(full_text):
+                    silence.unmute()
+        except Exception:
+            self.log.exception("静默状态检测异常")
+        await self._send_to_llm(full_text, key)
 
     async def _send_to_llm(self, text: str, meowid: str):
         """发送识别文本到 LLM"""

@@ -18,6 +18,7 @@ class TBFluxImg2ImgRouter:
     """QQ 图片分支的图生图路由：返回 True 表示已按图生图处理（调用方不再走看图）"""
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
 

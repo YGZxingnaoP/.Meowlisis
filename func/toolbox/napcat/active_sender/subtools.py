@@ -52,7 +52,6 @@ def resolve_group(value) -> Tuple[Optional[str], str]:
 
 def find_friend(query) -> Tuple[Optional[str], str, list]:
     """好友搜索：拉全量好友列表 → 归一化/拼音/相似度排序 → 命中或给候选
-
     返回 (user_id 或 None, 失败原因, 候选 [(分数, 名字)])。
     多个都像、只有错字级相似时不会自己挑一个发，交给追问确认。
     """
@@ -80,7 +79,6 @@ def find_friend(query) -> Tuple[Optional[str], str, list]:
 
 def find_group(query) -> Tuple[Optional[str], str, list]:
     """群搜索：拉全量群列表 → 归一化/拼音/相似度排序 → 命中或给候选
-
     返回 (group_id 或 None, 失败原因, 候选 [(分数, 名字)])。
     """
     from func.toolbox.napcat.active_sender.get_grouplist import TBGetGroupList
@@ -113,7 +111,6 @@ def find_member(group_id, name) -> Optional[dict]:
 
 def _candidates(names: list, query: str = "", limit: int = 12) -> str:
     """候选名提示：先按用户说的词过滤，再截断；超限时给出总数
-
     limit 只影响「追问时展示几个」，与解析/发送无关（解析走全量列表）。
     给了 query 且在列表里完全找不到相似项时返回空串——不拿无关的名字凑数。
     """
@@ -159,11 +156,30 @@ def toolbox_llm():
 
 
 # 拟稿指令：只在「只有意图、没有现成内容」时用，产出的是发给对方的消息正文
-DRAFT_HINT = """【当前任务：替主人发一条 QQ 消息，先把正文写出来】
-- 以你自己的身份、自己的口吻写，不是复述主人的要求；
+DRAFT_HINT = """【当前任务：替「{speaker}」发一条 QQ 消息，先把正文写出来】
+- 让你发消息的人叫「{speaker}」，不是固定叫“主人”；下面统一用「{speaker}」。
+- {speaker}给的是「要表达的意思」，不是要发的原句。禁止照抄要求、禁止只换一两个字。
+- 用你自己的身份、语气和说话习惯，把这句话重新组织一遍，像你亲口对那个人说。
+- 可以换词、换句式、加你自己的口头习惯；意思不变，字面必须是你自己的。
+- 正例：{speaker}说「跟小王说生日快乐」→ 发「小王，今天你生日吧？我可记着呢，生日快乐喵。」
+- 反例：{speaker}说「跟小王说生日快乐」→ 直接发「生日快乐」或「跟小王说生日快乐」都不行。
+- 人物指代必须分清：{speaker}原话里的「我」= {speaker}本人，「你」= 你（角色），「他/她/某人」= 收信人。
+- 替{speaker}传话时，{speaker}说的「我」要改成「{speaker}」或「他/她」，不能变成你自己：
+  错：{speaker}说「跟他说我明天可能晚点到」→ 发「我明天可能晚点到」（变成你自己迟到）
+  对：{speaker}说「跟他说我明天可能晚点到」→ 发「{speaker}让我跟你说一声，他明天可能晚点到喵。」
+- 不要默认说话人是“主人”；只有名字本身就是“主人”时才用“主人”。
 - 只输出要发送的消息正文本身：不要解释、不要加引号、不要写「好的/我就发/已发送」、不要带说话人或【】前缀；
 - 口语化、简短，像在 QQ 里直接说话；对方能一眼看懂；
-- 内容贴住主人的要求，不要自作主张加无关话题。"""
+- 内容贴住{speaker}的意思，不要自作主张加无关话题。"""
+
+
+def speaker_name(meowid: str) -> str:
+    """说话人展示名：优先昵称，查不到用 meowid，最后兜底「对方」"""
+    try:
+        from func.pipeline.id_signup import display_name
+        return str(display_name(meowid) or "").strip() or "对方"
+    except Exception:
+        return str(meowid or "").strip() or "对方"
 
 
 def draft_prompt(meowid: str, request: str) -> str:
@@ -174,7 +190,8 @@ def draft_prompt(meowid: str, request: str) -> str:
         base = TBoxGetPrompt().get_tool_prompt(meowid, request) or ""
     except Exception:
         base = ""
-    return f"{base}\n\n{DRAFT_HINT}" if base else DRAFT_HINT
+    hint = DRAFT_HINT.replace("{speaker}", speaker_name(meowid))
+    return f"{base}\n\n{hint}" if base else hint
 
 
 # ==================== 子工具执行 ====================

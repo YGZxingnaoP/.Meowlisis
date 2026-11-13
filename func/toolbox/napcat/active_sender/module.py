@@ -14,8 +14,8 @@ from func.toolbox.trigger_rules import choose
 
 # 「qq发消息」命中后要选的候选入口（发消息 / 指挥群机器人）
 QQ_PICK_PROMPT = (
-    "你在替角色决定「用哪个工具」满足主人这句话，只做工具选择，不要写回复正文。\n"
-    "- napcat_send：替主人发消息 / 文件 / 链接给好友或群；要 @ 谁就把名字填进 mention。\n"
+    "你在替角色决定「用哪个工具」满足对方这句话，只做工具选择，不要写回复正文。\n"
+    "- napcat_send：替对方发消息 / 文件 / 链接给好友或群；要 @ 谁就把名字填进 mention。\n"
     "- napcat_ask_bot：指挥群里的机器人（如幻梦）执行指令（今日老婆 / 打卡 / 运势…）。\n"
     "判断依据是真实目的：让群机器人做事就选 napcat_ask_bot，"
     "绝不要用 napcat_send 在群里发一句话代替；只是把内容发给某人/某群才选 napcat_send。"
@@ -304,7 +304,9 @@ class TBNapcatActiveModule:
         if not llm or not getattr(llm, "client", None):
             self.log.warning("[napcat_send] 拟稿 LLM 不可用，改为追问内容")
             return ""
-        target_desc = str(target or "").strip() or "（还没定，先按主人的意思写）"
+        speaker = subtools.speaker_name(self._meowid)
+        request_for_llm = self._shift_first_person(request, speaker)
+        target_desc = str(target or "").strip() or f"（还没定，先按{speaker}的意思写）"
         extra = ""
         if str(target_type) == "group":
             target_desc = f"{target_desc}（群聊）"
@@ -316,12 +318,13 @@ class TBNapcatActiveModule:
                 target_desc = f"{target_desc}（好友私聊）"
         try:
             messages = [{"role": "system",
-                         "content": subtools.draft_prompt(self._meowid, request)}]
+                         "content": subtools.draft_prompt(self._meowid, request_for_llm)}]
             messages.extend(self._history())
             messages.append({"role": "user", "content": (
                 f"发给谁：{target_desc}\n"
-                f"主人的要求：{request}\n"
-                f"请直接写出要发送的消息正文。{extra}"
+                f"{speaker}的要求：{request_for_llm}\n"
+                f"请用你自己的话把{speaker}的意思重新组织一遍（不要照抄上面的要求），只输出消息正文。"
+                f"注意：{speaker}原话里的「我」指{speaker}本人，不是你自己；替{speaker}传话时要用「{speaker}/他」当主语。{extra}"
             )})
             resp = llm.chat(messages)
         except Exception:
@@ -330,10 +333,25 @@ class TBNapcatActiveModule:
         if not resp or not resp.choices:
             return ""
         text = self._clean_draft(resp.choices[0].message.content)
+        # 兜底：说话人不是“主人”时，别让拟稿把人称写成主人
+        if text and speaker and speaker != "主人" and "主人" in text:
+            text = text.replace("主人", speaker)
         # @ 由系统单独发出，正文开头自带的 @名字 去掉，避免重复 @
         if text and mention:
             text = re.sub(r"^@\s*" + re.escape(str(mention)) + r"[\s:：,，]*", "", text).strip()
         return text
+
+    @staticmethod
+    def _shift_first_person(text, speaker):
+        """把说话人原话里的第一人称换成名字，避免拟稿把“我”当成角色自己"""
+        s = str(text or "")
+        speaker = str(speaker or "").strip()
+        if not s or not speaker:
+            return s
+        s = s.replace("我们", speaker + "们")
+        s = s.replace("我的", speaker + "的")
+        s = s.replace("我", speaker)
+        return s
 
     @staticmethod
     def _clean_draft(text) -> str:

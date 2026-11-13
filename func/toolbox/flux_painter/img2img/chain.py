@@ -16,6 +16,7 @@ class TBImg2ImgChain:
     """图生图：判定参考来源 → 取图（截图取景 / 附图落地）→ 开画"""
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
         self.core = TBFluxPainterCore()

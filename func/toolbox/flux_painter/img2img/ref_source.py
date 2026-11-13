@@ -36,6 +36,7 @@ class TBRefSource:
     """参考图落地：消息里的 file / url → 本地文件，统一放进参考图缓存目录"""
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
 
     def materialize(self, images, cache_dir: str) -> str:

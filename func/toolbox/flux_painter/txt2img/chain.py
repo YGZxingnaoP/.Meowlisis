@@ -12,6 +12,7 @@ class TBTxt2ImgChain:
     """文生图：按文字需求直接开画"""
 
     def __init__(self):
+        """初始化。"""
         self.core = TBFluxPainterCore()
 
     def open_live(self, arguments):

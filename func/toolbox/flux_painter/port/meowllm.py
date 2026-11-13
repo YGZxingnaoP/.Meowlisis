@@ -24,6 +24,7 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
     provider = "meowllm"
 
     def __init__(self, config):
+        """初始化。"""
         super().__init__(config)
         self.log = DefaultLog().getLogger()
         self.base_url = getattr(config, "meowllm_base_url", None) or DEFAULT_BASE_URL
@@ -44,6 +45,7 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
 
     @staticmethod
     def _resolve_level(enable_thinking=None, thinking_level=None) -> str:
+        """解析思考档位。"""
         if thinking_level in _LEVELS:
             return thinking_level
         if enable_thinking is False:
@@ -57,6 +59,7 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
                       enable_thinking: Optional[bool] = None,
                       thinking_level: Optional[str] = None,
                       stream: bool = True) -> Dict:
+        """组装请求参数。"""
         options = options or {}
         params = {
             "model": options.get("model", self.model),
@@ -89,6 +92,7 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
     def chat(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
              tool_choice=None, options: Optional[Dict] = None,
              enable_thinking: Optional[bool] = None, thinking_level=None):
+        """非流式对话，返回完整响应。"""
         if not self.client:
             self.log.error("[flux_painter] MeowLLM 客户端不可用")
             return None
@@ -103,6 +107,7 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
     def chat_stream(self, messages: List[Dict], tools: Optional[List[Dict]] = None,
                     tool_choice=None, options: Optional[Dict] = None,
                     enable_thinking: Optional[bool] = None, thinking_level=None):
+        """流式对话，返回增量迭代器。"""
         if not self.client:
             self.log.error("[flux_painter] MeowLLM 客户端不可用")
             return iter([])

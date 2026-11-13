@@ -29,36 +29,57 @@ Object.assign(Config, {
             </div>`;
     },
     _narrationFormula() {
+        // 阈值/系数都读当前配置：这些值都可调，写死成旧默认值会和实际运行对不上
+        const theta = this._val('llm.narration.density_threshold', 0.8);
+        const len0 = this._val('llm.narration.length_threshold', 30);
+        const rate = this._val('llm.narration.length_penalty_rate', 0.4);
+        const cap = this._val('llm.narration.length_penalty_cap', 20);
+        const lDown = this._val('llm.narration.lambda_down', 0.75);
+        const lUp = this._val('llm.narration.lambda_up', 0.55);
+        const lEq = this._val('llm.narration.lambda_equal', 0.70);
+        const upper = this._val('llm.narration.part_level_upper', 60);
+        const lower = this._val('llm.narration.part_level_lower', 30);
         return `<div class="formula-box">
             <div class="formula-box-title">${this._t('计算公式')}</div>
             <div class="formula-block">
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('水词密度分')}</span>
-                    <span class="formula-expr">Density = 100 − ( W / L × 100 )</span>
-                    <span class="formula-cond">${this._t('若 W / L ≥ θ 则 Density = 0')}</span>
+                    <span class="formula-name">${this._t('长度 / 水词')}</span>
+                    <span class="formula-expr">L = |text|，W = Σ|w|</span>
+                    <code>${this._t('trie 最长匹配')}</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('密度分')}</span>
+                    <span class="formula-expr">density = W/L ≥ θ ? 0 : 100(1 − W/L)</span>
+                    <code>θ = ${theta}</code>
                 </div>
                 <div class="formula-row">
                     <span class="formula-name">${this._t('超长惩罚')}</span>
-                    <span class="formula-expr">${this._t('Penalty = 0，当 L ≤ L')}<sub>0</sub></span>
-                    <span class="formula-expr">${this._t('Penalty = min( P<sub>cap</sub>, ( L − L<sub>0</sub> ) × r )，当 L &gt; L<sub>0</sub>')}</span>
+                    <span class="formula-expr">penalty = L &gt; L<sub>0</sub> ? min(cap, (L − L<sub>0</sub>)·r) : 0</span>
+                    <code>${len0} / ${rate} / ${cap}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('原始得分')}</span>
-                    <span class="formula-expr">Raw<sub>t</sub> = max( 0, Density − Penalty )</span>
+                    <span class="formula-name">${this._t('原始分')}</span>
+                    <span class="formula-expr">raw = max(0, density − penalty)</span>
+                    <code>${this._t('空文本 = 70')}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('平滑得分')}</span>
-                    <span class="formula-expr">S<sub>t</sub> = λ · S<sub>t−1</sub> + ( 1 − λ ) · Raw<sub>t</sub></span>
-                    <span class="formula-cond">${this._t('λ = 0.75（下降）/ 0.55（上升）/ 0.70（相等）')}</span>
+                    <span class="formula-name">${this._t('平滑分')}</span>
+                    <span class="formula-expr">s ← λ·s + (1 − λ)·raw</span>
+                    <code>${lDown} / ${lUp} / ${lEq}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('清洗档位')}</span>
-                    <span class="formula-expr">${this._t('S ≥ 60 不清洗；30 ≤ S &lt; 60 清部分；S &lt; 30 全清')}</span>
+                    <span class="formula-name">${this._t('档位')}</span>
+                    <span class="formula-expr">level = s ≥ U ? 0 : s ≥ Lo ? 1 : 2</span>
+                    <code>U=${upper} Lo=${lower}</code>
+                    <code>0 ${this._t('不删')} / 1 ${this._t('删')}{2,3,5} / 2 ${this._t('全删')}</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('输出')}</span>
+                    <span class="formula-expr">delete(level) → dilute → contrast</span>
+                    <code>${this._t('不参与打分')}</code>
                 </div>
             </div>
-            <div class="formula-params">
-                ${this._t('W = 命中水词字符数，L = 回复总字符数，θ = 密度阈值，L<sub>0</sub> = 超长阈值，r = 惩罚系数，P<sub>cap</sub> = 惩罚封顶，λ = 惯性系数')}
-            </div>
+            <div class="formula-params">${this._t('λ 三个值依次是 down / up / equal；W 含只打分词（如「喵呜」），这类词任何档位都不删，只拉低 s。')}</div>
         </div>`;
     },
     llm_algorithm() {

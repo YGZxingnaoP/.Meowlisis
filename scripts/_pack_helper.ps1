@@ -90,6 +90,13 @@ switch ($Verb) {
                 @{ p = '(^|/)\.vendor/\.ComfyNode/output/'; why = 'ComfyUI output images NOT excluded' },
                 @{ p = '(^|/)gui/resource/cat_photos_png/'; why = 'source PNG set (unused at runtime) NOT excluded' },
                 @{ p = '(^|/)plugins/[^/]+/config\.yml$';  why = 'plugin config.yml NOT excluded (sk- key leak)' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/diffusion_models/moss_image_'; why = 'MOSS 底模 NOT excluded (9.7G)' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/text_encoders/qwen3\.5_9b_';   why = 'MOSS 文本编码器 NOT excluded (5.8G)' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/vae/flux2-vae\.safetensors$';  why = 'MOSS VAE NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/MOSS-Image-';            why = 'MOSS DMD LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/age slider\.safetensors$'; why = 'MOSS age slider LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/wangzhe_moss\.safetensors$'; why = 'MOSS 2.5D LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/maliker_moss_base_style_'; why = 'MOSS maliker LoRA NOT excluded' },
                 @{ p = '(^|/)__pycache__/';                why = '__pycache__ leaked in' },
                 @{ p = '\.pyc$';                           why = '.pyc leaked in' }
             )

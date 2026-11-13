@@ -12,6 +12,7 @@ class TBFluxPainterConfig:
     """统一管理 config.yml 的 flux_painter 节点（画布/LLM/ComfyUI/审查/记忆/TTS/采样）"""
 
     def __init__(self):
+        """初始化。"""
         cfg = ConfigReader().get("flux_painter", {})
 
         self.enabled = bool(cfg.get("enabled", False))
@@ -19,9 +20,16 @@ class TBFluxPainterConfig:
         self.ws_port = int(cfg.get("ws_port", 8767))
 
         # ===== 底模（UNET）=====
-        # GUI「绘画底模」下拉写入的是 flux_painter.unet_model，但此前**没有任何地方读它**，
-        # 织图时一直用 base.py 里写死的 anima_baseV10，选什么都没用。这里读出来交给 base.py。
-        self.unet_model = str(cfg.get("unet_model") or "anima_baseV10.safetensors").strip()
+        # GUI「绘画底模」下拉写入 flux_painter.unet_model，工作流方言按它自动判定
+        # （moss_* → MOSS 方言；anima/miaomiao → Anima 方言）。原版 anima baseV10 已移除。
+        self.unet_model = str(cfg.get("unet_model") or "miaomiaoHarem_anima16.safetensors").strip()
+
+        # ===== 工作流方言 =====
+        # auto=按底模名推断（默认）；anima / moss 可强制指定
+        self.model_family = str(cfg.get("model_family", "auto") or "auto").strip().lower()
+        if self.model_family not in ("auto", "anima", "moss"):
+            self.model_family = "auto"
+        self.moss = self._load_moss(cfg.get("moss"))
 
         # ===== 画布两档（AI 调用时自选；后端换算到 ComfyUI 像素） =====
         raw = cfg.get("canvas_sizes") or [[1024, 1024], [1080, 1960]]
@@ -223,8 +231,11 @@ class TBFluxPainterConfig:
         if self.review_mode not in ("onnx", "manual"):
             self.review_mode = "onnx"
 
-        # ===== 点名角色解析（词典 → 缓存 → 萌娘百科） =====
+        # ===== 点名角色解析（词典 → danbooru tag → 缓存 → 萌娘百科） =====
         self.moegirl_lookup = bool(cfg.get("moegirl_lookup", True))
+        # danbooru 先查角色 tag（生成模型认得角色，关键在 tag 写对）；失败自动跳过
+        self.danbooru_lookup = bool(cfg.get("danbooru_lookup", True))
+        self.danbooru_timeout = max(3, int(cfg.get("danbooru_timeout", 8) or 8))
         prd = self.prompt_reference_dir
         self.role_map_file = os.path.join(prd, "role_map.json")
         self.role_cache_file = os.path.join(prd, "role_cache.json")
@@ -282,6 +293,139 @@ class TBFluxPainterConfig:
                     "base_url": self.aliyun_base_url, "model": self.aliyun_model}
         return {"llm_type": "deepseek", "api_key": self.deepseek_api_key,
                 "base_url": self.deepseek_base_url, "model": self.deepseek_model}
+
+    # ==================== 工作流方言 ====================
+    @property
+    def family(self) -> str:
+        """当前生效的底模家族（anima / moss）"""
+        from func.toolbox.flux_painter.dialects import resolve_family
+        return resolve_family(self.unet_model, self.model_family)
+
+    @property
+    def is_moss(self) -> bool:
+        """当前是否 MOSS 家族。"""
+        return self.family == "moss"
+
+    @staticmethod
+    def _load_moss(raw) -> dict:
+        """MOSS 方言参数块：与 anima 完全独立，缺项按官方推荐值兜底
+
+        数据来自 OpenMOSS 用户指南：shift 5 / Euler / 50 步 cfg 3 / 跳层 22；
+        8 步档为社区 DMD 蒸馏 LoRA（cfg 1，负向词不参与）。
+        """
+        from func.toolbox.flux_painter.dialects.moss import (
+            MOSS_CLIP, MOSS_DEFAULT_NEGATIVE, MOSS_DEFAULT_QUALITY, MOSS_DMD_LORA,
+            MOSS_UNET, MOSS_VAE)
+        m = raw if isinstance(raw, dict) else {}
+
+        def _f(key, dflt):
+            """取浮点配置（非法值回落默认）。"""
+            try:
+                return float(m.get(key, dflt))
+            except (TypeError, ValueError):
+                return float(dflt)
+
+        def _parse_loras(items):
+            """额外 LoRA 链：[{name, strength, enabled, trigger}]
+
+            前端列表编辑器会写成一串 JSON（也可能被 YAML 存成真正的列表），两种都吃。
+            """
+            if isinstance(items, str):
+                try:
+                    import json as _json
+                    items = _json.loads(items or "[]")
+                except Exception:
+                    items = []
+            out = []
+            for it in (items or []):
+                if not isinstance(it, dict) or not str(it.get("name") or "").strip():
+                    continue
+                if not it.get("enabled", True):
+                    continue
+                out.append({
+                    "name": str(it["name"]).strip(),
+                    "strength": float(it.get("strength", 0.8) or 0.0),
+                    "trigger": str(it.get("trigger") or "").strip(),
+                })
+            return out
+
+        nsfw = m.get("nsfw") if isinstance(m.get("nsfw"), dict) else {}
+        return {
+            # 三件套
+            "unet_model": str(m.get("unet_model") or MOSS_UNET).strip(),
+            "clip_model": str(m.get("clip_model") or MOSS_CLIP).strip(),
+            "vae_model": str(m.get("vae_model") or MOSS_VAE).strip(),
+            # 文本编码器位置：8GB 显存建议 cpu（显存全留给 DiT）
+            "clip_device": str(m.get("clip_device") or "default").strip().lower(),
+            # 加速档（8 步 DMD）：DMD 是这一档的必选项，没有开关
+            "dmd_lora": str(m.get("dmd_lora") or MOSS_DMD_LORA).strip(),
+            "dmd_strength": _f("dmd_strength", 0.7),
+            "dmd_steps": int(m.get("dmd_steps", 8) or 8),
+            "dmd_cfg": _f("dmd_cfg", 1.0),
+            # 原版档（50 步 + 跳层）
+            "sft_steps": int(m.get("sft_steps", 50) or 50),
+            "sft_cfg": _f("sft_cfg", 3.0),
+            "slg_layers": str(m.get("slg_layers", "22") or ""),
+            "slg_double_layers": str(m.get("slg_double_layers", "") or ""),
+            "slg_start": _f("slg_start", 0.0),
+            "slg_end": _f("slg_end", 1.0),
+            # 采样
+            "shift": _f("shift", 5.0),
+            "sampling": str(m.get("sampling") or "flow").strip().lower(),
+            "sampler_name": str(m.get("sampler_name") or "euler").strip(),
+            "scheduler": str(m.get("scheduler") or "sgm_uniform").strip(),
+            # 提示词形态：json=紧凑 JSON 布局（官方 layout）/ caption=自然语言长描述
+            "prompt_mode": (str(m.get("prompt_mode") or "caption").strip().lower()
+                            if str(m.get("prompt_mode") or "caption").strip().lower()
+                            in ("json", "caption") else "caption"),
+            "quality_prefix": str(m.get("quality_prefix") or MOSS_DEFAULT_QUALITY),
+            "negative_prompt": str(m.get("negative_prompt") or MOSS_DEFAULT_NEGATIVE),
+            # MOSS 专属审查（与组图共用的 NudeNet 分开配，阈值尺度不同）
+            "nsfw": {
+                "enabled": bool(nsfw.get("enabled", False)),
+                "threshold": _f("threshold", 0.45),
+                "fail_action": str(nsfw.get("fail_action") or "dm"),
+            },
+            # 图生图：DMD 8 步档可用步数少，denoise 太高会糊，默认 0.55
+            "img2img_denoise": _f("img2img_denoise", 0.55),            # 官方编辑 LoRA（moss_image_edit_lora_rank_64_bf16）：有图时叠加，纯文生图不加载
+            "edit_lora": str(m.get("edit_lora") or "").strip(),
+            "edit_lora_strength": _f("edit_lora_strength", 0.9),
+            # 额外 LoRA 链（前端列表编辑器直接给 name/strength/enabled/trigger）
+            "loras": _parse_loras(m.get("loras")),
+        }
+
+    def moss_nsfw(self) -> dict:
+        """MOSS 生效的裸露审查参数（未启用 MOSS 专属时回落到全局设置）"""
+        m = self.moss.get("nsfw") or {}
+        if m.get("enabled"):
+            return m
+        return {"enabled": self.nsfw_enabled, "threshold": self.nsfw_threshold,
+                "fail_action": self.nsfw_fail}
+
+    def active_negative(self) -> str:
+        """当前家族生效的负面提示词（MOSS 用官方那行短负向）"""
+        if self.is_moss:
+            return str(self.moss.get("negative_prompt")
+                       or self.moss.get("negative")
+                       or "worst quality, bad anatomy, watermark, jpeg artifact")
+        return self.negative_prompt
+
+    def active_quality(self) -> str:
+        """当前家族生效的质量前缀"""
+        if self.is_moss:
+            return str(self.moss.get("quality_prefix") or "")
+        return self.quality_prefix
+
+    def img2img_denoise_for(self, family=None) -> float:
+        """图生图参考强度：MOSS 与 Anima 的步数体系不同，各用各的"""
+        fam = str(family or self.family).lower()
+        if fam == "moss":
+            try:
+                return min(0.95, max(0.05, float(self.moss.get("img2img_denoise", 0.55))))
+            except (TypeError, ValueError):
+                return 0.55
+        return self.img2img_denoise
+
 
     def comfy_base(self) -> str:
         """内置/外部 ComfyUI 的 http 根地址"""

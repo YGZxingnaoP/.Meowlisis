@@ -69,6 +69,7 @@ class TBRefFocus:
     """屏幕取景：截图 + 两对角点定框 + 循环复查，产出干净的参考图（不带任何标尺/标记）"""
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
 

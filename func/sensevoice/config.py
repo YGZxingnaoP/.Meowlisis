@@ -23,6 +23,8 @@ class SenseVoiceConfig:
         self.energy_threshold = cfg.get('vad_energy_threshold', 400)
         self.interrupt_threshold = cfg.get('interrupt_threshold', 800)
         self.silence_threshold = cfg.get('silence_threshold', 2.0)
+        # 断句合并开关（默认关）：关=每句 final 直接送出；开=VAD 收句后等 merge_delay 宽限期再合并送出
+        self.merge_delay_enabled = bool(cfg.get('merge_delay_enabled', False))
         self.merge_delay = cfg.get('merge_delay', 1.0)
         self.hotwords = cfg.get('hotwords', [])
         self.replace_rules = cfg.get('replace_rules', {})

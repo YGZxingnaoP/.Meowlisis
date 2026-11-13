@@ -13,13 +13,13 @@ MD_SOURCE_ENV = "FLUXPAINTER_KNOWLEDGE_MD"
 MD_SOURCE_FALLBACK = r"D:\ComfyUI\ANIMA3 提示词生成模板 v3.0.md"
 
 
-def knowledge_md_source(ref_dir=None):
+def knowledge_md_source(ref_dir=None, names=None):
     """提示词法典 md 源路径（自包含优先，不再硬依赖 D:\\ComfyUI）"""
     env = os.environ.get(MD_SOURCE_ENV, "").strip()
     if env and os.path.isfile(env):
         return env
     if ref_dir:
-        for name in ("ANIMA3 提示词生成模板 v3.0.md", "ANIMA3_prompt_law.md"):
+        for name in (names or ("ANIMA3 提示词生成模板 v3.0.md", "ANIMA3_prompt_law.md")):
             p = os.path.join(ref_dir, name)
             if os.path.isfile(p):
                 return p
@@ -53,7 +53,15 @@ TOPIC_HINT = {"诱惑", "暴露", "自慰", "展示", "自拍", "口交", "足�
 class TBAnimaKnowledge:
     """ANIMA3 法典章节索引 + 按需求检索"""
 
+    # 法典文件名（源 → 落地副本）与常驻章节前缀：不同家族各用各的
+    MD_NAMES = ("ANIMA3 提示词生成模板 v3.0.md", "ANIMA3_prompt_law.md")
+    MD_TARGET = "ANIMA3_prompt_law.md"
+    ALWAYS_PREFIX = ("0.", "1.", "2.", "3.", "4.", "11.", "15.")
+    ALWAYS_WORDS = ("互斥", "冲突", "镜头", "视角", "景别", "POV", "构图", "分镜", "视线",
+                    "TAG COUNT", "SLOT ORDER", "OUTPUT PROTOCOL", "SELF-CHECK")
+
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self._sections = None
         self._head = None
@@ -68,14 +76,24 @@ class TBAnimaKnowledge:
         """拷贝法典到 .ComfyNode/prompt_reference，返回 (ok, path)"""
         ref_dir = self.config.prompt_reference_dir
         os.makedirs(ref_dir, exist_ok=True)
-        target = os.path.join(ref_dir, "ANIMA3_prompt_law.md")
+        target = os.path.join(ref_dir, self.MD_TARGET)
         if os.path.isfile(target):
             return True, target
-        src = knowledge_md_source(ref_dir)
+        src = knowledge_md_source(ref_dir, self.MD_NAMES)
         if os.path.isfile(src):
             shutil.copy(src, target)
             return True, target
         return False, target
+
+    def full_text(self):
+        """法典全文（短法典直接整篇注入，不走检索）"""
+        ok, path = self.ensure_md()
+        if not ok:
+            return ""
+        try:
+            return open(path, "r", encoding="utf-8", errors="ignore").read()
+        except Exception:
+            return ""
 
     def _read(self):
         """加载并按标题层级切章（缓存）；0~4 章为常驻规则区"""
@@ -126,12 +144,9 @@ class TBAnimaKnowledge:
                 out.append(w)
         return out[:24]
 
-    # 总是注入的关键章节（标题前缀 / 标题关键词）。
+    # 总是注入的关键章节（标题前缀 / 标题关键词）：见类头 ALWAYS_PREFIX / ALWAYS_WORDS。
     # 法典大量章节是"术语驱动"的（§11 镜头库、§4 槽位规则、互斥表…），
     # 而用户需求多为角色/场景日常词，纯关键词检索几乎打不中 → 必须常驻，否则 LLM 根本看不到。
-    ALWAYS_PREFIX = ("0.", "1.", "2.", "3.", "4.", "11.", "15.")
-    ALWAYS_WORDS = ("互斥", "冲突", "镜头", "视角", "景别", "POV", "构图", "分镜", "视线",
-                    "TAG COUNT", "SLOT ORDER", "OUTPUT PROTOCOL", "SELF-CHECK")
 
     def retrieve(self, query, top=10, per_limit=2600, budget=42000):
         """返回 (规则区文本, 章节文本)。
@@ -157,6 +172,7 @@ class TBAnimaKnowledge:
         picked, seen, total = [], set(), 0
 
         def take(idx, s, limit):
+            """按关键词取章节正文。"""
             nonlocal total
             txt = f"### [{s['title']}]\n" + "\n".join(s["text"])[:limit]
             if total + len(txt) > budget:
@@ -243,3 +259,21 @@ class TBAnimaKnowledge:
             parts.append(txt)
             total += len(txt)
         return "\n\n".join(parts)
+
+
+class TBMossKnowledge(TBAnimaKnowledge):
+    """MOSS 的素材来源：**直接复用 ANIMA3 法典**（同一个 md、同一套检索）
+
+    MOSS 与 Anima 的差别只在「输出格式」（caption + 可选 layout），
+    而「画什么」（角色特征、服装、场景、动作、氛围、成年向词汇）两边共用同一份法典，
+    所以这里不再单独维护一份 MOSS 法典，避免两套写法互相漂移。
+    """
+
+    # 与 anima 完全一致：同一份 md、同一个落地副本
+    MD_NAMES = ("ANIMA3 提示词生成模板 v3.0.md", "ANIMA3_prompt_law.md")
+    MD_TARGET = "ANIMA3_prompt_law.md"
+    ALWAYS_PREFIX = ("0.", "1.", "2.", "3.", "4.", "11.", "15.")
+    ALWAYS_WORDS = ("互斥", "冲突", "镜头", "视角", "景别", "POV", "构图", "分镜", "视线",
+                    "TAG COUNT", "SLOT ORDER", "OUTPUT PROTOCOL", "SELF-CHECK")
+
+

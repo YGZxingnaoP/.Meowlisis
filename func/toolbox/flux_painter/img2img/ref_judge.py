@@ -45,6 +45,7 @@ class TBRefJudge:
     """参考图语义判定：一次小调用拿一个是/否，供绘画链路决定要不要走图生图"""
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
 

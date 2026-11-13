@@ -13,6 +13,7 @@ class TBPainterArchive:
     """画作归档：character/paints/<日期>_<标题>/ 存 image + meta.json"""
 
     def __init__(self, backup_dir):
+        """初始化。"""
         self.backup_dir = backup_dir
         self.log = DefaultLog().getLogger()
 

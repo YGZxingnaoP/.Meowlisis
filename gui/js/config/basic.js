@@ -28,13 +28,60 @@ Object.assign(Config, {
                 '说话判断阈值（判断是否有语音活动）') +
             this._num('打断阈值', 'sensevoice.interrupt_threshold', 800, 0, 5000, 50,
                 '触发 TTS 打断的能量阈值，应比 VAD 阈值更严格（更高），避免轻微噪音误打断') +
-            this._num('句子合并延迟(秒)', 'sensevoice.merge_delay', 1.0, 0, 5, 0.1) +
             this._num('静音阈值(秒)', 'sensevoice.silence_threshold', 2.0, 0, 5, 0.1) +
+            this._check('启用断句合并', 'sensevoice.merge_delay_enabled', false,
+                '默认关闭；适合句中常有自然停顿的长对话，代价是首字延迟变高') +
+            this._num('句子合并延迟(秒)', 'sensevoice.merge_delay', 1.0, 0, 5, 0.1,
+                '仅开启后生效') +
+            this._mergeDelayFormula() +
             this._num('心跳间隔(秒)', 'sensevoice.ping_interval', 20, 1, 120, 1) +
             this._num('心跳超时(秒)', 'sensevoice.ping_timeout', 60, 1, 300, 1) +
             this._section('易错词替换（上=正确词，下=错误词）') +
             `<div id="replaceRulesList"></div>
             <button class="btn btn-secondary" id="addReplaceRuleBtn">${this._t('添加规则')}</button>`;
+    },
+
+    // 断句合并（merge_delay）与 VAD 的分工：解说块，样式沿用哼唱卡片的公式说明,
+    _mergeDelayFormula() {
+        const h = this._val('sensevoice.vad_energy_threshold', 400);
+        const keep = Math.max(250, Math.round(h * 0.7));
+        const tSil = this._val('sensevoice.silence_threshold', 2.0);
+        const tau = this._val('sensevoice.merge_delay', 1.0);
+        return `<div class="formula-box">
+            <div class="formula-box-title">${this._t('断句合并与 VAD 的区别')}</div>
+            <div class="formula-block">
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('VAD 起句')}</span>
+                    <span class="formula-expr">e ≥ H</span>
+                    <code>H = ${h}</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('VAD 保活')}</span>
+                    <span class="formula-expr">e ≥ 0.7H</span>
+                    <code>0.7H = ${keep}</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('VAD 收句')}</span>
+                    <span class="formula-expr">silence ≥ T</span>
+                    <code>T = ${tSil} s</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('关闭（默认）')}</span>
+                    <span class="formula-expr">send ⟺ final</span>
+                    <code>+0 s</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('开启')}</span>
+                    <span class="formula-expr">Δt ≥ τ ? send : merge</span>
+                    <code>τ = ${tau} s</code>
+                </div>
+            </div>
+            <div class="formula-params">
+                ${this._t('适用：句中常有自然停顿的长对话（边说边想、换气），角色更像在听人讲完，而不是一停就抢话')}<br>
+                ${this._t('原理：不调大 T，只复用 VAD 已判出的收句点，在 final 后加 τ 窗口；窗口内又开口就并进同一句，VAD、打断、声纹、字幕仍按原阈值跑')}<br>
+                ${this._t('代价：开启后每句首字延迟多等 τ，只加在真正送出的那一句；调大 T 则是让 VAD 对每句都多等，全场一起变慢')}
+            </div>
+        </div>`;
     },
 
     // ============ 音频采集（多源，分别开关） ============,

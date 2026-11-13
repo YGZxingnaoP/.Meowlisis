@@ -36,6 +36,7 @@ class TBFluxEditRouter:
     """
 
     def __init__(self):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
 
     def try_handle(self, channel: str, trigger_kind: str, text: str,

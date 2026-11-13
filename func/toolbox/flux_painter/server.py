@@ -16,6 +16,7 @@ class TBFluxPainterServer:
     """画板服务：HTTP(8090) 托管 painting_board.html + 图片/审查接口，WS(8767) 按 channel 推送"""
 
     def __init__(self, config, html_path=None):
+        """初始化。"""
         self.log = DefaultLog().getLogger()
         self.config = config
         self.http_port = config.http_port
@@ -31,6 +32,7 @@ class TBFluxPainterServer:
     # ==================== WebSocket ====================
     @staticmethod
     def _channel_of(websocket) -> str:
+        """WebSocket 连接 → 通道名。"""
         channel = "live"
         try:
             req = getattr(websocket, "request", None)
@@ -57,6 +59,7 @@ class TBFluxPainterServer:
         return urls
 
     async def _websocket_handler(self, websocket):
+        """处理一条 WebSocket 连接。"""
         channel = self._channel_of(websocket)
         self._clients.setdefault(channel, set()).add(websocket)
         try:
@@ -76,11 +79,13 @@ class TBFluxPainterServer:
                     self._clients.pop(ch, None)
 
     async def _run_websocket_server(self):
+        """启动 WebSocket 服务。"""
         self._ws_server = await websockets.serve(self._websocket_handler, "127.0.0.1", self.ws_port)
         self.log.info(f"[flux_painter] 画板 WebSocket 已启动，端口 {self.ws_port}")
         await self._ws_server.wait_closed()
 
     def _run_event_loop(self):
+        """在独立线程里跑事件循环。"""
         asyncio.set_event_loop(self._loop)
         self._loop.run_until_complete(self._run_websocket_server())
 
@@ -135,6 +140,7 @@ class TBFluxPainterServer:
         cands = []
 
         def _add(p):
+            """注册一个路由。"""
             if not p:
                 return
             try:
@@ -165,16 +171,21 @@ class TBFluxPainterServer:
         return None
 
     def _make_handler(self, base_dir):
+        """构造 HTTP 请求处理器。"""
         allow = self._allow_dirs()
 
         class _Handler(SimpleHTTPRequestHandler):
+            """带路由表的静态/接口处理器。"""
             def __init__(self, *args, **kwargs):
+                """初始化。"""
                 super().__init__(*args, directory=base_dir, **kwargs)
 
             def log_message(self, *a):
+                """屏蔽默认访问日志。"""
                 pass
 
             def _send_file(self, path, ctype):
+                """发送本地文件。"""
                 try:
                     with open(path, "rb") as f:
                         data = f.read()
@@ -188,6 +199,7 @@ class TBFluxPainterServer:
                     self.send_error(404)
 
             def do_GET(self):
+                """处理 GET 请求。"""
                 parsed = urlparse(self.path)
                 q = parse_qs(parsed.query)
                 if parsed.path == "/paint_img":
@@ -237,6 +249,7 @@ class TBFluxPainterServer:
         return _Handler
 
     def _start_http_server(self):
+        """启动本地 HTTP 服务。"""
         base_dir = os.path.dirname(self.html_path)
         try:
             httpd = HTTPServer(("127.0.0.1", self.http_port), self._make_handler(base_dir))
@@ -269,6 +282,7 @@ class TBFluxPainterServer:
             message = json.dumps(payload, ensure_ascii=False)
 
             async def _send_all():
+                """向所有连接推送事件。"""
                 for client in list(clients):
                     try:
                         await client.send(message)

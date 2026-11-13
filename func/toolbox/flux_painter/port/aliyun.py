@@ -15,6 +15,7 @@ class TBFluxPainterAliyunLLM(TBFluxPainterLLMBase):
     provider = "aliyun"
 
     def __init__(self, config):
+        """初始化。"""
         super().__init__(config)
         self.log = DefaultLog().getLogger()
         conn = config.active_llm()
@@ -36,4 +37,5 @@ class TBFluxPainterAliyunLLM(TBFluxPainterLLMBase):
 
     def _build_extra_body(self, thinking):
         # 阿里云 DashScope OpenAI 兼容：enable_thinking 放 extra_body
+        """构造思考开关的 extra_body。"""
         return {"enable_thinking": bool(thinking)}

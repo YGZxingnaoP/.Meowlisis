@@ -29,7 +29,9 @@ CACHE_TTL = 7 * 24 * 3600
 
 
 class TBRoleResolver:
+    """点名角色解析：本地词典 → 缓存 → 萌娘百科（danbooru tag 交给 LLM 工具）。"""
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self.log = DefaultLog().getLogger()
         self._map = None
@@ -67,12 +69,14 @@ class TBRoleResolver:
 
     # ==================== 缓存 ====================
     def _load_cache(self):
+        """载入角色缓存。"""
         try:
             return json.load(open(self.config.role_cache_file, "r", encoding="utf-8"))
         except Exception:
             return {}
 
     def _save_cache(self, cache):
+        """写回角色缓存。"""
         try:
             os.makedirs(os.path.dirname(self.config.role_cache_file), exist_ok=True)
             json.dump(cache, open(self.config.role_cache_file, "w", encoding="utf-8"),
@@ -81,6 +85,7 @@ class TBRoleResolver:
             pass
 
     def _cache_hit(self, key):
+        """查角色缓存。"""
         cache = self._load_cache()
         item = cache.get(key)
         if item and isinstance(item, dict) and (time.time() - float(item.get("ts") or 0)) < CACHE_TTL:
@@ -88,6 +93,7 @@ class TBRoleResolver:
         return None
 
     def _cache_set(self, key, card):
+        """写角色缓存。"""
         try:
             cache = self._load_cache()
             cache[key] = {"ts": time.time(), "card": card}
@@ -97,6 +103,7 @@ class TBRoleResolver:
 
     # ==================== 萌娘百科（仅出网） ====================
     def _http(self, url, timeout=6):
+        """带 UA 的 GET，返回文本。"""
         req = urllib.request.Request(url, headers=MOEGIRL_UA)
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.read().decode("utf-8", "ignore")
@@ -152,7 +159,11 @@ class TBRoleResolver:
     # ==================== 对外入口 ====================
     def resolve(self, character, allow_net=True):
         """解析点名角色。返回 card dict：
-        {name, en?, tags?, appearance?, known}；无资料返回 None（主流程原样走 LLM）"""
+        {name, en?, tags?, appearance?, known}；无资料返回 None（主流程原样走 LLM）
+
+        注：danbooru tag 查询已交给 LLM 工具（`danbooru_tag`）自己调，
+        这里只做本地词典 / 缓存 / 萌百资料补充。
+        """
         c = str(character or "").strip()
         if not c:
             return None

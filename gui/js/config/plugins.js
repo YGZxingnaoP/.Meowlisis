@@ -59,6 +59,7 @@ Object.assign(Config, {
         if (type === 'select') return this._select(label, path, f.options || [], def, help);
         if (type === 'tags') return this._wordTagEditor(label, path, def, help, f.placeholder || '输入后回车添加');
         if (type === 'list') return this._list(label, path, def, help);
+        if (type === 'loras') return this._loraRows(label, path, def, help);
         if (type === 'area') return this._area(label, path, def, help);
         if (type === 'image') return this._pluginImage(label, path, def, help);
         if (type === 'action') return this._pluginAction(label, f, help);
@@ -156,13 +157,101 @@ Object.assign(Config, {
         }
     },
 
+    // ---------- LoRA 列表编辑器（插件用；与绘画卡同款，但独立实现） ----------
+    _loraRows(label, path, def, help) {
+        let list = this._val(path, def);
+        if (typeof list === 'string') {
+            try { list = JSON.parse(list); } catch (e) { list = []; }
+        }
+        if (!Array.isArray(list)) list = [];
+        const esc = (t) => String(t == null ? '' : t)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const rows = list.map(x => this._loraRow(x)).join('');
+        return `<div class="form-group"><label>${this._t(label)}</label>
+            <div class="kv-editor" id="plugin-lora-box"
+                 oninput="Config.loraSync('${path}')" onchange="Config.loraSync('${path}')">${rows}</div>
+            <button type="button" class="btn btn-secondary"
+                onclick="Config.loraAdd('${path}')">${this._t('添加 LoRA')}</button>
+            <input type="hidden" data-path="${path}" data-loras="1" id="plugin-lora-value"
+                   value="${esc(JSON.stringify(list))}">
+            ${help ? `<div class="help-text">${this._t(help)}</div>` : ''}</div>`;
+    },
+
+    _loraRow(item) {
+        item = item || { name: '', strength: 0.8, enabled: true, trigger: '' };
+        const esc = (t) => String(t == null ? '' : t)
+            .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return `<div class="kv-lora-row" style="display:flex;align-items:center;gap:6px;margin:4px 0;">
+            <input type="checkbox" data-lora-enabled title="${this._t('启用')}" style="flex:none;"
+                ${item.enabled !== false ? 'checked' : ''}>
+            <input type="text" data-lora-name value="${esc(item.name)}"
+                placeholder="${this._t('lora 文件名')}" style="flex:1;min-width:0;">
+            <input type="number" data-lora-strength value="${Number(item.strength) || 0}"
+                min="-5" max="2" step="0.05" title="${this._t('权重')}" style="flex:none;width:84px;">
+            <input type="text" data-lora-trigger value="${esc(item.trigger)}"
+                placeholder="${this._t('触发词')}" title="${this._t('触发词')}"
+                style="flex:none;width:100px;">
+            <button type="button" class="kv-remove" title="${this._t('删除')}"
+                onclick="Config.loraRemove(this)">&times;</button>
+        </div>`;
+    },
+
+    loraCollect() {
+        const box = document.getElementById('plugin-lora-box');
+        const out = [];
+        if (!box) return out;
+        box.querySelectorAll('.kv-lora-row').forEach(row => {
+            const nameEl = row.querySelector('[data-lora-name]');
+            const name = ((nameEl && nameEl.value) || '').trim();
+            if (!name) return;
+            const sEl = row.querySelector('[data-lora-strength]');
+            const strength = parseFloat(sEl && sEl.value);
+            const tEl = row.querySelector('[data-lora-trigger]');
+            out.push({
+                name,
+                strength: isNaN(strength) ? 0.8 : strength,
+                enabled: row.querySelector('[data-lora-enabled]').checked,
+                trigger: ((tEl && tEl.value) || '').trim(),
+            });
+        });
+        return out;
+    },
+
+    loraSync(path) {
+        const hid = document.getElementById('plugin-lora-value');
+        if (hid) hid.value = JSON.stringify(this.loraCollect());
+    },
+
+    loraAdd(path) {
+        const box = document.getElementById('plugin-lora-box');
+        if (box) box.insertAdjacentHTML('beforeend', this._loraRow(null));
+        this.loraSync(path);
+    },
+
+    loraRemove(btn) {
+        const row = btn.closest('.kv-lora-row');
+        if (row) row.remove();
+        this.loraSync();
+    },
+
     applyPluginUpdates(id, updates) {
         const schema = this.pluginSchemas[id] || {};
         const tagPaths = new Set((schema.fields || [])
             .filter(f => (f.type || '') === 'tags')
             .map(f => String(f.key)));
+        const loraPaths = new Set((schema.fields || [])
+            .filter(f => (f.type || '') === 'loras')
+            .map(f => String(f.key)));
         const fixed = (updates || []).map(item => {
-            if (!tagPaths.has(String(item.path)) || typeof item.value !== 'string') return item;
+            const path = String(item.path);
+            if (loraPaths.has(path) && typeof item.value === 'string') {
+                let value;
+                try { value = JSON.parse(item.value); } catch (e) { value = []; }
+                return { path: item.path, value: Array.isArray(value) ? value : [] };
+            }
+            if (!tagPaths.has(path) || typeof item.value !== 'string') return item;
             let value;
             try { value = JSON.parse(item.value); } catch (e) { value = []; }
             if (!Array.isArray(value)) value = [];

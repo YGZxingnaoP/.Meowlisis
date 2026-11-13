@@ -2,7 +2,6 @@
 # func/toolbox/flux_painter/comfy_connector/base.py
 import json
 import os
-import random
 import time
 import urllib.request
 import urllib.error
@@ -10,15 +9,18 @@ import uuid
 
 from func.log.default_log import DefaultLog
 
-ANIMA_UNET = "anima_baseV10.safetensors"
-ANIMA_CLIP = "anima_baseV10_txt.safetensors"
-ANIMA_VAE = "qwen_image_vae.safetensors"
+from func.toolbox.flux_painter.dialects import get_dialect, resolve_family
+from func.toolbox.flux_painter.dialects.anima import ANIMA_PRO_NODES
+
+# 工作流全部下放到 dialects/：anima 与 moss 是两套完全不同的图，不能混用。
+# 这里只保留传输层（提交/轮询/下载/取图）与兼容别名。
 
 
 class TBComfyBase:
     """内置/外部 ComfyUI 连接公共层：健康检查/最小图构造/提交/轮询/取图"""
 
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self.log = DefaultLog().getLogger()
 
@@ -27,10 +29,8 @@ class TBComfyBase:
         return self.config.comfy_base()
 
     def unet_name(self) -> str:
-        """底模文件名：优先用 config.yml 的 flux_painter.unet_model（GUI「底模」下拉），
-        没配置或为空时才回退到常量 ANIMA_UNET。"""
-        name = str(getattr(self.config, "unet_model", "") or "").strip()
-        return name or ANIMA_UNET
+        """底模文件名：由方言决定（anima 读 flux_painter.unet_model，moss 读 moss.unet_model）"""
+        return self.dialect().unet(self)
 
     @staticmethod
     def _align16(v):
@@ -101,59 +101,40 @@ class TBComfyBase:
             self.log.exception("[flux_painter] 参考图上传失败")
             return ""
 
+    # ==================== 方言分发 ====================
+    def dialect(self):
+        """当前生效的工作流方言（按底模名/显式配置解析，结果缓存）"""
+        family = resolve_family(getattr(self.config, "unet_model", ""),
+                                getattr(self.config, "model_family", "auto"))
+        cached = getattr(self, "_dialect", None)
+        if cached is not None and cached.family == family:
+            return cached
+        self._dialect = get_dialect(family)
+        return self._dialect
+
+    def family(self) -> str:
+        """当前家族名（anima / moss）。"""
+        return self.dialect().family
+
+    def clip_types(self):
+        """本方言要试的 CLIPLoader type 列表（提交失败时按顺序换）"""
+        return tuple(self.dialect().clip_types)
+
     def build_graph(self, positive, negative, width, height, seed=None,
-                    prefix="flux", clip_type="qwen_image", steps=None,
+                    prefix="flux", clip_type=None, steps=None,
                     cfg=None, sampler=None, scheduler=None, model_sampling_shift=None):
-        """构造最小原生 API 图（参考 workflow：质量/画师在前、ModelSamplingAuraFlow shift、负向长库）"""
-        seed = seed if seed is not None else random.randint(0, 2 ** 63 - 1)
-        # 尺寸对齐 16 的倍数：Anima(Cosmos Predict2) 要求 latent 的 H/W 能被 spatial_patch_size=2 整除，
-        # 即像素尺寸须为 16 的倍数（1080 之类会产生 135 奇数 latent → KSampler 断言失败）
-        width, height = self._align16(width), self._align16(height)
-        cfg = cfg if cfg is not None else self.config.sampler_cfg
-        steps = steps if steps is not None else self.config.sampler_steps
-        sampler = sampler or self.config.sampler_name
-        scheduler = scheduler or self.config.sampler_scheduler
-        shift = model_sampling_shift if model_sampling_shift is not None else getattr(self.config, "sampler_shift", None)
-        graph = {
-            "1": {"class_type": "UNETLoader", "inputs": {"unet_name": self.unet_name(), "weight_dtype": "default"}},
-            "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ANIMA_CLIP, "type": clip_type}},
-            "3": {"class_type": "VAELoader", "inputs": {"vae_name": ANIMA_VAE}},
-            "4": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["2", 0]}},
-            "5": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["2", 0]}},
-            "6": {"class_type": "EmptyLatentImage",
-                  "inputs": {"width": int(width), "height": int(height), "batch_size": 1}},
-            "8": {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}},
-            "9": {"class_type": "SaveImage", "inputs": {"images": ["8", 0],
-                                                        "filename_prefix": str(prefix)}},
-        }
-        if shift:
-            graph["10"] = {"class_type": "ModelSamplingAuraFlow",
-                           "inputs": {"model": ["1", 0], "shift": float(shift)}}
-            graph["7"] = {"class_type": "KSampler",
-                          "inputs": {"model": ["10", 0], "positive": ["4", 0], "negative": ["5", 0],
-                                     "latent_image": ["6", 0], "seed": seed, "steps": steps, "cfg": cfg,
-                                     "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0}}
-        else:
-            graph["7"] = {"class_type": "KSampler",
-                          "inputs": {"model": ["1", 0], "positive": ["4", 0], "negative": ["5", 0],
-                                     "latent_image": ["6", 0], "seed": seed, "steps": steps, "cfg": cfg,
-                                     "sampler_name": sampler, "scheduler": scheduler, "denoise": 1.0}}
-        # ===== LoRA 链（默认两个，可配可空）：叠加在 UNET 之后、shift/KSampler 之前 =====
-        # anima 为 UNET+独立CLIP 架构，LoRA 只改 UNET → LoraLoaderModelOnly 即可
-        model_src = ["1", 0]
-        for _i, _lora in enumerate(getattr(self.config, "lora_chain", []) or [], start=11):
-            graph[str(_i)] = {"class_type": "LoraLoaderModelOnly",
-                              "inputs": {"lora_name": str(_lora["name"]),
-                                         "strength_model": float(_lora.get("strength", 0.8)),
-                                         "model": model_src}}
-            model_src = [str(_i), 0]
-        if model_src != ["1", 0]:
-            # 有 LoRA 时：shift 输入链尾；无 shift 则 KSampler 直接接链尾
-            if shift:
-                graph["10"]["inputs"]["model"] = model_src
-            else:
-                graph["7"]["inputs"]["model"] = model_src
-        return graph
+        """织快速档图（具体节点由方言决定）"""
+        return self.dialect().build_graph(
+            self, positive, negative, width, height, seed=seed, prefix=prefix,
+            clip_type=clip_type, steps=steps, cfg=cfg, sampler=sampler,
+            scheduler=scheduler, model_sampling_shift=model_sampling_shift)
+
+    def build_pro_graph(self, positive, negative, width, height, prefix="flux",
+                        clip_type=None, seed=None, params=None):
+        """织清晰档图（anima=四段全流程 / moss=50步跳层）"""
+        return self.dialect().build_pro_graph(
+            self, positive, negative, width, height, prefix=prefix,
+            clip_type=clip_type, seed=seed, params=params)
 
     def with_init_image(self, graph, image_name, denoise, width, height):
         """把已织好的图原地改成图生图：只替换 latent 来源与 denoise，其余节点一律不动
@@ -177,13 +158,18 @@ class TBComfyBase:
                        "inputs": {"pixels": ["90", 0], "vae": ["3", 0]}}
         ks["inputs"]["latent_image"] = ["91", 0]
         ks["inputs"]["denoise"] = float(denoise)
+        # 交给方言做图生图的附加处理（MOSS 会在这里挂编辑 LoRA、收敛 denoise）
+        hook = getattr(self.dialect(), "after_img2img", None)
+        if callable(hook):
+            try:
+                graph = hook(self, graph) or graph
+            except Exception:
+                self.log.exception("[flux_painter] 图生图方言附加处理失败（忽略）")
         return graph
 
-    # ==================== Pro 全流程（04+05+06+07） ====================
-    # pro 档位所需节点（第三方插件提供），缺失则自动降级快速档
-    PRO_REQUIRED_NODES = ("UltimateSDUpscaleNoUpscale", "FaceDetailer",
-                          "UltralyticsDetectorProvider", "SAMLoader",
-                          "UpscaleModelLoader", "ImageUpscaleWithModel", "ImageScale")
+    # ==================== Pro 档位节点检查 ====================
+    # pro 所需节点由方言声明；anima 依赖第三方插件，缺失则自动降级快速档
+    PRO_REQUIRED_NODES = ANIMA_PRO_NODES
 
     def object_info(self, timeout=20):
         """GET /object_info（进程内缓存）；失败返回 {}"""
@@ -198,15 +184,17 @@ class TBComfyBase:
 
     def missing_pro_nodes(self):
         """pro 档位所需节点中，引擎未注册的清单（返回 [] 表示就绪）"""
+        need = tuple(self.dialect().pro_nodes or ())
+        if not need:
+            return []
         info = self.object_info()
-        missing = ([n for n in self.PRO_REQUIRED_NODES if n not in info]
-                   if info else list(self.PRO_REQUIRED_NODES))
+        missing = ([n for n in need if n not in info] if info else list(need))
         if missing and info:
             # 缓存可能过期（引擎刚重启/刚加载插件）：强制刷新一次再判定
             self._obj_info = None
             info2 = self.object_info()
             if info2:
-                missing = [n for n in self.PRO_REQUIRED_NODES if n not in info2]
+                missing = [n for n in need if n not in info2]
         return missing
 
     def conform_inputs(self, class_type, inputs):
@@ -234,174 +222,6 @@ class TBComfyBase:
             if "default" in meta:
                 out[k] = meta["default"]
         return out
-
-    def build_pro_graph(self, positive, negative, width, height, prefix="flux",
-                        clip_type="qwen_image", seed=None, params=None):
-        """Pro 全流程织图：04 基础采样 → 05 模型放大 → 06 USDU 分块重绘 → 07 FaceDetailer×3。
-
-        - 参数全部**按名称注入**（不依赖 UI widgets 下标，也不需要 Easy-Use 的变量中继）
-        - params = config.pro 参数组（缺项已由 TBFluxPainterConfig 兜底为 pro 原值）
-        - 组开关：hires.enabled / usdu.enabled / detailers.<hand|face|eye>.enabled
-        """
-        seed = seed if seed is not None else random.randint(0, 2 ** 63 - 1)
-        width, height = self._align16(width), self._align16(height)
-        p = params or {}
-        hires = p.get("hires") or {}
-        usdu = p.get("usdu") or {}
-        dets = p.get("detailers") or {}
-        sam_cfg = p.get("sam") or {}
-        base_cfg = float(p.get("base_cfg", 4.0))
-        base_steps = int(p.get("base_steps", 30))
-        scale = float(hires.get("scale", 2.0) or 2.0)
-        # 放大后的目标尺寸同样对齐 16 的倍数（scale 非整数时也要保证，否则下游会出奇数 latent）
-        out_w, out_h = self._align16(int(width) * scale), self._align16(int(height) * scale)
-
-        g = {
-            "1": {"class_type": "UNETLoader",
-                  "inputs": {"unet_name": self.unet_name(), "weight_dtype": "default"}},
-            "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": ANIMA_CLIP, "type": clip_type}},
-            "3": {"class_type": "VAELoader", "inputs": {"vae_name": ANIMA_VAE}},
-            "4": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["2", 0]}},
-            "5": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["2", 0]}},
-            "6": {"class_type": "EmptyLatentImage",
-                  "inputs": {"width": int(width), "height": int(height), "batch_size": 1}},
-        }
-
-        # ---- LoRA 链（叠加在 UNET 之后）----
-        model_src = ["1", 0]
-        for i, lora in enumerate(getattr(self.config, "lora_chain", []) or [], start=200):
-            g[str(i)] = {"class_type": "LoraLoaderModelOnly",
-                         "inputs": {"lora_name": str(lora["name"]),
-                                    "strength_model": float(lora.get("strength", 0.8)),
-                                    "model": model_src}}
-            model_src = [str(i), 0]
-        shift = getattr(self.config, "sampler_shift", None)
-        if shift:
-            g["10"] = {"class_type": "ModelSamplingAuraFlow",
-                       "inputs": {"model": model_src, "shift": float(shift)}}
-            model_ref = ["10", 0]
-        else:
-            model_ref = model_src
-
-        # ---- 04 基础采样（pro：cfg 4 / 30 步 / denoise 1.0）----
-        g["7"] = {"class_type": "KSampler",
-                  "inputs": {"model": model_ref, "positive": ["4", 0], "negative": ["5", 0],
-                             "latent_image": ["6", 0], "seed": seed, "steps": base_steps,
-                             "cfg": base_cfg, "sampler_name": self.config.sampler_name,
-                             "scheduler": self.config.sampler_scheduler, "denoise": 1.0}}
-        g["8"] = {"class_type": "VAEDecode", "inputs": {"samples": ["7", 0], "vae": ["3", 0]}}
-        image_src = ["8", 0]
-
-        # ---- 05 高清预处理：4x 模型放大 → ImageScale 缩到 画布×scale ----
-        if hires.get("enabled", True) and hires.get("upscale_model"):
-            g["11"] = {"class_type": "UpscaleModelLoader",
-                       "inputs": {"model_name": str(hires["upscale_model"])}}
-            g["12"] = {"class_type": "ImageUpscaleWithModel",
-                       "inputs": {"upscale_model": ["11", 0], "image": image_src}}
-            g["13"] = {"class_type": "ImageScale",
-                       "inputs": {"image": ["12", 0],
-                                  "upscale_method": str(hires.get("resize", "lanczos")),
-                                  "width": out_w, "height": out_h, "crop": "disabled"}}
-            image_src = ["13", 0]
-
-        # ---- 06 USDU 分块重绘（NoUpscale：尺寸不变，只补细节）----
-        if usdu.get("enabled", True):
-            g["15"] = {"class_type": "UltimateSDUpscaleNoUpscale",
-                       "inputs": {
-                           "upscaled_image": image_src, "model": model_ref,
-                           "positive": ["4", 0], "negative": ["5", 0], "vae": ["3", 0],
-                           "seed": seed, "steps": int(usdu.get("steps", 20)),
-                           "cfg": float(usdu.get("cfg", 8.0)),
-                           "sampler_name": str(usdu.get("sampler", "euler")),
-                           "scheduler": str(usdu.get("scheduler", "simple")),
-                           "denoise": float(usdu.get("denoise", 0.15)),
-                           "mode_type": str(usdu.get("mode_type", "Linear")),
-                           "tile_width": int(usdu.get("tile_width", 512)),
-                           "tile_height": int(usdu.get("tile_height", 512)),
-                           "mask_blur": int(usdu.get("mask_blur", 32)),
-                           "tile_padding": int(usdu.get("tile_padding", 256)),
-                           "seam_fix_mode": str(usdu.get("seam_fix_mode", "None")),
-                           "seam_fix_denoise": float(usdu.get("seam_fix_denoise", 1.0)),
-                           "seam_fix_width": int(usdu.get("seam_fix_width", 64)),
-                           "seam_fix_mask_blur": int(usdu.get("seam_fix_mask_blur", 8)),
-                           "seam_fix_padding": int(usdu.get("seam_fix_padding", 16)),
-                           "force_uniform_tiles": bool(usdu.get("force_uniform_tiles", True)),
-                           "tiled_decode": bool(usdu.get("tiled_decode", False)),
-                           "batch_size": int(usdu.get("batch_size", 1)),
-                       }}
-            image_src = ["15", 0]
-
-        # ---- 07 局部细化：检测器 / SAM / 局部提示词 / 三段 FaceDetailer（链式）----
-        if any((dets.get(k) or {}).get("enabled", True) for k in ("hand", "face", "eye")):
-            g["20"] = {"class_type": "UltralyticsDetectorProvider",
-                       "inputs": {"model_name": str((dets.get("hand") or {}).get("detector")
-                                                    or "bbox/hand_yolov8s.pt")}}
-            g["21"] = {"class_type": "UltralyticsDetectorProvider",
-                       "inputs": {"model_name": str((dets.get("face") or {}).get("detector")
-                                                    or "bbox/face_yolov8m.pt")}}
-            if p.get("sam_model"):
-                # 注意：SAMLoader 的输入名以引擎定义为准 = model_name（不是 sam_model_name）
-                g["22"] = {"class_type": "SAMLoader",
-                           "inputs": {"model_name": str(p["sam_model"]),
-                                      "device_mode": "AUTO"}}
-            g["23"] = {"class_type": "CLIPTextEncode",
-                       "inputs": {"text": str(p.get("pos_hand") or "hand"), "clip": ["2", 0]}}
-            g["24"] = {"class_type": "CLIPTextEncode",
-                       "inputs": {"text": str(p.get("neg_hand") or negative), "clip": ["2", 0]}}
-            cur = image_src
-            idx = 40
-            plan = (("hand", "20", "23", "24"),   # 手部：局部正/负词
-                    ("face", "21", "4", "5"),     # 面部：主正/负词
-                    ("eye", "21", "4", "5"))      # 眼脸：主正/负词（face 检测器）
-            for name, det_id, pos_id, neg_id in plan:
-                d = dets.get(name) or {}
-                if not d.get("enabled", True):
-                    continue
-                inputs = {
-                    "image": cur, "model": model_ref, "clip": ["2", 0], "vae": ["3", 0],
-                    "positive": [pos_id, 0], "negative": [neg_id, 0],
-                    "bbox_detector": [det_id, 0],
-                    "guide_size": float(d.get("guide_size", 768)),
-                    "guide_size_for": True,
-                    "max_size": float(d.get("max_size", 1280)),
-                    "seed": seed,
-                    "steps": int(d.get("steps", 14)),
-                    "cfg": float(d.get("cfg", 3.0)),
-                    "sampler_name": self.config.sampler_name,
-                    "scheduler": self.config.sampler_scheduler,
-                    "denoise": float(d.get("denoise", 0.25)),
-                    "feather": int(d.get("feather", 8)),
-                    "noise_mask": bool(d.get("noise_mask", True)),
-                    "force_inpaint": bool(d.get("force_inpaint", False)),
-                    "bbox_threshold": float(d.get("bbox_threshold", 0.35)),
-                    "bbox_dilation": int(d.get("bbox_dilation", 16)),
-                    "bbox_crop_factor": float(d.get("bbox_crop_factor", 2.5)),
-                    "sam_detection_hint": str(sam_cfg.get("sam_detection_hint", "center-1")),
-                    "sam_dilation": int(sam_cfg.get("sam_dilation", 0)),
-                    "sam_threshold": float(sam_cfg.get("sam_threshold", 0.93)),
-                    "sam_bbox_expansion": int(sam_cfg.get("sam_bbox_expansion", 0)),
-                    "sam_mask_hint_threshold": float(sam_cfg.get("sam_mask_hint_threshold", 0.7)),
-                    "sam_mask_hint_use_negative": str(sam_cfg.get("sam_mask_hint_use_negative",
-                                                                  "False")),
-                    "drop_size": int(sam_cfg.get("drop_size", 10)),
-                    "wildcard": "",
-                    "cycle": int(sam_cfg.get("cycle", 1)),
-                    "inpaint_model": False,
-                    "noise_mask_feather": int(sam_cfg.get("noise_mask_feather", 20)),
-                }
-                if p.get("sam_model"):
-                    inputs["sam_model_opt"] = ["22", 0]
-                g[str(idx)] = {"class_type": "FaceDetailer", "inputs": inputs}
-                cur = [str(idx), 0]
-                idx += 1
-            image_src = cur
-
-        g["99"] = {"class_type": "SaveImage",
-                   "inputs": {"images": image_src, "filename_prefix": str(prefix)}}
-        # 按引擎真实节点定义对齐：剔除未知输入 + 为缺失的 required 补默认值（跨插件版本兜底）
-        for _nid, _node in g.items():
-            _node["inputs"] = self.conform_inputs(_node["class_type"], _node["inputs"])
-        return g
 
     def submit(self, graph, client_id=None):
         """POST /prompt 提交，返回 (ok, prompt_id, 说明)"""
@@ -484,9 +304,11 @@ class TBComfyBase:
         def _percent():
             # 已完成阶段权重 + 当前阶段按步进插值：采样/分块途中也能连续走动，
             # 否则一次长采样期间恒为 0，画板看起来只有 0 和 100
+            """把原始进度换算成百分比。"""
             return min(99, int((done_w + _cur_weight() * cur_frac) * 100 / total_w))
 
         def emit(force=False):
+            """回调进度或状态。"""
             nonlocal last_emit
             if not on_progress:
                 return

@@ -859,3 +859,62 @@ body.modal-open .launcher-glow {
     word-break: break-word;
 }
 
+
+/* ===== 配置面板折叠分组（绘画等子球用：默认收起，点标题展开） ===== */
+.cfg-fold {
+    border: 1px solid var(--pink-soft, #f3c6d4);
+    border-radius: 12px;
+    margin: 0 0 10px;
+    background: rgba(255, 255, 255, 0.55);
+    overflow: hidden;
+}
+
+.cfg-fold > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--pink-dark, #b03a63);
+    user-select: none;
+    transition: background 0.15s;
+}
+
+.cfg-fold > summary::-webkit-details-marker { display: none; }
+
+.cfg-fold > summary::before {
+    content: '\25B8';
+    font-size: 12px;
+    color: var(--pink-main, #e2709a);
+    transition: transform 0.15s;
+}
+
+.cfg-fold[open] > summary::before { content: '\25BE'; }
+
+.cfg-fold > summary:hover { background: rgba(255, 255, 255, 0.7); }
+
+.cfg-fold-body {
+    padding: 4px 14px 12px;
+    border-top: 1px dashed var(--pink-soft, #f3c6d4);
+}
+
+
+/* 节点编号徽标（工作流节点折叠标题前的小标记） */
+.node-fold > summary { gap: 10px; }
+.node-code {
+    flex: none;
+    min-width: 26px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: var(--pink-main, #e2709a);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 20px;
+    text-align: center;
+    font-family: 'Consolas', 'Monaco', monospace;
+}

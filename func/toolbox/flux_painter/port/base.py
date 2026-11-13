@@ -17,6 +17,7 @@ class TBFluxPainterLLMBase:
     provider = "base"
 
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self.client = None
 
@@ -27,6 +28,7 @@ class TBFluxPainterLLMBase:
     # ============ 供子类使用的公共封装 ============
     def _mk_params(self, messages, tools=None, tool_choice=None, options=None,
                    thinking=None, stream=False):
+        """组装 OpenAI 兼容请求参数。"""
         params = {
             "model": (options or {}).get("model", self.model),
             "messages": messages,

@@ -150,7 +150,7 @@ llm主要负责快速回复，基本仅使用flash级别的文本模型，即可
  - 声纹检测：多声纹记录，相似度阈值匹配说话人，识别结果绑定用户
  - 数字归一化(itn)、热词、易错词替换规则
  - 实时打断：独立打断阈值，检测到说话即打断 TTS
- - 断句合并(merge_delay)，流式上屏/合成
+ - 断句合并(merge_delay)，流式上屏/合成：开关默认关（关=每句识别结果立刻送出），开启后由 VAD 收句再等 merge_delay 宽限期，宽限期内又开口则继续累积；适合句中常有自然停顿的长对话，代价是首字延迟变高
  - 扬声器回环已实现（WASAPI，需 pyaudiowpatch），默认关闭，可在 audio.sources.loopback 开
  - 手机/外部音频通过 HTTP `/audio/send` 注入 inject 源（不走 WebSocket）；WebSocket 音频传输尚未做
 
@@ -447,17 +447,20 @@ NapCat 是 OneBot v11 正向 WS 客户端，代码在 func/toolbox/napcat，回�
 
 ### 绘画与改图（flux_painter）
 工具 `flux_paint`，代码在 func/toolbox/flux_painter（`painting_core` 是共用引擎，`txt2img/`、`img2img/` 是两条链路）
- - 生成：ComfyUI 出图（UNET 底模、1024x1024 / 1080x1440 两档画布，fast / pro 两档织图）；LLM 产出标题、positive tag、cinema 自然语言、汇报语、画布规格，并带角色知识
+ - 双工作流方言：底模分 Anima（miaomiaoHarem anima16）与 MOSS-Image（moss_image_sft_bf16）两大家族，按底模名自动判定（`flux_painter.model_family` 可强制指定）
+   - Anima：`dialects/anima.py`，fast=单段采样 / pro=04 基础→05 放大→06 分块→07 局部细化；提示词为 danbooru tag + cinema 两段（`prompts/anima.py`，法典 ANIMA3_prompt_law.md）
+   - MOSS：`dialects/moss.py`，latent=EmptyFlux2LatentImage、CLIP type=moss_image、VAE=flux2-vae、AuraFlow shift 5；fast=8 步 DMD LoRA（cfg 1）/ pro=50 步原版 + 跳层 22；提示词为英文长 caption（可选布局 JSON，`prompts/moss.py`，法典 MOSS_prompt_law.md）
+ - 生成：ComfyUI 出图（1024x1024 / 1080x1440 两档画布，尺寸自动对齐 16 倍数）
  - 文生图：live 与 QQ 都走 `txt2img/chain.py` → `painting_core.open_paint()`，只吃文字需求
  - 图生图：两种参考图来源，最后都汇到 `img2img/chain.py` → 同一个 `open_paint()`
    - 屏幕：live / 弹幕 / 语音 / 手机先由模型语义判断「要不要参考屏幕」，命中才截屏；再让模型点两个对角点定框并循环复查（默认 3 轮、上限 5 轮）；屏幕上没有主体时模型给 `text`（降级纯文字画）或 `end`（反问用户、不画）
    - QQ 附图：带图消息由 `img2img/router.py` 判断「是不是要照这张图作画」，命中才接管，否则原样走看图
- - 织图注入：`with_init_image()` 只把 latent 换成参考图编码、改 denoise，LoRA / 放大 / 分块 / 局部细化一律不动，fast 与 pro 都适用
- - 审查与存档：NSFW 审查、画作归档；画完播报 review 语音
+ - 织图注入：`with_init_image()` 只把 latent 换成参考图编码、改 denoise，LoRA / 放大 / 分块 / 局部细化一律不动，两个家族都适用
+ - 审查与存档：NSFW 审查（MOSS 可用 `moss.nsfw` 单独配阈值）、画作归档；画完播报 review 语音
  - 画板服务：HTTP 8090 托管 painting_board.html + 图片/审查接口，WS 8767 按 channel 推送
  - 改图：画完 window 内、下一条完整 @/关键词消息由 `edit_router` LLM 判定是否在上一张图上改，是则续画
  - 场景：live / QQ 都能用；绘画中冷却，不长期接管
- - 可调：flux_painter.*（图生图：img2img.enabled / denoise / focus_rounds / screen_max_side）
+ - 可调：flux_painter.*（图生图：img2img.enabled / denoise / focus_rounds / screen_max_side；MOSS 参数全在 flux_painter.moss.*）
 
 ### 海龟汤（turtle_soup）
 工具 `turtle_soup`，代码在 func/toolbox/turtle_soup

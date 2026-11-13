@@ -128,44 +128,63 @@ Object.assign(Config, {
     },
     // ============ 即兴哼唱（meowsongs） ============,
     _humDetectFormula() {
+        const pbt = (p, d) => this._val('meowsongs.pass_the_baton.' + p, d);
+        const h = this._val('sensevoice.vad_energy_threshold', 400);
+        const tSil = this._val('sensevoice.silence_threshold', 2.0);
+        const collect = pbt('hum_collect_sec', 7.0);
+        const rv = pbt('f0_voiced_ratio', 0.55);
+        const rs = pbt('f0_stable_ratio', 0.6);
+        const hs = pbt('f0_stable_half_step', 0.5);
+        const notes = pbt('f0_unique_notes', 3);
+        const match = pbt('match_threshold', 0.55);
+        const margin = pbt('min_margin', 0.04);
         return `<div class="formula-box">
             <div class="formula-box-title">${this._t('哼唱检测算法')}</div>
             <div class="formula-block">
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('有效语音 ')}<code>hum_collect_sec</code></span>
-                    <span class="formula-expr">${this._t('RMS ≥ 能量阈值，持续 ≥ 累积时长阈值')}</span>
-                    <span class="formula-cond">${this._t('静音 ≥ 静音阈值判段结束（能量/静音阈值读 SenseVoice）')}</span>
+                    <span class="formula-name">${this._t('分段')}</span>
+                    <span class="formula-expr">e ≥ H → ${this._t('起段')}，silence ≥ T → ${this._t('收段')}</span>
+                    <code>H=${h} T=${tSil}s</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('音高发声占比 ')}<code>f0_voiced_ratio</code></span>
-                    <span class="formula-expr">${this._t('voiced_ratio = 有声帧 / 总帧 ≥ 阈值')}</span>
-                    <span class="formula-cond">${this._t('pyin 提取 F0，只统计有声帧')}</span>
+                    <span class="formula-name">${this._t('判定时机')}</span>
+                    <span class="formula-expr">Σt ≥ C → judge once</span>
+                    <code>C = ${collect} s</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('稳定帧占比 ')}<code>f0_stable_ratio</code></span>
-                    <span class="formula-expr">${this._t('stable_ratio = ( 相邻帧 |Δ半音| &lt; 半音差阈值 ) 帧占比 ≥ 阈值')}</span>
-                    <span class="formula-cond">${this._t('哼唱音符内稳定；说话音高连续乱飘')}</span>
+                    <span class="formula-name">${this._t('有声帧')}</span>
+                    <span class="formula-expr">v = V / F ≥ R<sub>v</sub></span>
+                    <code>pyin 65~800Hz, p&gt;0.3</code>
+                    <code>R<sub>v</sub> = ${rv}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('稳定帧半音差 ')}<code>f0_stable_half_step</code></span>
-                    <span class="formula-expr">${this._t('|Δ半音| &lt; 0.5 视为稳定帧')}</span>
-                    <span class="formula-cond">${this._t('相邻帧音高差阈值')}</span>
+                    <span class="formula-name">${this._t('稳定帧')}</span>
+                    <span class="formula-expr">s = mean(|Δmidi| &lt; h) ≥ R<sub>s</sub></span>
+                    <code>h=${hs} R<sub>s</sub>=${rs}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('音符数量 ')}<code>f0_unique_notes</code></span>
-                    <span class="formula-expr">unique_notes ≥ 3</span>
-                    <span class="formula-cond">${this._t('过滤单调拖长音')}</span>
+                    <span class="formula-name">${this._t('音符数')}</span>
+                    <span class="formula-expr">n = |unique(round(midi))| ≥ N</span>
+                    <code>N = ${notes}</code>
                 </div>
                 <div class="formula-row">
-                    <span class="formula-name">${this._t('最终判定')}</span>
-                    <span class="formula-expr">${this._t('三项同时满足 → 判为哼唱')}</span>
-                    <span class="formula-cond">${this._t('通过后进入歌曲匹配：得分 ≥ 阈值且分差 ≥ 下限')}<code>match_threshold</code>/<code>min_margin</code></span>
+                    <span class="formula-name">${this._t('判定')}</span>
+                    <span class="formula-expr">hum ⟺ v ∧ s ∧ n</span>
+                    <code>V ≥ 3</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('匹配')}</span>
+                    <span class="formula-expr">score = max<sub>w</sub> cos(ref[w:w+|q|], q)</span>
+                    <code>M = ${match}</code>
+                    <code>margin = ${margin}</code>
+                </div>
+                <div class="formula-row">
+                    <span class="formula-name">${this._t('接唱')}</span>
+                    <span class="formula-expr">offset = w* · hop / SR</span>
+                    <code>hop 256 / SR 16k</code>
                 </div>
             </div>
-            <div class="formula-params">
-                voiced_ratio 过滤纯语音；stable_ratio 区分哼唱与说话；unique_notes 过滤单调音。
-                判为哼唱后，用 QBH 余弦相似度全库匹配（match_threshold），并检查最佳与次优的分差（min_margin）。
-            </div>
+            <div class="formula-params">${this._t('F0 转半音后去均值再滑窗余弦；未锁定或分差不足按歧义处理，交给角色自己确认。')}</div>
         </div>`;
     },
     meowsongs() {

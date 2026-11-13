@@ -150,7 +150,7 @@ Based on a heavily modified SenseVoice client (WebSocket to a local service, 2-p
  - Voiceprint detection: multiple voiceprint records, speakers matched by similarity threshold, recognition results bound to a user
  - Number normalization (itn), hot words, and error-prone word replacement rules
  - Real-time barge-in: a separate barge-in threshold that interrupts TTS as soon as speech is detected
- - Sentence merging (merge_delay), streaming display/synthesis
+ - Sentence merging (merge_delay), streaming display/synthesis: off by default (each final result is sent immediately). When on, VAD ends a segment and a merge_delay grace period follows; speaking again inside it keeps accumulating. Best for long conversations with natural pauses, at the cost of higher first-character latency
  - Speaker loopback is implemented (WASAPI, needs pyaudiowpatch), off by default, can be turned on under audio.sources.loopback
  - Phone/external audio is injected into the inject source over HTTP `/audio/send` (not through WebSocket); WebSocket audio transport isn't done yet
 
@@ -447,17 +447,20 @@ Code is in func/calendar
 
 ### Drawing and Image Editing (flux_painter)
 Tool `flux_paint`, code is in func/toolbox/flux_painter (`painting_core` is the shared engine; `txt2img/` and `img2img/` are the two chains)
- - Generation: ComfyUI output (UNET base model, 1024x1024 / 1080x1440 canvas options, fast / pro graphs); the LLM produces the title, positive tags, cinema natural language, report line and canvas spec, with character knowledge included
+ - Dual workflow dialects: base models split into Anima (miaomiaoHarem anima16) and MOSS-Image (moss_image_sft_bf16), detected from the model name (`flux_painter.model_family` can force one)
+   - Anima: `dialects/anima.py`; fast = single-pass sampling, pro = 04 base → 05 upscale → 06 tiled → 07 detailers; prompts are danbooru tags plus a cinema segment (`prompts/anima.py`, law file ANIMA3_prompt_law.md)
+   - MOSS: `dialects/moss.py`; latent = EmptyFlux2LatentImage, CLIP type = moss_image, VAE = flux2-vae, AuraFlow shift 5; fast = 8-step DMD LoRA (cfg 1), pro = 50-step original with skip layer 22; prompts are long English captions (optional layout JSON, `prompts/moss.py`, law file MOSS_prompt_law.md)
+ - Generation: ComfyUI output (1024x1024 / 1080x1440 canvas options, sizes auto-aligned to multiples of 16)
  - Text-to-image: live and QQ both go through `txt2img/chain.py` → `painting_core.open_paint()`, text only
  - Image-to-image: two reference sources, both converge on `img2img/chain.py` → the same `open_paint()`
    - Screen: on live / danmaku / voice / phone the model first decides semantically whether the screen is needed; only then is the screen captured, two opposite corners are marked and the crop is re-checked (3 rounds by default, 5 max). When the subject is missing the model answers `text` (fall back to pure text-to-image) or `end` (ask the user, do not draw)
    - QQ attachment: `img2img/router.py` decides "draw from this image"; only then it takes over, otherwise the normal image-viewing flow runs unchanged
- - Graph injection: `with_init_image()` only swaps the latent for the reference encoding and sets denoise; LoRA / upscale / tiled redraw / detailers stay untouched, for both fast and pro
- - Review and archiving: NSFW review, artwork archiving; a review voice line is announced once the drawing is done
+ - Graph injection: `with_init_image()` only swaps the latent for the reference encoding and sets denoise; LoRA / upscale / tiled redraw / detailers stay untouched, in both dialects
+ - Review and archiving: NSFW review (MOSS can use its own thresholds via `moss.nsfw`), artwork archiving; a review voice line is announced once the drawing is done
  - Painting-board service: HTTP 8090 serves painting_board.html plus the image/review endpoints, WS 8767 pushes by channel
  - Image editing: within the post-drawing window, the next complete @/keyword message is judged by the `edit_router` LLM to decide whether it edits the previous image, and if so it keeps drawing
  - Scenes: works on live / QQ; it cools down while drawing and never takes over for long
- - Tunable: flux_painter.* (image-to-image: img2img.enabled / denoise / focus_rounds / screen_max_side)
+ - Tunable: flux_painter.* (image-to-image: img2img.enabled / denoise / focus_rounds / screen_max_side; all MOSS parameters live under flux_painter.moss.*)
 
 ### Turtle Soup (turtle_soup)
 Tool `turtle_soup`, code is in func/toolbox/turtle_soup

@@ -44,6 +44,7 @@ class TBArtistPicker:
     """画师库（danbooru 画师 data.js）拷贝/检索/默认风格拼接"""
 
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self.log = DefaultLog().getLogger()
         self._cache = None

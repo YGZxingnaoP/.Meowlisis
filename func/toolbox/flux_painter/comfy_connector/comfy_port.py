@@ -7,6 +7,7 @@ class TBComfyPort(TBComfyBase):
     """外部模式：把提示词传给用户自建的 ComfyUI 服务并取回图片（不做进程管理）"""
 
     def __init__(self, config):
+        """初始化。"""
         super().__init__(config)
         self._warned = False
 

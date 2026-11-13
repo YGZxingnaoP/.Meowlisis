@@ -54,6 +54,7 @@ class TBNsfwJudge:
     """裸露检测器：ensure_model() 保证模型就绪；judge(image) -> (nsfw, detail)"""
 
     def __init__(self, config):
+        """初始化。"""
         self.config = config
         self.log = DefaultLog().getLogger()
 
@@ -121,11 +122,12 @@ class TBNsfwJudge:
         results.sort(key=lambda r: r[0], reverse=True)
         return results
 
-    def judge(self, image_path):
+    def judge(self, image_path, threshold=None):
         """判定裸露。返回 (nsfw: bool, detail: str)。
-        detail 形如 'breast_exposed 0.72@[0.30,0.20,0.70,0.60]'；nsfw 由阈值与敏感类决定"""
+        detail 形如 'breast_exposed 0.72@[0.30,0.20,0.70,0.60]'；nsfw 由阈值与敏感类决定
+        threshold: 可覆盖配置阈值（MOSS 与 anima 的阈值分开配）"""
         from PIL import Image
-        threshold = self.config.nsfw_threshold
+        threshold = self.config.nsfw_threshold if threshold is None else float(threshold)
         try:
             with Image.open(image_path) as im:
                 arr = self._preprocess(im)
