@@ -26,8 +26,8 @@ FIELDS = [
     {"key": "models.clip_device", "label": "编码器位置", "type": "select", "default": "default",
      "options": [("default", "default（自动）"), ("cpu", "cpu（省显存）")]},
 
-    {"key": "sampling.steps", "label": "步数", "type": "num", "default": 8,
-     "min": 1, "max": 60, "step": 1, "help": "8 步与 DMD LoRA 匹配；调高会过锐"},
+    {"key": "sampling.steps", "label": "步数", "type": "num", "default": 12,
+     "min": 1, "max": 60, "step": 1, "help": "配合 DMD LoRA 使用，按需调整"},
     {"key": "sampling.cfg", "label": "cfg", "type": "num", "default": 1.0,
      "min": 0, "max": 20, "step": 0.1, "help": "8 步 DMD 档必须为 1（负向不参与）"},
     {"key": "sampling.width", "label": "画布宽", "type": "num", "default": 832,

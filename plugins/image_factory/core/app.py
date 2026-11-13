@@ -84,16 +84,24 @@ class BlueArchiveApp:
             self._busy = False
         return True
 
+    def _pick(self, char, count):
+        """选角：点名角色 → 该角色出 count 张；没点名 → 随机抽 count 个不同角色。"""
+        if char:
+            return [char] * max(1, int(count or 1))
+        pool = theme.roster()
+        if not pool:
+            return []
+        return random.sample(pool, min(int(count or 1), len(pool)))
+
     # ==================== 主流程 ====================
     def _work(self, char, count, qq_context):
         """主流程：选角色 → 提示词 → 出图 → 归档 → 合并转发。"""
         t0 = time.time()
-        roster = theme.roster()
-        chosen = [char] if char else random.sample(roster, min(count, len(roster)))
         if char and theme.char_tag(char) == "":
             self._say(qq_context, "「%s」不在蔚蓝档案名单里喵，换个名字试试~" % char)
             return
-        self.log.info("[image_factory] 角色=%s 张数=%d" % (chosen, count if not char else 1))
+        chosen = self._pick(char, count)
+        self.log.info("[image_factory] 角色=%s 张数=%d" % (chosen, len(chosen)))
 
         ok, msg = self.comfy.ensure_engine()
         if not ok:
