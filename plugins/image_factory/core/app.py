@@ -40,7 +40,7 @@ class BlueArchiveApp:
 
     # ==================== 解析 ====================
     def parse(self, text):
-        """返回 (角色名, 张数, 是否保守, 是否多人)；非本插件消息返回 None。"""
+        """返回 (角色名, 张数, 是否保守, 是否多人, 作品筛选)；非本插件消息返回 None。"""
         body = str(text or "").strip()
         prefix = self.cfg.trigger
         idx = body.lower().find(prefix.lower())
@@ -53,9 +53,13 @@ class BlueArchiveApp:
         char = ""
         safe = False
         multi = False
+        star = ""
         for t in tokens:
             low = t.lower()
-            if low in ("safemode", "safe", "保守", "安全", "sfw"):
+            hit_series = theme.match_series(t)
+            if hit_series:
+                star = hit_series
+            elif low in ("safemode", "safe", "保守", "安全", "sfw"):
                 safe = True
             elif low in ("interact", "multi", "多人", "双人"):
                 multi = True
@@ -64,7 +68,7 @@ class BlueArchiveApp:
             elif not char:
                 char = t
         count = max(1, min(self.cfg.max_images or 9, count or self.cfg.default_images))
-        return (theme.canonical(char) if char else "", count, safe, multi)
+        return (theme.canonical(char) if char else "", count, safe, multi, star)
 
     # ==================== 入口 ====================
     def handle(self, text, qq_context):
@@ -72,7 +76,7 @@ class BlueArchiveApp:
         parsed = self.parse(text)
         if parsed is None:
             return False
-        char, count, safe, multi = parsed
+        char, count, safe, multi, star = parsed
         # 群里强制保守模式：群里一律不露点
         if str((qq_context or {}).get("message_type") or "") == "group":
             safe = True
@@ -86,7 +90,7 @@ class BlueArchiveApp:
         self._busy = True
         self._last = time.time()
         try:
-            self._work(char, count, qq_context, safe=safe, multi=multi)
+            self._work(char, count, qq_context, safe=safe, multi=multi, series=star)
         except Exception:
             self.log.exception("[image_factory] 出图流程异常")
             self._say(qq_context, "工厂里着火了喵（内部异常），看日志…")
@@ -94,9 +98,9 @@ class BlueArchiveApp:
             self._busy = False
         return True
 
-    def _pick(self, char, count, multi=False):
-        """选角：单人→每张一个角色；interact→每张 2~3 个随机角色。"""
-        pool = theme.roster()
+    def _pick(self, char, count, multi=False, series=""):
+        """选角：单人→每张一个角色；interact→每张 2~3 个随机角色；series 限定作品。"""
+        pool = theme.roster(series)
         if multi:
             groups = []
             for _ in range(max(1, int(count or 1))):
@@ -110,13 +114,13 @@ class BlueArchiveApp:
         return random.sample(pool, min(int(count or 1), len(pool)))
 
     # ==================== 主流程 ====================
-    def _work(self, char, count, qq_context, safe=False, multi=False):
+    def _work(self, char, count, qq_context, safe=False, multi=False, series=""):
         """主流程：选角色 → 提示词 → 出图 → 归档 → 合并转发。"""
         t0 = time.time()
         if char and theme.char_tag(char) == "":
             self._say(qq_context, "「%s」不在蔚蓝档案名单里喵，换个名字试试~" % char)
             return
-        chosen = self._pick(char, count, multi=multi)
+        chosen = self._pick(char, count, multi=multi, series=series)
         self.log.info("[image_factory] 角色=%s 张数=%d 模式=%s"
                       % (chosen, len(chosen), "保守" if safe else "R-18"))
 

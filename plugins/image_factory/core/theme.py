@@ -126,9 +126,30 @@ def canonical(name):
     return ALIASES.get(n, n)
 
 
-def roster():
-    """随机池：全部作品的角色。"""
-    return list(CHARACTERS.keys())
+def roster(series=""):
+    """随机池：series 为空=全部作品；否则只取该作品的角色。"""
+    key = str(series or "").strip()
+    if not key:
+        return list(CHARACTERS.keys())
+    want = SERIES_ALIAS.get(key, key)
+    return [n for n, s in SERIES_OF.items() if s == want]
+
+
+SERIES_ALIAS = {
+    "蔚蓝档案": "blue archive", "碧蓝档案": "blue archive", "ba": "blue archive",
+    "鸣潮": "wuthering waves", "wuwa": "wuthering waves",
+    "明日方舟": "arknights", "方舟": "arknights", "ak": "arknights",
+    "原神": "genshin impact", "gi": "genshin impact",
+}
+
+
+def match_series(text):
+    """从一段话里认出作品名，返回 danbooru 作品 tag 或空串。"""
+    raw = str(text or "").lower()
+    for cn, tag in SERIES_ALIAS.items():
+        if cn.lower() in raw:
+            return tag
+    return ""
 
 
 def series_of(name):
