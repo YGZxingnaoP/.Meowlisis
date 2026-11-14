@@ -225,7 +225,8 @@ class TBPaintPipelineMixin:
                 if _card and self.config.family == "anima":
                     en = _card["name_en"]
                     series = str(_card.get("series") or "")
-                    want = "%s (%s)" % (en, series) if series else en
+                    want = str(_card.get("tag") or "").strip() or (
+                        "%s (%s)" % (en, series) if series else en)
                     known_series = set()
                     try:
                         doc = _resolver._load()[0]

@@ -106,14 +106,27 @@ def verify_tag(tag, config=None, log=None):
                 return True, row_name
     out = run({"query": name, "series": base_series}, config=config, log=log)
     if out.startswith("（danbooru 查询失败") or "没有匹配" in out:
-        return False, ""
+        return (True, name) if base_series and _name_only_ok(name, cache) else (False, "")
     for line in out.splitlines():
         if not line.startswith("- "):
             continue
         cand = line[2:].split("（")[0].strip()
         if cand.lower() == raw:
             return True, cand
+        if base_series and cand.lower().split(" (")[0] == name:
+            return True, cand
     return False, ""
+
+
+def _name_only_ok(name, cache):
+    """缓存里存在这个裸名就算真角色（作品括注只是可选写法）。"""
+    for key, entry in (cache or {}).items():
+        if not key.startswith(name):
+            continue
+        for _count, row_name in (entry.get("rows") or []):
+            if str(row_name).lower().split(" (")[0] == name:
+                return True
+    return False
 
 TOP_TAGS_NAME = "danbooru_character_tags.json"
 STOP_TAGS = {
