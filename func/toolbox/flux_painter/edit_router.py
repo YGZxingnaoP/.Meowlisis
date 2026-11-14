@@ -1,6 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/edit_router.py
-# 画图改图判定与续画路由：画完 window 秒内，对下一条完整 @/关键词消息做 LLM 判定。
 
 import json
 import re
@@ -12,8 +10,6 @@ from func.toolbox.flux_painter.config import TBFluxPainterConfig
 from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
 from func.toolbox.flux_painter.port.base import create_painter_llm
 
-
-# 改图判定提示词：只输出 JSON
 JUDGE_SYSTEM = (
     "你是绘画改图判定助手。用户刚让你画了一张图，现在又发来一条消息。\n"
     "请判断这条新消息是否是在“上一张图的基础上做修改”（例如：改服装/颜色/姿势/表情/背景、"
@@ -22,18 +18,9 @@ JUDGE_SYSTEM = (
     '{"modify": true 或 false, "instruction": "若 modify 为 true，提炼出要修改的具体指令；否则为空字符串"}'
 )
 
-
 @singleton
 class TBFluxEditRouter:
-    """画图改图判定与续画路由。
-
-    - 出图后窗口开启（由 painting_core.get_last_paint 依据时间戳判定）；
-    - 窗口按 channel 维度（qq_group_<群号> / qq_private_<QQ号>），**不绑定原画图请求人**：
-      群内任意用户的 @ / 关键词消息均可触发改图判定（改图结果发回触发者）；
-    - 对窗口内下一条完整 @ / 关键词消息做 LLM 判定；
-    - 命中改图：以上一轮完整提示词为底增量重绘；
-    - 未命中：关闭窗口，消息继续走普通回复（不吞消息）。
-    """
+    """画图改图判定与续画路由。"""
 
     def __init__(self):
         """初始化。"""
@@ -52,7 +39,6 @@ class TBFluxEditRouter:
             painter = TBFluxPainterCore()
             item = painter.get_last_paint(channel)
             if not item:
-                # 无窗口：正常情况（未画过 / 已超时 / 已改过一次）。debug 级，不干扰日志。
                 self.log.debug(f"[改图判定] 无改图窗口 channel={channel}")
                 return False
             try:
@@ -64,7 +50,6 @@ class TBFluxEditRouter:
                           f"LLM 判定中… 输入={t[:30]!r}")
             decision = self._judge(cfg, item, t)
             if not decision.get("modify"):
-                # 3.2 不改图 → 关窗结束，消息继续走普通回复
                 painter.clear_last_paint(channel)
                 self.log.info(f"[改图判定] 判定为「非改图」，关闭窗口: {t[:30]}")
                 return False

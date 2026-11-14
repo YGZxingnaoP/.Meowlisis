@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+sessions/
+notes/
+frames/
+voice_cache.json

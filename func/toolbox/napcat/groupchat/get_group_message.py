@@ -114,6 +114,18 @@ class TBGetGroupMessage:
         name = str(group_name or "").strip()
         return name in [str(b).strip() for b in blacklist]
 
+    @staticmethod
+    def _nickname_hit(head: str) -> bool:
+        """@ 后面的名字是否指向自机（配置里的机器人昵称）。"""
+        name = head.lstrip("@* \t").strip()
+        try:
+            cfg = TBNapCatConfig()
+            names = {str(getattr(cfg, "self_nickname", "") or "").strip()}
+        except Exception:
+            names = set()
+        names.add("喵利呜西斯")
+        return bool(name) and name in {n for n in names if n}
+
     def parse(self, event: dict) -> Optional[dict]:
         """解析群聊消息事件。
 
@@ -145,6 +157,15 @@ class TBGetGroupMessage:
         at_self = False
         if str(self_id or "") and str(self_id) in at_list:
             at_self = True
+        # 部分桥（SnowLuma 等）会把 @ 退化成纯文本「@昵称」，没有 at 段：
+        # 此时按「文本里 @ 了自机 UIN/昵称」兜底判定，并把该 @ 前缀从正文里抹掉
+        if not at_self and str(self_id or ""):
+            m = re.match(r"\s*@\*?\S+", text)
+            if m:
+                head = m.group(0)
+                if str(self_id) in head or self._nickname_hit(head):
+                    at_self = True
+                    text = text[m.end():].lstrip()
 
         return {
             "group_id": str(group_id),

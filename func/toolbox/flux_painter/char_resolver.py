@@ -1,208 +1,85 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/char_resolver.py
-"""点名角色解析：把中文角色名解析为 Anima 可识别的 tag/资料。
-
-三级查找（模块化、可独立调用）：
-  1) 本地词典  .ComfyNode/prompt_reference/role_map.json
-       人工维护：主键=中文常用名，aliases=别名，tags=danbooru 风格角色标签，en/appearance 可空
-  2) 解析缓存  .ComfyNode/prompt_reference/role_cache.json（moegirl 结果缓存 7 天）
-  3) 萌娘百科  仅当上面都未命中且 LLM 表示不了解（character_known=false）才访问：
-        opensearch 取官方条目名 → 抓条目 HTML 尽量提取英文名/发色/瞳色
-  全程短超时+静默降级，失败返回 None，不影响主流程。
-
-用法：
-    r = TBRoleResolver(cfg)
-    card = r.resolve("阿尔托莉雅")     # -> {name, en, tags[], appearance, known} | None
-    print(r.card_text(card))           # 拼给 LLM 的角色资料段
-"""
 import json
-import os
-import re
-import time
-import urllib.parse
-import urllib.request
 
 from func.log.default_log import DefaultLog
-
-MOEGIRL_UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"}
-CACHE_TTL = 7 * 24 * 3600
-
+from func.toolbox.flux_painter.config import TBFluxPainterConfig
 
 class TBRoleResolver:
-    """点名角色解析：本地词典 → 缓存 → 萌娘百科（danbooru tag 交给 LLM 工具）。"""
-    def __init__(self, config):
-        """初始化。"""
-        self.config = config
+    """点名角色解析：characters.json 单一真源。"""
+
+    _DOC = None
+
+    def __init__(self, config=None):
+        """记录配置与日志。"""
         self.log = DefaultLog().getLogger()
-        self._map = None
+        self.config = config or TBFluxPainterConfig()
 
-    # ==================== 本地词典 ====================
-    def _load_map(self):
-        """role_map.json → {alias_lower: entry}（key 与 aliases 均建索引）"""
-        if self._map is None:
-            idx = {}
-            try:
-                raw = json.load(open(self.config.role_map_file, "r", encoding="utf-8"))
-            except Exception:
-                raw = {}
-            for name, entry in (raw or {}).items():
-                if not isinstance(entry, dict):
-                    entry = {}
-                keys = [name] + [a for a in (entry.get("aliases") or []) if isinstance(a, str)]
-                for k in keys:
-                    k = str(k).strip()
-                    if k:
-                        idx[k.lower()] = {"name": name, "entry": entry}
-            self._map = idx
-        return self._map
+    def _path(self):
+        """characters.json 路径（跟 prompt_reference 目录走）。"""
+        import os
+        base = str(getattr(self.config, "prompt_reference_dir", "") or "").strip()
+        if not base:
+            base = ".vendor/.ComfyNode/prompt_reference"
+        return os.path.join(base, "characters.json")
 
-    def _map_hit(self, character):
-        """词典命中：character 包含别名 或 别名包含 character（短称呼）"""
-        idx = self._load_map()
-        c = str(character or "").strip().lower()
-        if not c:
+    def _load(self):
+        """惰性载入并按「中文名 / 别名 / 英文名」建索引。"""
+        if TBRoleResolver._DOC is not None:
+            return TBRoleResolver._DOC
+        try:
+            doc = json.load(open(self._path(), encoding="utf-8"))
+        except Exception:
+            self.log.warning("[flux_painter] characters.json 读取失败: %s" % self._path())
+            doc = {"characters": []}
+        index = {}
+        for item in doc.get("characters") or []:
+            if not isinstance(item, dict) or not item.get("name_en"):
+                continue
+            for key in [item.get("name"), item.get("name_en")] + list(item.get("aliases") or []):
+                k = str(key or "").strip().lower()
+                if k and k not in index:
+                    index[k] = item
+        TBRoleResolver._DOC = (doc, index)
+        return TBRoleResolver._DOC
+
+    def resolve(self, character, allow_net=False):
+        """查一个角色：返回条目 dict（含 name_en / series / tag）或 None。"""
+        key = str(character or "").strip().lower()
+        if not key:
             return None
-        for alias, item in idx.items():
-            if alias == c or alias in c or (len(alias) >= 2 and c in alias):
-                return item
-        return None
-
-    # ==================== 缓存 ====================
-    def _load_cache(self):
-        """载入角色缓存。"""
-        try:
-            return json.load(open(self.config.role_cache_file, "r", encoding="utf-8"))
-        except Exception:
-            return {}
-
-    def _save_cache(self, cache):
-        """写回角色缓存。"""
-        try:
-            os.makedirs(os.path.dirname(self.config.role_cache_file), exist_ok=True)
-            json.dump(cache, open(self.config.role_cache_file, "w", encoding="utf-8"),
-                      ensure_ascii=False, indent=1)
-        except Exception:
-            pass
-
-    def _cache_hit(self, key):
-        """查角色缓存。"""
-        cache = self._load_cache()
-        item = cache.get(key)
-        if item and isinstance(item, dict) and (time.time() - float(item.get("ts") or 0)) < CACHE_TTL:
-            return item.get("card")
-        return None
-
-    def _cache_set(self, key, card):
-        """写角色缓存。"""
-        try:
-            cache = self._load_cache()
-            cache[key] = {"ts": time.time(), "card": card}
-            self._save_cache(cache)
-        except Exception:
-            pass
-
-    # ==================== 萌娘百科（仅出网） ====================
-    def _http(self, url, timeout=6):
-        """带 UA 的 GET，返回文本。"""
-        req = urllib.request.Request(url, headers=MOEGIRL_UA)
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            return r.read().decode("utf-8", "ignore")
-
-    def _moe_search(self, character):
-        """opensearch 取官方条目标题列表（可用性已验证），失败返回 []"""
-        try:
-            url = "https://zh.moegirl.org.cn/api.php?" + urllib.parse.urlencode({
-                "action": "opensearch", "search": character, "limit": 3, "format": "json"})
-            data = json.loads(self._http(url))
-            return [str(t) for t in (data[1] if len(data) > 1 else []) if str(t).strip()]
-        except Exception:
-            return []
-
-    def _moe_features(self, title):
-        """抓条目 HTML 尽力提取 英文名/罗马音/发色/瞳色（失败仅返回 title）"""
-        try:
-            html = self._http("https://zh.moegirl.org.cn/" + urllib.parse.quote(title))
-        except Exception:
-            return {}
-        feats = {}
-        # 信息框字段：形态 <th>发色</th>…<td>金色</td> 或模板内 |发色=金发
-        pats = {"en": [r"英文名[^<]{0,20}?<[^>]*>([A-Za-z][^<>]{1,60}?)(?:<|，|；|、)",
-                       r"罗马音[^<]{0,20}?<[^>]*>([A-Za-z][^<>]{1,60}?)(?:<|，|；|、)"],
-                "hair": [r"(?:发色|发色为)[^<]{0,20}?<[^>]*>([^<>]{1,20}?)(?:<|（|，|；|、)"],
-                "eyes": [r"瞳色[^<]{0,20}?<[^>]*>([^<>]{1,20}?)(?:<|（|，|；|、)"]}
-        for k, ps in pats.items():
-            for p in ps:
-                m = re.search(p, html)
-                if m:
-                    v = re.sub(r"<[^>]+>|\[\[|\]\]|\{\{|\}\}", "", m.group(1)).strip()
-                    if v:
-                        feats[k] = v[:40]
-                        break
-        return feats
-
-    def _search_moegirl(self, character):
-        """出网解析：返回 card dict 或 None"""
-        titles = self._moe_search(character)
-        if not titles:
+        _doc, index = self._load()
+        item = index.get(key)
+        if item is None:
+            for k, v in index.items():
+                if k and k in key:
+                    item = v
+                    break
+        if item is None:
             return None
-        title = titles[0]
-        feats = self._moe_features(title)
-        card = {"name": title, "source": "moegirl"}
-        if feats.get("en"):
-            card["en"] = feats["en"]
-        if feats.get("hair"):
-            card["appearance"] = f"发色{feats['hair']}"
-        if feats.get("eyes"):
-            card["appearance"] = (card.get("appearance", "") + f"，瞳色{feats['eyes']}").lstrip("，")
+        card = dict(item)
+        card["known"] = True
         return card
 
-    # ==================== 对外入口 ====================
-    def resolve(self, character, allow_net=True):
-        """解析点名角色。返回 card dict：
-        {name, en?, tags?, appearance?, known}；无资料返回 None（主流程原样走 LLM）
-
-        注：danbooru tag 查询已交给 LLM 工具（`danbooru_tag`）自己调，
-        这里只做本地词典 / 缓存 / 萌百资料补充。
-        """
-        c = str(character or "").strip()
-        if not c:
+    def resolve_from_text(self, text, allow_net=False):
+        """从一句需求里找最长命中的角色名/别名。"""
+        raw = str(text or "")
+        if not raw:
             return None
-        hit = self._map_hit(c)
-        if hit:
-            entry = hit["entry"]
-            card = {"name": entry.get("name") or hit["name"], "known": True, "source": "map"}
-            tags = [t for t in (entry.get("tags") or []) if str(t).strip()]
-            if tags:
-                card["tags"] = tags
-            if entry.get("en"):
-                card["en"] = str(entry["en"])
-            if entry.get("appearance"):
-                card["appearance"] = str(entry["appearance"])
-            return card
-        cached = self._cache_hit(c)
-        if cached:
-            cached = dict(cached)
-            cached.setdefault("known", True)
-            cached["from_cache"] = True
-            return cached
-        if not (allow_net and self.config.moegirl_lookup):
-            return None
-        card = self._search_moegirl(c)
-        if card:
-            card.setdefault("known", False)
-            self._cache_set(c, card)
-        return card
+        low = raw.lower()
+        _doc, index = self._load()
+        best_key = ""
+        for k in index.keys():
+            if k and k in low and len(k) > len(best_key):
+                best_key = k
+        return self.resolve(best_key) if best_key else None
 
     def card_text(self, card, limit=420):
-        """把资料卡拼成给 LLM 的角色资料段（无 en/tags 时提示按官方名考据）"""
+        """把条目拼成给提示词模型的参考文本（只有 tag，没有外观描述）。"""
         if not card:
             return ""
-        parts = [f"角色官方名：{card.get('name', '')}"]
-        if card.get("en"):
-            parts.append(f"英文名：{card['en']}")
-        if card.get("tags"):
-            parts.append("推荐角色标签：" + ", ".join(card["tags"]))
-        if card.get("appearance"):
-            parts.append("外观：" + card["appearance"])
-        text = "；".join(parts)
-        return "【点名角色资料卡】" + text[:limit] + "（若资料有限，请以该角色公认特征补全标签）"
+        parts = ["角色：%s（%s）" % (card.get("name"), card.get("name_en"))]
+        if card.get("series"):
+            parts.append("作品 tag：%s" % card["series"])
+        if card.get("tag"):
+            parts.append("角色 tag：%s" % card["tag"])
+        return "\n".join(parts)[:limit]

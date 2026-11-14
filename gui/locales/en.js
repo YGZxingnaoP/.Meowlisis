@@ -1802,6 +1802,9 @@ window.__LOCALES__['en'] = {
     "画师站列表（每行：名称 | URL）": "Artist Site List (one per line: name | URL)",
     "图生图（MOSS 专属）": "Image-to-Image (MOSS)",
     "启用 / LoRA 文件名 / 权重 / 触发词": "Enabled / LoRA File / Weight / Trigger",
+    "lora 文件名": "LoRA file name",
+    "串在底模之后、位移之前；在「模型」卡的额外 LoRA 链里编辑。":
+        "Chained after the base model and before sampling shift; edit it in the Extra LoRA chain of the Model card.",
     "触发词": "Trigger",
     "触发词（会拼进正向提示词）": "Trigger (prepended to the positive prompt)",
     "勾选=加载，取消=不加载；权重可为负数（年龄滑块 -5~1.5）；触发词会自动拼进正向提示词。文件需放在 models/loras，缺文件自动跳过。": "Checked = loaded, unchecked = skipped; weights may be negative (age slider -5~1.5); triggers are prepended automatically. Files go in models/loras; missing files are skipped.",

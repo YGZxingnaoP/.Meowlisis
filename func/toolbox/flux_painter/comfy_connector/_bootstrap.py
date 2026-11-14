@@ -1,39 +1,27 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/comfy_connector/_bootstrap.py
-# 内置内核引导：复制最小运行集到 .ComfyNode/ComfyUI，
-# models/output 用 junction 直接指向 .ComfyNode（免 extra_model_paths/输出参数），失败则回退 yaml。
 import json
 import os
 import shutil
 import subprocess
 import time
 
-# 内置内核的可选外部源目录：仅当 .ComfyNode/ComfyUI 缺失、需要重建时才会用到。
-# 项目自带内核后无需此项；需要时用环境变量指定：FLUXPAINTER_COMFY_SRC=D:\...\ComfyUI
 SRC_DEFAULT = (os.environ.get("FLUXPAINTER_COMFY_SRC", "").strip()
                or r"D:\ComfyUI\ComfyUI_windows_portable\ComfyUI")
-# 任意层级都应排除的垃圾/缓存
 EXCLUDE_ANY = {".git", ".github", ".ci", "__pycache__", ".pytest_cache", ".mypy_cache"}
-# 仅“顶层”排除（模型/插件/前端等大目录或文档）。
-# 注意：不能按名字全局匹配 —— 否则 comfy/ldm/models、comfy_api_nodes 这类
-# 内核必需的子目录会被误伤，导致启动即崩（No module named 'comfy.ldm.models'）。
 EXCLUDE_TOP = {".git", ".github", ".ci", ".gitignore", "tests", "tests-unit", "models",
                "custom_nodes", "update", "output", "input", "temp", "user", "web",
                "manager_requirements.txt", "new_updater.py", "pyproject.toml",
                "README.md", "LICENSE", "CONTRIBUTING.md", "CODEOWNERS", "QUANTIZATION.md",
                "requirements.txt", "pytest.ini", ".flake8", "script_examples"}
-# 兼容旧名
 EXCLUDE = EXCLUDE_TOP
 EMPTY_DIRS = ["input", "temp", "user", "custom_nodes"]
 MODEL_SUBS = ["diffusion_models", "text_encoders", "vae", "loras", "upscale_models",
               "ultralytics", "sams"]
 CFG_FILE = "comfyui_builtin.json"
 
-
 def _cfg_path(config):
     """内置状态文件路径"""
     return os.path.join(config.comfy_node_dir, CFG_FILE)
-
 
 def _load_cfg(config):
     """读内置状态，缺失返回 None"""
@@ -43,12 +31,10 @@ def _load_cfg(config):
     except Exception:
         return None
 
-
 def _save_cfg(config, data):
     """写内置状态"""
     with open(_cfg_path(config), "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
 
 def _make_junction(link, target):
     """Windows 目录联接（无需管理员），成功返回 True"""
@@ -64,7 +50,6 @@ def _make_junction(link, target):
     except Exception:
         return False
 
-
 def _write_extra_yaml(config):
     """回退方案：extra_model_paths.yaml（模型/输出指向 .ComfyNode）"""
     models = os.path.join(config.comfy_node_dir, "models")
@@ -75,7 +60,6 @@ def _write_extra_yaml(config):
         for s in MODEL_SUBS:
             f.write(f"    {s}: {s}\n")
     return ep
-
 
 def _link_resources(config, dst):
     """用 junction 把 models/output 指到 .ComfyNode（同盘时最简），返回 True"""
@@ -95,7 +79,6 @@ def _link_resources(config, dst):
     if not _make_junction(out_link, out):
         ok = False
     return ok
-
 
 def ensure_installed(config):
     """内置内核缺失则安装（幂等），补齐 junction 并写状态，返回 (ok, 说明)"""
@@ -129,7 +112,6 @@ def ensure_installed(config):
     if not junction_ok:
         _write_extra_yaml(config)
     _save_cfg(config, cfg)
-    # 给 Impact-Pack 的 FaceDetailer 打「尺寸 16 对齐」补丁（Anima 要求 latent 偶数，幂等）
     patch_note = ""
     try:
         from func.toolbox.flux_painter.comfy_connector import _patch_align

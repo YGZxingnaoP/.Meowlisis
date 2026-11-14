@@ -1,0 +1,3300 @@
+{
+ "last_link_id": 2073,
+ "nodes": [
+  {
+   "outputs": [
+    {
+     "name": "CONDITIONING",
+     "links": [
+      35,
+      1958
+     ],
+     "label": "CONDITIONING",
+     "type": "CONDITIONING",
+     "localized_name": "CONDITIONING"
+    }
+   ],
+   "color": "#322",
+   "widgets_values": [
+    "worst quality, bad anatomy, watermark, jpeg artifact"
+   ],
+   "inputs": [
+    {
+     "name": "clip",
+     "link": 2,
+     "label": "clip",
+     "type": "CLIP",
+     "localized_name": "clip"
+    },
+    {
+     "widget": {
+      "name": "text"
+     },
+     "name": "text",
+     "label": "text",
+     "type": "STRING",
+     "localized_name": "text"
+    }
+   ],
+   "flags": {},
+   "type": "CLIPTextEncode",
+   "mode": 0,
+   "bgcolor": "#533",
+   "size": [
+    400,
+    200
+   ],
+   "pos": [
+    199.03221130371094,
+    3483.208984375
+   ],
+   "id": 5,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "text": true
+    },
+    "aaaliceControlHostId": "host_19b19245-776d-436b-9a97-bef0c39b0c00",
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "order": 10
+  },
+  {
+   "outputs": [
+    {
+     "name": "LATENT",
+     "links": [
+      28,
+      1959
+     ],
+     "label": "LATENT",
+     "type": "LATENT",
+     "localized_name": "LATENT"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    1024,
+    1024,
+    1
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "width"
+     },
+     "name": "width",
+     "link": 6,
+     "label": "width",
+     "type": "INT",
+     "localized_name": "width"
+    },
+    {
+     "widget": {
+      "name": "height"
+     },
+     "name": "height",
+     "link": 7,
+     "label": "height",
+     "type": "INT",
+     "localized_name": "height"
+    },
+    {
+     "widget": {
+      "name": "batch_size"
+     },
+     "name": "batch_size",
+     "label": "batch_size",
+     "type": "INT",
+     "localized_name": "batch_size"
+    }
+   ],
+   "flags": {},
+   "type": "EmptyLatentImage",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    210,
+    141.65919494628906
+   ],
+   "pos": [
+    -1064.09521484375,
+    3693.627685546875
+   ],
+   "id": 7,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {
+      "width": true,
+      "height": true
+     },
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "batch_size": true,
+     "width": true,
+     "height": true
+    },
+    "aaaliceControlHostId": "host_afa9be96-3caf-44a2-b35f-530002dbbb16",
+    "Node name for S&R": "EmptyLatentImage"
+   },
+   "order": 11
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1879
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\细节微调器  -0.75   0.75\\moss_context_detaile_tweaker_20261018_rank2.safetensors",
+    0.4
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2006,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -770.7434692382812,
+    2936.536376953125
+   ],
+   "id": 52,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_54542548-2abe-4d77-ad0a-94593e2765f1",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 12
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1864
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\Anireal  MOSS Image 的动漫写实风格\\anireal_moss_lora_v1.safetensors",
+    0.5
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2015,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {
+    "collapsed": false
+   },
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -453.8351135253906,
+    2938.809814453125
+   ],
+   "id": 55,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_c16ba7db-0bec-4520-971d-7c2f152ee831",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 18
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1898
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\厚涂2.5D动漫风格\\MOSS-HOCF_000001925.safetensors",
+    0.7
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1866,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270.1586608886719,
+    82
+   ],
+   "pos": [
+    -458.0998229980469,
+    3318.89794921875
+   ],
+   "id": 1259,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_02f33aff-4f7f-4c25-b523-57b936ebd32f",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 21
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1900
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\Silvana Style Lora\\silvana-s-style-moss-image-sft-epoch-07.safetensors",
+    0.7
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1899,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -134.6028289794922,
+    2944.3583984375
+   ],
+   "id": 1274,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_3324673d-0aa2-4a63-a640-5b1e0c7076a3",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 24
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1905
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\[MOSS] ningenmame (にんげんまめ) style\\ningen_mame_moss_base_v2.safetensors",
+    0.7
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1900,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -137.2534637451172,
+    3072.9423828125
+   ],
+   "id": 1276,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_1403a11c-098c-4f74-8e0b-5be13af15fb7",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 25
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1906
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\赛璐珞动画艺术风格\\style-moss-image-base-epoch-10.safetensors",
+    0.5
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1905,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -136.90966796875,
+    3209.463134765625
+   ],
+   "id": 1280,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_4fb85301-c3bb-44c4-ad4e-0324d5a580b2",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 26
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1916
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\鬼针草\\ChenbinStyleAnimaKrea2_v10MossImage.safetensors",
+    0.4
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1906,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -138.0595245361328,
+    3342.774169921875
+   ],
+   "id": 1282,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_ac8fe498-3f15-48d4-ab21-8f42c65c2c03",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 27
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2056
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\艺术家：しおん  shionnn_k style [Moss]\\@style_shionnnk-000850.safetensors",
+    0.2
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1916,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -136.54212951660156,
+    3480.072265625
+   ],
+   "id": 1290,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_6ab133fa-359e-4455-a5a8-6f8915c98a26",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 28
+  },
+  {
+   "outputs": [
+    {
+     "name": "LATENT",
+     "links": [
+      1960
+     ],
+     "label": "LATENT",
+     "type": "LATENT",
+     "localized_name": "LATENT"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [
+    232896191283389,
+    "randomize",
+    12,
+    1,
+    "euler",
+    "simple",
+    1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2063,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "name": "positive",
+     "link": 1957,
+     "label": "positive",
+     "type": "CONDITIONING",
+     "localized_name": "positive"
+    },
+    {
+     "name": "negative",
+     "link": 1958,
+     "label": "negative",
+     "type": "CONDITIONING",
+     "localized_name": "negative"
+    },
+    {
+     "name": "latent_image",
+     "link": 1959,
+     "label": "latent_image",
+     "type": "LATENT",
+     "localized_name": "latent_image"
+    },
+    {
+     "widget": {
+      "name": "seed"
+     },
+     "name": "seed",
+     "link": 2055,
+     "label": "seed",
+     "type": "INT",
+     "localized_name": "seed"
+    },
+    {
+     "widget": {
+      "name": "steps"
+     },
+     "name": "steps",
+     "label": "steps",
+     "type": "INT",
+     "localized_name": "steps"
+    },
+    {
+     "widget": {
+      "name": "cfg"
+     },
+     "name": "cfg",
+     "label": "cfg",
+     "type": "FLOAT",
+     "localized_name": "cfg"
+    },
+    {
+     "widget": {
+      "name": "sampler_name"
+     },
+     "name": "sampler_name",
+     "label": "sampler_name",
+     "type": "COMBO",
+     "localized_name": "sampler_name"
+    },
+    {
+     "widget": {
+      "name": "scheduler"
+     },
+     "name": "scheduler",
+     "label": "scheduler",
+     "type": "COMBO",
+     "localized_name": "scheduler"
+    },
+    {
+     "widget": {
+      "name": "denoise"
+     },
+     "name": "denoise",
+     "label": "denoise",
+     "type": "FLOAT",
+     "localized_name": "denoise"
+    }
+   ],
+   "flags": {},
+   "type": "KSampler",
+   "mode": 4,
+   "bgcolor": "#355",
+   "size": [
+    270,
+    717.1764526367188
+   ],
+   "pos": [
+    701.1514282226562,
+    4026.31982421875
+   ],
+   "id": 1311,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "scheduler": true,
+     "denoise": true,
+     "seed": true,
+     "cfg": true,
+     "sampler_name": true,
+     "steps": true
+    },
+    "aaaliceControlHostId": "host_c2c3a641-40c8-4f46-b872-6ef5985909d3",
+    "Node name for S&R": "KSampler"
+   },
+   "order": 31
+  },
+  {
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "links": [
+      1962
+     ],
+     "label": "IMAGE",
+     "type": "IMAGE",
+     "localized_name": "IMAGE"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [],
+   "inputs": [
+    {
+     "name": "samples",
+     "link": 1960,
+     "label": "samples",
+     "type": "LATENT",
+     "localized_name": "samples"
+    },
+    {
+     "name": "vae",
+     "link": 1961,
+     "label": "vae",
+     "type": "VAE",
+     "localized_name": "vae"
+    }
+   ],
+   "flags": {},
+   "type": "VAEDecode",
+   "mode": 4,
+   "bgcolor": "#355",
+   "size": [
+    140,
+    46
+   ],
+   "pos": [
+    992.7639770507812,
+    3890.87548828125
+   ],
+   "id": 1312,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {},
+    "aaaliceControlHostId": "host_db24a6d9-ed21-4c53-929b-6b2b931f2051",
+    "Node name for S&R": "VAEDecode"
+   },
+   "order": 33
+  },
+  {
+   "outputs": [
+    {
+     "name": "image_urls",
+     "links": [],
+     "label": "image_urls",
+     "type": "STRING",
+     "localized_name": "image_urls"
+    },
+    {
+     "name": "images",
+     "label": "images",
+     "type": "IMAGE",
+     "localized_name": "images"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [
+    "ComfyUI"
+   ],
+   "inputs": [
+    {
+     "name": "images",
+     "link": 1962,
+     "label": "images",
+     "type": "IMAGE",
+     "localized_name": "images"
+    },
+    {
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "name": "filename_prefix",
+     "label": "filename_prefix",
+     "type": "STRING",
+     "localized_name": "filename_prefix"
+    }
+   ],
+   "flags": {},
+   "type": "SaveImage",
+   "mode": 4,
+   "bgcolor": "#355",
+   "size": [
+    757.44384765625,
+    706.6669311523438
+   ],
+   "pos": [
+    1157.9151611328125,
+    3877.184326171875
+   ],
+   "id": 1313,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "filename_prefix": true
+    },
+    "aaaliceControlHostId": "host_94b3f5e4-0615-4c44-a530-86f9dd0b141c",
+    "Node name for S&R": "SaveImage"
+   },
+   "order": 35
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2006
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#323",
+   "widgets_values": [
+    5,
+    "flow"
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2005,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "shift"
+     },
+     "name": "shift",
+     "label": "shift",
+     "type": "FLOAT",
+     "localized_name": "shift"
+    },
+    {
+     "widget": {
+      "name": "sampling"
+     },
+     "shape": 7,
+     "name": "sampling",
+     "label": "sampling",
+     "type": "COMBO",
+     "localized_name": "sampling"
+    }
+   ],
+   "flags": {},
+   "type": "ModelSamplingAuraFlow",
+   "mode": 0,
+   "bgcolor": "#535",
+   "size": [
+    483.5806579589844,
+    82
+   ],
+   "pos": [
+    -1314.06884765625,
+    3122.9365234375
+   ],
+   "id": 1328,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "shift": true,
+     "sampling": true
+    },
+    "aaaliceControlHostId": "host_33868449-a3f0-49ec-84df-a23d8c99927f",
+    "Node name for S&R": "ModelSamplingAuraFlow"
+   },
+   "order": 8
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2013
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\年龄滑块-1 1\\moss_age_silder_rank2.safetensors",
+    -1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2012,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -763.4404296875,
+    3235.51904296875
+   ],
+   "id": 1335,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_6d3eb61c-4da8-418c-bc3d-81a7d2d5bb4d",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 15
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2014
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\胸部尺寸滑块-3 5\\breast_size_slider-moss-alpha.safetensors",
+    1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2013,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -763.35205078125,
+    3369.060791015625
+   ],
+   "id": 1336,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_0e35b202-5c87-4a95-ab64-54c171b4d851",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 16
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2015
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss\\重量滑块-3  3\\weight_slider_moss_v5_100.safetensors",
+    1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2014,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -761.7960205078125,
+    3499.443115234375
+   ],
+   "id": 1337,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_ff1b583e-0ff5-46af-b765-92b4abdcb669",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 17
+  },
+  {
+   "outputs": [
+    {
+     "name": "OPT_CONNECTION",
+     "label": "OPT_CONNECTION",
+     "type": "*",
+     "localized_name": "可选连接"
+    }
+   ],
+   "color": "#322",
+   "inputs": [],
+   "flags": {},
+   "type": "Fast Groups Bypasser (rgthree)",
+   "title": "忽略多框",
+   "mode": 0,
+   "bgcolor": "#533",
+   "size": [
+    425.5633239746094,
+    94.46473693847656
+   ],
+   "pos": [
+    191.7012939453125,
+    3760.3271484375
+   ],
+   "id": 1341,
+   "properties": {
+    "customSortAlphabet": "",
+    "matchColors": "cyan",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {},
+    "showAllGraphs": true,
+    "aaaliceControlHostId": "host_4210277a-901e-4abc-b660-5c26ce87fad3",
+    "sort": "position",
+    "matchTitle": "",
+    "showNav": true,
+    "toggleRestriction": "default"
+   },
+   "order": 0
+  },
+  {
+   "outputs": [
+    {
+     "name": "prompt",
+     "links": [
+      2018
+     ],
+     "label": "prompt",
+     "type": "STRING",
+     "localized_name": "prompt"
+    },
+    {
+     "name": "show_help",
+     "links": [],
+     "label": "show_help",
+     "type": "STRING",
+     "localized_name": "show_help"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    "@sl0p, @cunnyfunky, best quality, highres,"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "prompt"
+     },
+     "name": "prompt",
+     "label": "prompt",
+     "type": "STRING",
+     "localized_name": "prompt"
+    }
+   ],
+   "flags": {},
+   "type": "CR Prompt Text",
+   "title": "质量(不动)",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    403.43865966796875,
+    108.03876495361328
+   ],
+   "pos": [
+    206.60662841796875,
+    2948.9208984375
+   ],
+   "id": 1359,
+   "properties": {
+    "hasSecondTab": false,
+    "cnr_id": "ComfyUI_Comfyroll_CustomNodes",
+    "ver": "d78b780ae43fcf8c6b7c6505e6ffb4584281ceca",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.5.2"
+    },
+    "secondTabOffset": 80,
+    "aaaliceControlHostId": "host_d6cd535d-6157-4944-87a3-b0a8875d8954",
+    "Node name for S&R": "CR Prompt Text",
+    "tabWidth": 65,
+    "secondTabWidth": 65,
+    "widget_ue_connectable": {
+     "prompt": true
+    },
+    "aux_id": "Suzie1/ComfyUI_Comfyroll_CustomNodes",
+    "secondTabText": "Send Back",
+    "enableTabs": false,
+    "tabXOffset": 10
+   },
+   "order": 1
+  },
+  {
+   "showAdvanced": true,
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2063,
+      2064
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "",
+    "22",
+    0,
+    0.5
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2062,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "double_layers"
+     },
+     "name": "double_layers",
+     "label": "double_layers",
+     "type": "STRING",
+     "localized_name": "double_layers"
+    },
+    {
+     "widget": {
+      "name": "single_layers"
+     },
+     "name": "single_layers",
+     "label": "single_layers",
+     "type": "STRING",
+     "localized_name": "single_layers"
+    },
+    {
+     "widget": {
+      "name": "start_percent"
+     },
+     "name": "start_percent",
+     "label": "start_percent",
+     "type": "FLOAT",
+     "localized_name": "start_percent"
+    },
+    {
+     "widget": {
+      "name": "end_percent"
+     },
+     "name": "end_percent",
+     "label": "end_percent",
+     "type": "FLOAT",
+     "localized_name": "end_percent"
+    }
+   ],
+   "flags": {
+    "collapsed": false
+   },
+   "type": "SkipLayerGuidanceDiTSimple",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    569.747314453125,
+    130
+   ],
+   "pos": [
+    -458.3750305175781,
+    3708.284912109375
+   ],
+   "id": 1529,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "single_layers": true,
+     "double_layers": true,
+     "start_percent": true,
+     "end_percent": true
+    },
+    "aaaliceControlHostId": "host_51ae26bc-dbb2-4e91-b971-12c57246fc8c",
+    "Node name for S&R": "SkipLayerGuidanceDiTSimple"
+   },
+   "order": 30
+  },
+  {
+   "outputs": [
+    {
+     "name": "VAE",
+     "links": [
+      27,
+      1961
+     ],
+     "label": "VAE",
+     "type": "VAE",
+     "localized_name": "VAE"
+    }
+   ],
+   "color": "#323",
+   "widgets_values": [
+    "flux2-vae.safetensors"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "vae_name"
+     },
+     "name": "vae_name",
+     "label": "vae_name",
+     "type": "COMBO",
+     "localized_name": "vae_name"
+    }
+   ],
+   "flags": {},
+   "type": "VAELoader",
+   "mode": 0,
+   "bgcolor": "#535",
+   "size": [
+    481.9295959472656,
+    103.6607666015625
+   ],
+   "pos": [
+    -1315.7498779296875,
+    3488.42431640625
+   ],
+   "id": 3,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "vae_name": true
+    },
+    "aaaliceControlHostId": "host_b8e07929-6a5c-4c31-8bd1-b9db0e29c822",
+    "Node name for S&R": "VAELoader"
+   },
+   "order": 2
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1866
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "chenbin_style_v2_blush_1500step_rank32.safetensors",
+    0.3
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1865,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -456.80322265625,
+    3191.66552734375
+   ],
+   "id": 1258,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_5ed60d06-ed40-4284-8848-299d97ac2f1e",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 20
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1865
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "BunnySlop_MOSS.safetensors",
+    0.4
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1864,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    272.20928955078125,
+    82
+   ],
+   "pos": [
+    -462.4544372558594,
+    3064.173583984375
+   ],
+   "id": 1257,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_af95f4b4-3561-4644-950c-fd9e6af7f9fc",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 19
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1882
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "kzmynon-moss-v1_comfyui.safetensors",
+    1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1898,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -451.59442138671875,
+    3446.621337890625
+   ],
+   "id": 53,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_a41a02c2-1036-4c9b-bf51-b68d374f7910",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 22
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      1899
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "cunnyfunky_moss_v1_lokr.safetensors",
+    0.7
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1882,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    274.8362121582031,
+    86.8362045288086
+   ],
+   "pos": [
+    -455.2474670410156,
+    3577.441162109375
+   ],
+   "id": 1265,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_2abe28ff-69a1-4f51-81ad-f8475547ec54",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 23
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2012
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#223",
+   "widgets_values": [
+    "moss_anima_pure_text_slider_rank16.safetensors",
+    0.4
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 1879,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 0,
+   "bgcolor": "#335",
+   "size": [
+    270,
+    82
+   ],
+   "pos": [
+    -771.5259399414062,
+    3075.550048828125
+   ],
+   "id": 1263,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_49ab900e-35cf-40f8-9b6b-a7af3fe95ae4",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 14
+  },
+  {
+   "outputs": [
+    {
+     "name": "string",
+     "links": [
+      2020
+     ],
+     "label": "string",
+     "type": "STRING",
+     "localized_name": "string"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    2,
+    " ",
+    false,
+    null
+   ],
+   "inputs": [
+    {
+     "name": "string_1",
+     "link": 2018,
+     "label": "string_1",
+     "type": "STRING",
+     "localized_name": "string_1"
+    },
+    {
+     "shape": 7,
+     "name": "string_2",
+     "link": 2019,
+     "label": "string_2",
+     "type": "STRING",
+     "localized_name": "string_2"
+    },
+    {
+     "widget": {
+      "name": "inputcount"
+     },
+     "name": "inputcount",
+     "label": "inputcount",
+     "type": "INT",
+     "localized_name": "inputcount"
+    },
+    {
+     "widget": {
+      "name": "delimiter"
+     },
+     "name": "delimiter",
+     "label": "delimiter",
+     "type": "STRING",
+     "localized_name": "delimiter"
+    },
+    {
+     "widget": {
+      "name": "return_list"
+     },
+     "name": "return_list",
+     "label": "return_list",
+     "type": "BOOLEAN",
+     "localized_name": "return_list"
+    },
+    {
+     "shape": 7,
+     "name": "string_3",
+     "label": "string_3",
+     "type": "STRING",
+     "localized_name": "字符串_3"
+    }
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "type": "JoinStringMulti",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    261.9378662109375,
+    176.85409545898438
+   ],
+   "pos": [
+    221.77685546875,
+    3419.918701171875
+   ],
+   "id": 1361,
+   "properties": {
+    "hasSecondTab": false,
+    "cnr_id": "comfyui-kjnodes",
+    "ver": "fca78c93f034c6e36080d64da83afe00bd5dbba6",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.7.1"
+    },
+    "secondTabOffset": 80,
+    "aaaliceControlHostId": "host_4f43ad3f-a12c-47ea-aea9-a3152d2f32b6",
+    "Node name for S&R": "JoinStringMulti",
+    "tabWidth": 65,
+    "secondTabWidth": 65,
+    "widget_ue_connectable": {
+     "delimiter": true,
+     "inputcount": true,
+     "return_list": true
+    },
+    "aux_id": "kijai/ComfyUI-KJNodes",
+    "secondTabText": "Send Back",
+    "enableTabs": false,
+    "tabXOffset": 10
+   },
+   "order": 9
+  },
+  {
+   "outputs": [
+    {
+     "name": "CONDITIONING",
+     "links": [
+      34,
+      1957
+     ],
+     "label": "CONDITIONING",
+     "type": "CONDITIONING",
+     "localized_name": "CONDITIONING"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    ""
+   ],
+   "inputs": [
+    {
+     "name": "clip",
+     "link": 1,
+     "label": "clip",
+     "type": "CLIP",
+     "localized_name": "clip"
+    },
+    {
+     "widget": {
+      "name": "text"
+     },
+     "name": "text",
+     "link": 2020,
+     "label": "text",
+     "type": "STRING",
+     "localized_name": "text"
+    }
+   ],
+   "flags": {
+    "collapsed": true
+   },
+   "type": "CLIPTextEncode",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    400,
+    200
+   ],
+   "pos": [
+    386.170654296875,
+    3418.510009765625
+   ],
+   "id": 4,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "text": true
+    },
+    "aaaliceControlHostId": "host_cc7372b3-89fe-460b-bbbe-91be26fbe224",
+    "Node name for S&R": "CLIPTextEncode"
+   },
+   "order": 13
+  },
+  {
+   "outputs": [
+    {
+     "name": "LATENT",
+     "links": [
+      22
+     ],
+     "label": "LATENT",
+     "type": "LATENT",
+     "localized_name": "LATENT"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [
+    975635906076580,
+    "randomize",
+    50,
+    3.5,
+    "euler",
+    "simple",
+    1
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2064,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "name": "positive",
+     "link": 34,
+     "label": "positive",
+     "type": "CONDITIONING",
+     "localized_name": "positive"
+    },
+    {
+     "name": "negative",
+     "link": 35,
+     "label": "negative",
+     "type": "CONDITIONING",
+     "localized_name": "negative"
+    },
+    {
+     "name": "latent_image",
+     "link": 28,
+     "label": "latent_image",
+     "type": "LATENT",
+     "localized_name": "latent_image"
+    },
+    {
+     "widget": {
+      "name": "seed"
+     },
+     "name": "seed",
+     "link": 2054,
+     "label": "seed",
+     "type": "INT",
+     "localized_name": "seed"
+    },
+    {
+     "widget": {
+      "name": "steps"
+     },
+     "name": "steps",
+     "label": "steps",
+     "type": "INT",
+     "localized_name": "steps"
+    },
+    {
+     "widget": {
+      "name": "cfg"
+     },
+     "name": "cfg",
+     "label": "cfg",
+     "type": "FLOAT",
+     "localized_name": "cfg"
+    },
+    {
+     "widget": {
+      "name": "sampler_name"
+     },
+     "name": "sampler_name",
+     "label": "sampler_name",
+     "type": "COMBO",
+     "localized_name": "sampler_name"
+    },
+    {
+     "widget": {
+      "name": "scheduler"
+     },
+     "name": "scheduler",
+     "label": "scheduler",
+     "type": "COMBO",
+     "localized_name": "scheduler"
+    },
+    {
+     "widget": {
+      "name": "denoise"
+     },
+     "name": "denoise",
+     "label": "denoise",
+     "type": "FLOAT",
+     "localized_name": "denoise"
+    }
+   ],
+   "flags": {},
+   "type": "KSampler",
+   "mode": 0,
+   "bgcolor": "#355",
+   "size": [
+    270,
+    723.9166870117188
+   ],
+   "pos": [
+    698.7897338867188,
+    2984.027587890625
+   ],
+   "id": 19,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "scheduler": true,
+     "denoise": true,
+     "seed": true,
+     "cfg": true,
+     "sampler_name": true,
+     "steps": true
+    },
+    "aaaliceControlHostId": "host_e00c545d-206f-4b29-9f48-edece8827f09",
+    "Node name for S&R": "KSampler"
+   },
+   "order": 32
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2005
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#323",
+   "widgets_values": [
+    "moss_image_sft_bf16.safetensors",
+    "default"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "unet_name"
+     },
+     "name": "unet_name",
+     "label": "unet_name",
+     "type": "COMBO",
+     "localized_name": "unet_name"
+    },
+    {
+     "widget": {
+      "name": "weight_dtype"
+     },
+     "name": "weight_dtype",
+     "label": "weight_dtype",
+     "type": "COMBO",
+     "localized_name": "weight_dtype"
+    }
+   ],
+   "flags": {},
+   "type": "UNETLoader",
+   "mode": 0,
+   "bgcolor": "#535",
+   "size": [
+    482.5751953125,
+    140.190673828125
+   ],
+   "pos": [
+    -1308.8968505859375,
+    2931.32470703125
+   ],
+   "id": 13,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "weight_dtype": true,
+     "unet_name": true
+    },
+    "aaaliceControlHostId": "host_6184093a-5c44-4a79-bc33-8d4e74a793bf",
+    "Node name for S&R": "UNETLoader"
+   },
+   "order": 3
+  },
+  {
+   "outputs": [
+    {
+     "name": "prompt",
+     "links": [
+      2019
+     ],
+     "label": "prompt",
+     "type": "STRING",
+     "localized_name": "prompt"
+    },
+    {
+     "name": "show_help",
+     "links": [],
+     "label": "show_help",
+     "type": "STRING",
+     "localized_name": "show_help"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    "zenless zo ne zero, sunna \\(zenless zone zero\\), 1girl, arm warmers, asymmetrical bangs, bag, bandaid, bandaid hair ornament, black skirt, blush, closed mouth, earrings, fur-trimmed skirt, fur trim, green eyes, green hair, hair ornament, hairclip, heart, heart hair ornament, holding, holding megaphone, jewelry, leg warmers, megaphone, multiple hairclips, musical note earrings, pink arm warmers, pink bag, pink leg warmers, pink nails, pink shoes, shirt, shoes, simple background, skirt, solo, striped arm warmers, striped leg warmers, white background, white shirt, white wings, winged bag, wings"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "prompt"
+     },
+     "name": "prompt",
+     "label": "prompt",
+     "type": "STRING",
+     "localized_name": "prompt"
+    }
+   ],
+   "flags": {},
+   "type": "CR Prompt Text",
+   "title": "CLIP文本编码",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    405.14404296875,
+    249.99603271484375
+   ],
+   "pos": [
+    203.71121215820312,
+    3102.90576171875
+   ],
+   "id": 1360,
+   "properties": {
+    "hasSecondTab": false,
+    "cnr_id": "ComfyUI_Comfyroll_CustomNodes",
+    "ver": "d78b780ae43fcf8c6b7c6505e6ffb4584281ceca",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.5.2"
+    },
+    "secondTabOffset": 80,
+    "aaaliceControlHostId": "host_370ce3e5-83cc-4249-8710-285570993ca2",
+    "Node name for S&R": "CR Prompt Text",
+    "tabWidth": 65,
+    "secondTabWidth": 65,
+    "widget_ue_connectable": {
+     "prompt": true
+    },
+    "aux_id": "Suzie1/ComfyUI_Comfyroll_CustomNodes",
+    "secondTabText": "Send Back",
+    "enableTabs": false,
+    "tabXOffset": 10
+   },
+   "order": 4
+  },
+  {
+   "outputs": [
+    {
+     "name": "IMAGE",
+     "links": [
+      2065
+     ],
+     "label": "IMAGE",
+     "type": "IMAGE",
+     "localized_name": "IMAGE"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [],
+   "inputs": [
+    {
+     "name": "samples",
+     "link": 22,
+     "label": "samples",
+     "type": "LATENT",
+     "localized_name": "samples"
+    },
+    {
+     "name": "vae",
+     "link": 27,
+     "label": "vae",
+     "type": "VAE",
+     "localized_name": "vae"
+    }
+   ],
+   "flags": {},
+   "type": "VAEDecode",
+   "mode": 0,
+   "bgcolor": "#355",
+   "size": [
+    140,
+    46
+   ],
+   "pos": [
+    980.6187744140625,
+    2969.2236328125
+   ],
+   "id": 22,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {},
+    "aaaliceControlHostId": "host_5fcf7ca2-01ca-4d60-9d44-9853628641fe",
+    "Node name for S&R": "VAEDecode"
+   },
+   "order": 34
+  },
+  {
+   "outputs": [
+    {
+     "name": "MODEL",
+     "links": [
+      2062
+     ],
+     "label": "MODEL",
+     "type": "MODEL",
+     "localized_name": "MODEL"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [
+    "lodestones-8-steps-dmd2-lora.safetensors",
+    0.7
+   ],
+   "inputs": [
+    {
+     "name": "model",
+     "link": 2056,
+     "label": "model",
+     "type": "MODEL",
+     "localized_name": "model"
+    },
+    {
+     "widget": {
+      "name": "lora_name"
+     },
+     "name": "lora_name",
+     "label": "lora_name",
+     "type": "COMBO",
+     "localized_name": "lora_name"
+    },
+    {
+     "widget": {
+      "name": "strength_model"
+     },
+     "name": "strength_model",
+     "label": "strength_model",
+     "type": "FLOAT",
+     "localized_name": "strength_model"
+    }
+   ],
+   "flags": {},
+   "type": "LoraLoaderModelOnly",
+   "mode": 4,
+   "bgcolor": "#355",
+   "size": [
+    249.99180603027344,
+    82
+   ],
+   "pos": [
+    705.6726684570312,
+    3880.7451171875
+   ],
+   "id": 1527,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "lora_name": true,
+     "strength_model": true
+    },
+    "aaaliceControlHostId": "host_bb380b4d-77a2-463e-bff4-75a25249afda",
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "order": 29
+  },
+  {
+   "outputs": [
+    {
+     "name": "CLIP",
+     "links": [
+      1,
+      2
+     ],
+     "label": "CLIP",
+     "type": "CLIP",
+     "localized_name": "CLIP"
+    }
+   ],
+   "color": "#323",
+   "widgets_values": [
+    "qwen3.5_9b_bf16.safetensors",
+    "moss_image",
+    "default"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "clip_name"
+     },
+     "name": "clip_name",
+     "label": "clip_name",
+     "type": "COMBO",
+     "localized_name": "clip_name"
+    },
+    {
+     "widget": {
+      "name": "type"
+     },
+     "name": "type",
+     "label": "type",
+     "type": "COMBO",
+     "localized_name": "type"
+    },
+    {
+     "widget": {
+      "name": "device"
+     },
+     "shape": 7,
+     "name": "device",
+     "label": "device",
+     "type": "COMBO",
+     "localized_name": "device"
+    }
+   ],
+   "flags": {},
+   "type": "CLIPLoader",
+   "mode": 0,
+   "bgcolor": "#535",
+   "size": [
+    478.8519287109375,
+    161.92576599121094
+   ],
+   "pos": [
+    -1309.404541015625,
+    3264.76953125
+   ],
+   "id": 2,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "clip_name": true,
+     "type": true,
+     "device": true
+    },
+    "aaaliceControlHostId": "host_d319f529-341a-4537-833e-40c1783dfac9",
+    "Node name for S&R": "CLIPLoader"
+   },
+   "order": 5
+  },
+  {
+   "outputs": [
+    {
+     "name": "image_urls",
+     "label": "image_urls",
+     "type": "STRING",
+     "localized_name": "image_urls"
+    },
+    {
+     "name": "images",
+     "label": "images",
+     "type": "IMAGE",
+     "localized_name": "images"
+    }
+   ],
+   "color": "#233",
+   "widgets_values": [
+    ""
+   ],
+   "inputs": [
+    {
+     "name": "images",
+     "link": 2065,
+     "label": "images",
+     "type": "IMAGE",
+     "localized_name": "images"
+    },
+    {
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "name": "filename_prefix",
+     "label": "filename_prefix",
+     "type": "STRING",
+     "localized_name": "filename_prefix"
+    }
+   ],
+   "flags": {},
+   "type": "SaveImage",
+   "mode": 0,
+   "bgcolor": "#355",
+   "size": [
+    757.9563598632812,
+    697.6669311523438
+   ],
+   "pos": [
+    1160.044677734375,
+    2995.964111328125
+   ],
+   "id": 1531,
+   "properties": {
+    "widget_ue_connectable": {},
+    "Node name for S&R": "SaveImage"
+   },
+   "order": 36
+  },
+  {
+   "mode": 0,
+   "outputs": [
+    {
+     "name": "seed",
+     "links": [
+      2054,
+      2055
+     ],
+     "label": "seed",
+     "type": "INT",
+     "localized_name": "seed"
+    }
+   ],
+   "size": [
+    400.806396484375,
+    82
+   ],
+   "pos": [
+    207.78675842285156,
+    3934.242431640625
+   ],
+   "widgets_values": [
+    636817249669692,
+    "randomize"
+   ],
+   "inputs": [
+    {
+     "widget": {
+      "name": "seed"
+     },
+     "name": "seed",
+     "label": "seed",
+     "type": "INT",
+     "localized_name": "seed"
+    }
+   ],
+   "flags": {},
+   "id": 1526,
+   "type": "SeedNode",
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.42.3",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "seed": true
+    },
+    "aaaliceControlHostId": "host_c584c72d-f0ef-4890-8869-87b0421aa606",
+    "Node name for S&R": "SeedNode"
+   },
+   "order": 6
+  },
+  {
+   "showAdvanced": true,
+   "outputs": [
+    {
+     "name": "width",
+     "links": [
+      6
+     ],
+     "label": "width",
+     "type": "INT",
+     "localized_name": "width"
+    },
+    {
+     "name": "height",
+     "links": [
+      7
+     ],
+     "label": "height",
+     "type": "INT",
+     "localized_name": "height"
+    }
+   ],
+   "color": "#232",
+   "widgets_values": [
+    "9:16 (Portrait Widescreen)",
+    2,
+    8
+   ],
+   "inputs": [
+    {
+     "shape": 7,
+     "name": "preview",
+     "label": "preview",
+     "type": "RESOLUTION_PREVIEW",
+     "localized_name": "preview"
+    },
+    {
+     "widget": {
+      "name": "aspect_ratio"
+     },
+     "name": "aspect_ratio",
+     "label": "aspect_ratio",
+     "type": "COMBO",
+     "localized_name": "aspect_ratio"
+    },
+    {
+     "widget": {
+      "name": "megapixels"
+     },
+     "name": "megapixels",
+     "label": "megapixels",
+     "type": "FLOAT",
+     "localized_name": "megapixels"
+    },
+    {
+     "widget": {
+      "name": "multiple"
+     },
+     "name": "multiple",
+     "label": "multiple",
+     "type": "INT",
+     "localized_name": "multiple"
+    }
+   ],
+   "flags": {},
+   "type": "ResolutionSelector",
+   "mode": 0,
+   "bgcolor": "#353",
+   "size": [
+    226.10928344726562,
+    150
+   ],
+   "pos": [
+    -1315.7789306640625,
+    3690.571533203125
+   ],
+   "id": 8,
+   "properties": {
+    "cnr_id": "comfy-core",
+    "ver": "0.41.0",
+    "ue_properties": {
+     "widget_ue_connectable": {},
+     "input_ue_unconnectable": {},
+     "version": "7.8"
+    },
+    "widget_ue_connectable": {
+     "aspect_ratio": true,
+     "megapixels": true,
+     "multiple": true
+    },
+    "aaaliceControlHostId": "host_f5455c2a-f862-44c5-a33f-1505f16157e2",
+    "Node name for S&R": "ResolutionSelector"
+   },
+   "order": 7
+  }
+ ],
+ "extra": {
+  "links_added_by_ue": [],
+  "qgn_navigation_groups": [
+   {
+    "groupName": "分组1",
+    "shortcutKey": "1",
+    "zoomScale": 50,
+    "id": "qgn_1779074318624_cv3jdvqey",
+    "order": 0
+   },
+   {
+    "groupName": "分组2",
+    "shortcutKey": "2",
+    "zoomScale": 80,
+    "id": "qgn_1779074320152_h92q2v5cg",
+    "order": 1
+   },
+   {
+    "groupName": "分组3",
+    "shortcutKey": "3",
+    "zoomScale": 100,
+    "id": "qgn_1779074322128_a24z6gb7z",
+    "order": 2
+   }
+  ],
+  "0246.VERSION": [
+   0,
+   0,
+   4
+  ],
+  "qgn_locked": false,
+  "VHS_latentpreview": true,
+  "ds": {
+   "offset": [
+    1556.097781710231,
+    -2806.629833236783
+   ],
+   "scale": 0.8769226950000112
+  },
+  "VHS_KeepIntermediate": true,
+  "VHS_MetadataImage": true,
+  "ue_links": [],
+  "aaaliceSidebar": {
+   "pages": [],
+   "version": 4
+  },
+  "pixaromaGroups": [],
+  "VHS_latentpreviewrate": 0,
+  "frontendVersion": "1.55.17"
+ },
+ "groups": [
+  {
+   "color": "#8AA",
+   "font_size": 24,
+   "flags": {},
+   "id": 1,
+   "title": "加速",
+   "bounding": [
+    646.8704223632812,
+    3787.924072265625,
+    1297.2542724609375,
+    991.4782104492188
+   ]
+  },
+  {
+   "color": "#8AA",
+   "font_size": 24,
+   "flags": {},
+   "id": 2,
+   "title": "50步",
+   "bounding": [
+    646.928955078125,
+    2871.250244140625,
+    1310.139404296875,
+    883.2835083007812
+   ]
+  },
+  {
+   "color": "#a1309b",
+   "font_size": 24,
+   "flags": {},
+   "id": 3,
+   "title": "模型",
+   "bounding": [
+    -1325.7498779296875,
+    2861.32470703125,
+    509.42822265625,
+    740.7604370117188
+   ]
+  },
+  {
+   "color": "#88A",
+   "font_size": 24,
+   "flags": {},
+   "id": 4,
+   "title": "lora",
+   "bounding": [
+    -781.5259399414062,
+    2863.89599609375,
+    948.6680297851562,
+    998.3138427734375
+   ]
+  },
+  {
+   "color": "#b58b2a",
+   "font_size": 24,
+   "flags": {},
+   "id": 5,
+   "title": "提示词",
+   "bounding": [
+    189.11550903320312,
+    2867.234130859375,
+    427.7651672363281,
+    836.4393920898438
+   ]
+  },
+  {
+   "color": "#8A8",
+   "font_size": 24,
+   "flags": {},
+   "id": 6,
+   "title": "分辨率",
+   "bounding": [
+    -1325.7789306640625,
+    3620.571533203125,
+    507.9037780761719,
+    240.4879913330078
+   ]
+  }
+ ],
+ "links": [
+  [
+   1,
+   2,
+   0,
+   4,
+   0,
+   "CLIP"
+  ],
+  [
+   2,
+   2,
+   0,
+   5,
+   0,
+   "CLIP"
+  ],
+  [
+   6,
+   8,
+   0,
+   7,
+   0,
+   "INT"
+  ],
+  [
+   7,
+   8,
+   1,
+   7,
+   1,
+   "INT"
+  ],
+  [
+   22,
+   19,
+   0,
+   22,
+   0,
+   "LATENT"
+  ],
+  [
+   27,
+   3,
+   0,
+   22,
+   1,
+   "VAE"
+  ],
+  [
+   28,
+   7,
+   0,
+   19,
+   3,
+   "LATENT"
+  ],
+  [
+   34,
+   4,
+   0,
+   19,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   35,
+   5,
+   0,
+   19,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   1864,
+   55,
+   0,
+   1257,
+   0,
+   "MODEL"
+  ],
+  [
+   1865,
+   1257,
+   0,
+   1258,
+   0,
+   "MODEL"
+  ],
+  [
+   1866,
+   1258,
+   0,
+   1259,
+   0,
+   "MODEL"
+  ],
+  [
+   1879,
+   52,
+   0,
+   1263,
+   0,
+   "MODEL"
+  ],
+  [
+   1882,
+   53,
+   0,
+   1265,
+   0,
+   "MODEL"
+  ],
+  [
+   1898,
+   1259,
+   0,
+   53,
+   0,
+   "MODEL"
+  ],
+  [
+   1899,
+   1265,
+   0,
+   1274,
+   0,
+   "MODEL"
+  ],
+  [
+   1900,
+   1274,
+   0,
+   1276,
+   0,
+   "MODEL"
+  ],
+  [
+   1905,
+   1276,
+   0,
+   1280,
+   0,
+   "MODEL"
+  ],
+  [
+   1906,
+   1280,
+   0,
+   1282,
+   0,
+   "MODEL"
+  ],
+  [
+   1916,
+   1282,
+   0,
+   1290,
+   0,
+   "MODEL"
+  ],
+  [
+   1957,
+   4,
+   0,
+   1311,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   1958,
+   5,
+   0,
+   1311,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   1959,
+   7,
+   0,
+   1311,
+   3,
+   "LATENT"
+  ],
+  [
+   1960,
+   1311,
+   0,
+   1312,
+   0,
+   "LATENT"
+  ],
+  [
+   1961,
+   3,
+   0,
+   1312,
+   1,
+   "VAE"
+  ],
+  [
+   1962,
+   1312,
+   0,
+   1313,
+   0,
+   "IMAGE"
+  ],
+  [
+   2005,
+   13,
+   0,
+   1328,
+   0,
+   "MODEL"
+  ],
+  [
+   2006,
+   1328,
+   0,
+   52,
+   0,
+   "MODEL"
+  ],
+  [
+   2012,
+   1263,
+   0,
+   1335,
+   0,
+   "MODEL"
+  ],
+  [
+   2013,
+   1335,
+   0,
+   1336,
+   0,
+   "MODEL"
+  ],
+  [
+   2014,
+   1336,
+   0,
+   1337,
+   0,
+   "MODEL"
+  ],
+  [
+   2015,
+   1337,
+   0,
+   55,
+   0,
+   "MODEL"
+  ],
+  [
+   2018,
+   1359,
+   0,
+   1361,
+   0,
+   "STRING"
+  ],
+  [
+   2019,
+   1360,
+   0,
+   1361,
+   1,
+   "STRING"
+  ],
+  [
+   2020,
+   1361,
+   0,
+   4,
+   1,
+   "STRING"
+  ],
+  [
+   2054,
+   1526,
+   0,
+   19,
+   4,
+   "INT"
+  ],
+  [
+   2055,
+   1526,
+   0,
+   1311,
+   4,
+   "INT"
+  ],
+  [
+   2056,
+   1290,
+   0,
+   1527,
+   0,
+   "MODEL"
+  ],
+  [
+   2062,
+   1527,
+   0,
+   1529,
+   0,
+   "MODEL"
+  ],
+  [
+   2063,
+   1529,
+   0,
+   1311,
+   0,
+   "MODEL"
+  ],
+  [
+   2064,
+   1529,
+   0,
+   19,
+   0,
+   "MODEL"
+  ],
+  [
+   2065,
+   22,
+   0,
+   1531,
+   0,
+   "IMAGE"
+  ]
+ ],
+ "id": "86d2b3c2-6860-4573-a515-d07f2871d92a",
+ "config": {},
+ "version": 0.4,
+ "last_node_id": 1538,
+ "revision": 0
+}

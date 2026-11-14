@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/server.py
 import asyncio
 import json
 import os
@@ -10,7 +9,6 @@ from urllib.parse import parse_qs, quote, urlparse
 import websockets
 
 from func.log.default_log import DefaultLog
-
 
 class TBFluxPainterServer:
     """画板服务：HTTP(8090) 托管 painting_board.html + 图片/审查接口，WS(8767) 按 channel 推送"""
@@ -25,11 +23,9 @@ class TBFluxPainterServer:
         self._clients = {}
         self._loop = None
         self._http_thread = None
-        # 项目根（server.py: 文件→flux_painter→toolbox→func→根，共4级）
         self._root = os.path.dirname(os.path.dirname(os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))))
 
-    # ==================== WebSocket ====================
     @staticmethod
     def _channel_of(websocket) -> str:
         """WebSocket 连接 → 通道名。"""
@@ -89,10 +85,8 @@ class TBFluxPainterServer:
         asyncio.set_event_loop(self._loop)
         self._loop.run_until_complete(self._run_websocket_server())
 
-    # ==================== HTTP ====================
     def _allow_dirs(self):
-        """图片可访问白名单：backup/comfy_output/temp，相对路径按项目根绝对化，
-        不依赖服务启动 cwd（避免 403 误杀）"""
+        """图片可访问白名单：backup/comfy_output/temp，相对路径按项目根绝对化，"""
         allow = []
         for p in (self.config.backup_dir, self.config.comfy_output_dir,
                   getattr(self.config, "temp_dir", "")):
@@ -132,8 +126,7 @@ class TBFluxPainterServer:
         return None
 
     def _paint_candidate(self, raw, allow):
-        """把 /paint_img?path= 解析为真实文件：支持 相对/绝对、目录(取主图)、
-        无扩展名补后缀等形态，且必须落在允许目录内；找不到返回 None"""
+        """把 /paint_img?path= 解析为真实文件：支持 相对/绝对、目录(取主图)、"""
         if not raw:
             return None
         raw = raw.strip().strip("\"'")
@@ -153,7 +146,6 @@ class TBFluxPainterServer:
         _add(raw)
         if not os.path.isabs(raw):
             _add(os.path.join(self._root, raw))
-        # 形态展开：目录→主图；无扩展名→尝试常见图像后缀
         for c in list(cands):
             if os.path.isdir(c):
                 m = self._dir_main_image(c)
@@ -203,7 +195,6 @@ class TBFluxPainterServer:
                 parsed = urlparse(self.path)
                 q = parse_qs(parsed.query)
                 if parsed.path == "/paint_img":
-                    # 兼容两种 query：?path=<enc>（标准）与 ?<enc>（历史版本漏写 path= 前缀）
                     path = (q.get("path") or [""])[0]
                     if not path and parsed.query:
                         try:
@@ -259,7 +250,6 @@ class TBFluxPainterServer:
         except Exception:
             self.log.exception(f"[flux_painter] 画板 HTTP 服务启动失败(端口 {self.http_port})")
 
-    # ==================== 生命周期 ====================
     def start(self):
         """幂等启动画板 HTTP + WS"""
         if self._loop is not None and self._http_thread is not None and self._http_thread.is_alive():
@@ -293,9 +283,7 @@ class TBFluxPainterServer:
         except Exception:
             self.log.exception("[flux_painter] 画板广播失败")
 
-
 _flux_painter_server = None
-
 
 def get_flux_painter_server():
     """全局画板服务单例（api.py 启用时 start）"""

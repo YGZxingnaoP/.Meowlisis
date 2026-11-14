@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/img2img/chain.py
-# 图生图链路入口：屏幕参考（live / 弹幕 / 语音 / 手机）与 QQ 附图两种来源，
-# 取到参考图后统一交给共用绘画引擎（painting_core.open_paint）出图。
 
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
@@ -9,7 +6,6 @@ from func.toolbox.flux_painter.config import TBFluxPainterConfig
 from func.toolbox.flux_painter.img2img.ref_focus import TBRefFocus
 from func.toolbox.flux_painter.img2img.ref_judge import TBRefJudge
 from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
-
 
 @singleton
 class TBImg2ImgChain:
@@ -22,10 +18,7 @@ class TBImg2ImgChain:
         self.core = TBFluxPainterCore()
 
     def open_screen(self, arguments, channel="live"):
-        """live / 弹幕 / 语音 / 手机：模型判断是否要参考屏幕，命中则截图取景后开画
-
-        返回开画提示语；不命中（或取景失败）返回空串，由调用方继续走文生图。
-        """
+        """live / 弹幕 / 语音 / 手机：模型判断是否要参考屏幕，命中则截图取景后开画"""
         if not self.config.enabled or not self.config.img2img_enabled:
             return ""
         if not self.core.has_identity():
@@ -46,7 +39,6 @@ class TBImg2ImgChain:
         result = focus.focus(shot, request, canvas_w, canvas_h)
         crop = str(result.get("crop") or "")
         if not crop:
-            # 屏幕上没找到要画的东西：由模型给出处置——降级成纯文字画 / 这次不画先问清楚
             if result.get("found") is False:
                 problem = str(result.get("problem") or "").strip()
                 fallback = str(result.get("fallback") or "end").strip().lower()

@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/prompt_producer.py
-# 提示词生成引擎（家族无关）：负责 LLM 调用、function calling、法典工具与重试；
-# 「写什么样的提示词」由 prompts/ 下的规范决定（anima=tag+cinema / moss=caption+layout）。
 import json
 import re
 from types import SimpleNamespace
@@ -10,10 +7,7 @@ from func.log.default_log import DefaultLog
 from func.toolbox.flux_painter.port.base import create_painter_llm
 from func.toolbox.flux_painter.prompts import get_prompt_spec
 
-
-# 自主检索工具名：法典三件 + danbooru tag 查询（都是先让 LLM 自己查，再产出提示词）
 LAW_TOOL_NAMES = ("law_index", "law_search", "law_read", "danbooru_tag")
-
 
 class TBPromptProducer:
     """需求→{title, positive, reply, canvas}：深度思考+function calling，法典按需检索注入"""
@@ -52,7 +46,6 @@ class TBPromptProducer:
 
     def _chat_once(self, port, messages, on_stream=None, tools=None):
         """调用模型（on_stream 时走流式并逐段回调，否则非流式），返回 message-like 或 None"""
-        # DeepSeek：深度思考模式不支持强制指定 tool_choice（仅 auto）；关闭思考时才允许强制函数
         thinking = bool(getattr(self.config, "thinking_enabled", True))
         spec = self.spec
         choice = None if thinking else PRODUCE_TOOL_CHOICE
@@ -88,7 +81,6 @@ class TBPromptProducer:
                     if on_stream:
                         on_stream(c)
                 for dc in (getattr(delta, "tool_calls", None) or []):
-                    # 流式增量既可能是对象也可能是 dict（不同 SDK/代理），两种都取
                     def _f(obj, key, default=None):
                         """取浮点配置（非法值回落默认）。"""
                         if isinstance(obj, dict):
@@ -121,7 +113,6 @@ class TBPromptProducer:
         if tool_calls:
             named = {i: s for i, s in tool_calls.items() if s["name"]}
             if not named:
-                # 流式没拿到工具名（部分代理会丢）：退回一次非流式调用
                 self.log.warning("[flux_painter] 流式工具调用缺 name，改走非流式")
                 resp = port.chat(messages, tools=(tools or [spec.tool]), tool_choice=choice,
                                  enable_thinking=thinking)
@@ -157,7 +148,6 @@ class TBPromptProducer:
                 pass
         return {}
 
-    # ==================== 法典自主检索（LLM 自己读 md） ====================
     LAW_TOOL_NAMES = LAW_TOOL_NAMES      # 类内直接引用模块常量（含 danbooru_tag）
 
     def _run_tool(self, name, args):
@@ -189,15 +179,13 @@ class TBPromptProducer:
         return f"（未知工具 {name}）"
 
     def _tool_loop(self, port, messages, on_stream=None, max_rounds=8):
-        """先让 LLM 自主翻阅法典（仅提供检索工具的家族），再产出 produce_painting。
-        max_rounds 仅为上限：LLM 觉得信息够了（调用 produce_painting 或不再检索）即提前结束"""
+        """先让 LLM 自主翻阅法典（仅提供检索工具的家族），再产出 produce_painting。"""
         spec = self.spec
         law_tools = list(getattr(spec, "law_tools", ()) or ())
         law_budget = int(getattr(spec, "law_budget", 0) or 0)
         asked = 0
         used = 0
         while True:
-            # 查过一轮就只留产出工具：否则模型会一直检索、永远不产出
             allow_retrieval = (law_tools and used < law_budget and asked < 2)
             tools = ([spec.tool] + law_tools) if allow_retrieval else [spec.tool]
             message = self._chat_once(port, messages, on_stream=on_stream, tools=tools)
@@ -228,7 +216,6 @@ class TBPromptProducer:
                               f"（累计 {used}）")
                 messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
             asked += 1
-            # 提醒模型：资料够了就该产出
             messages.append({
                 "role": "user",
                 "content": "（系统提示）检索到此为止，请立即调用 produce_painting 产出画作要素。"})
@@ -236,12 +223,7 @@ class TBPromptProducer:
     def run(self, user_text, nickname="", persona="", on_stream=None,
             role_card=None, memory=None, base_elements=None, base_request="",
             reference_image=None):
-        """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段
-        persona: 角色系统提示词（上层注入的角色人设，置 system 最前）
-        role_card: 点名角色的资料卡文本（char_resolver 拼好），注入后用于补全角色标签
-        memory: 短期记忆消息列表（[{role, content}]），插入 user 之前作为对话语境
-        reference_image: 图生图的参考图本地路径；给出时随消息一起发给模型，按图出标签
-        """
+        """生成画作要素，成功返回 dict，失败返回 None；on_stream(文本) 实时回提示词片段"""
         port = self._llm()
         if port is None or not getattr(port, "client", None):
             self.log.error("[flux_painter] 提示词 LLM 不可用")
@@ -250,7 +232,6 @@ class TBPromptProducer:
         system = spec.build_system(self.config, self.knowledge, user_text,
                                   persona=persona, role_card=role_card)
         messages = [{"role": "system", "content": system}]
-        # 短期记忆注入（user 之前，带条数与总长保护，避免撑爆上下文）
         budget = 9000
         for m in (memory or [])[:12]:
             if not isinstance(m, dict):
@@ -265,7 +246,6 @@ class TBPromptProducer:
             if budget <= 0:
                 break
             messages.append({"role": role, "content": content})
-        # 改图续画：把上一轮完整提示词一起给模型，要求只改被点名的部分、其余保持不变
         ref_part = self._reference_part(reference_image)
         if base_elements:
             user_content = spec.rework_hint(base_elements).format(
@@ -278,8 +258,11 @@ class TBPromptProducer:
                 user_text=user_text)
             messages.append({"role": "user", "content": self._user_content(user_content, ref_part)})
         else:
+            variety = ("（姿势与构图由你决定，可参考法典但不要照搬，"
+                       "也别每次都写跪/趴/躺，按需求自然选。）")
             messages.append({"role": "user",
-                             "content": self._user_content(f"（{nickname}）：{user_text}", ref_part)})
+                             "content": self._user_content(
+                                 f"（{nickname}）：{user_text}\n\n{variety}", ref_part)})
         for attempt in (1, 2):
             try:
                 message = self._tool_loop(port, messages, on_stream=on_stream)
@@ -308,7 +291,6 @@ class TBPromptProducer:
                     if attempt == 1:
                         messages.append({"role": "user", "content": msg})
                         continue
-                    # 第二轮仍不合格：核心字段缺失就本轮放弃，其余按已有内容放行
                     if code in ("missing_positive", "missing_caption"):
                         continue
                 data = spec.normalize(data, self.config)
@@ -317,7 +299,11 @@ class TBPromptProducer:
                 self.log.exception(f"[flux_painter] 提示词生成异常(第{attempt}次)")
         return None
 
-    # ==================== 参考图（图生图） ====================
+
+
+    @classmethod
+
+
     @staticmethod
     def _reference_part(reference_image):
         """参考图 → 多模态消息片段；无图或读不出时返回 None"""

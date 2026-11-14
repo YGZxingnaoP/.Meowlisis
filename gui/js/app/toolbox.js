@@ -536,13 +536,17 @@ window.FluxChips = {
 
 /* LoRA 链行编辑器：每行 = 启用开关 + 文件名 + 权重；值写 flux_painter.lora_chain（JSON 数组） */
 const FluxDefaultLoras = [
-    { name: 'anima-highres-aesthetic-boost.safetensors', strength: 1.0, enabled: true },
-    { name: 'anima_context_detailer_base10.safetensors', strength: 0.5, enabled: true }
+    { name: 'YPuddin-Chenbin-Anima-v2.safetensors', strength: 0.8, enabled: true, trigger: '@szcb911style' },
+    { name: 'anima-highres-aesthetic-boost.safetensors', strength: 0.9, enabled: true, trigger: '' },
+    { name: 'anima_context_detailer_base10.safetensors', strength: 0.25, enabled: true, trigger: '' }
 ];
 const FluxMossDefaultLoras = [
-    { name: 'age slider.safetensors', strength: 0, enabled: false, trigger: '' },
-    { name: 'maliker_moss_base_style_v3_e40.safetensors', strength: 0.8, enabled: true, trigger: 'maliker' },
-    { name: 'wangzhe_moss.safetensors', strength: 0.8, enabled: true, trigger: 'wangzhe' }
+    { name: 'guizhencao.safetensors', strength: 0.35, enabled: true, trigger: '' },
+    { name: 'kzmynon-moss-v1_comfyui.safetensors', strength: 0.8, enabled: false, trigger: 'kzmynon' },
+    { name: 'age slider.safetensors', strength: 0.3, enabled: true, trigger: '' },
+    { name: 'wangzhe_moss.safetensors', strength: 0.8, enabled: false, trigger: 'wangzhe' },
+    { name: 'maliker_moss_base_style_v3_e40.safetensors', strength: 0.8, enabled: false, trigger: 'maliker' },
+    { name: 'moss_whale_v2.safetensors', strength: 0.8, enabled: false, trigger: 'moss_whalegirl' }
 ];
 
 window.FluxLoraRows = {
@@ -714,12 +718,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
             const rows = list.map(x => FluxLoraRows.rowHtml(x, true)).join('');
             const json = JSON.stringify(list).replace(/&/g, '&amp;').replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;').replace(/'/g, '&#39;');
-            lora = this._section('DMD 加速 LoRA（8 步档必挂）') +
-                this._text('DMD LoRA 文件', 'flux_painter.moss.dmd_lora',
-                    'MOSS-Image-SFT-8-steps-dmd.safetensors') +
-                this._num('DMD 强度', 'flux_painter.moss.dmd_strength', 0.7, 0, 2, 0.05,
-                    '官方推荐 0.7') +
-                this._section('额外 LoRA 链（串在 DMD 之后，勾选才加载）') +
+            lora = this._section('LoRA 链（勾选才加载）') +
                 `<div class="form-group"><label>${this._t('启用 / LoRA 文件名 / 权重 / 触发词')}</label>
                     <div class="kv-editor" id="flux-moss-lora-editor"
                          oninput="FluxLoraRows.sync('flux-moss-lora-editor','flux-moss-lora-value')"
@@ -827,22 +826,18 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 <input type="text" placeholder="${this._t('输入一个尺寸后回车添加')}" onkeydown="FluxChips.key(event,this)">
                 <div class="help-text">${this._t('宽高须为 16 的倍数；MOSS 建议总像素 1M~2M')}</div>
             </div>` +
-            this._num('单次出图等待上限(秒)', 'flux_painter.wait_timeout', 5400, 60, 21600, 60) +
-            this._section('改图与图生图') +
+            this._num('单次出图等待上限(秒)', 'flux_painter.wait_timeout', 5400, 60, 21600, 60);
+    },
+
+    /** 改图与图生图（放在节点参数之后，避免把节点挤到下面） */
+    _fluxWorkflowImg2Img() {
+        return this._section('改图与图生图') +
             this._check('启用改图判定', 'flux_painter.edit_followup.enabled', true) +
             this._num('改图等待窗口(秒)', 'flux_painter.edit_followup.window', 120, 10, 3600, 10) +
-            this._num('判定 max_tokens', 'flux_painter.edit_followup.llm_max_tokens', 512, 64, 4096, 64) +
-            this._num('判定温度', 'flux_painter.edit_followup.llm_temperature', 0.3, 0, 2, 0.1) +
             this._check('启用图生图', 'flux_painter.img2img.enabled', true,
                 '带图说「照这张画」直接走图生图；没图时模型可截屏取景') +
             this._num('参考强度 denoise', 'flux_painter.img2img.denoise', 0.75, 0.05, 0.95, 0.05,
-                '越高越偏离参考图') +
-            this._num('取景复查轮数', 'flux_painter.img2img.focus_rounds', 3, 1, 5, 1) +
-            this._num('截屏长边上限', 'flux_painter.img2img.screen_max_side', 1280, 320, 4096, 64) +
-            this._section('引擎与路径') +
-            this._text('提示词参考目录', 'flux_painter.comfy.prompt_reference_dir', '.vendor/.ComfyNode/prompt_reference') +
-            this._text('画师数据', 'flux_painter.comfy.artist_data', '.vendor/.ComfyNode/artist/data.js') +
-            this._text('输出目录', 'flux_painter.comfy.output_dir', '.vendor/.ComfyNode/output');
+                '越高越偏离参考图');
     },
 
     /** 审查（两家族共用，阈值分开存） */
@@ -994,6 +989,7 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
         });
         h += this._node('07', '局部细化（pro）', det);
 
+        h += this._fluxWorkflowImg2Img();
         h += this._fluxWorkflowReview();
         return h;
     },
@@ -1020,13 +1016,17 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 <select data-path="flux_painter.moss.sampler_name">${opts(FluxSamplerOptions, samplerCur)}</select></div>
             <div class="form-group"><label>${this._t('调度器')}</label>
                 <select data-path="flux_painter.moss.scheduler">${opts(FluxSchedulerOptions, schedCur)}</select></div>` +
-            this._num('快速档步数', 'flux_painter.moss.dmd_steps', 8, 1, 20, 1,
-                '8 步 DMD（官方工作流开关开启档）') +
-            this._num('快速档 cfg', 'flux_painter.moss.dmd_cfg', 1, 0, 20, 0.1,
-                '必须为 1：蒸馏档没有负向分支') +
+            this._num('快速档步数', 'flux_painter.moss.dmd_steps', 16, 1, 60, 1,
+                '对齐 animafast 工作流：16 步（8 步会拟合不足）') +
+            this._num('快速档 cfg', 'flux_painter.moss.dmd_cfg', 3.5, 0, 20, 0.1,
+                '必须 >1，负向词才会生效（animafast 用 3.5）') +
+            this._check('快速档挂 DMD 蒸馏件', 'flux_painter.moss.fast_use_dmd', false,
+                'DMD 只在 8 步 + cfg 1 成立；开它就要把步数/cfg 改回 8/1') +
+            this._check('快速档开跳层 SLG', 'flux_painter.moss.fast_slg', true,
+                '少步数下靠跳层稳住结构（animafast 同源做法）') +
             this._num('清晰档步数', 'flux_painter.moss.sft_steps', 50, 1, 200, 1) +
-            this._num('清晰档 cfg', 'flux_painter.moss.sft_cfg', 3, 0, 30, 0.1,
-                '官方推荐 3.0（范围 3~6）'));
+            this._num('清晰档 cfg', 'flux_painter.moss.sft_cfg', 3.5, 0, 30, 0.1,
+                'animafast 用 3.5（官方范围 3~6）'));
 
         h += this._node('10', 'ModelSamplingAuraFlow · 位移',
             this._num('shift', 'flux_painter.moss.shift', 5, 0, 30, 0.1, '官方默认 5.0') +
@@ -1035,20 +1035,30 @@ if (typeof Config !== 'undefined' && Config) Object.assign(Config, {
                 { value: 'img_to_img_velocity', label: 'img_to_img_velocity' }
             ], 'flow'));
 
-        h += this._node('13', 'SkipLayerGuidance · 跳层（清晰档）',
+        h += this._node('13', 'SkipLayerGuidance · 跳层（快速/清晰档共用）',
             this._text('跳层 single_layers', 'flux_painter.moss.slg_layers', '22',
-                '官方推荐跳 22；留空=不跳层') +
+                'animafast 工作流跳 22；留空=不跳层') +
             this._text('跳层 double_layers', 'flux_painter.moss.slg_double_layers', '',
                 '单流 DiT 一般只跳 single；留空即可') +
             this._num('SLG 起始比例', 'flux_painter.moss.slg_start', 0, 0, 1, 0.01) +
             this._num('SLG 结束比例', 'flux_painter.moss.slg_end', 1, 0, 1, 0.01));
 
+        const mossLoraCount = FluxLoraRows
+            .norm(this._val('flux_painter.moss.loras', [])).filter(x => x.enabled).length;
+        h += this._node('21', `LoRA 链 · 当前启用 ${mossLoraCount} 条`,
+            `<div class="help-text">${this._t('串在底模之后、位移之前；在「模型」卡的额外 LoRA 链里编辑。')}</div>` +
+            this._text('DMD LoRA 文件', 'flux_painter.moss.dmd_lora',
+                'MOSS-Image-SFT-8-steps-dmd.safetensors') +
+            this._num('DMD 强度', 'flux_painter.moss.dmd_strength', 0.7, 0, 2, 0.05,
+                '仅当「快速档挂 DMD」打开时生效'));
+
         h += this._node('→', '图生图 · denoise',
             this._num('参考强度 denoise', 'flux_painter.moss.img2img_denoise', 0.55, 0.05, 0.95, 0.05,
-                '8 步 DMD：0.5~0.7 比较合适') +
+                '16 步档：0.45~0.65 比较合适') +
             this._num('denoise 下限', 'flux_painter.moss.img2img_denoise_min', 0.35, 0.05, 0.9, 0.05) +
             this._num('denoise 上限', 'flux_painter.moss.img2img_denoise_max', 0.8, 0.1, 0.95, 0.05));
 
+        h += this._fluxWorkflowImg2Img();
         h += this._fluxWorkflowReview();
         return h;
     }

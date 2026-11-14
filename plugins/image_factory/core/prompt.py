@@ -74,6 +74,9 @@ NSFW_GUIDE = (
     "③ 表情与生理反应写具体；④ 服装残留比全裸更有信息量；⑤ 必写光照；"
     "⑥ 多人写清人数与左右位置；⑦ 需要补充时在 prompt 末尾补 4~10 个关键英文词。"
     "⑧ 只写需求里真的需要的东西，不要自作主张添加材质/状态细节。\n"
+    "【solo（默认）】画面里只能有主角一人：不许出现第二个人、他人的手或手指、"
+    "阴茎、镜头外伸进来的手或腿；要多人必须显式给 interact。"
+    "“色图”只指尺度，不指出场人物：默认单女、无男性，不要自己加对象。\n"
     "【手部（重要，MOSS 8 步档容易画多手/多指）】只写**一双**手，且只给一个简单动作："
     "放在大腿上、扶着床沿、垂在身侧、撑在身后、或干脆写 hands out of frame。"
     "禁止同时描述两只手做不同的事（例如一只手摸胸、另一只手撑床），"
@@ -180,7 +183,7 @@ class PromptWriter:
         parts.append(MOSS_RULING)
         return "\n\n".join(p for p in parts if p)
 
-    def write(self, character, appearance, index, total, char_tag="", safe=False):
+    def write(self, character, appearance, index, total, char_tag="", safe=False, multi=0):
         """返回可直接送模型的提示词；模型会先自己查法典，再产出提示词。"""
         if self.llm is None:
             return ""
@@ -192,6 +195,8 @@ class PromptWriter:
             user.append("外观（以此为准，不要改设定）：%s" % appearance)
         if self.cfg.style_extra:
             user.append("额外风格：%s" % self.cfg.style_extra)
+        if multi:
+            user.append("画面要求：同图出现 %d 个不同角色（各自独立、不做性交互），写清左右位置与各自外观，不要混脸。" % multi)
         if safe:
             user.append("画面要求：保守模式——**不露点**（不画乳头与性器官），"
                         "但必须非常色：靠贴身衣料、姿势、神态与氛围拉满。")
@@ -200,6 +205,7 @@ class PromptWriter:
         if total > 1:
             user.append("这是同一批第 %d/%d 张，构图/机位/光照与其他张明显不同。"
                         % (index + 1, total))
+        user.append("（姿势与构图由你决定，参考法典但别照搬，不要每次都跪/趴/躺，按需求自然选。）")
         user.append("只输出 {\"prompt\": \"...\"}。")
 
         msgs = [{"role": "system",

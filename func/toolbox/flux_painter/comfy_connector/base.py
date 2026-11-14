@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/comfy_connector/base.py
 import json
 import os
 import time
@@ -11,10 +10,6 @@ from func.log.default_log import DefaultLog
 
 from func.toolbox.flux_painter.dialects import get_dialect, resolve_family
 from func.toolbox.flux_painter.dialects.anima import ANIMA_PRO_NODES
-
-# 工作流全部下放到 dialects/：anima 与 moss 是两套完全不同的图，不能混用。
-# 这里只保留传输层（提交/轮询/下载/取图）与兼容别名。
-
 
 class TBComfyBase:
     """内置/外部 ComfyUI 连接公共层：健康检查/最小图构造/提交/轮询/取图"""
@@ -65,11 +60,7 @@ class TBComfyBase:
         return ok
 
     def upload_image(self, local_path) -> str:
-        """把本地参考图上传到 ComfyUI 的 input 目录，返回 LoadImage 可用的文件名
-
-        走官方 /upload/image（multipart），内置/外部引擎通用，不往内核目录写文件；
-        失败返回空串，由调用方决定退化为文生图。
-        """
+        """把本地参考图上传到 ComfyUI 的 input 目录，返回 LoadImage 可用的文件名"""
         path = str(local_path or "")
         if not path or not os.path.isfile(path):
             return ""
@@ -101,7 +92,6 @@ class TBComfyBase:
             self.log.exception("[flux_painter] 参考图上传失败")
             return ""
 
-    # ==================== 方言分发 ====================
     def dialect(self):
         """当前生效的工作流方言（按底模名/显式配置解析，结果缓存）"""
         family = resolve_family(getattr(self.config, "unet_model", ""),
@@ -137,12 +127,7 @@ class TBComfyBase:
             clip_type=clip_type, seed=seed, params=params)
 
     def with_init_image(self, graph, image_name, denoise, width, height):
-        """把已织好的图原地改成图生图：只替换 latent 来源与 denoise，其余节点一律不动
-
-        - 节点 6（EmptyLatentImage）→ LoadImage，新增 ImageScale/VAEEncode（高位 id 避开 pro 占用）；
-        - 基础采样节点 7 的 latent_image 指向编码结果，denoise 用参考强度；
-        - 找不到基础采样节点时原图返回（宁可退化成文生图，也不拼坏图）。
-        """
+        """把已织好的图原地改成图生图：只替换 latent 来源与 denoise，其余节点一律不动"""
         if not image_name or not isinstance(graph, dict):
             return graph
         ks = graph.get("7")
@@ -158,7 +143,6 @@ class TBComfyBase:
                        "inputs": {"pixels": ["90", 0], "vae": ["3", 0]}}
         ks["inputs"]["latent_image"] = ["91", 0]
         ks["inputs"]["denoise"] = float(denoise)
-        # 交给方言做图生图的附加处理（MOSS 会在这里挂编辑 LoRA、收敛 denoise）
         hook = getattr(self.dialect(), "after_img2img", None)
         if callable(hook):
             try:
@@ -167,8 +151,6 @@ class TBComfyBase:
                 self.log.exception("[flux_painter] 图生图方言附加处理失败（忽略）")
         return graph
 
-    # ==================== Pro 档位节点检查 ====================
-    # pro 所需节点由方言声明；anima 依赖第三方插件，缺失则自动降级快速档
     PRO_REQUIRED_NODES = ANIMA_PRO_NODES
 
     def object_info(self, timeout=20):
@@ -190,7 +172,6 @@ class TBComfyBase:
         info = self.object_info()
         missing = ([n for n in need if n not in info] if info else list(need))
         if missing and info:
-            # 缓存可能过期（引擎刚重启/刚加载插件）：强制刷新一次再判定
             self._obj_info = None
             info2 = self.object_info()
             if info2:
@@ -198,12 +179,7 @@ class TBComfyBase:
         return missing
 
     def conform_inputs(self, class_type, inputs):
-        """按引擎 /object_info 的真实定义对齐输入：
-
-        - 剔除该节点不认识的键（跨插件版本重命名/新增参数时避免 validation 失败）
-        - 为缺失且带默认值的 required 参数补齐默认值（如 USDU 的 batch_size）
-        - object_info 不可用时原样返回（不破坏离线构造）
-        """
+        """按引擎 /object_info 的真实定义对齐输入："""
         info = self.object_info()
         if not info:
             return inputs
@@ -244,8 +220,6 @@ class TBComfyBase:
                 return True, entry
         return False, None
 
-    # ==================== 实时进度（WebSocket） ====================
-    # 按 class_type 映射阶段与权重（不依赖节点 id，fast / pro 通用）
     STAGE_WEIGHTS = {
         "KSampler": (25, "基础采样"),
         "ImageUpscaleWithModel": (5, "高清放大"),
@@ -272,16 +246,7 @@ class TBComfyBase:
         return plan, max(total, 1)
 
     def watch(self, prompt_id, graph=None, timeout=900, on_progress=None, client_id=None):
-        """订阅引擎 WebSocket 实时进度并等待完成；连接失败自动回退 wait() 轮询。
-
-        on_progress(dict) 字段：
-            stage   阶段文案（多次执行的阶段带 k/n，如「分块重绘 6/16」「局部细化 2/3」）
-            percent 0~100
-            step    当前节点的采样步进（如 "12/20"）
-            blocks  [已完成, 总数]（多次执行的阶段才有）
-            elapsed 已用秒数 / eta 预计总秒数（外部补充）
-        返回 (ok, images, 说明) —— 与 wait() 同签名
-        """
+        """订阅引擎 WebSocket 实时进度并等待完成；连接失败自动回退 wait() 轮询。"""
         try:
             import websocket  # websocket-client
         except Exception:
@@ -302,8 +267,6 @@ class TBComfyBase:
             return self.STAGE_WEIGHTS.get(ct, (self._DEFAULT_STAGE_WEIGHT, "运行中"))[0]
 
         def _percent():
-            # 已完成阶段权重 + 当前阶段按步进插值：采样/分块途中也能连续走动，
-            # 否则一次长采样期间恒为 0，画板看起来只有 0 和 100
             """把原始进度换算成百分比。"""
             return min(99, int((done_w + _cur_weight() * cur_frac) * 100 / total_w))
 
@@ -398,7 +361,6 @@ class TBComfyBase:
                     except Exception:
                         pass
 
-        # 取结果（WS 结束或回退后，统一从 history 取，保证与 wait() 结果一致）
         exists, entry = self.get_history(prompt_id)
         if exists and entry:
             status_raw = entry.get("status") or {}
@@ -425,7 +387,6 @@ class TBComfyBase:
                     on_progress({"stage": "生成完成", "percent": 100, "step": "",
                                  "elapsed": int(time.time() - t0)})
                 return True, images, ""
-        # 结果还没落库/WS 提前断开：交给轮询兜底（与旧逻辑一致）
         if on_progress:
             on_progress({"stage": "解码中", "percent": 99, "elapsed": int(time.time() - t0)})
         return self.wait(prompt_id, timeout=180)
@@ -477,8 +438,7 @@ class TBComfyBase:
         return os.path.join(out_dir, subfolder, filename)
 
     def _download_image(self, image_entry):
-        """经 ComfyUI /view 下载图片到 comfy_output_dir（不依赖引擎磁盘布局猜测），
-        成功返回本地绝对路径，失败返回 None"""
+        """经 ComfyUI /view 下载图片到 comfy_output_dir（不依赖引擎磁盘布局猜测），"""
         filename = str(image_entry.get("filename", "") or "")
         subfolder = str(image_entry.get("subfolder", "") or "")
         typ = str(image_entry.get("type", "") or "output")

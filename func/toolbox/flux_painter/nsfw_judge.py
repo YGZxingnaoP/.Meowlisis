@@ -1,22 +1,11 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/nsfw_judge.py
-"""群聊裸露审查：NudeNet v3.4 ONNX（onnxruntime CPU 推理，PIL 预处理，无需 cv2）
-
-模型：nudenet.onnx（约 11.6MB，vladmandic/nudenet，NudeNet v3.4 导出）
-下载源（config.yml flux_painter.nsfw_check.model_url，默认 HF）：
-    https://huggingface.co/vladmandic/nudenet/resolve/main/nudenet.onnx
-首次使用自动下载到 .ComfyNode/nsfw/；失败时可手动放置同路径。
-
-输出 output0[1, 22, 2100]：YOLO 式（每列 = cx,cy,w,h + 18 类得分）。
-类别顺序按 NudeNet v3.4（0-4 为暴露敏感器官：女性生殖器/男性生殖器/肛门/胸/臀）。
-"""
+"""群聊裸露审查：NudeNet v3.4 ONNX（onnxruntime CPU 推理，PIL 预处理，无需 cv2）"""
 import os
 import threading
 import urllib.request
 
 from func.log.default_log import DefaultLog
 
-# 敏感暴露类索引（NudeNet v3.4 顺序，与 vladmandic/nudenet onnx 一致）
 SENSITIVE_CLASSES = {
     0: "female_genitalia_exposed",
     1: "male_genitalia_exposed",
@@ -24,19 +13,14 @@ SENSITIVE_CLASSES = {
     3: "breast_exposed",
     4: "buttocks_exposed",
 }
-# 检出门槛（低于此分不视为检出）
 DETECT_FLOOR = 0.12
 
-# 按类别的判定阈值（未列出的类别用 config.yml 的统一阈值）
-# 说明：NudeNet v3.4 是真人照片模型，在二次元泳装/丝袜图上极易把裆部阴影误判成
-#       male_genitalia_exposed（实测 9/9 张正常图都是这一类误报）→ 该类单独抬高阈值
 CLASS_THRESHOLD = {
     "male_genitalia_exposed": 0.85,
 }
 
 _lock = threading.Lock()
 _sessions = {}
-
 
 def _get_session(path):
     """onnx session 进程内缓存（加载约 0.5~1s，避免每次推理重载）"""
@@ -49,7 +33,6 @@ def _get_session(path):
             _sessions[key] = s
         return s
 
-
 class TBNsfwJudge:
     """裸露检测器：ensure_model() 保证模型就绪；judge(image) -> (nsfw, detail)"""
 
@@ -58,7 +41,6 @@ class TBNsfwJudge:
         self.config = config
         self.log = DefaultLog().getLogger()
 
-    # ==================== 模型就绪 ====================
     def ensure_model(self):
         """返回 (ok, 说明)；缺失时自动从 model_url 下载"""
         path = self.config.nsfw_model_path
@@ -91,7 +73,6 @@ class TBNsfwJudge:
                 pass
             return False, f"模型下载失败: {e}（可手动下载放置到 {path}）"
 
-    # ==================== 推理 ====================
     def _preprocess(self, pil_img):
         """RGB → 320×320 → /255 → NCHW float32"""
         import numpy as np
@@ -123,9 +104,7 @@ class TBNsfwJudge:
         return results
 
     def judge(self, image_path, threshold=None):
-        """判定裸露。返回 (nsfw: bool, detail: str)。
-        detail 形如 'breast_exposed 0.72@[0.30,0.20,0.70,0.60]'；nsfw 由阈值与敏感类决定
-        threshold: 可覆盖配置阈值（MOSS 与 anima 的阈值分开配）"""
+        """判定裸露。返回 (nsfw: bool, detail: str)。"""
         from PIL import Image
         threshold = self.config.nsfw_threshold if threshold is None else float(threshold)
         try:
@@ -137,7 +116,6 @@ class TBNsfwJudge:
         except Exception as e:
             self.log.exception("[flux_painter] NudeNet 推理异常")
             return False, f"judge_error:{e}"
-        # 敏感暴露类且达到阈值 → nsfw
         nsfw = False
         parts = []
         for s, c, box in dets:

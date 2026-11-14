@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/comfy_connector/comfy_port.py
 from func.toolbox.flux_painter.comfy_connector.base import TBComfyBase
-
 
 class TBComfyPort(TBComfyBase):
     """外部模式：把提示词传给用户自建的 ComfyUI 服务并取回图片（不做进程管理）"""

@@ -1,0 +1,2149 @@
+{
+ "version": 3,
+ "series": {
+  "blue archive": "蔚蓝档案",
+  "make heroine ga oo sugiru!": "败犬女主太多了",
+  "saenai heroine no sodatekata": "路人女主的养成方法",
+  "fate/grand order": "FGO",
+  "re:zero kara hajimeru isekai seikatsu": "Re:从零开始",
+  "touhou": "东方Project",
+  "genshin impact": "原神",
+  "date a live": "约会大作战"
+ },
+ "characters": [
+  {
+   "name": "阿尔托莉雅",
+   "name_en": "artoria pendragon",
+   "series": "fate",
+   "series_cn": "fate",
+   "aliases": [
+    "吾王",
+    "saber",
+    "阿尔托莉雅·潘德拉贡",
+    "呆毛王",
+    "阿尔托莉雅·潘德拉贡alter",
+    "黑saber"
+   ],
+   "tag": "artoria pendragon",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "拉姆",
+   "name_en": "ram",
+   "series": "re zero",
+   "series_cn": "re zero",
+   "aliases": [
+    "ram",
+    "拉姆拉姆"
+   ],
+   "tag": "ram",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "蕾姆",
+   "name_en": "rem",
+   "series": "re zero",
+   "series_cn": "re zero",
+   "aliases": [
+    "雷姆",
+    "rem"
+   ],
+   "tag": "rem",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "初音未来",
+   "name_en": "hatsune miku",
+   "aliases": [
+    "miku",
+    "初音",
+    "葱娘"
+   ],
+   "tag": "hatsune miku",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "博丽灵梦",
+   "name_en": "hakurei reimu",
+   "aliases": [
+    "灵梦",
+    "hakurei reimu"
+   ],
+   "tag": "hakurei reimu",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "雾雨魔理沙",
+   "name_en": "kirisame marisa",
+   "aliases": [
+    "魔理沙",
+    "kirisame marisa"
+   ],
+   "tag": "kirisame marisa",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "纳西妲",
+   "name_en": "nahida",
+   "series": "genshin impact",
+   "series_cn": "原神",
+   "aliases": [
+    "小草神",
+    "nahida"
+   ],
+   "tag": "nahida",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "胡桃",
+   "name_en": "hu tao",
+   "series": "genshin impact",
+   "series_cn": "原神",
+   "aliases": [
+    "hutao",
+    "胡桃堂主"
+   ],
+   "tag": "hu tao",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "雷电将军",
+   "name_en": "raiden shogun",
+   "series": "genshin impact",
+   "series_cn": "原神",
+   "aliases": [
+    "雷神",
+    "巴尔泽布",
+    "raiden shogun",
+    "雷电影"
+   ],
+   "tag": "raiden shogun",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "佐天泪子",
+   "name_en": "saten ruiko",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "saten ruiko",
+   "danbooru_posts": 2886,
+   "top_tags": [
+    "black hair",
+    "long hair",
+    "hair ornament",
+    "hair flower",
+    "sakugawa school uniform",
+    "school uniform",
+    "serafuku"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "初春饰利",
+   "name_en": "uiharu kazari",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "uiharu kazari",
+   "danbooru_posts": 1765,
+   "top_tags": [
+    "black hair",
+    "short hair",
+    "head wreath",
+    "hair flower",
+    "sakugawa school uniform",
+    "school uniform",
+    "serafuku"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "帆风润子",
+   "name_en": "hokaze junko",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "hokaze junko",
+   "danbooru_posts": 151,
+   "top_tags": [
+    "long hair",
+    "purple hair",
+    "drill hair",
+    "tokiwadai school uniform"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "御坂美琴",
+   "name_en": "misaka mikoto",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "misaka mikoto",
+   "danbooru_posts": 10979,
+   "top_tags": [
+    "brown hair",
+    "brown eyes",
+    "short hair",
+    "hair ornament",
+    "tokiwadai school uniform",
+    "school uniform",
+    "summer uniform"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "御坂美琴的妹妹",
+   "name_en": "misaka imouto",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "misaka imouto",
+   "danbooru_posts": 1192,
+   "top_tags": [
+    "brown hair",
+    "brown eyes",
+    "medium hair",
+    "tokiwadai school uniform",
+    "school uniform",
+    "sweater vest"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "打ち止め",
+   "name_en": "last order (toaru majutsu no index)",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "last order (toaru majutsu no index)",
+   "danbooru_posts": 1944,
+   "top_tags": [
+    "brown hair",
+    "short hair",
+    "brown eyes",
+    "ahoge"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "番外个体",
+   "name_en": "misaka worst",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "misaka worst",
+   "danbooru_posts": 654,
+   "top_tags": [
+    "brown hair",
+    "medium hair",
+    "brown eyes",
+    "ao dai"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "白井黑子",
+   "name_en": "shirai kuroko",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "shirai kuroko",
+   "danbooru_posts": 4043,
+   "top_tags": [
+    "brown hair",
+    "brown eyes",
+    "twintails",
+    "long hair",
+    "bow",
+    "tokiwadai school uniform",
+    "school uniform"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "茵蒂克丝",
+   "name_en": "index (toaru majutsu no index)",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "index (toaru majutsu no index)",
+   "danbooru_posts": 2071,
+   "top_tags": [
+    "long hair",
+    "green eyes",
+    "nun",
+    "nun headdress"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "食蜂操祈",
+   "name_en": "shokuhou misaki",
+   "series": "toaru kagaku no railgun",
+   "series_cn": "某科学的超电磁炮",
+   "aliases": [],
+   "tag": "shokuhou misaki",
+   "danbooru_posts": 4225,
+   "top_tags": [
+    "blonde hair",
+    "long hair",
+    "gloves",
+    "white gloves",
+    "large breasts"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "夜刀神十香",
+   "name_en": "yatogami tohka",
+   "series": "date a live",
+   "series_cn": "约会大作战",
+   "aliases": [],
+   "tag": "yatogami tohka",
+   "danbooru_posts": 747,
+   "top_tags": [
+    "purple hair",
+    "purple eyes",
+    "long hair",
+    "breasts"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "时崎狂三",
+   "name_en": "tokisaki kurumi",
+   "aliases": [
+    "狂三",
+    "tokisaki kurumi"
+   ],
+   "tag": "tokisaki kurumi",
+   "danbooru_posts": 0,
+   "top_tags": [
+    "black hair",
+    "red eyes",
+    "long hair",
+    "twintails"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）",
+   "series": "date a live",
+   "series_cn": "约会大作战"
+  },
+  {
+   "name": "史戴拉",
+   "name_en": "stella vermillion",
+   "series": "rakudai kishi no cavalry",
+   "series_cn": "落第骑士英雄谭",
+   "aliases": [
+    "史黛拉",
+    "史戴拉·维米利昂",
+    "stella",
+    "vermillion stella"
+   ],
+   "tag": "stella vermillion",
+   "danbooru_posts": 376,
+   "top_tags": [
+    "red hair",
+    "red eyes",
+    "twintails",
+    "two side up",
+    "hair ribbon",
+    "yellow ribbon",
+    "large breasts",
+    "hagun academy school uniform",
+    "black thighhighs",
+    "black choker",
+    "garter straps"
+   ],
+   "top_tags_source": "danbooru posts.json tags=stella_vermillion+solo limit=40"
+  },
+  {
+   "name": "akari",
+   "name_en": "akari",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "akari (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "akemi",
+   "name_en": "akemi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "akemi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "anna",
+   "name_en": "anna",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "anna (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "aoi",
+   "name_en": "aoi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "aoi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "arata",
+   "name_en": "arata",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "arata (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "arina",
+   "name_en": "arina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "arina (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "ayame",
+   "name_en": "ayame",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ayame (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "ayumu",
+   "name_en": "ayumu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ayumu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "azami",
+   "name_en": "azami",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "azami (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "beatrice",
+   "name_en": "beatrice",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "beatrice (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "ein",
+   "name_en": "ein",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ein (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "erika",
+   "name_en": "erika",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "erika (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "erina",
+   "name_en": "erina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "erina (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "fuyu",
+   "name_en": "fuyu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "fuyu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "haine",
+   "name_en": "haine",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "haine (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "hikari",
+   "name_en": "hikari",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hikari (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "himari",
+   "name_en": "himari",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "himari (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "hiromi",
+   "name_en": "hiromi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hiromi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "junko",
+   "name_en": "junko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "junko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kai",
+   "name_en": "kai",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kai (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "karen",
+   "name_en": "karen",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "karen (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kaya",
+   "name_en": "kaya",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kaya (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kokoro",
+   "name_en": "kokoro",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kokoro (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kokuriko",
+   "name_en": "kokuriko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kokuriko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kotama",
+   "name_en": "kotama",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kotama (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kurokage",
+   "name_en": "kurokage",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kurokage (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "kuzunoha",
+   "name_en": "kuzunoha",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kuzunoha (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mai",
+   "name_en": "mai",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mai (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "maia",
+   "name_en": "maia",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "maia (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "malkuth",
+   "name_en": "malkuth",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "malkuth (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "marina",
+   "name_en": "marina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "marina (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mashiro",
+   "name_en": "mashiro",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mashiro (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mayumi",
+   "name_en": "mayumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mayumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mimori",
+   "name_en": "mimori",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mimori (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "minato",
+   "name_en": "minato",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "minato (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mine",
+   "name_en": "mine",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mine (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "minori",
+   "name_en": "minori",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "minori (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mirai",
+   "name_en": "mirai",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mirai (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "misuzu",
+   "name_en": "misuzu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "misuzu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "mitsuki",
+   "name_en": "mitsuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mitsuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "momiji",
+   "name_en": "momiji",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "momiji (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "nagomi",
+   "name_en": "nagomi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nagomi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "nagusa",
+   "name_en": "nagusa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nagusa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "nanami",
+   "name_en": "nanami",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nanami (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "natsuki",
+   "name_en": "natsuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "natsuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "niya",
+   "name_en": "niya",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "niya (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "nozomi",
+   "name_en": "nozomi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nozomi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "pina",
+   "name_en": "pina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "pina (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "rei",
+   "name_en": "rei",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "rei (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "rena",
+   "name_en": "rena",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "rena (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "ritsu",
+   "name_en": "ritsu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ritsu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "rumi",
+   "name_en": "rumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "rumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "sanae",
+   "name_en": "sanae",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sanae (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "shimiko",
+   "name_en": "shimiko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shimiko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "shinon",
+   "name_en": "shinon",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shinon (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "shizuko",
+   "name_en": "shizuko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shizuko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "shouko",
+   "name_en": "shouko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shouko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "sof",
+   "name_en": "sof",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sof (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "sora",
+   "name_en": "sora",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sora (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "suiko",
+   "name_en": "suiko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "suiko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "takane",
+   "name_en": "takane",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "takane (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "tsubasa",
+   "name_en": "tsubasa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tsubasa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "tsumugi",
+   "name_en": "tsumugi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tsumugi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "utaha",
+   "name_en": "utaha",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "utaha (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "wadako",
+   "name_en": "wadako",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "wadako (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "yakumo",
+   "name_en": "yakumo",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yakumo (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "youko",
+   "name_en": "youko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "youko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "yukino",
+   "name_en": "yukino",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yukino (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "yume",
+   "name_en": "yume",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yume (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "乃香",
+   "name_en": "nodoka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nodoka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "乙女",
+   "name_en": "otogi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "otogi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "二子",
+   "name_en": "niko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "niko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "伊吹",
+   "name_en": "ibuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ibuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "伊织",
+   "name_en": "iori",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "iori (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "伊豆奈",
+   "name_en": "izuna",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "izuna (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "优香",
+   "name_en": "yuuka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yuuka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "佳代子",
+   "name_en": "kayoko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kayoko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "凯",
+   "name_en": "kei",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kei (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "切莉诺",
+   "name_en": "cherino",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "cherino (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "千夏",
+   "name_en": "chinatsu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "chinatsu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "千寻",
+   "name_en": "chihiro",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "chihiro (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "千秋",
+   "name_en": "chiaki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "chiaki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "千鹤",
+   "name_en": "chise",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "chise (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "华",
+   "name_en": "kanoe",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kanoe (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "卡琳",
+   "name_en": "karin",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "karin (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "吹雪",
+   "name_en": "fubuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "fubuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "周防",
+   "name_en": "suou",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "suou (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "和纱",
+   "name_en": "kazusa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kazusa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "咲",
+   "name_en": "saki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "saki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "响",
+   "name_en": "hibiki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hibiki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "圣娅",
+   "name_en": "seia",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "seia (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "夏",
+   "name_en": "natsu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "natsu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "妃咲",
+   "name_en": "kisaki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kisaki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "妮露",
+   "name_en": "neru",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "neru (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "小夜",
+   "name_en": "sayuri",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sayuri (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "小春",
+   "name_en": "koharu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "koharu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "小百合",
+   "name_en": "kotori",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kotori (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "小雪",
+   "name_en": "koyuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "koyuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "康娜",
+   "name_en": "kanna",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kanna (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "心奈",
+   "name_en": "kokona",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kokona (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "敦子",
+   "name_en": "atsuko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "atsuko (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "日向",
+   "name_en": "hinata",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hinata (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "日奈",
+   "name_en": "hina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hina (blue archive)",
+   "danbooru_posts": 0,
+   "top_tags": [
+    "white hair",
+    "long hair",
+    "purple eyes",
+    "horns",
+    "demon horns",
+    "halo",
+    "ahoge"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "日富美",
+   "name_en": "hifumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hifumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "时",
+   "name_en": "toki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "toki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "时雨",
+   "name_en": "shigure",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shigure (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "星野",
+   "name_en": "hoshino",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hoshino (blue archive)",
+   "danbooru_posts": 0,
+   "top_tags": [
+    "pink hair",
+    "long hair",
+    "blue eyes",
+    "heterochromia",
+    "ahoge",
+    "halo",
+    "pink halo",
+    "open mouth"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "春香",
+   "name_en": "haruka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "haruka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "昴",
+   "name_en": "subaru",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "subaru (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "普拉娜",
+   "name_en": "plana",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "plana (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "晴",
+   "name_en": "hare",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hare (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "智惠",
+   "name_en": "tomoe",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tomoe (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "未花",
+   "name_en": "mika",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mika (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "枫",
+   "name_en": "kaede",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kaede (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "柚子",
+   "name_en": "yuzu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yuzu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "树里",
+   "name_en": "juri",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "juri (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "桃井",
+   "name_en": "momoi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "momoi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "桃香",
+   "name_en": "momoka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "momoka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "桐乃",
+   "name_en": "kirino",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kirino (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "桔梗",
+   "name_en": "kikyou",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kikyou (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "梅",
+   "name_en": "megu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "megu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "梅露",
+   "name_en": "meru",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "meru (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "梨绪",
+   "name_en": "rio",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "rio (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "椿",
+   "name_en": "tsubaki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tsubaki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "榛名",
+   "name_en": "haruna",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "haruna (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "樱子",
+   "name_en": "sakurako",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sakurako (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "此花",
+   "name_en": "konoka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "konoka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "泉",
+   "name_en": "izumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "izumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "海香",
+   "name_en": "umika",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "umika (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "澪",
+   "name_en": "miyo",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "miyo (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "濑名",
+   "name_en": "sena",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sena (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "爱丽丝",
+   "name_en": "aris",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "aris (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "爱莉",
+   "name_en": "airi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "airi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "琴音",
+   "name_en": "kotone",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kotone (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "白子",
+   "name_en": "shiroko",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shiroko (blue archive)",
+   "danbooru_posts": 0,
+   "top_tags": [
+    "grey hair",
+    "blue eyes",
+    "wolf ears",
+    "animal ears",
+    "animal ear fluff",
+    "hair ornament",
+    "cross hair ornament",
+    "halo"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "白子·恐怖",
+   "name_en": "shiroko terror",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shiroko terror (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "皐月",
+   "name_en": "satsuki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "satsuki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "真理",
+   "name_en": "mari",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mari (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "真琴",
+   "name_en": "makoto",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "makoto (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "真纪",
+   "name_en": "maki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "maki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "瞬",
+   "name_en": "shun",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shun (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "筑紫",
+   "name_en": "tsukuyo",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tsukuyo (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "米娜",
+   "name_en": "mina",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "mina (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "紫",
+   "name_en": "yukari",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yukari (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "纯子",
+   "name_en": "sumika",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sumika (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "纱雪",
+   "name_en": "saya",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "saya (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "绘里",
+   "name_en": "eri",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "eri (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "绫",
+   "name_en": "akira",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "akira (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "绫音",
+   "name_en": "ayane",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ayane (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "绿",
+   "name_en": "midori",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "midori (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "美和",
+   "name_en": "miwa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "miwa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "美咲",
+   "name_en": "misaki",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "misaki (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "美智瑠",
+   "name_en": "michiru",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "michiru (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "美游",
+   "name_en": "miyu",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "miyu (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "羽留",
+   "name_en": "ui",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ui (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "胡桃",
+   "name_en": "kurumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kurumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "良美",
+   "name_en": "yoshimi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "yoshimi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "花子",
+   "name_en": "hanako",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hanako (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "花江",
+   "name_en": "hanae",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hanae (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "芹香",
+   "name_en": "serika",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "serika (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "若藻",
+   "name_en": "wakamo",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "wakamo (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "英美",
+   "name_en": "eimi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "eimi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "莉音",
+   "name_en": "rin",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "rin (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "莲华",
+   "name_en": "renge",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "renge (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "莲见",
+   "name_en": "hasumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "hasumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "菫",
+   "name_en": "sumire",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "sumire (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "萌",
+   "name_en": "moe",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "moe (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "蕾莎",
+   "name_en": "reisa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "reisa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "诗郎",
+   "name_en": "shuro",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "shuro (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "诺亚",
+   "name_en": "noa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "noa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "辉夜",
+   "name_en": "kaguya",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kaguya (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "都子",
+   "name_en": "miyako",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "miyako (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "野宫",
+   "name_en": "nonomi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "nonomi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "铃美",
+   "name_en": "suzumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "suzumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿丝娜",
+   "name_en": "asuna",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "asuna (blue archive)",
+   "danbooru_posts": 0,
+   "top_tags": [
+    "long hair",
+    "blue eyes",
+    "hair over one eye",
+    "halo",
+    "large breasts",
+    "smile"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "阿兹莎",
+   "name_en": "azusa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "azusa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿卡内",
+   "name_en": "akane",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "akane (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿子",
+   "name_en": "ako",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "ako (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿罗娜",
+   "name_en": "arona",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "arona (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿莉花",
+   "name_en": "iroha",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "iroha (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿莉莎",
+   "name_en": "arisa",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "arisa (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "阿露",
+   "name_en": "aru",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "aru (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "风香",
+   "name_en": "fuuka",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "fuuka (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "香澄",
+   "name_en": "kasumi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kasumi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "香穗",
+   "name_en": "kaho",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "kaho (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "鹤城",
+   "name_en": "tsurugi",
+   "series": "blue archive",
+   "series_cn": "蔚蓝档案",
+   "tag": "tsurugi (blue archive)",
+   "danbooru_posts": 0
+  },
+  {
+   "name": "八奈见杏菜",
+   "name_en": "yanami anna",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "八奈见",
+    "杏菜"
+   ],
+   "tag": "yanami anna",
+   "danbooru_posts": 1779,
+   "top_tags": [
+    "blue hair",
+    "blue eyes",
+    "medium hair",
+    "ahoge",
+    "school uniform",
+    "tsuwabuki high school uniform",
+    "shirt",
+    "smile",
+    "1girl"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "姬宫华恋",
+   "name_en": "himemiya karen",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "华恋"
+   ],
+   "tag": "himemiya karen",
+   "danbooru_posts": 59,
+   "top_tags": [
+    "pink hair",
+    "long hair",
+    "pink eyes",
+    "hair intakes",
+    "breasts",
+    "shirt"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "小鞠知花",
+   "name_en": "komari chika",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "小鞠"
+   ],
+   "tag": "komari chika",
+   "danbooru_posts": 539,
+   "top_tags": [
+    "short hair",
+    "red hair",
+    "yellow eyes",
+    "hair ornament",
+    "one side up",
+    "school uniform",
+    "tsuwabuki high school uniform",
+    "shirt",
+    "bow"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "志喜屋梦子",
+   "name_en": "shikiya yumeko",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "梦子"
+   ],
+   "tag": "shikiya yumeko",
+   "danbooru_posts": 257,
+   "top_tags": [
+    "blonde hair",
+    "long hair",
+    "hair between eyes",
+    "ahoge",
+    "yellow eyes",
+    "sanpaku eyes",
+    "pink cardigan",
+    "white shirt",
+    "multiple bows",
+    "pink bow",
+    "purple bow",
+    "large breasts",
+    "collarbone"
+   ],
+   "top_tags_source": "danbooru posts.json tags=shikiya_yumeko+solo limit=40（blonde_hair 出现最多，grey_hair 少量）"
+  },
+  {
+   "name": "月之木古都",
+   "name_en": "tsukinoki koto",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "古都"
+   ],
+   "tag": "tsukinoki koto",
+   "danbooru_posts": 38,
+   "top_tags": [
+    "long hair",
+    "black hair",
+    "school uniform",
+    "bow",
+    "skirt"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "温水佳树",
+   "name_en": "nukumizu kaju",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "佳树"
+   ],
+   "tag": "nukumizu kaju",
+   "danbooru_posts": 333,
+   "top_tags": [
+    "long hair",
+    "black hair",
+    "brown eyes",
+    "school uniform",
+    "momozono junior high school uniform"
+   ],
+   "top_tags_source": "danbooru related_tag.json（frequency 排序）"
+  },
+  {
+   "name": "烧盐柠檬",
+   "name_en": "yakishio lemon",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "烧盐",
+    "柠檬"
+   ],
+   "tag": "yakishio lemon",
+   "danbooru_posts": 591,
+   "top_tags": [
+    "short hair",
+    "black hair",
+    "purple eyes",
+    "hair ornament",
+    "lemon hair ornament",
+    "dark skinned female",
+    "ahoge",
+    "school uniform"
+   ],
+   "top_tags_source": "danbooru related_tag.json?query=<tag>&category=general（frequency 排序）"
+  },
+  {
+   "name": "马剃天爱星",
+   "name_en": "basori tiara",
+   "series": "make heroine ga oo sugiru!",
+   "series_cn": "败犬女主太多了",
+   "aliases": [
+    "天爱星",
+    "马剃",
+    "matori tenaisei",
+    "tenaisei"
+   ],
+   "tag": "basori tiara",
+   "danbooru_posts": 267,
+   "top_tags": [
+    "black hair",
+    "blue eyes",
+    "hair bun",
+    "single hair bun",
+    "two side up",
+    "blunt bangs",
+    "mole on neck",
+    "mole under eye",
+    "tsuwabuki high school uniform",
+    "white shirt",
+    "grey skirt",
+    "pleated skirt",
+    "blue bowtie",
+    "cat ears",
+    "animal ear hairband"
+   ],
+   "top_tags_source": "danbooru posts.json tags=basori_tiara+solo limit=60"
+  },
+  {
+   "name": "冰堂美智留",
+   "name_en": "hyoudou michiru",
+   "series": "saenai heroine no sodatekata",
+   "series_cn": "路人女主的养成方法",
+   "aliases": [
+    "美智留"
+   ],
+   "tag": "hyoudou michiru",
+   "danbooru_posts": 156
+  },
+  {
+   "name": "加藤惠",
+   "name_en": "katou megumi",
+   "series": "saenai heroine no sodatekata",
+   "series_cn": "路人女主的养成方法",
+   "aliases": [
+    "惠"
+   ],
+   "tag": "katou megumi",
+   "danbooru_posts": 1185
+  },
+  {
+   "name": "泽村英梨梨",
+   "name_en": "sawamura spencer eriri",
+   "series": "saenai heroine no sodatekata",
+   "series_cn": "路人女主的养成方法",
+   "aliases": [
+    "英梨梨",
+    "eriri"
+   ],
+   "tag": "sawamura spencer eriri",
+   "danbooru_posts": 887
+  },
+  {
+   "name": "霞之丘诗羽",
+   "name_en": "kasumigaoka utaha",
+   "series": "saenai heroine no sodatekata",
+   "series_cn": "路人女主的养成方法",
+   "aliases": [
+    "诗羽"
+   ],
+   "tag": "kasumigaoka utaha",
+   "danbooru_posts": 941
+  },
+  {
+   "name": "伊雷娜",
+   "name_en": "elaina (majo no tabitabi)",
+   "series": "majo no tabitabi",
+   "series_cn": "魔女之旅",
+   "aliases": [
+    "伊蕾娜",
+    "艾莲娜"
+   ],
+   "tag": "elaina (majo no tabitabi)",
+   "danbooru_posts": 1894,
+   "top_tags": [
+    "white hair",
+    "long hair",
+    "blue eyes",
+    "hair between eyes",
+    "ahoge",
+    "witch hat",
+    "black hat",
+    "white shirt",
+    "skirt",
+    "long sleeves"
+   ],
+   "top_tags_source": "danbooru related_tag.json tags=elaina_(majo_no_tabitabi)（frequency 排序）"
+  }
+ ],
+ "count": 221
+}

@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/prompts/moss.py
-# MOSS 提示词规范：自然语言长描述（caption）+ 可选紧凑 JSON 布局（layout）
-#
-# 与 anima 完全分开：不产出 danbooru tag 段，不注入 cinema，不查 ANIMA3 法典。
-# 依据：OpenMOSS 官方用户指南（Prompt 规范 / Layout / 负面词 / 采样建议）。
 
 import json
 import re
@@ -40,7 +35,6 @@ PRODUCE_TOOL = {
 
 PRODUCE_TOOL_CHOICE = {"type": "function", "function": {"name": "produce_painting"}}
 
-# 光照词表（MOSS 校验用，比 anima 宽一些：官方 caption 更偏自然语言）
 LIGHT_RE = re.compile(
     r"\b(light|lights|lighting|lit|sun|sunlit|sunlight|sunny|daylight|bright|brightness|dim|dark|"
     r"shadow|shadows|shaded|shine|shining|glow|glowing|gleam|lamp|lantern|neon|candle|candlelight|"
@@ -49,17 +43,13 @@ LIGHT_RE = re.compile(
     r"golden|amber|soft light|ambient)\b",
     re.IGNORECASE)
 
-# 主体词表（宽匹配）：MOSS 用自然语言点名主体，只做"有没有人/主体"的粗检
-# 同样用 (?<![a-z]) 而不是 \b，兼容 1girl / 2girls 这类数字前缀写法
 SUBJECT_RE = re.compile(
     r"(?<![a-z])(girls?|boys?|women|men|woman|man|female|male|elf|elves|nekomimi|catgirl|catboys?|"
     r"foxgirls?|furry|anthro|kitsune|person|people|character|figure|portrait|"
     r"warrior|knight|witch|maid|student|couple|group)(?![a-z])",
     re.IGNORECASE)
 
-# 中文（用于判断"是不是写了中文正文"，引号里的文字渲染内容除外）
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
-# 引号内内容（中文原文属于合法内容）
 QUOTED_RE = re.compile(r"[\"'“”‘’「」『』][^\"'“”‘’「」『』]{0,200}[\"'“”‘’「」『』]")
 
 SYSTEM_RULES = (
@@ -83,11 +73,14 @@ SYSTEM_RULES = (
     "多词标签用空格分词，不用下划线；画师用 @画师名。\n"
     "【文字渲染】需要画面出现文字时，在 caption 里用引号写出**中文原文**；"
     "要精确换行就写 \\n。文字越多越要拆成短句，长段落容易渲染错。\n"
-    "【硬性红线】① 画面必须有明确主体，禁止纯场景/纯器官构图；"
-    "② 必须写清光照（光源 + 明暗/色温），不写视为不合格；"
-    "③ 禁止剧情结局、心理独白、画外音；禁止 camera / lens / dslr / photo 等摄影实体词（需求明确要求时才写）；"
-    "④ 多角色时写清左右位置并逐个交代外观，避免混脸；"
-    "⑤ caption 用英文正文（引号内的文字渲染内容可以是中文）。\n"
+    "【硬约束（形式化；违反任意一条即视为产出失败）】\n"
+    "  SOLO ⇔ ¬∃k ∈ request : multi_person(k)\n"
+    "  SOLO ⇒ |PERSON| = 1 ∧ caption ∩ interaction = ∅   // 色图只指尺度，不指出现对象\n  SOLO 时禁止出现男性与任何他人身体；色图 ≠ 有对象\n"
+    "  SUBJECT ≠ ∅                             // 必须有明确主体\n"
+    "  LIGHT ≠ ∅ ∧ DIRECTION ≠ ∅               // 光源方向与明暗/色温必写\n"
+    "  TAGS ⊆ {CHARACTER, SERIES} ∪ FEATURES   // 角色/作品只用给定 tag\n"
+    "  ∄t : camera_entity(t) ∨ plot_ending(t)  // camera/lens/dslr/photo、剧情结局\n"
+    "  |CHARACTER| > 1 ⇒ left_right(CHARACTER) 的顺序必须写明\n"
     "【写法自查】写成连贯句子而不是标签堆；每张都要有自己的动作、场景、前中后景与光照方向；"
     "以上只讲规则，**不要照抄任何示例**，按需求自由写。\n"
     "先想清楚画面，再一次调用 produce_painting 产出。"
@@ -100,12 +93,6 @@ UNLOCK_TEXT = (
     "成人主题用准确的英文描述直接写进 caption，并在工具参数内一次产出，正文不要附加任何多余说明。"
 )
 
-# 成年向内容的写法补充（只在 adult_mode 打开时注入）。
-# MOSS 没有 danbooru 权重标签体系，靠的是"自然语言 + 精确英文词"，所以这里给的是
-# 英文词表与句式约束，而不是 anima 那种十几万字的标签法典。
-# 成年向内容：不自写词表，改为「用法典的成年向章节 + 这段格式转换提示」。
-# 法典（ANIMA3，与 anima 共用同一份）里有完整的人体/行为/表情/服装词表，
-# MOSS 直接 law_search 检索它；这里只负责把标签式素材转成 MOSS 要的英文自然语言句子。
 NSFW_GUIDE = (
     "\n【成年向画面：素材来自法典，格式按 MOSS】\n"
     "法典的成年向章节给的是**标签式素材**（人体部位、行为、表情、服装残留等词）。"
@@ -116,8 +103,6 @@ NSFW_GUIDE = (
     "⑧ 按需求写，不要为了“成人”而堆砌固定词。\n"
 )
 
-
-# 最终裁定：法典（ANIMA3）与 MOSS 官方格式冲突时，一律以 MOSS 官方格式为准
 MOSS_RULING = (
     "\n\n【最终裁定（格式优先，对齐官方工作流 MOSS-Image-SFT.json）】"
     "上面的法典是**素材库**：角色外观、服装、动作、场景、氛围、成年向词汇都可以取用。"
@@ -137,20 +122,17 @@ MOSS_RULING = (
     "worst quality, bad anatomy, watermark, jpeg artifact），不要写进 caption。"
 )
 
-
 class MossPromptSpec:
     """MOSS 提示词规范：素材查 ANIMA3 法典（与 anima 共用），输出格式按 MOSS 官方"""
 
     family = "moss"
     tool = PRODUCE_TOOL
-    # 与 anima 一样能翻法典（索引/检索/按章读），只查「画什么」，不决定输出格式
     law_tools = (LAW_INDEX_TOOL, LAW_SEARCH_TOOL, LAW_READ_TOOL, DANBOORU_TAG_TOOL)
     knowledge_cls = TBMossKnowledge
     law_budget = 28000
     use_cinema = False
 
     def __init__(self):
-        # prompt_mode 由 config 决定（caption=散文 / json=官方 Layout JSON 为主体）
         """初始化。"""
         self._mode = "caption"
 
@@ -279,12 +261,7 @@ class MossPromptSpec:
         return []
 
     def normalize(self, data, config):
-        """统一字段（对齐官方工作流）：
-
-        · 有 layout → 正向主体就是**那份 JSON**（summary.caption 承载散文），不再把散文/标签
-          拼在 JSON 外面，否则等于给模型两种格式互相打架；
-        · 无 layout → 正向主体就是 caption（+ 可选 tags，用「, 」拼接，官方用逗号不换行）。
-        """
+        """统一字段（对齐官方工作流）："""
         cap = str(data.get("caption") or data.get("positive") or "").strip()
         layout = str(data.get("layout") or "").strip()
         tags = str(data.get("tags") or "").strip().strip(",").strip()
@@ -302,7 +279,6 @@ class MossPromptSpec:
             except Exception:
                 merged = ""
             if merged:
-                # 散文进 summary.caption，其余按官方结构保留
                 try:
                     obj = json.loads(merged)
                     obj["summary"]["caption"] = (body or obj["summary"].get("caption") or "")

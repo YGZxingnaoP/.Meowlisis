@@ -97,6 +97,9 @@ switch ($Verb) {
                 @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/age slider\.safetensors$'; why = 'MOSS age slider LoRA NOT excluded' },
                 @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/wangzhe_moss\.safetensors$'; why = 'MOSS 2.5D LoRA NOT excluded' },
                 @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/maliker_moss_base_style_'; why = 'MOSS maliker LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/szcb911_lora_r64\.safetensors$'; why = 'MOSS 鬼针草 v2 LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/kzmynon-moss-v1_'; why = 'MOSS kzmynon LoRA NOT excluded' },
+                @{ p = '(^|/)\.vendor/\.ComfyNode/models/loras/moss_whale_'; why = 'MOSS 鲸鱼娘 LoRA NOT excluded' },
                 @{ p = '(^|/)__pycache__/';                why = '__pycache__ leaked in' },
                 @{ p = '\.pyc$';                           why = '.pyc leaked in' }
             )

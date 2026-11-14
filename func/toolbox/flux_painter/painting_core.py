@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/painting_core.py
 import os
 import re
 import shutil
@@ -9,38 +7,31 @@ import time
 from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.flux_painter.config import TBFluxPainterConfig
+from func.toolbox.flux_painter.painting_pipeline import TBPaintPipelineMixin
 from func.toolbox.flux_painter.archive import TBPainterArchive
 from func.toolbox.flux_painter.prompt_producer import TBPromptProducer
 from func.toolbox.flux_painter.comfy_connector import create_connector, TBArtistPicker
-from func.pipeline.id_signup import display_name
 from func.toolbox.trigger_rules import forced
 
 DEFAULT_NEGATIVE = ("lowres,bad anatomy,bad hands,error,missing fingers,extra digits,"
                     "worst quality,jpeg artifacts,watermark,signature,text")
 REJECT_TEXT = "不给看不给看awa"
 
-
 @singleton
-class TBFluxPainterCore:
+class TBFluxPainterCore(TBPaintPipelineMixin):
     """ComfyUI 文生图一次性触发总入口（live/QQ），绘画中冷却，不长期接管"""
 
     TOOL_NAME = "flux_paint"
 
-    # 绘画规则触发词表：命中即强制开画（确定性高频需求，不依赖 LLM 自觉）
     PAINT_RULE_WORDS = (
-        # 带量词/动词的明确点单（画X）
         "画一幅", "画一张", "画个", "画张", "画一个", "画一只", "画一条", "画一棵",
         "画一朵", "画朵", "画一座", "画一栋", "画一下", "画一画",
         "画点", "画张图", "画幅画", "画张画", "画张涩图", "画张瑟图",
-        # 高频口语（画图/画画/重画）
-        "画图", "画画", "重画", "再画", "重新画", "画个图", "去画", "画画看",
-        # 使役请求
+        "重画", "再画", "重新画", "画个图", "去画", "画画看",
         "帮我画", "给我画", "替我画", "给咱画", "给我来张", "帮我出张", "帮我整张",
         "想让你画", "你画个", "给我整张",
-        # 要图/来图
         "来张", "来幅", "来一张", "来一幅", "来点图", "来张图", "来张涩图", "来张色图",
         "要一张", "要张图", "想要一张", "想要张图", "想要张", "要张涩图",
-        # 生成/出图/涩图直呼
         "生成一张图", "生成张图", "生成图片", "文生图", "出张图", "出图",
         "涩图", "瑟图", "色图", "整张图",
     )
@@ -62,16 +53,12 @@ class TBFluxPainterCore:
         self._review_events = {}
         self._review_results = {}
         self._lock = threading.Lock()
-        # channel -> 上一轮绘画（完整提示词缓存，供画完后 window 秒内改图续画）
         self._last_paint = {}
         self._last_lock = threading.Lock()
-        # 图生图等图：channel -> {"request","qq_context","deadline","timer"}
         self._pending_ref = {}
         self._pending_lock = threading.Lock()
-        # 本条消息引用的图（一次性直通给分析层：判定要画图就直接用它当参考，不再等图）
         self._quote_images = {}
         self._quote_lock = threading.Lock()
-        # channel -> 最近说过的接单开场白（逼角色每次换说法）
         self._opener_recent = {}
         self._opener_lock = threading.Lock()
         self._clean_legacy_svg_memory()
@@ -89,7 +76,6 @@ class TBFluxPainterCore:
         except Exception:
             pass
 
-    # ==================== 上下文注入（兼容父级 dispatch） ====================
     def set_meowid(self, uid):
         """框架注入当前说话人的内部编号（身份标准）。昵称只用于展示，不进这里。"""
         if uid:
@@ -110,38 +96,6 @@ class TBFluxPainterCore:
             return key in self._running
         return bool(self._running)
 
-    # ==================== 改图续画（上一轮完整提示词缓存） ====================
-    def _remember_paint(self, channel, request, elements, final_image, owner_uid,
-                        init_image=""):
-        """出图成功后缓存本轮完整提示词与成品图（供改图续画）
-
-        init_image：本轮用的参考图（图生图才非空）；改图时会把这张参考图召回，
-        让“在上一张基础上改”仍然沿用原来的参考画面，而不是退回纯文生图。
-        """
-        try:
-            with self._last_lock:
-                self._last_paint[str(channel)] = {
-                    "ts": time.time(),
-                    "request": str(request or ""),
-                    "elements": {
-                        "positive": str((elements or {}).get("positive") or ""),
-                        "cinema": str((elements or {}).get("cinema") or ""),
-                        "character": str((elements or {}).get("character") or ""),
-                        "canvas": str((elements or {}).get("canvas") or ""),
-                        "title": str((elements or {}).get("title") or ""),
-                        "reply": str((elements or {}).get("reply") or ""),
-                    },
-                    "final_image": str(final_image or ""),
-                    "init_image": str(init_image or ""),
-                    "owner_uid": str(owner_uid or ""),
-                }
-            if init_image:
-                self._persist_reference(channel, init_image)
-            else:
-                self._drop_reference(channel)
-        except Exception:
-            self.log.exception("[flux_painter] 缓存上一轮绘画失败")
-
     def _reference_path(self, channel):
         """参考图的稳定副本路径（源图可能被清理，改图召回时用它兜底）"""
         safe = re.sub(r'[\\/:*?"<>|]', "_", str(channel or "")) or "channel"
@@ -160,11 +114,7 @@ class TBFluxPainterCore:
             self.log.exception("[flux_painter] 缓存参考图副本失败")
 
     def _last_reference(self, channel):
-        """改图时可召回的参考图：只有上一轮本身就是图生图才召回
-
-        上一轮是纯文生图时返回空（否则会拿很早以前留下的参考图去改一张无参考的画）；
-        上一轮的参考图被清理了，才退回稳定副本。
-        """
+        """改图时可召回的参考图：只有上一轮本身就是图生图才召回"""
         with self._last_lock:
             item = self._last_paint.get(str(channel)) or {}
         init_image = str(item.get("init_image") or "")
@@ -205,11 +155,7 @@ class TBFluxPainterCore:
             self._last_paint.pop(str(channel), None)
 
     def continue_paint(self, channel, edit_instruction, qq_context, uid=None):
-        """以上一轮缓存提示词为底，执行改图（纯 txt2img 增量重绘）
-
-        `uid` 必须是内部编号（身份标准），由调用方（改图判定）传入；
-        拿不到编号就不画，不用默认身份兜底。
-        """
+        """以上一轮缓存提示词为底，执行改图（纯 txt2img 增量重绘）"""
         if uid:
             self._context["meowid"] = str(uid)
         if self.is_painting(channel):
@@ -220,14 +166,12 @@ class TBFluxPainterCore:
         base_elements = item.get("elements") or {}
         arguments = {"request": str(edit_instruction or item.get("request") or ""),
                      "topic": str(base_elements.get("title") or "改图")}
-        # 上一轮是图生图时，改图继续召回那张参考图（否则改图会退回纯文生图）
         init_image = self._last_reference(channel)
         return self.open_paint(channel, arguments, qq_context=qq_context,
                                base_elements=base_elements,
                                base_request=str(item.get("request") or ""),
                                init_image=init_image)
 
-    # ==================== 父级 schema ====================
     def build_tools(self):
         """模块级触发工具定义"""
         return [{
@@ -252,12 +196,8 @@ class TBFluxPainterCore:
             },
         }]
 
-    # ==================== 开局 ====================
     def dispatch(self, name, arguments):
-        """live 开局（父级 decide 命中 flux_paint 时调用）
-
-        先让图生图链路判断要不要参考屏幕，不命中再按文生图出图。
-        """
+        """live 开局（父级 decide 命中 flux_paint 时调用）"""
         if name != self.TOOL_NAME:
             return f"错误：未知工具 {name}"
         try:
@@ -289,11 +229,7 @@ class TBFluxPainterCore:
 
     @classmethod
     def hits_paint_keywords(cls, text):
-        """这句话是否命中绘画关键词
-
-        命中的话硬规则会直接开画（router 无权拦），所以这里可以直接当作
-        「要画图」成立，省掉一次语义判定。
-        """
+        """这句话是否命中绘画关键词"""
         body = str(text or "").lower()
         return bool(body) and any(str(w).lower() in body for w in cls.PAINT_RULE_WORDS)
 
@@ -311,11 +247,7 @@ class TBFluxPainterCore:
 
     def open_paint(self, channel, arguments, qq_context=None, base_elements=None,
                    base_request="", init_image="", ref_note=""):
-        """冷却检查并起后台绘画线程（base_elements 非空=续画/改图，init_image 非空=图生图）。
-
-        冷却为「按通道」判断（channel：live / qq_private_x / qq_group_y）：
-        主链路（live）与 QQ 链路各自独立出图，互不阻塞（不串行）。
-        """
+        """冷却检查并起后台绘画线程（base_elements 非空=续画/改图，init_image 非空=图生图）。"""
         if not self.config.enabled:
             return "绘画模块未开启（请在工具箱-绘画配置中启用）"
         if self.is_painting(channel):
@@ -325,12 +257,10 @@ class TBFluxPainterCore:
         request = str(arguments.get("request") or self._context.get("text") or "").strip()
         if not request:
             return "想让我画什么呀？说说看～"
-        # 身份标准：内部编号只从框架上下文注入拿，**不接受 LLM 传参、不用任何默认身份兜底**
         uid = str(self._context.get("meowid") or "")
         if not uid:
             self.log.error("[flux_painter] 缺少身份编号(meowid)，拒绝开画（禁止用默认身份兜底）")
             return "身份没认出来，这次先不画了～"
-        # 快照 persona/记忆到 session：避免多频道并发绘画时，后到的 set_context 覆盖先开的单例上下文
         try:
             persona = str(self._context.get("system_prompt") or "")
             memories = self._context.get("short_memory")
@@ -348,8 +278,6 @@ class TBFluxPainterCore:
                    "ref_note": str(ref_note or ""),
                    "owner_uid": str((qq_context or {}).get("user_id") or
                                     (qq_context or {}).get("target_id") or "")}
-        # 只记通道不记轮号：记忆以"用户真正看到这张图的那一刻"为准，
-        # 写记忆时再取当时的当前轮（画图要几分钟，提前捕获的轮可能早过去了）。
         try:
             from func.pipeline.short_memory import ShortMemory
             session["memory_scope"] = ShortMemory.scope_of_channel(channel)
@@ -362,378 +290,17 @@ class TBFluxPainterCore:
         try:
             t.start()
         except Exception:
-            # 线程没起来就别占着作画状态，否则这个通道会被永久判成"正在画"
             with self._lock:
                 self._running.discard(channel)
             raise
         if qq_context:
-            # QQ 渠道：AI 按需求生成开场白（异步，不阻塞开画）
             threading.Thread(target=self._qq_opener, args=(qq_context, request, channel),
                              daemon=True).start()
         else:
-            # live 渠道：同样是角色当场应一声（异步生成，不阻塞开画）
             threading.Thread(target=self._live_opener, args=(channel, request),
                              daemon=True).start()
         return ("开始作画…画完把图发给你～" if qq_context
                 else "开始作画…（画作完成后会展示；画板页面可实时看进度）")
-
-    # ==================== 绘画线程 ====================
-    def _run(self, session):
-        """一次完整绘画：提示词→出图→归档→审查→语音/展示→记忆"""
-        channel = session["channel"]
-        uid = session["meowid"]
-        request = session["request"]
-        # 短期记忆 + 角色系统提示词（open_paint 已快照进 session，防并发串号）
-        memories = session.get("memories") or []
-        persona = session.get("persona") or ""
-        released = False
-
-        try:
-            self._bcast(channel, {"type": "status", "text": "AI 正在构思画面…"})
-
-            # 参考图由链路层（图生图 chain）准备好后塞进 session，这里只负责用它
-            ref_image = str(session.get("init_image") or "")
-            ref_note = str(session.get("ref_note") or "")
-
-            def on_stream(text):
-                """流式回调：把提示词片段推给界面。"""
-                self._bcast(channel, {"type": "producing", "text": text})
-
-            elements = self.producer.run(request, nickname=display_name(uid),
-                                         persona=persona,
-                                         memory=memories,
-                                         on_stream=on_stream,
-                                         base_elements=session.get("base_elements"),
-                                         base_request=session.get("base_request"),
-                                         reference_image=ref_image or None)
-            if not elements:
-                self.log.error("[flux_painter] 提示词 LLM 未产出画作要素，本次绘画提前结束")
-                self._say_need(channel, "你想了半天没想好怎么画，跟主人说一句，让他换一句试试。")
-                self._bcast(channel, {"type": "status", "text": "没想好怎么画"})
-                return
-            positive = str(elements["positive"] or "").strip()
-            reply = str(elements["reply"] or "")
-            title = str(elements["title"] or session.get("topic") or "画")
-            canvas_key = elements["canvas"]
-            self.log.info(f"[flux_painter] 提示词产出 title={title} len={len(positive)} "
-                          f"canvas={canvas_key} request={request[:60]!r}")
-
-            # —— 点名角色解析：词典/缓存命中→注入标签；模型不了解才出网查证→重出一次 ——
-            # 只对 anima 生效：anima 吃 danbooru tag，可把词典标签直接拼进 positive；
-            # MOSS 吃自然语言，拼标签反而污染 caption，角色外观由 caption 自己写。
-            character = str(elements.get("character") or "").strip()
-            ck = elements.get("character_known")
-            char_known = True if ck is None else bool(ck)
-            if character and not char_known and self.config.family == "anima":
-                try:
-                    from func.toolbox.flux_painter.char_resolver import TBRoleResolver
-                    resolver = TBRoleResolver(self.config)
-                    card = resolver.resolve(character)
-                    if card and card.get("tags"):
-                        role_prefix = ", ".join(str(t).strip()
-                                                for t in card["tags"] if str(t).strip())
-                        if role_prefix and not positive.lower().startswith(role_prefix[:10].lower()):
-                            positive = role_prefix + ", " + positive
-                            self.log.info(f"[flux_painter] 词典角色标签注入: {role_prefix[:80]}")
-                    elif card:
-                        role_text = resolver.card_text(card)
-                        if role_text:
-                            again = self.producer.run(
-                                request, nickname=display_name(uid),
-                                persona=persona,
-                                memory=memories,
-                                on_stream=on_stream, role_card=role_text,
-                                base_elements=session.get("base_elements"),
-                                base_request=session.get("base_request"),
-                                reference_image=ref_image or None)
-                            if again and again.get("positive"):
-                                elements = again
-                                positive = str(elements["positive"] or "").strip()
-                                reply = str(elements["reply"] or "")
-                                title = str(elements["title"] or session.get("topic") or "画")
-                                canvas_key = elements["canvas"]
-                                self.log.info(f"[flux_painter] 角色查证后重出提示词 title={title} "
-                                              f"card={card.get('name')}")
-                except Exception:
-                    self.log.exception("[flux_painter] 角色解析异常(忽略，按原提示词继续)")
-
-            if not reply:
-                reply = self._line_need("图已经画好了，跟主人说一声，可以带点得意。")
-
-            # 自然语言镜头段（producer 的 cinema 字段）附加到 tag 段之后——DiT 模型吃自然语言指令
-            cinema = str(elements.get("cinema") or "").strip()
-            if cinema:
-                positive = (positive.rstrip() + ", " + cinema) if positive else cinema
-
-            # 画师/风格串 + 质量前缀（脚本侧拼接，模型不输出）
-            # 规则：默认不加画师 tag；只有「点名要求画师」或「要求风格化」时才会带上画师
-            style_extra, artist_kw, style_on = self._style_hint(request)
-            if not artist_kw and not style_extra and style_on:
-                # 风格化：从引擎内画师库 .ComfyNode/artist/data.js 随机抽（带质量过滤）
-                _hit = self.artist.pick_artists(1)
-                if _hit:
-                    artist_kw = str(_hit[0].get("name") or "").strip()
-                    self.log.info(f"[flux_painter] 风格化需求 → 画师库随机抽中: {artist_kw}")
-                else:
-                    self.log.warning("[flux_painter] 风格化需求但画师库为空，跳过画师")
-            named, manual = [], []
-            if artist_kw:
-                hit = None
-                try:
-                    if self.artist.ensure_data()[0]:
-                        hit = self.artist.search(artist_kw, top=1)  # 精确优先
-                except Exception:
-                    hit = None
-                if hit and hit[0].get("name") == artist_kw:
-                    named = [hit[0]]
-                elif hit:
-                    manual.append("@" + str(hit[0].get("name") or "").strip())  # 点名近似→库内全名
-                else:
-                    manual.append("@" + artist_kw)                              # 库外/名单直接按原名
-            for s in style_extra:
-                s = str(s).strip()
-                tag = "@" + s.lstrip("@").strip()
-                if s and tag not in manual:
-                    manual.append(tag)
-            if artist_kw or manual:
-                # 有明确画师意图（点名/风格化/@xxx）→ 只拼该画师，不再补默认画风
-                parts = ["@" + str(a.get("name") or "").strip() for a in named if a.get("name")]
-                parts += manual
-                artist_tags = ", ".join(parts) + ", " if parts else ""
-            else:
-                # 默认：不加任何画师 tag（画师只在点名或要求风格化时出现）
-                artist_tags = ""
-            quality = self.config.active_quality()
-            final_positive = ((artist_tags + quality + ", " + positive)
-                              if artist_tags else
-                              ((quality + ", " + positive) if quality else positive))
-            # 方言挂的额外 LoRA 自带触发词（如 MOSS 2.5D 的 wangzhe）：拼在质量词之后
-            try:
-                _dial = getattr(self.config, "family", "anima")
-                _trig = []
-                _hook = getattr(connector.dialect(), "trigger_words", None)
-                if callable(_hook):
-                    _trig = [t for t in (_hook(connector) or []) if t]
-                if _trig:
-                    _prefix = ", ".join(_trig) + ", "
-                    if artist_tags:
-                        final_positive = artist_tags + _prefix + final_positive
-                    else:
-                        final_positive = _prefix + final_positive
-                    self.log.info(f"[flux_painter] 追加 LoRA 触发词: {', '.join(_trig)}")
-            except Exception:
-                pass
-            negative = self.config.active_negative() or DEFAULT_NEGATIVE
-            w, h = self._canvas_size(canvas_key)
-
-            self._bcast(channel, {"type": "prompt",
-                                  "positive": final_positive, "negative": negative,
-                                  "title": title})
-
-            # ComfyUI 出图
-            ok, message = self._ensure_comfy()
-            if not ok:
-                self.log.error(f"[flux_painter] 绘图引擎未就绪: {message}")
-                self._say_need(channel, f"画图引擎没启动（原因：{message}），跟主人说一句，别提技术词。")
-                return
-            self.log.info("[flux_painter] 绘图引擎就绪")
-            connector = create_connector(self.config)
-            prefix = f"flux_{time.strftime('%Y%m%d_%H%M%S')}"
-            # 参考图上传到 ComfyUI（失败则本张退化为文生图）
-            ref_name = ""
-            if ref_image:
-                ref_name = connector.upload_image(ref_image)
-                if not ref_name:
-                    self.log.warning("[flux_painter] 参考图上传失败，本张按文生图继续")
-                else:
-                    self.log.info(f"[flux_painter] 参考图已上传: {ref_name}")
-
-            def on_event(stage):
-                """事件回调：把阶段/进度推给界面。"""
-                self._bcast(channel, {"type": "progress", "text": stage})
-
-            ok_done = False
-            images, wmsg = [], ""
-            # ===== 画质档位（语义由方言决定）=====
-            # anima：fast=单段采样 / pro=04→05→06→07 全流程
-            # moss ：fast=8 步 DMD / pro=50 步 SFT + 跳层
-            dialect = connector.dialect()
-            mode = str(getattr(self.config, "quality_mode", "fast") or "fast").lower()
-            if mode not in dialect.quality_modes:
-                mode = dialect.quality_modes[0]
-            pro_p = getattr(self.config, "pro", {}) or {}
-            pro_on = bool(mode == "pro" and (dialect.family != "anima" or pro_p.get("enabled", True)))
-            if pro_on:
-                try:
-                    missing = connector.missing_pro_nodes()
-                except Exception:
-                    missing = []
-                if missing:
-                    self.log.warning(f"[flux_painter] pro 档位缺节点 {missing}，本次降级快速档"
-                                     "（检查自定义节点是否已安装/加载）")
-                    pro_on = False
-                else:
-                    self.log.info(f"[flux_painter] 画质档位=pro（{dialect.family} / "
-                                  f"{dialect.quality_labels.get('pro', 'pro')}）")
-            else:
-                self.log.info(f"[flux_painter] 画质档位=fast（{dialect.family} / "
-                              f"{dialect.quality_labels.get('fast', 'fast')}）")
-            # 实时进度开关（画板显示阶段/百分比/步进）+ 历史耗时参考（ETA）
-            progress_on = bool(getattr(self.config, "progress_detail", True))
-            last_eta = self._last_paint_time(pro_on)
-            for clip_type in connector.clip_types():
-                if pro_on:
-                    graph = connector.build_pro_graph(final_positive, negative, w, h,
-                                                      prefix=prefix, clip_type=clip_type,
-                                                      params=pro_p)
-                else:
-                    graph = connector.build_graph(final_positive, negative, w, h,
-                                                  prefix=prefix, clip_type=clip_type)
-                if ref_name:
-                    # 只替换 latent 来源与 denoise，其余节点（LoRA/放大/分块/细化）全部保持原样
-                    graph = connector.with_init_image(graph, ref_name,
-                                                      self.config.img2img_denoise_for(dialect.family), w, h)
-                on_event("提交任务…")
-                sok, prompt_id, serr = connector.submit(graph, client_id=channel)
-                if not sok and pro_on:
-                    # pro 图被引擎拒绝（缺模型/节点/参数不符）→ 自动降级快速档重试，保证出图
-                    self.log.warning(f"[flux_painter] pro 图提交失败，降级快速档重试: {serr[:200]}")
-                    pro_on = False
-                    graph = connector.build_graph(final_positive, negative, w, h,
-                                                  prefix=prefix, clip_type=clip_type)
-                    if ref_name:
-                        graph = connector.with_init_image(graph, ref_name,
-                                                          self.config.img2img_denoise_for(dialect.family), w, h)
-                    sok, prompt_id, serr = connector.submit(graph, client_id=channel)
-                if not sok:
-                    self.log.error(f"[flux_painter] 任务提交失败 clip={clip_type}: {serr[:200]}")
-                    self._say_need(channel, f"画图任务没提交成功（原因：{serr[:120]}），跟主人说一句。")
-                    return
-                self.log.info(f"[flux_painter] 任务已提交 clip={clip_type} prompt_id={prompt_id}")
-                self._bcast(channel, {"type": "status", "text": "AI 正在作画…"})
-                t_paint0 = time.time()
-                if progress_on:
-                    self._bcast(channel, {"type": "progress", "stage": "已入队", "percent": 0,
-                                          "step": "", "elapsed": 0, "eta": last_eta or 0})
-                wok, images, wmsg = connector.watch(
-                    prompt_id, graph=graph, timeout=int(getattr(self.config, "wait_timeout", 5400)),
-                    client_id=channel,
-                    on_progress=((lambda ev: self._bcast(
-                        channel, dict(ev, type="progress", eta=last_eta or 0)))
-                        if progress_on else None))
-                if wok:
-                    self._record_paint_time(pro_on, int(time.time() - t_paint0))
-                    ok_done = True
-                    self.log.info(f"[flux_painter] 出图完成 clip={clip_type}")
-                    break
-                self.log.error(f"[flux_painter] 出图失败 clip={clip_type}: {wmsg[:200]}")
-                low = str(wmsg).lower()
-                if not any(k in low for k in ("clip", "text encoder", "type", "load")):
-                    break
-                self.log.warning(f"[flux_painter] CLIP type {clip_type} 失败，切换重试: {wmsg[:160]}")
-                on_event("切换文本编码重试…")
-            if not ok_done:
-                self.log.error(f"[flux_painter] 全部文本编码尝试均失败: {wmsg[:200]}")
-                self._say_need(channel, f"图没画出来（原因：{str(wmsg)[:100]}），跟主人说一句，可以吐槽。")
-                self._bcast(channel, {"type": "error", "text": str(wmsg)[:200]})
-                return
-            local_paths = connector.images_local(images)
-            if not local_paths:
-                self.log.error("[flux_painter] 图已生成但本地文件未找到")
-                self._say_need(channel, "图出来了但找不到文件，跟主人说一句。")
-                return
-            final_image = local_paths[0]
-            self.log.info(f"[flux_painter] 图片文件: {final_image}")
-
-            # 归档
-            _pro_snap = None
-            if pro_on:
-                _pro_snap = {
-                    "base_cfg": pro_p.get("base_cfg"), "base_steps": pro_p.get("base_steps"),
-                    "hires": {k: (pro_p.get("hires") or {}).get(k)
-                              for k in ("enabled", "upscale_model", "scale", "resize")},
-                    "usdu": {k: (pro_p.get("usdu") or {}).get(k)
-                             for k in ("enabled", "denoise", "steps", "tile_width", "tile_height")},
-                    "detailers": {k: {kk: (pro_p.get("detailers", {}).get(k) or {}).get(kk)
-                                      for kk in ("enabled", "denoise", "detector", "steps")}
-                                  for k in ("hand", "face", "eye")},
-                    "sam_model": pro_p.get("sam_model"),
-                }
-            aok, folder, saved = self.archive.save(
-                title, final_image,
-                meta={"request": request, "title": title,
-                      "positive": final_positive, "negative": negative,
-                      "reply": reply, "canvas": canvas_key, "channel": channel,
-                      "quality_mode": ("pro" if pro_on else "fast"),
-                      "img2img": bool(ref_name), "ref_note": ref_note,
-                      "pro_params": _pro_snap})
-            self.archive.prune(self.config.keep_last_sessions)
-            if not aok:
-                self.log.warning("[flux_painter] 归档失败，改用源图")
-                self._say_need(channel, "图出来了，但归档没成功，跟主人说一句。")
-                saved = final_image
-            else:
-                self.log.info(f"[flux_painter] 画作已归档: {saved}")
-
-            img_url = self._image_url(saved)
-            session["final_image"] = saved
-            session["reply"] = reply
-            # 缓存本轮完整提示词（elements），供画完后窗口内的下一条消息做改图续画
-            self._remember_paint(channel, request, elements, saved, session.get("owner_uid"),
-                                 init_image=session.get("init_image"))
-
-            # 图已经出好并归档：立刻释放作画状态。
-            # 发图 / TTS / 写记忆这些收尾动作可能很慢（NapCat 超时、TTS 排队），
-            # 不能让它们把下一张画的触发挡在"正在画画呢"上。
-            with self._lock:
-                self._running.discard(channel)
-                released = True
-            self.log.info(f"[flux_painter] 作画状态已释放 channel={channel}")
-
-            # QQ 渠道判定：私聊不审查；群聊照审（命中→群占位+图私发，分流逻辑在 _send_qq_image 内）
-            _qc = session.get("qq_context") or {}
-            _qq_private = bool(_qc) and str(_qc.get("message_type", "")) != "group"
-            session["ok_show"] = (not self.config.review_enabled) or _qq_private
-            rmode = str(getattr(self.config, "review_mode", "onnx") or "onnx").lower()
-            if self.config.review_enabled and not _qq_private and rmode == "manual":
-                self._say_need(channel, "画好了，等主人检查；让他看一眼、说要不要收。")
-                self._review_flow(session, img_url, reply)
-            elif self.config.review_enabled and not _qq_private:
-                # ONNX 自动审查：命中则收起（不展示、不发 QQ、不进记忆展示）
-                nsfw, why = self._nsfw_check(saved)
-                session["nsfw"] = (nsfw, why)
-                if nsfw:
-                    session["ok_show"] = False
-                    self.log.info(f"[flux_painter] 画板审查(onnx) 命中 -> {why}")
-                    self._bcast(channel, {"type": "rejected", "text": REJECT_TEXT})
-                    self._say_need(channel, "这张画得有点大胆，你先收起来，跟主人说一句，别道歉。")
-                else:
-                    session["ok_show"] = True
-                    self.log.info(f"[flux_painter] 画板审查(onnx) 通过 -> {why}")
-                    self._bcast(channel, {"type": "done", "image": img_url})
-                    self._say(channel, reply)
-            else:
-                if _qq_private:
-                    self.log.info("[flux_painter] QQ 私聊渠道，跳过审查直发")
-                self._bcast(channel, {"type": "done", "image": img_url})
-                self._say(channel, reply)
-            # QQ 发图：一律交给 _send_qq_image 自行分流
-            #   群聊命中 → 群发 @+点评+【私】占位，图+点评私发发起人
-            #   私聊     → 不审查，直接发
-            if session.get("qq_context"):
-                self._send_qq_image(session, saved)
-            self._save_memory(uid, request, reply, session.get("memory_scope"))
-        except Exception:
-            self.log.exception(f"[flux_painter] 绘画异常 key={channel}")
-            self._say_need(channel, "画到一半出了点岔子，跟主人说一句，别道歉。")
-        finally:
-            with self._lock:
-                still = (not released) and channel in self._running
-                if still:
-                    self._running.discard(channel)
-            if still:
-                self.log.info(f"[flux_painter] 作画状态已释放(异常收尾) channel={channel}")
-            self._clear_review(channel)
 
     def _review_flow(self, session, img_url, reply):
         """审查开启：先语音不显示图，等主人按钮裁决；通过才展示"""
@@ -767,34 +334,6 @@ class TBFluxPainterCore:
             ev.set()
         return True
 
-    def _nsfw_check(self, image_path):
-        """敏感/裸露判定（NudeNet onnx，与 QQ 群聊共用同一模型；阈值按底模家族取）。
-
-        返回 (nsfw, detail)：
-        - enabled=false → 直接放行（safe(未开启)）
-        - 模型不可用/推理异常 → 按 fail_action 处理（dm=保守视为命中，pass=放行）
-        MOSS 与 anima 的出图风格差异大（DMD 档细节少、构图更散），阈值分开配。
-        """
-        ns = self.config.moss_nsfw() if self.config.is_moss else {
-            "enabled": self.config.nsfw_enabled,
-            "threshold": self.config.nsfw_threshold,
-            "fail_action": self.config.nsfw_fail,
-        }
-        if not ns.get("enabled"):
-            return False, "safe(未开启)"
-        try:
-            from func.toolbox.flux_painter.nsfw_judge import TBNsfwJudge
-            j = TBNsfwJudge(self.config)
-            okm, mmsg = j.ensure_model()
-            if okm:
-                return j.judge(image_path, threshold=ns.get("threshold"))
-            nsfw = ns.get("fail_action") == "dm"
-            return nsfw, "model:" + str(mmsg)
-        except Exception as e:
-            nsfw = ns.get("fail_action") == "dm"
-            return nsfw, f"judge_error:{e}"
-
-    # ==================== 进度 / 耗时统计 ====================
     def _paint_stats_path(self):
         """耗时统计文件（按档位滚动平均，供画板 ETA 参考）"""
         return os.path.join(self.config.comfy_node_dir, "paint_stats.json")
@@ -844,7 +383,6 @@ class TBFluxPainterCore:
             self._review_events.pop(channel, None)
             self._review_results.pop(channel, None)
 
-    # ==================== 辅助 ====================
     def _ensure_comfy(self):
         """内置启动内核 / 外部探测，返回 (ok, 说明)"""
         if self.config.comfy_mode == "external":
@@ -852,9 +390,102 @@ class TBFluxPainterCore:
         from func.toolbox.flux_painter.comfy_connector.comfy_painter import get_managed_painter
         return get_managed_painter(self.config).start()
 
+    _GENERIC_TAG_WORDS = (
+        "hair", "eyes", "bangs", "ponytail", "braid", "twintails", "dress", "shirt", "skirt",
+        "uniform", "jacket", "coat", "sweater", "cardigan", "socks", "stockings", "thighhighs",
+        "pantyhose", "panties", "bra", "underwear", "gloves", "boots", "shoes", "ribbon",
+        "bow", "hat", "glasses", "earrings", "halo", "ears", "tail", "wings", "bed", "room",
+        "window", "wall", "chair", "desk", "outdoors", "indoors", "sky", "night", "light",
+        "lighting", "shadows", "background", "view", "shot", "angle", "pov", "close", "body",
+        "breasts", "hips", "thighs", "skin", "smile", "blush", "tears", "sweat", "pose",
+        "sitting", "standing", "lying", "kneeling", "leaning", "looking", "holding", "hands",
+        "fingers", "legs", "arms", "head", "face", "girl", "boy", "solo", "quality", "highres",
+        "masterpiece", "aesthetic", "score", "detailed", "soft", "warm", "color", "style",
+    )
+
+    _INTERACTION_TAGS = (
+        "1boy", "2boys", "3boys", "male", "males", "hetero", "yuri", "yaoi", "2girls",
+        "3girls", "multiple boys", "multiple girls", "multiple views", "couple",
+        "kiss", "hug", "hugging", "handholding", "hand holding", "holding hands",
+        "paizuri", "fellatio", "irrumatio", "handjob", "footjob", "cunnilingus",
+        "vaginal", "anal", "sex", "penetration", "fingering", "masturbation",
+        "pov", "pov hands", "male hand", "male hands", "on top of another", "missionary",
+        "doggystyle", "cowgirl position", "spooning", "orgy", "threesome",
+        "leg lock", "legs wrapped around", "straddling a person",
+    )
+
+    @staticmethod
+    def _wants_multiple(request):
+        """需求里是否明确要多人，或点名了必须有对方的体位（骑乘/后入等）。"""
+        text = str(request or "").lower()
+        keys = ("双人", "两人", "二人", "多人", "群", "3p", "双飞", "一起", "互相",
+                "两个人", "three people", "two girls", "两女", "一男一女", "男方", "男主",
+                "骑乘", "骑乘位", "跨坐", "后入", "后入位", "传教士", "火车便当", "种付",
+                "口交", "足交", "乳交", "素股", "手交", "内射", "中出", "插入", "抽插",
+                "性交", "做爱", "被操", "操她", "睡奸", "拘束", "绑起来", "双飞")
+        return any(k in text for k in keys)
+
+    def _strip_cinema_interaction(self, cinema):
+        """cinema 句子里描述第二人的分句一并清掉（solo 时模型爱在句子里加个男的）。"""
+        import re
+        text = str(cinema or "").strip()
+        if not text:
+            return text
+        patterns = (
+            r"[^.]*\b(a|the|his|her)\s+(man|boy|male|partner|client|customer)\b[^.]*\.",
+            r"[^.]*\b(his|their)\s+(hand|hands|fingers|arm|arms|lap)\b[^.]*\.",
+            r"[^.]*\b(he|they)\b[^.]*\.",
+            r"[^.]*\b(pov|point of view)\b[^.]*\.",
+            r"[^.]*\b(handjob|footjob|fellatio|paizuri|penetrat\w*)\b[^.]*\.",
+        )
+        for pat in patterns:
+            text = re.sub(pat, "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s{2,}", " ", text).strip()
+        if text != str(cinema or "").strip():
+            self.log.info("[flux_painter] solo 场景已清理 cinema 里的第二人描述")
+        return text
+
+    def _strip_interaction(self, positive):
+        """删掉交互类 tag，让单人场景不出现第二个人/手。"""
+        parts = [p.strip() for p in str(positive or "").split(",")]
+        kept, dropped = [], []
+        for p in parts:
+            low = p.lower()
+            if not p:
+                continue
+            if any(t == low or (len(t) > 4 and t in low) for t in self._INTERACTION_TAGS):
+                dropped.append(p)
+                continue
+            kept.append(p)
+        if dropped:
+            self.log.info("[flux_painter] solo 场景已移除交互 tag: %s" % ", ".join(dropped))
+        return ", ".join(kept)
+
+    def _verified_positive(self, positive):
+        """删掉查证不过的角色 tag（模型音译编造的那种），返回清理后的正向提示词。"""
+        from func.toolbox.flux_painter.prompts.danbooru_tool import verify_tag
+        parts = [p.strip() for p in str(positive or "").split(",")]
+        kept, dropped = [], []
+        for p in parts:
+            if not p:
+                continue
+            low = p.lower()
+            generic = any(w in low for w in self._GENERIC_TAG_WORDS)
+            if ("(" in p and p.rstrip().endswith(")")) or (not generic and len(p.split()) >= 2):
+                ok, canon = verify_tag(p, config=self.config, log=self.log)
+                if not ok:
+                    dropped.append(p)
+                    continue
+                kept.append(canon if canon else p)
+            else:
+                kept.append(p)
+        if dropped:
+            self.log.warning("[flux_painter] 角色 tag 查证未通过，已删除: %s"
+                             % ", ".join(dropped))
+        return ", ".join(kept)
+
     def _canvas_size(self, canvas_key):
-        """解析画布规格为 (宽, 高)；像素对齐 16 的倍数（latent/8 后为偶，
-        满足 qwen_image 编码 spatial_patch_size=2 的整除校验，避免 (245,135) 类报错）"""
+        """解析画布规格为 (宽, 高)；像素对齐 16 的倍数（latent/8 后为偶，"""
         k = str(canvas_key or "").lower()
         for w, h in self.config.canvas_sizes:
             if k in (f"{w}x{h}", f"{w}*{h}"):
@@ -863,13 +494,7 @@ class TBFluxPainterCore:
         return w - (w % 16), h - (h % 16)
 
     def _style_hint(self, text):
-        """识别用户点名的 @风格 与画师名，以及"要求风格化"的意图。
-
-        返回 (style_extra, artist_kw, style_on)
-        - style_extra: 文本里直接写的 @xxx 风格标签
-        - artist_kw:   "用 xxx 的画风/风格" 形式点名的画师关键词（点名要求）
-        - style_on:    用户是否要求「风格化」但没点名具体画师（此时从常驻名单随机抽 1）
-        """
+        """识别用户点名的 @风格 与画师名，以及"要求风格化"的意图。"""
         text = text or ""
         style_extra = [t.strip() for t in re.findall(r"@[\w\-_()（）]+", text)]
         artist_kw = ""
@@ -878,7 +503,6 @@ class TBFluxPainterCore:
             kw = re.sub(r"(画师|老师|画风|风格|的|风格|画|用|参考|模仿|来点|想要)", "", m.group(1)).strip(" ，。")
             if len(kw) >= 2:
                 artist_kw = kw
-        # 风格化意图：只要点名到了画师就不再看关键词（点名优先）
         style_on = False
         if not artist_kw and not style_extra:
             low = text.lower()
@@ -930,7 +554,6 @@ class TBFluxPainterCore:
         """链路层的开口入口：让角色用自己的话问一句（屏幕没找到东西时用）"""
         return self._say_need(channel, need, max_chars)
 
-    # ==================== 图生图等图（QQ 附图） ====================
     REF_WAIT_SECONDS = 60.0
 
     def cache_quote_images(self, channel, images):
@@ -951,10 +574,7 @@ class TBFluxPainterCore:
         return list(item.get("images") or [])
 
     def wait_reference(self, channel, request, qq_context, seconds=None):
-        """判定要参考图但本条消息没带图：挂起等用户补图，绝不先开画
-
-        超过时限只反问一句（见 _on_ref_timeout），不退回纯文生图。
-        """
+        """判定要参考图但本条消息没带图：挂起等用户补图，绝不先开画"""
         secs = float(seconds or self.REF_WAIT_SECONDS)
         with self._pending_lock:
             old = self._pending_ref.pop(str(channel), None)
@@ -1012,61 +632,6 @@ class TBFluxPainterCore:
         except Exception:
             self.log.exception("[flux_painter] TTS 播报失败")
 
-    def _save_memory(self, uid, user_text, reply, scope=None):
-        """记录到短期/长期/用户记忆（uid 缺失就不写；只传通道，轮号取写入时刻的当前轮）。"""
-        if not uid:
-            self.log.error("[flux_painter] 无身份编号，跳过记忆写入")
-            return
-        if not self.config.memory_enabled:
-            return
-        try:
-            from func.pipeline.short_memory import ShortMemory
-            ShortMemory().save({"role": "user", "content": f"【绘画】{user_text}",
-                                "type": self.config.memory_type}, self.config.memory_rounds,
-                               trim_mode="rounds", scope=scope)
-            ShortMemory().save({"role": "assistant", "content": f"【绘画】{reply}",
-                                "type": self.config.memory_type}, self.config.memory_rounds,
-                               trim_mode="rounds", scope=scope)
-        except Exception:
-            pass
-        try:
-            from func.pipeline.llm_ltmem import MeowLLMLtMemBridge
-            from func.config.app_config import AppConfig
-            bridge = MeowLLMLtMemBridge()
-            bridge.record_user_message(uid, f"（让我画图）{user_text}")
-            bridge.record_ai_message(uid, AppConfig().ai_name, f"（画了图）{reply}")
-        except Exception:
-            pass
-
-    def _opener_line(self, channel, request):
-        """接单开场白：角色按自己此刻的语气现生成，每次不同（生成失败才随机取兜底池）"""
-        uid = str(self._context.get("meowid") or "")
-        who = display_name(uid) or "对方"
-        with self._opener_lock:
-            avoid = list(self._opener_recent.get(str(channel)) or ())
-        line = ""
-        for _ in range(2):
-            try:
-                from func.toolbox.character_voice import TBoxCharacterVoice
-                line = TBoxCharacterVoice().line(
-                    f"{who}点单让你画「{request}」，你已经动笔了。应{who}一声："
-                    f"让{who}知道你开始画了、大概要等一会儿，画完会给他看。",
-                    uid, history=self._context.get("short_memory") or [],
-                    max_chars=40, avoid=avoid)
-            except Exception:
-                self.log.exception("[flux_painter] 开场白生成失败")
-                line = ""
-            if line:
-                break
-        if not line:
-            self.log.warning("[flux_painter] 开场白生成失败，本次不应声")
-            return ""
-        with self._opener_lock:
-            recent = self._opener_recent.setdefault(str(channel), [])
-            recent.append(line)
-            del recent[:-6]
-        return line
-
     def _live_opener(self, channel, request):
         """live 渠道：角色应一声（经 TTS 说出来）"""
         self._say(channel, self._opener_line(channel, request))
@@ -1117,62 +682,3 @@ class TBFluxPainterCore:
             return self._qq_send_ok(ncore.call_action_sync(
                 "send_private_msg", {"user_id": uid, "group_id": gid, "message": message}))
         return False
-
-    def _send_qq_image(self, session, image_path):
-        """把成品图+角色点评发给 QQ。
-        群聊：先做裸露审查（nsfw_check.enabled）→ 命中则群聊只发 @+点评+【私】占位，
-        成品图+点评仅私发给发起人；未命中照常群发图。私聊渠道不审查，原样发送。"""
-        try:
-            if not self.config.enabled or not image_path or not os.path.isfile(image_path):
-                return
-            channel = session.get("channel", "")
-            reply = str(session.get("reply") or "").strip()
-            if not reply:
-                reply = self._line_need("图已经画好了，跟主人说一句。")
-            from func.toolbox.napcat.napcat_core import TBNapCatCore
-            ncore = TBNapCatCore()
-            qc = session.get("qq_context") or {}
-            owner = str(session.get("owner_uid") or qc.get("user_id") or qc.get("target_id") or "")
-            img = {"type": "image",
-                   "data": {"file": ncore.api_client._to_file_uri(image_path)}}
-            if channel.startswith("qq_group_"):
-                gid = str(qc.get("target_id") or qc.get("group_id") or "")
-                if not gid:
-                    return
-                # —— 群裸图审查（优先复用画板审查已算出的结果，避免同一张图推理两次）——
-                nsfw, why = False, "safe(未开启)"
-                cached = session.get("nsfw")
-                if cached:
-                    nsfw, why = cached
-                elif self.config.nsfw_enabled:
-                    nsfw, why = self._nsfw_check(image_path)
-                    self.log.info(f"[flux_painter] 群裸图审查 {os.path.basename(image_path)} -> {why}")
-                if nsfw:
-                    delivered = False
-                    if owner:
-                        delivered = self._qq_private_send(ncore, owner, gid, [
-                            {"type": "text", "data": {"text": reply}}, img])
-                    msg = []
-                    if owner:
-                        msg.append({"type": "at", "data": {"qq": owner}})
-                    if delivered:
-                        tail = reply + "（这张比较大胆，已私发给你啦~【私】）"
-                    else:
-                        tail = reply + "（这张比较大胆，群里就不发了）"
-                    msg.append({"type": "text", "data": {"text": (" " + tail) if owner else tail}})
-                    ncore.call_action_sync("send_group_msg", {"group_id": int(gid), "message": msg})
-                    return
-                msg = []
-                if owner:
-                    msg.append({"type": "at", "data": {"qq": owner}})
-                    msg.append({"type": "text", "data": {"text": " " + reply}})
-                else:
-                    msg.append({"type": "text", "data": {"text": reply}})
-                msg.append(img)
-                ncore.call_action_sync("send_group_msg", {"group_id": int(gid), "message": msg})
-            elif owner:
-                ncore.call_action_sync("send_private_msg", {
-                    "user_id": int(owner),
-                    "message": [{"type": "text", "data": {"text": reply}}, img]})
-        except Exception:
-            self.log.exception("[flux_painter] QQ 发图失败")

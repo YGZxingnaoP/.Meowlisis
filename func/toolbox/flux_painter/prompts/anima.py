@@ -1,8 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/prompts/anima.py
-# Anima 提示词规范：tag 锚点段（positive）+ 自然语言镜头段（cinema）
-#
-# 与 mosaic（moss.py）互不影响：schema、系统提示、校验规则各自成套。
 
 import re
 
@@ -35,19 +31,14 @@ PRODUCE_TOOL = {
     },
 }
 
-# 强制走 produce_painting 函数调用（避免模型只输出正文导致解析失败）
 PRODUCE_TOOL_CHOICE = {"type": "function", "function": {"name": "produce_painting"}}
 
-# 画面主体词表（宽匹配、不预设性别/物种）：用于校验 positive 是否含明确主体，缺失则提示重出
-# 注意用 (?<![a-z]) 而不是 \b：danbooru 主体标签是 "1girl" / "2girls" 这种数字前缀，
-# 用 \b 会因为 "1" 与 "g" 都是单词字符而永远匹配不上，导致每张画都白重试一次。
 SUBJECT_RE = re.compile(
     r"(?<![a-z])(girls?|boys?|women|men|woman|man|female|male|elf|elves|nekomimi|catgirl|catboys?|"
     r"foxgirls?|furry|anthro|kitsune|person|people|ladies|gentleman|waifu|husbando|musume|shota)"
     r"(?![a-z])",
     re.IGNORECASE)
 
-# 光照词表（宽匹配，不区分明暗倾向）：只用于校验 cinema 有没有写光照，缺失则提示重出
 LIGHT_RE = re.compile(
     r"\b(light|lights|lighting|lit|sun|sunlit|sunlight|sunny|daylight|bright|brightness|dim|dark|"
     r"shadow|shadows|shaded|shine|shining|glow|glowing|gleam|lamp|lantern|neon|candle|candlelight|"
@@ -76,17 +67,21 @@ SYSTEM_RULES = (
     "（角色名/作品名、场景、动作、服装各一次），命中的槽位配方与标签直接照用；再按需 law_read 细看。"
     "法典导航：镜头与构图看 §11，场景与主题配方看 §5 / §9 / §14，服装/身体/氛围标签看 §6~§10，"
     "配额与互斥看 §3.1 / §4.2。**检索最多 5-6 轮**，信息够用就立刻 produce_painting，不要为查而查。\n"
-    "【硬性红线】① 画面必须有明确主体，禁止无人像或纯器官构图；"
-    "② 不要把人体两个部分写成不同焦段（如“脚高清 + 脸失焦”），否则必糊；"
-    "③ cinema 必须写清光照（写在自然语言里，光源与整体明暗各一句，写什么由题材决定；优先写自然光源与方向，"
-    "不要默认新增台灯/灯具，只有需求明确需要时才写）；"
-    "④ cinema 不得与 positive 的角色特征矛盾（发色/瞳色/服装以 positive 为准）；"
-    "⑤ 不要凭空添加相机、镜头、台灯、灯具；只有需求明确需要时才画。\n"
+    "【硬约束（形式化；违反任意一条即视为产出失败）】\n"
+    "  TAGS = QUALITY ∪ {CHARACTER} ∪ FEATURES ∪ SCENE\n"
+    "  SOLO ⇔ ¬∃k ∈ request : multi_person(k)\n"
+    "  SOLO ⇒ |PERSON| = 1 ∧ TAGS ∩ interaction = ∅   // 色图只指尺度，不指出现对象\n"
+    "interaction = 1boy/2girls/hetero/penis/kiss/hug/handholding/pov/体位/他人手\n"
+    "  SOLO 时禁止图中出现男性（也不要他人身体部位）；色图 ≠ 有对象\n"
+    "  ∀t ∈ TAGS : verified(t)                     // 查不到就删，不许生造\n"
+    "  |CHARACTER| = 1 ⇒ CHARACTER = name_en + (series)\n"
+    "  LIGHT ≠ ∅ ∧ DIRECTION ≠ ∅                    // 光源与方向必写\n"
+    "  ∄t ∈ TAGS ∪ cinema : camera_entity(t)        // camera/lens/dslr/photo\n"
+    "  cinema ∩ positive = ∅ 的矛盾项              // 发色/瞳色/服装只以 positive 为准\n"
     "【写法自查（只讲规则，不要照抄任何示例）】\n"
-    "① 角色 tag 必须是「英文名 (作品)」形式，多词用空格不用下划线，且带作品出处；"
-    "② 要有标志物（发饰/饰品/服装特征）与表情，别只靠发色瞳色辨识；"
-    "③ 禁止生造标签；"
-    "④ 景别/视角/构图这类词写进 cinema，不要塞进 tag 段。\n"
+    "① 角色 tag = 「英文名 (作品)」，多词用空格不用下划线，必须带作品出处；"
+    "② 要有标志物与表情，别只靠发色瞳色辨识；③ 禁止生造标签；"
+    "④ 景别/视角/构图写进 cinema，不要塞进 tag 段。\n"
     "先理解需求（需要就查法典），再调用 produce_painting 一次产出。"
 )
 
@@ -144,7 +139,6 @@ FINAL_RULING = (
     "④ 景别(portrait/upper body/cowboy shot/full body/close-up)为 positive 必填锚点。"
 )
 
-
 class AnimaPromptSpec:
     """Anima 提示词规范：tag + cinema 两段式，法典按需检索"""
 
@@ -152,9 +146,7 @@ class AnimaPromptSpec:
     tool = PRODUCE_TOOL
     law_tools = (LAW_INDEX_TOOL, LAW_SEARCH_TOOL, LAW_READ_TOOL, DANBOORU_TAG_TOOL)
     knowledge_cls = TBAnimaKnowledge
-    # 法典检索预算（字符）：超过后不再提供检索工具，逼模型落笔
     law_budget = 28000
-    # cinema 字段是否参与拼词（anima 拼在 tag 段后面）
     use_cinema = True
 
     def build_system(self, config, knowledge, user_text, persona="", role_card=""):

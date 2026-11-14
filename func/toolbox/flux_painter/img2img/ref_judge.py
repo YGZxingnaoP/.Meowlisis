@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/ref_judge.py
-# 参考图意图判定：判断这条作画请求是否要求「以某张现成画面为参考」再落笔
-#   - screen：参考当前电脑屏幕（live / 弹幕 / 语音 / 手机，全 msg 通道）
-#   - image ：参考用户刚发来的那张图片（QQ）
-# 纯语义判断（不做关键词匹配）；判定不出来一律按「不需要参考」处理，保持文生图。
 
 import json
 import re
@@ -12,7 +7,6 @@ from func.log.default_log import DefaultLog
 from func.tools.singleton_mode import singleton
 from func.toolbox.flux_painter.config import TBFluxPainterConfig
 from func.toolbox.flux_painter.port.base import create_painter_llm
-
 
 SCREEN_SYSTEM = (
     "你是绘画需求的语义判定器。判断用户这句话是否要求「以当前电脑屏幕上的画面为参考」来画图。\n"
@@ -38,7 +32,6 @@ PAINT_SYSTEM = (
     "不是画图：这张图是什么／好看吗／帮我分析下这张图／图里写的什么／哈哈哈／晚安／在干嘛／随便聊聊。\n"
     "只输出一个 JSON，不要任何多余文字：{\"need\": true} 或 {\"need\": false}"
 )
-
 
 @singleton
 class TBRefJudge:

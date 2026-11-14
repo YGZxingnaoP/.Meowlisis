@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/img2img/ref_focus.py
-# 屏幕参考聚焦：截图 → 让绘画模型点出画框的两个对角点 → 裁切 → 复查，循环到框住为止
-# 只依赖绘画自己的模型端口（与写提示词同一个模型），不引入其它模块。
 
 import json
 import os
@@ -15,7 +12,6 @@ from func.tools.singleton_mode import singleton
 from func.toolbox.flux_painter.config import TBFluxPainterConfig
 from func.toolbox.flux_painter.img2img.ref_source import image_data_url
 from func.toolbox.flux_painter.port.base import create_painter_llm
-
 
 SYSTEM = (
     "你是插图绘制的取景助手。用户要画的东西出现在他电脑屏幕的截图里，"
@@ -63,7 +59,6 @@ FOCUS_TOOL = {
 
 MIN_SIDE = 100          # 归一化最小边长（1/10 整图）
 
-
 @singleton
 class TBRefFocus:
     """屏幕取景：截图 + 两对角点定框 + 循环复查，产出干净的参考图（不带任何标尺/标记）"""
@@ -73,7 +68,6 @@ class TBRefFocus:
         self.log = DefaultLog().getLogger()
         self.config = TBFluxPainterConfig()
 
-    # ==================== 截图 ====================
     def capture(self) -> str:
         """截主屏全屏 PNG，返回本地路径（失败返回空串）"""
         try:
@@ -88,19 +82,8 @@ class TBRefFocus:
             self.log.exception("[flux_painter] 屏幕截图失败")
             return ""
 
-    # ==================== 取景 ====================
     def focus(self, screen_path, request: str, target_w: int, target_h: int, on_round=None):
-        """在截图上循环定框
-
-        返回 dict：
-            crop      裁好的参考图路径（空表示没取到）
-            note      这一块是什么的一句话说明
-            found     截图上有没有用户要画的主体（模型判断"没看到/不确定"时为 False）
-            problem   found=False 时缺什么（供上层拿来反问用户）
-            confirmed 模型是否明确确认过画框
-
-        on_round：可选回调（测试/排查用），每轮结束收到一次
-        """
+        """在截图上循环定框"""
         result = {"crop": "", "note": "", "found": True, "problem": "",
                   "fallback": "end", "confirmed": False}
         if not screen_path or not os.path.isfile(screen_path):
@@ -131,7 +114,6 @@ class TBRefFocus:
         )
         crop_path, note = "", ""
         prev_box = None
-        # 取景复查轮数：配置默认 3，硬上限 5（防止模型一直不给 ok 时反复调模型）
         rounds = min(5, max(1, int(getattr(self.config, "img2img_focus_rounds", 3) or 3)))
         for round_no in range(1, rounds + 1):
             content = [{"type": "text", "text": base_text},
@@ -147,7 +129,6 @@ class TBRefFocus:
                 continue
             note = str(data.get("note") or note or "")
             result["note"] = note
-            # 模型说没看到（或不确定）：不硬框，直接把问题带回上层去问用户
             if data.get("found") is False:
                 result["found"] = False
                 result["problem"] = str(data.get("problem") or note or "").strip()
@@ -172,7 +153,6 @@ class TBRefFocus:
                              "请重新给一组新的对角点。")
                 continue
             fitted = self._fit_aspect(box, width, height, target_w, target_h)
-            # 模型没给更大的框，说明不是在修补「被切掉」，视为已经框好：沿用上一轮，不再空转
             if prev_box and not self._is_larger(fitted, prev_box):
                 self.log.info("[flux_painter] 取景已稳定，沿用上一轮画框")
                 result["crop"], result["confirmed"] = crop_path, True
@@ -198,7 +178,6 @@ class TBRefFocus:
         self.log.warning("[flux_painter] 取景失败：没有拿到有效画框")
         return result
 
-    # ==================== 内部工具 ====================
     def _notify(self, callback, payload):
         """回调异常不影响取景主流程"""
         if not callback:

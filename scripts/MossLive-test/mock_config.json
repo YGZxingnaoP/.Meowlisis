@@ -1,0 +1,53 @@
+{
+  "api": {
+    "realtime_url": "ws://127.0.0.1:18765/v1/realtime",
+    "http_base": "https://api.mosi.cn",
+    "api_key": "test-key",
+    "api_key_env": "",
+    "model": "moss-live-1.0",
+    "user": "meowlisis-test",
+    "proxy": null,
+    "connect_timeout_sec": 10
+  },
+  "session": {
+    "memory_scope": "session",
+    "playback": "client",
+    "profile": "standard",
+    "output_audio": {"format": "pcm16", "sample_rate": 48000},
+    "input_audio": {"format": "pcm16"},
+    "video": {"max_long_side": 512, "jpeg_quality": 0.75, "interval_ms": 500},
+    "time_zone": "Asia/Shanghai",
+    "location": null
+  },
+  "prompt": {
+    "mode": "project",
+    "display_name": "主人"
+  },
+  "voice": {
+    "mode": "name",
+    "name": "test-voice",
+    "fallback_name": "",
+    "ref_audio": {"source": "character/ref_audio/config.json", "emotion": "neutral"},
+    "clone": {"voice_name": "mock", "cache_file": "voice_cache.json", "recreate": false, "max_seconds": 29}
+  },
+  "audio": {
+    "input_device": -1,
+    "output_device": -1,
+    "frame_ms": 20,
+    "input_enabled": true,
+    "output_enabled": true,
+    "volume": 0.05
+  },
+  "screen": {
+    "enabled": true,
+    "monitor": 1,
+    "interval_ms": 500,
+    "max_long_side": 512,
+    "jpeg_quality": 0.75,
+    "save_frames": false
+  },
+  "tools": {
+    "enabled": ["get_time", "open_url", "list_windows", "activate_window", "save_note", "search_files"]
+  },
+  "log": {"level": "INFO", "save_events": false, "verbose_events": false, "show_partial": false}
+}

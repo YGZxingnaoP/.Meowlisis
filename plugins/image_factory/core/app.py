@@ -40,7 +40,7 @@ class BlueArchiveApp:
 
     # ==================== 解析 ====================
     def parse(self, text):
-        """返回 (角色名, 张数, 是否保守模式)；非本插件消息返回 None。"""
+        """返回 (角色名, 张数, 是否保守, 是否多人)；非本插件消息返回 None。"""
         body = str(text or "").strip()
         prefix = self.cfg.trigger
         idx = body.lower().find(prefix.lower())
@@ -52,16 +52,19 @@ class BlueArchiveApp:
         count = None
         char = ""
         safe = False
+        multi = False
         for t in tokens:
             low = t.lower()
             if low in ("safemode", "safe", "保守", "安全", "sfw"):
                 safe = True
+            elif low in ("interact", "multi", "多人", "双人"):
+                multi = True
             elif re.fullmatch(r"\d+", t):
                 count = int(t)
             elif not char:
                 char = t
         count = max(1, min(self.cfg.max_images or 9, count or self.cfg.default_images))
-        return (theme.canonical(char) if char else "", count, safe)
+        return (theme.canonical(char) if char else "", count, safe, multi)
 
     # ==================== 入口 ====================
     def handle(self, text, qq_context):
@@ -69,7 +72,7 @@ class BlueArchiveApp:
         parsed = self.parse(text)
         if parsed is None:
             return False
-        char, count, safe = parsed
+        char, count, safe, multi = parsed
         # 群里强制保守模式：群里一律不露点
         if str((qq_context or {}).get("message_type") or "") == "group":
             safe = True
@@ -83,7 +86,7 @@ class BlueArchiveApp:
         self._busy = True
         self._last = time.time()
         try:
-            self._work(char, count, qq_context, safe=safe)
+            self._work(char, count, qq_context, safe=safe, multi=multi)
         except Exception:
             self.log.exception("[image_factory] 出图流程异常")
             self._say(qq_context, "工厂里着火了喵（内部异常），看日志…")
@@ -91,23 +94,29 @@ class BlueArchiveApp:
             self._busy = False
         return True
 
-    def _pick(self, char, count):
-        """选角：点名角色 → 该角色出 count 张；没点名 → 随机抽 count 个不同角色。"""
+    def _pick(self, char, count, multi=False):
+        """选角：单人→每张一个角色；interact→每张 2~3 个随机角色。"""
+        pool = theme.roster()
+        if multi:
+            groups = []
+            for _ in range(max(1, int(count or 1))):
+                k = random.randint(2, 3) if len(pool) >= 3 else 2
+                groups.append(random.sample(pool, min(k, len(pool))))
+            return groups
         if char:
             return [char] * max(1, int(count or 1))
-        pool = theme.roster()
         if not pool:
             return []
         return random.sample(pool, min(int(count or 1), len(pool)))
 
     # ==================== 主流程 ====================
-    def _work(self, char, count, qq_context, safe=False):
+    def _work(self, char, count, qq_context, safe=False, multi=False):
         """主流程：选角色 → 提示词 → 出图 → 归档 → 合并转发。"""
         t0 = time.time()
         if char and theme.char_tag(char) == "":
             self._say(qq_context, "「%s」不在蔚蓝档案名单里喵，换个名字试试~" % char)
             return
-        chosen = self._pick(char, count)
+        chosen = self._pick(char, count, multi=multi)
         self.log.info("[image_factory] 角色=%s 张数=%d 模式=%s"
                       % (chosen, len(chosen), "保守" if safe else "R-18"))
 
@@ -121,22 +130,31 @@ class BlueArchiveApp:
         os.makedirs(batch_dir, exist_ok=True)
         images, notes = [], []
         for i, name in enumerate(chosen):
-            tag = self.tags.resolve(name, theme.en_name(name)) or theme.char_tag(name)
+            multi_n = len(name) if isinstance(name, list) else 0
+            if isinstance(name, list):
+                tags_join = [theme.char_tag(n) for n in name if theme.char_tag(n)]
+                name = "、".join(name)
+                tag = ", ".join(tags_join)
+            else:
+                tag = self.tags.resolve(name, theme.en_name(name)) or theme.char_tag(name)
             appearance = self.appear.get("蔚蓝档案", name) or ""
             prompt = self.writer.write(name, appearance, i, len(chosen),
-                                       char_tag=tag, safe=safe)
+                                       char_tag=tag, safe=safe, multi=multi_n)
             if not prompt:
                 notes.append("%s: 提示词为空" % name)
                 continue
             self.log.info("[image_factory] %s 提示词(%d 字)：%s"
                           % (name, len(prompt), prompt[:260].replace("\n", " ")))
             positive = ("%s, %s" % (self.cfg.quality, prompt)) if self.cfg.quality else prompt
-            # LoRA 自带触发词（如 2.5D 件的 wangzhe）：拼在质量词之后
+            # LoRA 自带触发词：@ 开头的（如 @szcb911style）必须放最前面，其余拼在质量词后
             trig = [l.get("trigger") for l in (self.cfg.loras or []) if l.get("trigger")]
-            if trig:
-                positive = "%s, %s, %s" % (self.cfg.quality, ", ".join(dict.fromkeys(trig)),
-                                           prompt) if self.cfg.quality else \
-                    "%s, %s" % (", ".join(dict.fromkeys(trig)), prompt)
+            head = list(dict.fromkeys(t for t in trig if t.startswith("@")))
+            tail = list(dict.fromkeys(t for t in trig if not t.startswith("@")))
+            if tail:
+                positive = "%s, %s, %s" % (self.cfg.quality, ", ".join(tail), prompt) \
+                    if self.cfg.quality else "%s, %s" % (", ".join(tail), prompt)
+            if head:
+                positive = ", ".join(head) + ", " + positive
             graph = self.comfy.build_graph(positive, self.cfg.negative)
             ok, pid, err = self.comfy.submit(graph)
             if not ok:

@@ -1,7 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/img2img/ref_source.py
-# 参考图素材：消息图片落地成本地缓存 + 本地图片转 data url
-# 文件读取与缓存都留在绘画模块内部，不再走 pipeline 桥接。
 
 import base64
 import os
@@ -12,7 +9,6 @@ from PIL import Image
 
 from func.log.default_log import DefaultLog
 
-
 IMAGE_MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
     ".webp": "image/webp", ".bmp": "image/bmp",
@@ -20,7 +16,6 @@ IMAGE_MIME = {
 
 MAX_BYTES = 20 * 1024 * 1024      # 参考图下载上限（超过就丢弃，避免把内存/磁盘打满）
 MAX_SIDE = 2048                   # 参考图长边上限（再大对出图没意义，只会拖慢上传/编码）
-
 
 def image_data_url(path: str) -> str:
     """本地图片 → data url（供多模态消息使用，按扩展名给 MIME）"""
@@ -30,7 +25,6 @@ def image_data_url(path: str) -> str:
             return f"data:{mime};base64," + base64.b64encode(f.read()).decode("ascii")
     except Exception:
         return ""
-
 
 class TBRefSource:
     """参考图落地：消息里的 file / url → 本地文件，统一放进参考图缓存目录"""
@@ -57,11 +51,7 @@ class TBRefSource:
         return out
 
     def normalize(self, path: str, cache_dir: str) -> str:
-        """任意格式 → 静态 PNG：动图只取第一帧、透明垫白、长边限幅
-
-        ComfyUI 的 LoadImage 与多模态模型对 gif/动图/超大图都不稳，
-        统一在这里退化成一张干净的 RGB PNG，后面的取景/上传/看图都只认它。
-        """
+        """任意格式 → 静态 PNG：动图只取第一帧、透明垫白、长边限幅"""
         try:
             with Image.open(path) as im:
                 im.seek(0)                                  # 动图取第一帧

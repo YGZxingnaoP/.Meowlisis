@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/txt2img/chain.py
-# 文生图链路：只有文字需求，不参考任何现成画面。
-# 负责两条入口（live 主链路 / QQ），参考图相关逻辑全部不在这里。
 
 from func.tools.singleton_mode import singleton
 from func.toolbox.flux_painter.painting_core import TBFluxPainterCore
-
 
 @singleton
 class TBTxt2ImgChain:

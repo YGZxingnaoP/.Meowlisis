@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/port/meowllm.py
-# 绘画模型 MeowLLM 端口（本地子服务，OpenAI 兼容）
-#
-# 继承 TBFluxPainterLLMBase 只为保持三个端口同一套接口形状；参数自己拼，
-# 不复用基类的 `_mk_params`（那套是给云端平台的，extra_body 里只有 thinking）。
 
 import os
 from typing import Dict, List, Optional
@@ -13,10 +8,8 @@ from openai import OpenAI
 from func.log.default_log import DefaultLog
 from func.toolbox.flux_painter.port.base import TBFluxPainterLLMBase
 
-
 DEFAULT_BASE_URL = os.environ.get("MEOWLLM_BASE_URL", "http://127.0.0.1:18100/meowllm/v1")
 _LEVELS = ("off", "low", "medium", "high")
-
 
 class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
     """绘画 MeowLLM 客户端"""
@@ -118,4 +111,3 @@ class TBFluxPainterMeowLLM(TBFluxPainterLLMBase):
         except Exception as e:
             self.log.error(f"[flux_painter] MeowLLM 流式调用异常: {e}")
             return iter([])
-

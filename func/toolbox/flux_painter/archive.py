@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/archive.py
 import datetime
 import json
 import os
@@ -7,7 +6,6 @@ import re
 import shutil
 
 from func.log.default_log import DefaultLog
-
 
 class TBPainterArchive:
     """画作归档：character/paints/<日期>_<标题>/ 存 image + meta.json"""

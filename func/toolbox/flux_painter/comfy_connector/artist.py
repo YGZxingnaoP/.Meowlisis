@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# func/toolbox/flux_painter/comfy_connector/artist.py
 import json
 import os
 import random
@@ -8,23 +7,16 @@ import re
 from func.log.default_log import DefaultLog
 
 ARTIST_SRC_ENV = "FLUXPAINTER_ARTIST_SRC"
-# 风格化随机抽画师的质量门槛：
-#   ARTIST_RANDOM_MIN_POSTS  只抽 danbooru 作品数达标的画师（太冷门的模型基本没学到）
-#   ARTIST_RANDOM_MAX_POOL   只在前 N 名热门画师里随机（data.js 已按 post_count 降序，N 名=池子大小）
-#   ARTIST_RANDOM_EXCLUDE    剔除匿名/占位类伪画师 tag（drawfag 等本身不携带画风）
 ARTIST_RANDOM_MIN_POSTS = 500
 ARTIST_RANDOM_MAX_POOL = 2000
 ARTIST_RANDOM_EXCLUDE = re.compile(r"drawfag|anonymous", re.IGNORECASE)
-
 
 def _norm_name(s):
     """名字归一化：去掉转义反斜杠、括号、下划线、空格与连字符，便于模糊点名"""
     return re.sub(r"[\s_\-\\()（）]", "", str(s or "").lower())
 
-# 画师库源文件搜索顺序：环境变量 → 项目内副本(.ComfyNode/artist/data.js) → 旧外置路径（兼容保留）
 ARTIST_SRC_FALLBACK = (r"D:\ComfyUI\ComfyUI_windows_portable\ComfyUI\custom_nodes"
                        r"\Comfyui-Anima-Tools-main\js\data.js")
-
 
 def artist_src_path(config=None):
     """画师库源路径（自包含优先，不再硬依赖 D:\\ComfyUI）"""
@@ -38,7 +30,6 @@ def artist_src_path(config=None):
             if os.path.isfile(p):
                 return p
     return ARTIST_SRC_FALLBACK
-
 
 class TBArtistPicker:
     """画师库（danbooru 画师 data.js）拷贝/检索/默认风格拼接"""
@@ -78,10 +69,7 @@ class TBArtistPicker:
         return self._cache
 
     def search(self, keyword, top=5):
-        """按名字检索画师（点名用）：精确名 > 归一化精确 > 子串；返回 [{name, id, post_count}]
-
-        归一化 = 去掉 \\( \\) 、下划线、空格，这样 'hara harayutaka' 也能命中
-        库里的 'hara \\(harayutaka\\)'。"""
+        """按名字检索画师（点名用）：精确名 > 归一化精确 > 子串；返回 [{name, id, post_count}]"""
         kw = (keyword or "").strip().lower()
         if not kw:
             return []
@@ -102,10 +90,7 @@ class TBArtistPicker:
         return (exact + nrm + subs)[:top]
 
     def random_pool(self):
-        """风格化随机池：按 post_count 过滤 + 剔除匿名/占位画师，返回条目列表
-
-        data.js 本身按 post_count 降序分页（每页 1000），所以『前 N 名』= 最热门 N 位，
-        随机命中率高的同时保证模型认识这位画师。池子为空时回退全库（绝不空手）。"""
+        """风格化随机池：按 post_count 过滤 + 剔除匿名/占位画师，返回条目列表"""
         pool = [a for a in self._load()
                 if (a.get("post_count") or 0) >= ARTIST_RANDOM_MIN_POSTS
                 and not ARTIST_RANDOM_EXCLUDE.search(a.get("name") or "")]
@@ -122,11 +107,7 @@ class TBArtistPicker:
         return random.sample(pool, min(count, len(pool)))
 
     def build_artist_tags(self, named=None, style_tags=None, count=1):
-        """拼画师串：@点名画师 + 随机补位 + 可选风格串，返回如 '@a, @b, @style, '
-
-        注：生产已改为"默认不加画师"，未点名/未要求风格化时不会走到这里；
-        style_tags 显式传入才追加（配置项 default_style 已移除）。
-        """
+        """拼画师串：@点名画师 + 随机补位 + 可选风格串，返回如 '@a, @b, @style, '"""
         tags = []
         if named:
             for a in named:

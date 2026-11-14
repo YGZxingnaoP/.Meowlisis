@@ -1,23 +1,10 @@
 # -*- coding: utf-8 -*-
-"""官方 Layout JSON 校验/归一（主项目 + 插件共用同一套规则，各自实现一份，互不引用）。
-
-依据 `.vendor/.ComfyNode/node/MOSS-Image-SFT.json` 的「主体提示词」节点：
-    {"summary": {"canvas": "single|multi_panel", "caption": "<整段散文>"},   # 可选 meta/...
-     "items": [{"label": "character|object|text", "caption": "...",
-                "text": "...(仅 text)", "bbox": [y1, x1, y2, x2]}, ...],
-     "bbox_coord_space": "abs_centralized", "bbox_format": "yxyx"}
-
-规则：
-  · 只保留官方字段；label 必须合法；text 项必须带 text；
-  · bbox 必须是 4 个整数、yxyx 升序，并夹进画布（中心原点，x∈±W/2、y∈±H/2）；
-  · 无法修复的 item 直接丢弃；没有合法 item 就返回 None（调用方退回散文）。
-"""
+"""官方 Layout JSON 校验/归一（主项目 + 插件共用同一套规则，各自实现一份，互不引用）。"""
 
 import json
 
 LABELS = ("character", "object", "text")
 CANVASES = ("single", "multi_panel")
-
 
 def normalize_layout(raw, width=1024, height=1024):
     """吃字符串或 dict，吐压缩后的官方 JSON 字符串；不合法返回 None"""
