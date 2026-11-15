@@ -233,7 +233,7 @@ if not exist "%OUT%" (
 )
 if exist "%OUT%\%NAME%.tmp" del /q "%OUT%\%NAME%.tmp"
 
-call "%RAR%" a -afzip -r %MODE% -y %EXCLUDES% "%OUT%\%NAME%.tmp" "*"
+call "%RAR%" a -afzip -r %MODE% -y -dh -ilog"%OUT%\rar_pack.log" %EXCLUDES% "%OUT%\%NAME%.tmp" "*"
 set "RC=%ERRORLEVEL%"
 
 if %RC% GEQ 2 (

@@ -103,7 +103,7 @@ todolist.md
 !.vendor/.ComfyNode/scripts/
 !.vendor/.ComfyNode/scripts/*
 
-# ========== 环境 / 解释器（体积巨大，可重建，不入库）==========
+# ========== 环境 / 解释器 ==========
 runtime/
 .venv/
 venv/
@@ -117,7 +117,7 @@ env/
 .pytest_cache/
 .mypy_cache/
 
-# ========== 模型权重 / 推理文件（大文件，不入库）==========
+# ========== 模型权重 / 推理文件 ==========
 *.safetensors
 *.ckpt
 *.pth
@@ -169,10 +169,4 @@ plugins/stardew_agent/game_mod/obj/
 plugins/stardew_agent/game_mod/bin/
 plugins/stardew_agent/.build-home/
 plugins/stardew_agent/.nuget/
-
-# 星露谷开发/试玩脚本的编译产物
-scripts/stardew/api_dump/obj/
-scripts/stardew/api_dump/bin/
-scripts/stardew/.build-home/
-scripts/stardew/.nuget/
 
