@@ -9,16 +9,21 @@ rem  Pack core (shared by pack_full.bat / pack_share.bat; do not run this file d
 rem  PACK_MODE = full | share  (set by the wrapper)
 rem
 rem  Options:
-rem     --check     dry run: sizes, free space, environment; writes nothing
+rem     --check     dry run: sizes, free space, junction inventory, environment; writes nothing
 rem     --verify    test the archive after packing (reads the whole file; slowest, safest)
 rem     --nohash    skip SHA256 (saves one full read)
 rem  (pausing is handled by the wrapper: only when called with no arguments)
 rem     --with-temp keep .temp and logs in the full pack (excluded by default)
 rem
+rem  Output: ONE .zip that is directly usable after extraction.
+rem     Models live only under .vendor\.ComfyNode\models and are stored once.
+rem     The ComfyUI\models\* junctions into them are excluded. 叫醒喵呜.bat rebuilds
+rem     those junctions on the target machine before it starts anything else.
+rem
 rem  Behaviour:
 rem     * writes dist\xxx.tmp first and renames to .zip only on success: no half archive, backup kept
 rem     * WinRAR exit code 0=ok 1=some files locked/changed (archive created) >=2=real failure
-rem     * after packing: content check (required present, excluded absent) then a .sha256 sidecar
+rem     * after packing: content check (required present, excluded absent, no junction path) + SHA256
 rem ============================================================
 
 set "DID_CHECK=0"
@@ -85,6 +90,27 @@ rem WinRAR -x: a mask WITHOUT wildcards matches only the archiving root; wildcar
 rem So -x"config.yml" excludes only the root one, not .vendor\.MeowLLM\config.yml or plugin configs.
 set "EXCOMMON=-x"*.pyc" -x"*.pyo" -x"__pycache__\*" -x".git\*" -x".vs\*" -x".idea\*" -x".github\*" -x"scripts\dist\*" -x"scripts\backup\*""
 
+rem ---------- Junction exclusion (applies to both packs) ----------
+rem WinRAR follows directory junctions when packing, so a model reachable through both
+rem .vendor\.ComfyNode\models\X and .vendor\.ComfyNode\ComfyUI\models\X is stored TWICE.
+rem -ol does NOT stop this for zip archives (tested: archive stayed 2x), the -x masks below do.
+rem After extraction, 叫醒喵呜.bat rebuilds these junctions before starting the GUI.
+set "JUNCTIONS="
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\diffusion_models""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\text_encoders""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\vae""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\loras""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\upscale_models""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\ultralytics""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\sams""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\output""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.gsvlite\models\chinese-hubert-base""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.gsvlite\models\chinese-roberta-wwm-ext-large""
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.gsvlite\models\sv""
+rem Anything below the link paths is dead weight as well; catch stragglers (empty subfolders,
+rem files somebody dropped into the link instead of the target).
+set "JUNCTIONS=!JUNCTIONS! -x".vendor\.ComfyNode\ComfyUI\models\*" -x".vendor\.ComfyNode\ComfyUI\output\*""
+
 if /i "%PACK_MODE%"=="full" (
   set "EXCLUSIVE="
   if "%WITH_TEMP%"=="0" set "EXCLUSIVE=-x".temp\*" -x"logs\*""
@@ -131,7 +157,7 @@ set "EXCLUSIVE=-x"config.yml" -x"config.example.yml" -x".temp\*" -x"logs\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"gui\resource\cat_photos_png\*""
   set "EXCLUSIVE=!EXCLUSIVE! -x"*.bak*" -x"config.yml.tmp""
 )
-set "EXCLUDES=%EXCOMMON% %EXCLUSIVE%"
+set "EXCLUDES=%EXCOMMON% %JUNCTIONS% %EXCLUSIVE%"
 
 rem ---------- Find WinRAR ----------
 rem To use another path: set PACK_RAR=X:\path\WinRAR.exe before running.
@@ -142,14 +168,21 @@ for %%P in ("D:\WinRAR\WinRAR.exe" "%ProgramFiles%\WinRAR\WinRAR.exe") do (
 )
 if not defined RAR if exist "%ProgramFiles(x86)%\WinRAR\WinRAR.exe" set "RAR=%ProgramFiles(x86)%\WinRAR\WinRAR.exe"
 if not defined RAR (
-  echo [ERROR] WinRAR.exe not found.
-  echo         Looked in: D:\WinRAR, Program Files, Program Files x86, PATH
-  echo         Install it, or set PACK_RAR to your WinRAR.exe path.
-  goto :fail
+  rem a dry run must still work before WinRAR is installed: it never calls the archiver
+  if "%DID_CHECK%"=="1" (
+    echo [WARN] WinRAR.exe not found - a real run would stop here.
+  ) else (
+    echo [ERROR] WinRAR.exe not found.
+    echo         Looked in: D:\WinRAR, Program Files, Program Files x86, PATH
+    echo         Install it, or set PACK_RAR to your WinRAR.exe path.
+    goto :fail
+  )
 )
-for %%D in ("%RAR%") do set "RARDIR=%%~dpD"
-set "RARCLI=%RARDIR%Rar.exe"
-if not exist "%RARCLI%" set "RARCLI=%RAR%"
+if defined RAR (
+  for %%D in ("%RAR%") do set "RARDIR=%%~dpD"
+  set "RARCLI=%RARDIR%Rar.exe"
+  if not exist "%RARCLI%" set "RARCLI=%RAR%"
+)
 
 echo ============================================================
 echo  %LABEL% pack        mode %PACK_MODE%
@@ -197,6 +230,28 @@ if /i "%PACK_MODE%"=="share" (
 )
 
 echo.
+echo [2b/5] Junction inventory...
+set "LINK_BAD=0"
+for /f "usebackq delims=" %%L in (`%PS% "%HELPER%" links -Root "%ROOT%"`) do (
+  echo         %%L
+  echo %%L | findstr /b /c:"EXTRA" /c:"WARN" >nul && set "LINK_BAD=1"
+)
+echo         link paths are excluded from the archive; 叫醒喵呜.bat rebuilds them on first start
+if "%LINK_BAD%"=="1" (
+  echo         [WARN] unknown junction found - it is NOT excluded yet, so its content may be
+  echo                stored twice. Add its path to JUNCTIONS in _pack_core.bat.
+  if "%DID_CHECK%"=="0" (
+    echo                Continuing in 8 seconds, press Ctrl+C to abort...
+    timeout /t 8 >nul 2>nul
+  )
+)
+if not exist "%ROOT%\scripts\repair_links.py" (
+  echo         [ERROR] missing scripts\repair_links.py - the archive would extract with dead links
+  popd
+  goto :fail
+)
+
+echo.
 echo [3/5] Checking for running processes...
 set "RUNNING="
 for %%N in (python.exe mpv.exe NapCatWinBootMain.exe) do (
@@ -233,7 +288,10 @@ if not exist "%OUT%" (
 )
 if exist "%OUT%\%NAME%.tmp" del /q "%OUT%\%NAME%.tmp"
 
-call "%RAR%" a -afzip -r %MODE% -y -dh -ilog"%OUT%\rar_pack.log" %EXCLUDES% "%OUT%\%NAME%.tmp" "*"
+rem -ol keeps junctions as links for rar; zip has no such entry type, so the real protection
+rem is the JUNCTIONS -x list above. -dh lets WinRAR open files the app still holds,
+rem -ilog records every command line for later inspection.
+call "%RAR%" a -afzip -r %MODE% -y -ol -dh -ilog"%OUT%\rar_pack.log" %EXCLUDES% "%OUT%\%NAME%.tmp" "*"
 set "RC=%ERRORLEVEL%"
 
 if %RC% GEQ 2 (

@@ -12,6 +12,17 @@ if not exist "%ROOT%\runtime\311\python.exe" (
 
 cd /d "%ROOT%"
 
+echo 正在检查模型目录联接...
+if exist "%ROOT%\scripts\repair_links.py" (
+    "%ROOT%\runtime\311\python.exe" "%ROOT%\scripts\repair_links.py" --quiet
+    if errorlevel 1 (
+        echo.
+        echo [警告] 部分模型目录联接未就绪，绘画可能找不到模型。
+        echo        手动修复: runtime\311\python.exe scripts\repair_links.py
+        echo.
+    )
+)
+
 echo 正在清理残留的配置服务进程...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":1801 " ^| findstr "LISTENING"') do (
     echo 发现残留进程 PID=%%a，正在结束...
