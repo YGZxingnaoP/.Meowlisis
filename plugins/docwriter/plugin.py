@@ -140,12 +140,13 @@ class WriteDocumentTool(TriggerTool):
 
     def handle(self, arguments, ctx):
         """语音链路：后台生成，完成后交给 LLM 出话"""
-        _start(arguments, ctx, "voice", user_ctx=dict(self.context))
+        _start(arguments, ctx, "voice", user_ctx=dict(ctx.request() or {}))
         return "已开始生成"
 
     def handle_qq(self, arguments, qq_context, ctx):
         """QQ 链路：后台生成，完成后交给 QQ LLM 出话并发文件"""
-        _start(arguments, ctx, "qq", qq_context=qq_context, user_ctx=dict(self.context))
+        _start(arguments, ctx, "qq", qq_context=qq_context,
+               user_ctx=dict(ctx.request() or {}))
         return "已开始生成"
 
 

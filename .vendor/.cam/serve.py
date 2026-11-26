@@ -324,10 +324,38 @@ def cert_covers(ip):
         return False
 
 
+def cert_is_self_signed():
+    """现有证书是否为自签名（只有自签名证书才需要按 IP 校验/重建）"""
+    try:
+        from cryptography import x509
+        with open(CERT_PEM, 'rb') as handle:
+            cert = x509.load_pem_x509_certificate(handle.read())
+        return cert.issuer == cert.subject
+    except Exception:
+        return True
+
+
+def cert_dns_name():
+    """证书里的第一个非 localhost DNS SAN（启动提示优先用它）"""
+    try:
+        from cryptography import x509
+        with open(CERT_PEM, 'rb') as handle:
+            cert = x509.load_pem_x509_certificate(handle.read())
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        for name in san.get_values_for_type(x509.DNSName):
+            if name and name != 'localhost':
+                return str(name)
+    except Exception:
+        pass
+    return ''
+
+
 def ensure_cert():
-    """生成或复用自签名证书（必须带本机 IP 的 SAN，否则 iOS 直接拒连）"""
+    """生成或复用证书（自签名证书按本机 IP 校验；CA 签发的证书直接复用）"""
     ip = lan_ip()
     if os.path.exists(CERT_PEM) and os.path.exists(KEY_PEM):
+        if not cert_is_self_signed():
+            return CERT_PEM, KEY_PEM
         if cert_covers(ip):
             return CERT_PEM, KEY_PEM
         print('[phone] 现有证书没有 %s 的 SAN，重新生成' % ip)
@@ -438,12 +466,16 @@ if __name__ == '__main__':
         obs_url = '(开启失败: %s)' % e
     if cert:
         cert_pem, key_pem = cert
-        print(f'  手机请访问: https://{ip}:{PORT}')
-        print(f'  电脑观看页: https://{ip}:{PORT}/cam')
+        host = cert_dns_name() or ip
+        print(f'  手机请访问: https://{host}:{PORT}')
+        print(f'  电脑观看页: https://{host}:{PORT}/cam')
         print(f'  OBS 浏览器源: {obs_url}')
-        print(f'  音频诊断页: https://{ip}:{PORT}/debug')
+        print(f'  音频诊断页: https://{host}:{PORT}/debug')
         print(f'  当前模式: {"通话（手机听全部）" if tts_relay.get_mode() == "call" else "聊天（只放手机自己的对话）"}')
-        print('  首次访问有证书警告 -> 点「高级 / 继续前往」即可')
+        if cert_is_self_signed():
+            print('  首次访问有证书警告 -> 点「高级 / 继续前往」即可')
+        else:
+            print('  证书由受信任 CA 签发，手机应直接信任')
         print('=' * 58)
         app.run(host=HOST, port=PORT, ssl_context=(cert_pem, key_pem), debug=False,
                 threaded=True, request_handler=PhoneRequestHandler)

@@ -1,14 +1,23 @@
-ÕıÔÚ¼ÓÔØÉùÎÆÄ£ĞÍ...
-2026-08-22 12:06:13,654 [INFO] download models from model hub: ms
-2026-08-22 12:06:13,680 [WARNING] trust_remote_code: False
-2026-08-22 12:06:13,930 [INFO] Loading pretrained params from D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
-2026-08-22 12:06:13,934 [INFO] ckpt: D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
-2026-08-22 12:06:14,098 [INFO] scope_map: ['module.', 'None']
-2026-08-22 12:06:14,099 [INFO] excludes: None
-2026-08-22 12:06:14,114 [INFO] Loading ckpt: D:\.Meowlisis\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin, status: <All keys matched successfully>
+æ­£åœ¨åŠ è½½å£°çº¹æ¨¡å‹...
+2026-11-16 19:14:48,954 [INFO] download models from model hub: ms
+2026-11-16 19:14:48,958 [WARNING] trust_remote_code: False
+2026-11-16 19:14:49,030 [INFO] Loading pretrained params from D:\.Meowlisis\.vendor\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
+2026-11-16 19:14:49,043 [INFO] ckpt: D:\.Meowlisis\.vendor\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin
+2026-11-16 19:14:49,137 [INFO] scope_map: ['module.', 'None']
+2026-11-16 19:14:49,137 [INFO] excludes: None
+2026-11-16 19:14:49,150 [INFO] Loading ckpt: D:\.Meowlisis\.vendor\.SenseVoice\localmodels\speech_campplus_sv_zh-cn_16k-common\campplus_cn_common.bin, status: <All keys matched successfully>
 funasr version: 1.4.2.
-ÉùÎÆÄ£ĞÍ¼ÓÔØÍê³É
-[1/1]
-ÌáÈ¡ÉùÎÆ: YGZĞÑÄÔÆ¬
-  Íê³É: YGZĞÑÄÔÆ¬
-ÉùÎÆ¿âÒÑĞ´Èë: D:\.Meowlisis\.SenseVoice\voicetexture\speaker_db.json
+å£°çº¹æ¨¡å‹åŠ è½½å®Œæˆ
+[1/4]
+æå–å£°çº¹: 000001-sing
+  å®Œæˆ: 000001-sing
+[2/4]
+æå–å£°çº¹: 000001
+  å®Œæˆ: 000001
+[3/4]
+æå–å£°çº¹: 000004
+  å®Œæˆ: 000004
+[4/4]
+æå–å£°çº¹: 000005
+  å®Œæˆ: 000005
+å£°çº¹åº“å·²å†™å…¥: D:\.Meowlisis\.vendor\.SenseVoice\voicetexture\speaker_db.json
