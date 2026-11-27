@@ -93,7 +93,9 @@ SERVICES = {
     },
     'catpaw': {
         'name': 'CatPaws(iOS)', 'endpoint': 'start_catpaw',
-        'log': 'logs/svc_catpaw_{date}.log', 'cmdline': ['.CatPaws'], 'desc': 'iPhone 控制（agent 操作 + 视频中继）',
+        'log': 'logs/svc_catpaw_{date}.log',
+        'cmdline': ['src/cw/server.py', 'src\\cw\\server.py'],
+        'desc': 'iPhone 控制（agent 操作 + 视频中继）',
         'launch': {'kind': 'python', 'script': '.vendor/.CatPaws/src/cw/server.py', 'cwd': '.vendor/.CatPaws'},
     },
 }
