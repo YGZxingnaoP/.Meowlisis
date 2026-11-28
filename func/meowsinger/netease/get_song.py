@@ -113,6 +113,10 @@ class MeowNeteaseSong:
     def _reply_fail(self, title, meowid):
         try:
             from func.pipeline.singer_llm import SingerLLMBridge
-            SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", meowid)
+            reason = str(getattr(self.ncm, "fail_reason", "") or "").strip()
+            if reason:
+                SingerLLMBridge().send_reply(f"《{title}》没点上：{reason}", meowid)
+            else:
+                SingerLLMBridge().send_reply(f"没有找到歌曲《{title}》", meowid)
         except Exception:
             self.log.exception("[点歌] 回复失败异常")

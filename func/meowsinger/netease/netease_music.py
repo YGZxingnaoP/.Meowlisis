@@ -27,9 +27,11 @@ class MeowNeteaseMusic:
     def __init__(self):
         self.log = DefaultLog().getLogger()
         self.config = MeowSingerConfig()
+        self.fail_reason = ""
 
     def search_and_download(self, title, artist=None):
         """调网易云服务搜索并下载，返回歌曲信息 dict 或 None"""
+        self.fail_reason = ""
         try:
             payload = {"songname": title}
             if artist:
@@ -41,6 +43,7 @@ class MeowNeteaseMusic:
             )
             data = resp.json()
             if data.get("code") != 200:
+                self.fail_reason = str(data.get("msg") or "")
                 self.log.warning(f"[Netease] 点歌失败: {data.get('msg')}")
                 return None
             return {
